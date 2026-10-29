@@ -351,3 +351,13 @@ cajas. Por defecto no hace falta nube por cliente.
   Servidor principal, Servidor de sucursal, Caja y Administración; corre los `.ps1` con `-NoInteractivo`.
   Se arma en CI (`apt install nsis`) o localmente con `npm run empaquetar` si hay `makensis`.
   Sin firma de código, Windows SmartScreen muestra «Windows protegió su PC» › «Más información» › «Ejecutar de todas formas».
+
+### Túnel fijo con factpos.app
+
+Con la licencia activa, el master pide su túnel fijo (`POST /licencias/tunel/fijo`). El portal lo crea en
+Cloudflare (`src/licencia/cloudflare.ts`): túnel `factpos-<empresa>`, regla `<empresa>.factpos.app →
+http://localhost:<puerto>` y registro DNS CNAME con proxy. El master guarda `TUNEL_TOKEN` y `TUNEL_URL` en su
+`.env` y pasa a `cloudflared tunnel run --token …`. Mientras tanto (o si el portal no tiene Cloudflare
+configurado) usa el túnel rápido. Variables del portal: `CLOUDFLARE_API_TOKEN` (Account › Cloudflare Tunnel ›
+Edit + Zone › DNS › Edit), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `FACTPOS_DOMINIO=factpos.app`.
+El dueño entra por `https://factpos.app/<empresa>/` o directo a `https://<empresa>.factpos.app/admin/`.
