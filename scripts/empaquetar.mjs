@@ -1,4 +1,5 @@
-// Arma el paquete de instalación para Windows: FactPOS-Servidor-<versión>.zip
+// Arma el instalador único para Windows: FactPOS-Instalador-<versión>.zip
+// Al abrir "INSTALAR FactPOS.bat" se elige: Servidor, Caja, Servidor y caja, o Administración.
 //   npm run empaquetar
 // Contiene el servidor ya compilado, la caja, la administración, las
 // migraciones, las dependencias de producción (todas en JavaScript puro, así
@@ -25,6 +26,15 @@ const copiar = (de, a = de) => cpSync(join(raiz, de), join(dir, a), { recursive:
 for (const f of ["package.json", "package-lock.json", ".env.example", "README.md"]) copiar(f);
 copiar("db/migrations");
 copiar("instalador");
+// Doble clic en la raíz del paquete: menú para elegir qué se instala
+copiar("instalador/INSTALAR FactPOS.bat", "INSTALAR FactPOS.bat");
+// Los instaladores traen la dirección del PORTAL de FactPOS (variable PORTAL_URL de GitHub):
+// con el nombre corto de la empresa, el portal dice dónde está su nube y su administración.
+const adminUrl = (process.env.PORTAL_URL || "https://factpos.vercel.app").trim().replace(/\/+$/, "");
+for (const f of ["instalador/instalar-administracion.ps1", "instalador/instalar-todo-en-uno.ps1"]) {
+  const ruta = join(dir, f);
+  writeFileSync(ruta, readFileSync(ruta, "utf8").replaceAll("__PORTAL_URL__", adminUrl));
+}
 for (const p of ["packages/compartido", "apps/servidor", "apps/terminal", "apps/admin"]) {
   copiar(`${p}/package.json`);
   copiar(`${p}/dist`);
@@ -42,6 +52,6 @@ const agregar = (ruta) => {
   }
 };
 agregar(dir);
-const zip = join(salida, `FactPOS-Servidor-${version}.zip`);
+const zip = join(salida, `FactPOS-Instalador-${version}.zip`);
 writeFileSync(zip, zipSync(archivos, { level: 6 }));
-console.log(`\nListo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB, ${Object.keys(archivos).length} archivos)`);
+console.log(`\nListo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB, ${Object.keys(archivos).length} archivos) · Portal: ${adminUrl}`);

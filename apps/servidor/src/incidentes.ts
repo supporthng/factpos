@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { renovarSiToca } from "./licencia/cliente.js";
 import { uuidv7 } from "@factpos/compartido";
 import { avisoIncidentePorCorreo, incidentesPorCorreo, procesarEnvios } from "./correo/envios.js";
 import { pool } from "./db.js";
@@ -203,6 +204,7 @@ export function iniciarVigilancia(log: (m: string) => void) {
   const t = setInterval(() => {
     vigilar(log).catch((e) => log(`Vigilancia: ${e.message}`));
     procesarEnvios(log).catch((e) => log(`Correos: ${e.message}`));
+    renovarSiToca(log).catch(() => {});
   }, 60_000);
   t.unref();
   log(`Vigilancia de sucursales activa. Avisos a soporte por: ${[...canalesConfigurados(), "correo si se configura en el panel"].join(", ") || "ningún canal configurado (solo en la administración)"}`);

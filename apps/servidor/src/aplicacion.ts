@@ -1,5 +1,10 @@
 import { contextoCaja } from "./contexto.js";
 import { rutasCentralCorreo } from "./rutas/central-correo.js";
+import { rutasCentralAlta } from "./rutas/central-alta.js";
+import { rutasPortal } from "./licencia/portal.js";
+import { rutasInicio } from "./rutas/inicio.js";
+import { rutasLicenciaCentral, rutasLicenciaSucursal } from "./licencia/cliente.js";
+import { rutasAltaLocal } from "./sync/alta.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { ZodError } from "zod";
@@ -48,12 +53,12 @@ export async function crearApp() {
   // diagnóstico. La administración (/central/...) tiene su propio inicio de sesión
   // y la sincronización usa la clave de conexión de cada sucursal.
   const clave = process.env.CLAVE_ACCESO;
-  if (clave) {
+  if (clave && config.modo !== "portal") { // el portal no tiene rutas de caja
     const huella = (t: string) => createHash("sha256").update(t).digest();
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/descubrir" || ruta.startsWith("/admin") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
@@ -68,7 +73,13 @@ export async function crearApp() {
 
     // Administración: sesión de usuario con permiso para la sección
     if (ruta.startsWith("/central/")) {
-      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia") return;
+      // Administración LOCAL (servidor de sucursal): lo que necesita a todas las sucursales o a la nube se hace allá
+      // (una tienda que trabaja sola, sin CENTRAL_URL, lo hace todo aquí)
+      if (config.modo === "sucursal" && syncActiva() && metodo !== "GET" && metodo !== "HEAD" && soloEnLaNube(metodo, ruta)) {
+        return rep.code(409).send({ error: "Esto se hace en la Administración en la nube (necesita internet): afecta a otras sucursales o a la facturación de toda la empresa." });
+      }
+      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
+        || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/inicio") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
       // Si lo desactivaron o le cambiaron el rol, aplica de inmediato (no espera a que venza la sesión)
@@ -77,10 +88,14 @@ export async function crearApp() {
       s.p = v.permisos;
       // Sucursales a las que tiene acceso: se revisa toda sucursal que venga en la petición
       delete req.headers["x-sucursales"];
-      if (v.sucursales) {
-        const fuera = sucursalesPedidas(req).filter((id) => !v.sucursales!.includes(id));
-        if (fuera.length) return rep.code(403).send({ error: "Su usuario no tiene acceso a esa sucursal" });
-        req.headers["x-sucursales"] = v.sucursales.join(",");
+      // En la administración local solo se ve y se toca ESTA sucursal
+      const propia = config.modo === "sucursal" ? process.env.SUCURSAL_ID || null : null;
+      if (propia && v.sucursales && !v.sucursales.includes(propia)) return rep.code(403).send({ error: "Su usuario no tiene acceso a esta sucursal" });
+      const permitidas = propia ? [propia] : v.sucursales;
+      if (permitidas) {
+        const fuera = sucursalesPedidas(req).filter((id) => !permitidas.includes(id));
+        if (fuera.length) return rep.code(403).send({ error: propia ? "Desde aquí solo se administra esta sucursal" : "Su usuario no tiene acceso a esa sucursal" });
+        req.headers["x-sucursales"] = permitidas.join(",");
       }
       const p = permisoDeRuta(metodo, ruta);
       if (p && !tienePermiso(s.p, p)) {
@@ -148,6 +163,14 @@ export async function crearApp() {
     }
   });
 
+  // PORTAL del proveedor: solo inicio de sesión, clientes y licencias (y las páginas)
+  if (config.modo === "portal") {
+    await app.register(rutasInicio);
+    await app.register(rutasSesionCentral);
+    await app.register(rutasPortal);
+    return app;
+  }
+
   await app.register(rutasSesionCaja);
   await app.register(rutasTurnos);
   await app.register(rutasCajaMovimientos);
@@ -162,8 +185,11 @@ export async function crearApp() {
   await app.register(rutasCierre);
   await app.register(rutasPadronCaja);
 
-  // La administración central solo se expone en la nube, nunca en el servidor de una tienda
-  if (config.modo === "central") {
+  // Administración: en la nube (central) y también LOCAL en el servidor de cada tienda,
+  // para trabajar sin internet. Lo hecho localmente sube solo (migración 0030).
+  if (config.modo === "central" || config.modo === "sucursal") {
+    // Configuración inicial: en la nube, o en una tienda que trabaja sola (sin nube)
+    if (config.modo === "central" || !syncActiva()) await app.register(rutasInicio);
     await app.register(rutasSesionCentral);
     await app.register(rutasCentral);
     await app.register(rutasCentralInventario);
@@ -171,20 +197,26 @@ export async function crearApp() {
     await app.register(rutasCentralOrganizacion);
     await app.register(rutasCentralProductos);
     await app.register(rutasCentralCompras);
-    await app.register(rutasCentralSync);
+    if (config.modo === "central") await app.register(rutasCentralSync);
     await app.register(rutasCentralTraspasos);
     await app.register(rutasCentralCxc);
     await app.register(rutasCentralIncidentes);
     await app.register(rutasCentralCorreo);
+    if (config.modo === "central") await app.register(rutasCentralAlta);
+    // La licencia se activa en la nube; una tienda que trabaja sola la activa aquí mismo
+    if (config.modo === "central" || !syncActiva()) await app.register(rutasLicenciaCentral);
     await app.register(rutasPadronCentral);
+  }
+  if (config.modo === "sucursal") {
+    await app.register(rutasAltaLocal); // http://<servidor>:3000/alta → código para darlo de alta
+    await app.register(rutasLicenciaSucursal);
   }
 
   // Apps web servidas por este mismo servidor (si están compiladas):
   //   sucursal → http://<servidor>:3000/terminal/   (las cajas abren esta dirección)
   //   central  → https://<central>/admin/
-  const apps: [string, string][] = config.modo === "central"
-    ? [["admin", path.join(raiz, "admin/dist")], ["terminal", path.join(raiz, "terminal/dist")]]
-    : [["terminal", path.join(raiz, "terminal/dist")]];
+  //   sucursal → http://<servidor>:3000/admin/      (administración local, sin internet)
+  const apps: [string, string][] = [["admin", path.join(raiz, "admin/dist")], ["terminal", path.join(raiz, "terminal/dist")]];
   let primera = true;
   for (const [nombre, dir] of apps) {
     if (!existsSync(dir)) continue;
@@ -212,6 +244,16 @@ function causaBase(e: Error & { code?: string }): string {
   }
 }
 
+
+/** En la administración local: escrituras que solo se hacen en la nube. */
+function soloEnLaNube(metodo: string, ruta: string) {
+  if (/^\/central\/(alta|correo|cxc|empresa|pedidos-sucursal|traspasos|terminales|licencia)(\/|$)/.test(ruta)) return true;
+  if (/^\/central\/fiscal\//.test(ruta) && !/^\/central\/fiscal\/documentos\/[^/]+\/reintentar$/.test(ruta)) return true;
+  if (ruta === "/central/incidentes/prueba") return true;
+  if (ruta === "/central/sucursales" || /^\/central\/sucursales\/[^/]+(\/(clave-conexion|terminales|tipo))?$/.test(ruta)) return true;
+  void metodo;
+  return false;
+}
 
 /** Toda sucursal que menciona una petición de la administración (para revisar el acceso). */
 function sucursalesPedidas(req: { query: unknown; body: unknown; params: unknown; url: string }): string[] {

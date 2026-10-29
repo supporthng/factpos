@@ -50,6 +50,9 @@ function opcionesConexion(): pg.PoolConfig {
     connectionTimeoutMillis: 10_000,
     max: config.maxConexiones,
     ssl: ssl ? (process.env.DATABASE_CA ? { ca: process.env.DATABASE_CA } : { rejectUnauthorized: false }) : undefined,
+    // En el servidor de una sucursal, los cambios hechos en su administración local se anotan
+    // solos para subir a la nube (migración 0030). En la nube y el portal no aplica.
+    ...(config.modo === "sucursal" ? { options: "-c factpos.modo=sucursal" } : {}),
   };
 }
 

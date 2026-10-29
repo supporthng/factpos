@@ -145,18 +145,19 @@ export async function rutasCentralInventario(app: FastifyInstance) {
   app.get("/central/ajustes", async (req) => {
     const f = z.object({ sucursalId: uuid.optional(), desde: fecha.optional(), hasta: fecha.optional() }).parse(req.query);
     const r = await pool.query(
-      `SELECT a.id, a.numero, s.nombre AS sucursal, a.origen, a.motivo, u.nombre AS usuario, a.creado_en AS "creadoEn",
+      `SELECT a.id, a.numero, s.nombre AS sucursal, al.nombre AS almacen, a.origen, a.motivo, u.nombre AS usuario, a.creado_en AS "creadoEn",
               COUNT(i.id) AS lineas, ROUND(SUM(i.cantidad * i.costo_unitario), 2) AS valor,
               a.aplicado_en_sucursal AS "aplicadoEnSucursal"
          FROM ajustes_inventario a
          JOIN sucursales s ON s.id = a.sucursal_id AND s.empresa_id = $1
+         JOIN almacenes al ON al.id = a.almacen_id
          JOIN usuarios u ON u.id = a.usuario_id
          JOIN ajuste_items i ON i.ajuste_id = a.id
         WHERE ($2::uuid IS NULL OR a.sucursal_id = $2)
           AND ($3::date IS NULL OR a.creado_en >= $3::date)
           AND ($4::date IS NULL OR a.creado_en < $4::date + 1)
           AND ($5::uuid[] IS NULL OR a.sucursal_id = ANY($5))
-        GROUP BY a.id, s.nombre, u.nombre ORDER BY a.creado_en DESC LIMIT 300`,
+        GROUP BY a.id, s.nombre, al.nombre, u.nombre ORDER BY a.creado_en DESC LIMIT 300`,
       [empresaDe(req), f.sucursalId ?? null, f.desde ?? null, f.hasta ?? null, sucursalesDe(req)],
     );
     return r.rows;
@@ -431,7 +432,10 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     const [sucursales, productos, categorias, usuarios] = await Promise.all([
       pool.query(
         `SELECT s.id, s.codigo, s.nombre, s.tipo,
-                (SELECT a.id FROM almacenes a WHERE a.sucursal_id = s.id AND a.es_principal) AS "almacenId"
+                (SELECT a.id FROM almacenes a WHERE a.sucursal_id = s.id AND a.es_principal) AS "almacenId",
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('id', a.id, 'nombre', a.nombre, 'principal', a.es_principal)
+                                           ORDER BY a.es_principal DESC, a.nombre)
+                            FROM almacenes a WHERE a.sucursal_id = s.id), '[]') AS almacenes
            FROM sucursales s WHERE s.empresa_id = $1 AND s.activo AND ($2::uuid[] IS NULL OR s.id = ANY($2)) ORDER BY s.nombre`,
         [e, sucursalesDe(req)],
       ),

@@ -247,3 +247,81 @@ Notas:
 1. **Certificación de facturación electrónica** con la DGII: validar el XML contra los XSD oficiales y el set de pruebas; confirmar las direcciones de los servicios; adaptar el transmisor al PSE elegido; **confirmar el procedimiento de contingencia** de las cajas.
 2. Cuentas por pagar, reportes 606/607/608.
 3. Respaldos automáticos de la base de cada sucursal.
+
+## Instalador único y alta de servidores con código
+
+`FactPOS-Instalador.zip` (GitHub › Releases › «FactPOS · Última versión») trae un solo
+**INSTALAR FactPOS.bat** que pregunta qué es la computadora:
+
+1. **Servidor de la tienda**, que se da de alta de una de estas formas:
+   - **Código de instalación**: la Administración lo genera al crear la sucursal (o en
+     Sucursales › «Código de instalación», vale 7 días y una vez). Se escribe en el
+     instalador y el servidor queda dado de alta solo (`POST /central/alta/canjear`).
+   - **Solicitud**: sin código, el servidor aparece en Sucursales › «Servidores esperando
+     alta» y solo se confirma la sucursal (`/central/alta/solicitar`, `estado`, `aprobar`).
+     Con `-Rnc` solo la ve esa empresa.
+   - **A mano**: identificador, clave `fps_` y `PIN_SECRETO`.
+   En todos los casos el servidor recibe su `SUCURSAL_ID`, una clave de conexión nueva y
+   el `PIN_SECRETO`, los guarda en su `.env` y empieza a sincronizar sin reiniciar.
+2. **Caja**: busca sola el servidor en la red local (UDP 41234 y `factpos.local`).
+3. **Servidor y caja** en la misma PC.
+4. **Administración**: la app de escritorio que abre el panel de la nube (`ADMIN_URL`).
+
+Cada sucursal opera por su cuenta (su servidor, sus cajas, su inventario y sus almacenes)
+y todas se administran juntas desde la nube.
+
+## FactPOS como producto: portal, clientes y licencias
+
+```
+PORTAL DEL PROVEEDOR (MODO=portal) · https://factpos.vercel.app
+  clientes, licencias, activaciones · NO guarda datos de los clientes
+        │ licencias firmadas (Ed25519)
+        ▼
+NUBE DE CADA CLIENTE (MODO=central) · su Vercel + su Supabase (cuentas del cliente)
+  administración web: https://factpos.vercel.app/<cliente>/ (la sirve el portal y habla con SU API)
+        │ sincronización
+        ▼
+SERVIDORES DE SUS SUCURSALES (MODO=sucursal) + cajas
+```
+
+- **Portal** (`MODO=portal`, variable `LICENCIAS_CLAVE_PRIVADA`): `/` es la administración del
+  proveedor (Clientes y licencias, Usuarios del portal) y `/<cliente>/` la administración web de cada
+  cliente, conectada a la API de su nube. API pública: `POST /licencias/activar`, `POST /licencias/renovar`,
+  `GET /licencias/cliente/:slug`. Tablas `portal_*` (migración 0029).
+- **Licencia**: `base64url(JSON).base64url(firma Ed25519)`; la llave pública está en
+  `apps/servidor/src/licencia/nucleo.ts`. Se cobra por sucursal (máximo de tiendas activas).
+  Aviso 15 días antes; al vencer, 7 días de gracia; después solo consulta (no vende). Sin licencia:
+  30 días de prueba con 2 sucursales. Nunca se borra nada.
+- **Nube del cliente**: Administración › Licencia › activar con la clave `FPS-XXXX-…`. Se renueva sola
+  cada 12 h (vigilancia/cron) y baja a las sucursales con la sincronización; cada servidor la verifica
+  solo, sin internet. Al portal solo viaja: licencia, instalación, versión y sucursales activas.
+
+### Dar de alta un cliente nuevo
+1. **Portal › Clientes y licencias › Nuevo cliente**: nombre, nombre corto (`royalliquorstore`),
+   sucursales y vencimiento. Copie la **clave de activación** (se muestra una vez).
+2. **Supabase (cuenta del cliente)**: proyecto nuevo; copie la cadena *Session pooler* (5432) y la
+   *Transaction pooler* (6543).
+3. **Vercel (cuenta del cliente)**: importe este repositorio, *Root Directory* `apps/servidor`, y ponga
+   `MODO=central`, `DATABASE_URL` (Transaction pooler), `PIN_SECRETO`, `CLAVE_ACCESO`, `CRON_SECRET`
+   (márquelas como *Sensitive*: nadie puede volver a leerlas, ni usted).
+4. Despliegue. Cada despliegue aplica solo las migraciones a su base (`scripts/migrar-en-vercel.mjs`),
+   también en cada actualización. Al abrir su administración por primera vez aparece la
+   **Configuración inicial** (pide la `CLAVE_ACCESO`): empresa, RNC, primera sucursal y usuario administrador.
+5. En el portal ponga la **dirección de su API** en el cliente. Su administración queda en
+   `https://factpos.vercel.app/royalliquorstore/`.
+6. El cliente entra, va a **Licencia** y activa con la clave. Luego instala sus servidores (instalador,
+   opción Servidor, con el nombre corto de su empresa) y sus cajas.
+
+## Administración local (sin internet)
+
+Cada servidor de sucursal sirve también la administración en `http://<servidor>:3000/admin/`, con las
+mismas rutas `/central/*` sobre su base local y limitada a esa sucursal (`SUCURSAL_ID`).
+- Lo que se cambia ahí (catálogo, precios, ofertas, usuarios, roles, marca, almacenes, compras, ajustes,
+  conteos y sus movimientos de inventario) lo anota un disparador en `sync_outbox` como `local:<tabla>`
+  (migración 0030; solo con `factpos.modo=sucursal` y nunca al aplicar cambios de la nube) y sube con la
+  sincronización. La nube lo aplica con `sync/subida-local.ts`: gana el más reciente, los documentos se
+  insertan una vez y un número de ajuste repetido se renumera.
+- Con nube, las escrituras que afectan a otras sucursales o a toda la empresa responden 409
+  («se hace en la nube»): traspasos, pedidos, e-CF (secuencias, certificado, configuración), correo,
+  cuentas por cobrar, terminales, alta de servidores y licencia.
+- Una tienda sin nube (sin `CENTRAL_URL`) lo hace todo localmente, incluida la configuración inicial y la licencia.

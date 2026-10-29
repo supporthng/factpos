@@ -1,43 +1,77 @@
-FACTPOS · INSTALACIÓN EN UNA SUCURSAL (Windows 10 / 11)
+﻿FACTPOS · INSTALACIÓN (Windows 10 / 11)
 ========================================================
 
-Lo que necesita
-  - Una computadora para el SERVIDOR (puede ser también una de las cajas).
-    Recomendado: 8 GB de RAM, disco SSD, cable de red (no Wi-Fi) y UPS.
-  - Las CAJAS conectadas a la misma red que el servidor.
-  - Internet en el servidor solo para instalar y para la DGII
-    (las cajas siguen facturando aunque se caiga el internet).
+UN SOLO INSTALADOR PARA TODO
+   Descargue FactPOS-Instalador.zip (GitHub > Releases > «FactPOS · Última versión»),
+   descomprímalo en cada computadora y haga doble clic en "INSTALAR FactPOS.bat".
+   Elija qué es esta computadora:
 
-1) SERVIDOR (una sola vez)
-   a. Descomprima FactPOS-Servidor-X.Y.Z.zip en el escritorio.
-   b. Clic derecho en el menú Inicio > "Terminal (Administrador)".
-   c. Escriba (cambie la ruta si lo descomprimió en otro lugar):
-        cd "$env:USERPROFILE\Desktop\FactPOS"
-        powershell -ExecutionPolicy Bypass -File .\instalador\instalar-servidor.ps1
-      Opciones útiles:
-        -Demo                     carga datos de prueba (para practicar)
-        -PinSecreto "..."         el mismo que la central y las demás sucursales
-        -NombreRed factpos-norte  si hay dos servidores en la misma red
-        -CentralUrl https://... -SucursalId ... -CentralClave ...
-                                  conecta la sucursal con la central en la nube
-                                  (los datos están en Administración > Sucursales >
-                                  "Conectar su servidor"). Con esto NO use -Demo:
-                                  productos, precios y existencias bajan solos.
-   d. Al final muestra la dirección de las cajas, por ejemplo:
-        http://factpos.local:3000/terminal/
-   El servidor queda arrancando solo cada vez que se enciende el equipo.
-   Registro de lo que pasa: C:\FactPOS\logs\servidor.log
+   1. Servidor de la tienda (uno por sucursal)
+      - Pregunta el nombre corto de su empresa (ej. royalliquorstore): con eso
+        encuentra sola la nube de su empresa. Luego el puerto.
+      - Pide permiso de Administrador e instala todo (Node.js, PostgreSQL, el servicio).
+      - Para darlo de alta en su sucursal hay dos formas:
+        a) CON CÓDIGO DE INSTALACIÓN: al crear la sucursal en la Administración
+           (o en Sucursales > «Código de instalación») sale un código, ej. K7PD-4QX9.
+           En el instalador elija «Tengo un código de instalación», escríbalo y
+           el servidor queda dado de alta solo. Vale 7 días y una sola vez.
+        b) SIN CÓDIGO: elija «enviar una solicitud». En la Administración, en
+           Sucursales > «Servidores esperando alta», aparece el nombre de la PC:
+           pulse «Confirmar…», elija la sucursal (o cree una nueva) y listo.
+           (Si escribe el RNC de la empresa, la solicitud solo la ve su empresa.)
+      - El servidor recibe solo su sucursal, su clave y el PIN_SECRETO, y baja
+        productos, precios, usuarios, existencias y el certificado.
+      - Estado del alta en esa PC:  http://localhost:3000/alta
+      - Si da de alta un servidor nuevo para una sucursal que ya tenía uno,
+        el nuevo lo reemplaza (el viejo deja de sincronizar).
+      - Los usuarios son de la empresa: se crean una vez en la Administración y
+        se les da acceso a todas las sucursales o solo a las que se elijan.
 
-2) CADA CAJA
-   a. Copie la carpeta "instalador" a la caja (o el ZIP completo).
-   b. Abra PowerShell (no hace falta Administrador) y escriba:
-        powershell -ExecutionPolicy Bypass -File .\instalar-caja.ps1 -Impresora "NOMBRE DE LA TÉRMICA"
-      (si no sabe el nombre, ejecútelo sin -Impresora y le muestra la lista)
-   c. El instalador ENCUENTRA SOLO el servidor en la red y crea en el
-      escritorio "FactPOS Caja": abre en pantalla completa e imprime directo,
-      sin la ventana de imprimir. También se abre sola al encender.
-   d. La primera vez, elija qué caja es (Caja 1, Caja 2…).
-   Para salir de la pantalla completa: Alt + F4.
+   2. Caja (terminal de venta)
+      - No pide permiso de Administrador.
+      - BUSCA SOLO el servidor de la tienda en la red local. Si hay varios,
+        pregunta cuál; si no encuentra ninguno, se puede buscar de nuevo o
+        escribir la IP del servidor.
+      - Pregunta la impresora térmica y deja "FactPOS Caja" en el escritorio
+        (pantalla completa, imprime directo, se abre sola al encender).
+      - La primera vez, elija qué caja es (Caja 1, Caja 2…). Salir: Alt + F4.
+
+   3. Servidor y caja en esta misma computadora (tienda de una sola PC)
+      - Hace el 1 y el 2 seguidos. Use un UPS: si la PC se apaga, se caen los dos.
+
+   4. Administración (oficina, dueño, supervisor)
+      - No necesita servidor: pregunta el nombre corto de su empresa y abre su
+        administración (https://factpos.vercel.app/<empresa>/) en su propia ventana.
+      - Deja "FactPOS Administración" en el escritorio y en el menú Inicio.
+
+   Cada sucursal trabaja por su cuenta (su servidor, sus cajas, su inventario)
+   aunque todas se administren juntas desde la Administración.
+
+ADMINISTRACIÓN LOCAL (sin internet)
+   Cada servidor de tienda trae la administración completa:
+        http://<IP-del-servidor>:3000/admin/      (en el mismo equipo: http://localhost:3000/admin/)
+   Se entra con el mismo usuario y contraseña de la nube. Muestra solo esa sucursal.
+   Productos, precios, ofertas, compras, ajustes, conteos, usuarios, reportes…
+   todo funciona sin internet; lo que se cambie sube solo a la nube al volver la
+   conexión (si el mismo dato se cambió después en la nube, gana el más reciente).
+   Lo que afecta a varias sucursales o a toda la empresa (traspasos, secuencias e-CF,
+   certificado, correo, cuentas por cobrar, alta de servidores, licencia) se hace en la nube.
+   Una tienda que trabaja sola (sin nube) lo hace todo aquí, incluida la licencia.
+
+Requisitos
+   - Servidor: 8 GB de RAM, disco SSD, cable de red (no Wi-Fi) y UPS.
+   - Las cajas en la misma red que el servidor (mismo router o Wi-Fi).
+   - Internet en el servidor para instalar, sincronizar y la DGII
+     (sin internet se sigue vendiendo; todo sube al volver).
+
+Instalación avanzada (opcional, PowerShell como Administrador)
+   powershell -ExecutionPolicy Bypass -File .\instalador\instalar-servidor.ps1
+     -CentralUrl https://... -CodigoInstalacion K7PD-4QX9   alta automática
+     -CentralUrl https://... [-Rnc 101000000]             alta por solicitud
+     -SucursalId ... -CentralClave fps_... -PinSecreto ...   o a mano
+     -Reenlazar                volver a darlo de alta (cambiarlo de sucursal)
+     -Demo                     tienda sola con datos de prueba
+     -NombreRed factpos-norte  si hay dos servidores en la misma red
 
 Sin instalador en la caja
    Abra Edge o Chrome en  http://factpos.local:3000/terminal/
@@ -56,8 +90,8 @@ Conexión con la central (nube)
    - Sin internet las cajas siguen vendiendo: lo pendiente sube solo al volver.
    - Para ver el estado:  http://factpos.local:3000/sync/estado
    - Los traspasos (despachar y recibir) se hacen en la Administración.
-   - Para conectar un servidor ya instalado: vuelva a ejecutar
-     instalar-servidor.ps1 con -CentralUrl -SucursalId -CentralClave.
+   - Para conectar un servidor ya instalado: vuelva a abrir el instalador y
+     elija «Servidor» (o instalar-servidor.ps1 -CentralUrl ... -Reenlazar).
 
 Si se cae el servidor
    - Las cajas SIGUEN VENDIENDO (factura de consumo, al contado) y muestran un
@@ -65,8 +99,10 @@ Si se cae el servidor
    - Al volver el servidor las envían solas; la caja muestra el aviso verde.
    - El servicio técnico recibe el aviso (Telegram / correo) desde la nube.
    - Para que la caja abra aunque el servidor esté apagado, instálela con
-     instalar-caja.ps1 (habilita la copia local de la pantalla).
+     el instalador (opción Caja): habilita la copia local de la pantalla.
 
 Actualizar a una versión nueva
-   Descomprima el ZIP nuevo y vuelva a ejecutar instalar-servidor.ps1:
-   conserva la base de datos y el .env, y aplica las migraciones nuevas.
+   Descomprima el ZIP nuevo, abra "INSTALAR FactPOS.bat" y elija lo mismo que
+   la primera vez: conserva la base de datos, el .env y el alta, y aplica las
+   migraciones nuevas.
+

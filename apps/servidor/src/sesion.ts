@@ -12,7 +12,7 @@ import { promisify } from "node:util";
  * funcionan igual en Vercel (muchas instancias) y en el servidor local.
  */
 const scrypt = promisify(scryptCb) as (clave: string, sal: Buffer, largo: number) => Promise<Buffer>;
-const SECRETO = process.env.SESION_SECRETO ?? process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
+const secreto = () => process.env.SESION_SECRETO ?? process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
 
 // --------------------------------------------------------------- Contraseñas
 export async function hashClave(clave: string) {
@@ -38,7 +38,7 @@ export function claveSegura(clave: string) {
 
 // --------------------------------------------------------------- Sesiones
 const b64 = (s: string) => Buffer.from(s).toString("base64url");
-const firmar = (cuerpo: string) => createHmac("sha256", SECRETO).update(`sesion:${cuerpo}`).digest("base64url");
+const firmar = (cuerpo: string) => createHmac("sha256", secreto()).update(`sesion:${cuerpo}`).digest("base64url");
 
 export interface SesionAdmin { t: "admin"; u: string; e: string; n: string; p: string[]; exp: number }
 export interface SesionCaja { t: "caja"; u: string; e: string; c: string; n: string; p: string[]; exp: number }
@@ -116,7 +116,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
     [/^\/central\/(traspasos|pedidos-sucursal)/, "admin.traspasos"],
     [/^\/central\/cxc/, "admin.cxc"],
     [/^\/central\/(fiscal|padron)/, "admin.fiscal"],
-    [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo)/, "admin.config"],
+    [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo|alta)/, "admin.config"],
   ];
   return mapa.find(([re]) => re.test(ruta))?.[1] ?? "*";
 }

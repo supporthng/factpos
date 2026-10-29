@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { config } from "../config.js";
 import { z } from "zod";
 import { randomBytes, createHash } from "node:crypto";
 import { uuidv7 } from "@factpos/compartido";
@@ -94,7 +95,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     );
     if (!r.rowCount) throw new ErrorNegocio("Su usuario fue desactivado", 401);
     const u = r.rows[0];
-    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa } };
+    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa }, modo: config.modo };
   });
 
   app.post("/central/sesion/clave", async (req) => {

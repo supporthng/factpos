@@ -9,7 +9,9 @@ import { certificado } from "./fiscal/firma.js";
 import { cargarCertificadoGuardado } from "./fiscal/certificado-guardado.js";
 import { iniciarActualizacionPadron } from "./padron.js";
 import { iniciarAnuncioEnRed } from "./red.js";
-import { iniciarSincronizacion } from "./sync/sucursal.js";
+import { iniciarSincronizacion, syncActiva } from "./sync/sucursal.js";
+import { renovarSiToca } from "./licencia/cliente.js";
+import { iniciarAlta } from "./sync/alta.js";
 import { iniciarLatido, iniciarVigilancia } from "./incidentes.js";
 
 /**
@@ -24,7 +26,7 @@ const enVercel = !!process.env.VERCEL;
 if (!enVercel) await migrar((m) => console.log(`[migraciones] ${m}`));
 let app: FastifyInstance;
 try {
-  if (enVercel && !process.env.CLAVE_ACCESO) {
+  if (enVercel && config.modo === "central" && !process.env.CLAVE_ACCESO) {
     throw new Error("Falta la variable CLAVE_ACCESO en Vercel (Settings › Environment Variables): la API en la nube no puede quedar abierta.");
   }
   app = await crearApp();
@@ -48,7 +50,7 @@ if (enVercel) {
   await app.listen({ port: config.puerto, host: config.host });
 }
 
-if (!enVercel) {
+if (!enVercel && config.modo !== "portal") {
   // Facturación electrónica: certificado listo y cola de envío a la DGII
   await cargarCertificadoGuardado((m) => app.log.warn(m));
   const cert = certificado();
@@ -59,9 +61,12 @@ if (!enVercel) {
   // Las cajas encuentran este servidor solas: factpos.local y respuesta a la búsqueda por UDP
   iniciarAnuncioEnRed(config.puerto, (m) => app.log.info(m));
   // Servidor de sucursal: sube ventas y baja precios/productos/traspasos de la central
-  if (config.modo === "sucursal") iniciarSincronizacion((m) => app.log.info(m));
+  // (recién instalado: primero se da de alta con un código; después sincroniza solo)
+  if (config.modo === "sucursal" && !iniciarAlta((m) => app.log.warn(m))) iniciarSincronizacion((m) => app.log.info(m));
   // Si estuvo apagado, queda registrado; la central avisa a soporte
   await iniciarLatido((m) => app.log.warn(m));
   // Central fuera de Vercel: vigila cada minuto que las sucursales se comuniquen
   if (config.modo === "central") iniciarVigilancia((m) => app.log.warn(m));
+  // Tienda que trabaja sola (sin nube): renueva su licencia con el portal cada hora si toca
+  if (config.modo === "sucursal" && !syncActiva()) setInterval(() => renovarSiToca((m) => app.log.info(m)).catch(() => {}), 3600_000).unref();
 }

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { verificarCupoSucursal } from "../licencia/cliente.js";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
@@ -32,6 +33,7 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
       direccion: z.string().max(200).optional(), telefono: z.string().max(20).optional(),
     }).parse(req.body);
     const r = await enTransaccion(async (c) => {
+      await verificarCupoSucursal(c, empresaDe(req)); // la licencia se cobra por sucursal
       const id = uuidv7(), alm = uuidv7(), caja = uuidv7();
       try {
         await c.query("INSERT INTO sucursales (id, empresa_id, codigo, nombre, direccion, telefono) VALUES ($1,$2,$3,$4,$5,$6)",
@@ -53,6 +55,10 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = z.object({ nombre: z.string().trim().min(2).max(80).optional(), direccion: z.string().max(200).optional(),
       telefono: z.string().max(20).optional(), activo: z.boolean().optional() }).parse(req.body);
+    if (b.activo === true) {
+      const actual = (await pool.query("SELECT tipo, activo FROM sucursales WHERE id = $1", [id])).rows[0];
+      if (actual && !actual.activo && actual.tipo === "TIENDA") await verificarCupoSucursal(pool, empresaDe(req), id);
+    }
     const r = await pool.query(
       `UPDATE sucursales SET nombre = COALESCE($2, nombre), direccion = COALESCE($3, direccion),
               telefono = COALESCE($4, telefono), activo = COALESCE($5, activo)
@@ -66,6 +72,10 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
   app.post("/central/sucursales/:id/almacenes", async (req, rep) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = z.object({ nombre: z.string().trim().min(2).max(60) }).parse(req.body);
+    const suc = await pool.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [id, empresaDe(req)]);
+    if (!suc.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    const dup = await pool.query("SELECT 1 FROM almacenes WHERE sucursal_id = $1 AND lower(nombre) = lower($2)", [id, b.nombre]);
+    if (dup.rowCount) throw new ErrorNegocio(`Ya existe un almacén «${b.nombre}» en esa sucursal`, 409);
     const nuevo = uuidv7();
     await pool.query("INSERT INTO almacenes (id, sucursal_id, nombre) VALUES ($1,$2,$3)", [nuevo, id, b.nombre]);
     rep.code(201);

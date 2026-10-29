@@ -1,4 +1,4 @@
-<#
+﻿<#
   FactPOS · Instalador de una CAJA (Windows 10/11)
 
   Qué hace:
@@ -65,22 +65,32 @@ function Buscar-Servidores {
   return $hallados
 }
 
-Paso "Buscando el servidor FactPOS en la red"
-if (-not $Servidor) {
+Paso "Buscando el servidor FactPOS en la red local"
+while (-not $Servidor) {
+  Write-Host "   Buscando..."
   $hallados = Buscar-Servidores
-  if ($hallados.Count -eq 1) {
-    $Servidor = @($hallados.Keys)[0]
-  } elseif ($hallados.Count -gt 1) {
-    $lista = @($hallados.Keys)
+  $lista = @($hallados.Keys)
+  if ($lista.Count -eq 1) {
+    $d = $hallados[$lista[0]]
+    Listo ("Encontrado: {0} · {1} · {2}" -f $d.empresa, ($d.sucursales -join ", "), $lista[0])
+    $Servidor = $lista[0]
+  } elseif ($lista.Count -gt 1) {
+    Write-Host "   Hay varios servidores FactPOS en esta red:"
     for ($i = 0; $i -lt $lista.Count; $i++) {
       $d = $hallados[$lista[$i]]
       Write-Host ("   [{0}] {1} · {2} · {3}" -f ($i + 1), $d.empresa, ($d.sucursales -join ", "), $lista[$i])
     }
-    $n = [int](Read-Host "   ¿Cuál es el de esta sucursal? (número)")
-    $Servidor = $lista[$n - 1]
+    do { $n = Read-Host "   ¿Cuál es el de esta sucursal? (número)" } until ($n -match '^\d+$' -and [int]$n -ge 1 -and [int]$n -le $lista.Count)
+    $Servidor = $lista[[int]$n - 1]
   } else {
-    Write-Host "   No se encontró. Revise que el servidor esté encendido y en la misma red." -ForegroundColor Yellow
-    $Servidor = Read-Host "   Escriba la dirección del servidor (ej. http://192.168.1.10:3000)"
+    Write-Host "   No se encontró ningún servidor. Revise que esté encendido, instalado y en la misma red (mismo router o Wi-Fi)." -ForegroundColor Yellow
+    $r = Read-Host "   Enter = buscar de nuevo · o escriba la dirección del servidor (ej. 192.168.1.10)"
+    if ($r) {
+      $r = $r.Trim()
+      if ($r -notmatch '^https?://') { $r = "http://$r" }
+      if ($r -notmatch ':\d+$') { $r = "$($r.TrimEnd('/')):3000" }
+      $Servidor = $r
+    }
   }
 }
 $Servidor = $Servidor.TrimEnd("/")

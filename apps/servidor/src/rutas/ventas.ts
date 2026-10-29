@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import type { PoolClient } from "pg";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
@@ -412,6 +413,7 @@ export async function rutasVentas(app: FastifyInstance) {
   app.post("/cajas/:cajaId/ventas", async (req, rep) => {
     const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
     const body = VentaSchema.parse(req.body);
+    await exigirLicenciaParaVender(); // licencia vencida (pasada la gracia): solo consulta
     const r = await enTransaccion((c) => registrarVenta(c, cajaId, body));
     rep.code(201);
     return r;

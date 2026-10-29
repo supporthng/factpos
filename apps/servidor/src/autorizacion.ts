@@ -15,16 +15,17 @@ import { ErrorNegocio } from "./db.js";
  * PIN_SECRETO debe ser el mismo en la central y en las sucursales
  * (los usuarios y sus PIN se sincronizan desde la central).
  */
-const SECRETO = process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
+// Se lee en cada uso: el alta de un servidor nuevo lo recibe de la central sin reiniciar
+const secreto = () => process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
 const VIGENCIA_MS = 10 * 60 * 1000;
 
 export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto";
 
 export const hashPin = (empresaId: string, pin: string) =>
-  createHmac("sha256", SECRETO).update(`${empresaId}:${pin}`).digest("hex");
+  createHmac("sha256", secreto()).update(`${empresaId}:${pin}`).digest("hex");
 
 const b64 = (s: string | Buffer) => Buffer.from(s).toString("base64url");
-const firmar = (cuerpo: string) => createHmac("sha256", SECRETO).update(cuerpo).digest("base64url");
+const firmar = (cuerpo: string) => createHmac("sha256", secreto()).update(cuerpo).digest("base64url");
 
 export interface Autorizacion { supervisorId: string; supervisor: string; permiso: Permiso; cajaId: string; expira: number }
 

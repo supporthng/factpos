@@ -5,7 +5,7 @@ import { api } from "./api";
 /** Datos comunes a todas las pantallas (sucursales, productos, usuarios). */
 export interface Producto { id: string; sku: string; nombre: string; categoriaId: string | null; presentaciones: { id: string; nombre: string; factor: string }[] }
 export interface CatalogoAdmin {
-  sucursales: { id: string; codigo: string; nombre: string; almacenId: string; tipo?: "TIENDA" | "ALMACEN" }[];
+  sucursales: { id: string; codigo: string; nombre: string; almacenId: string; tipo?: "TIENDA" | "ALMACEN"; almacenes?: { id: string; nombre: string; principal: boolean }[] }[];
   productos: Producto[];
   categorias: { id: string; nombre: string }[];
   usuarios: { id: string; nombre: string }[];
@@ -52,6 +52,18 @@ export function SelectorSucursal({ valor, onCambio, todas = true }: { valor: str
     <select value={valor} onChange={(e) => onCambio(e.target.value)}>
       {todas && <option value="">{sesionActual().sucursales ? "Todas mis sucursales" : "Todas las sucursales"}</option>}
       {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+    </select>
+  );
+}
+
+/** Almacenes de una sucursal ("Piso de venta", "Depósito"…). Vacío = el principal. */
+export function SelectorAlmacen({ sucursalId, valor, onCambio }: { sucursalId: string; valor: string; onCambio: (v: string) => void }) {
+  const { sucursales } = useCatalogo();
+  const lista = sucursales.find((s) => s.id === sucursalId)?.almacenes ?? [];
+  return (
+    <select value={valor} onChange={(e) => onCambio(e.target.value)} disabled={lista.length < 2}>
+      {lista.length === 0 && <option value="">Almacén principal</option>}
+      {lista.map((a) => <option key={a.id} value={a.principal ? "" : a.id}>{a.nombre}{a.principal ? " (principal)" : ""}</option>)}
     </select>
   );
 }

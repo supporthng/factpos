@@ -1,7 +1,7 @@
 // FactPOS Caja: guarda la pantalla de la caja para poder abrirla aunque el
 // servidor de la sucursal esté caído (contingencia). Los datos nunca se guardan
 // aquí: los maneja la caja en su almacén local.
-const CACHE = "factpos-caja-v3";
+const CACHE = "factpos-caja-v4";
 const BASE = new URL("./", self.location).pathname; // /terminal/
 
 // Al instalar se guarda la página y TODOS sus archivos (js, css, letras, íconos)

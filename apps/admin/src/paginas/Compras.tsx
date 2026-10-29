@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, rd, num, hoy } from "../api";
-import { Aviso, Encabezado, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
+import { Aviso, Encabezado, SelectorAlmacen, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
 
 /* ---------- Tipos ---------- */
 interface FilaCompra {
   id: string; fecha: string; numeroFactura: string | null; ncf: string | null; condicion: string; total: string; itbis: string;
-  sucursal: string; proveedor: string; usuario: string; lineas: string; lineasEnOferta: string; ahorro: string;
+  sucursal: string; almacen?: string; proveedor: string; usuario: string; lineas: string; lineasEnOferta: string; ahorro: string;
 }
 interface Referencia {
   factor: string; tasaItbis: string; costoPromedioUnidad: string | null;
@@ -53,7 +53,7 @@ export function Compras() {
           columnas={[
             { titulo: "Fecha", valor: (f) => fechaCorta(f.fecha) },
             { titulo: "Proveedor", valor: (f) => <button className="fila-producto" onClick={() => setDetalle(f.id)}><span><b>{f.proveedor}</b><small className="suave">{[f.numeroFactura && `Factura ${f.numeroFactura}`, f.ncf].filter(Boolean).join(" · ") || "Sin número"}</small></span></button> },
-            { titulo: "Sucursal", valor: (f) => f.sucursal },
+            { titulo: "Sucursal", valor: (f) => <>{f.sucursal}{f.almacen ? <span className="suave pequeno"> › {f.almacen}</span> : null}</> },
             { titulo: "Líneas", der: true, valor: (f) => <>{f.lineas}{n(f.lineasEnOferta) > 0 && <span className="pastilla en-oferta" title="Líneas compradas en oferta del proveedor">{f.lineasEnOferta} en oferta</span>}</> },
             { titulo: "Condición", valor: (f) => (f.condicion === "CREDITO" ? "Crédito" : "Contado") },
             { titulo: "Total", der: true, valor: (f) => <b>{rd(f.total)}</b> },
@@ -74,7 +74,7 @@ function DetalleCompra({ id, onCerrar }: { id: string; onCerrar: () => void }) {
       <div className="modal ancho" onMouseDown={(e) => e.stopPropagation()}>
         {!datos ? <p className="suave">Cargando…</p> : (
           <>
-            <div className="encabezado-sub"><h3>{datos.proveedor}</h3><span className="suave">{fechaCorta(datos.fecha_factura)} · {datos.sucursal}</span></div>
+            <div className="encabezado-sub"><h3>{datos.proveedor}</h3><span className="suave">{fechaCorta(datos.fecha_factura)} · {datos.sucursal}{datos.almacen ? ` › ${datos.almacen}` : ""}</span></div>
             <p className="suave pequeno">{[datos.numero_factura && `Factura ${datos.numero_factura}`, datos.ncf_proveedor && `NCF ${datos.ncf_proveedor}`, datos.condicion === "CREDITO" ? `Crédito, vence ${fechaCorta(datos.vence_en)}` : "Contado"].filter(Boolean).join(" · ")}</p>
             <Tabla filas={datos.items} clave={(i: any) => String(i.linea)} columnas={[
               { titulo: "Producto", valor: (i: any) => <>{i.nombre} <span className="suave">{i.presentacion}</span>{i.enOferta && <span className="pastilla en-oferta">En oferta</span>}</> },
@@ -98,7 +98,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
   const { sucursales, productos } = useCatalogo();
   const aux = useDatos<{ proveedores: { id: string; nombre: string; rnc: string | null }[] }>("/central/productos-auxiliares");
   const [cab, setCab] = useState({
-    sucursalId: sucursales[0]?.id ?? "", proveedorId: "", numeroFactura: "", ncfProveedor: "",
+    sucursalId: sucursales[0]?.id ?? "", almacenId: "", proveedorId: "", numeroFactura: "", ncfProveedor: "",
     fechaFactura: hoy(), condicion: "CONTADO" as "CONTADO" | "CREDITO", venceEn: "", notas: "",
   });
   const [lineas, setLineas] = useState<Linea[]>([]);
@@ -160,6 +160,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
       await api("/central/compras", {
         cuerpo: {
           ...cab,
+          almacenId: cab.almacenId || null,
           numeroFactura: cab.numeroFactura || null, ncfProveedor: cab.ncfProveedor.toUpperCase() || null,
           venceEn: cab.condicion === "CREDITO" ? cab.venceEn : null, notas: cab.notas || null,
           items: lineas.map((l) => ({
@@ -186,7 +187,8 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
 
       <div className="panel">
         <div className="tres-col">
-          <label className="campo"><span>Sucursal que recibe</span><SelectorSucursal valor={cab.sucursalId} onCambio={(v) => setCab({ ...cab, sucursalId: v })} todas={false} /></label>
+          <label className="campo"><span>Sucursal que recibe</span><SelectorSucursal valor={cab.sucursalId} onCambio={(v) => setCab({ ...cab, sucursalId: v, almacenId: "" })} todas={false} /></label>
+          <label className="campo"><span>Almacén donde entra</span><SelectorAlmacen sucursalId={cab.sucursalId} valor={cab.almacenId} onCambio={(v) => setCab({ ...cab, almacenId: v })} /></label>
           <label className="campo"><span>Proveedor</span>
             {provNuevo === null ? (
               <select value={cab.proveedorId} onChange={(e) => (e.target.value === "+" ? setProvNuevo("") : setCab({ ...cab, proveedorId: e.target.value }))}>

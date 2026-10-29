@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { guardarLicenciaDeCentral } from "../licencia/cliente.js";
 import { pool } from "../db.js";
 import { TABLAS_BAJADA } from "../rutas/central-sync.js";
 import { aplicarFilas, aplicarKardex, modoSincronizacion, type Modo } from "./aplicar.js";
@@ -128,6 +129,8 @@ export interface Cambios {
   componentes?: Record<string, { componente_id: string; cantidad: string | number }[]>;
   /** Huella del certificado digital vigente en la central */
   certificado?: string | null;
+  /** Licencia de la empresa (firmada por el proveedor) */
+  licencia?: { token: string | null; instalacionId: string; pruebaDesde: string };
 }
 
 /** Aplica en esta base un paquete de cambios de la central (todo o nada). */
@@ -174,6 +177,7 @@ export async function bajar(): Promise<{ filas: number; version: number; certifi
     const d: Cambios = await pedir(`/central/sync/cambios?sucursalId=${sucursalId}&desde=${desde}&desdeKardex=${desdeKardex}`);
     filas += await aplicarCambios(d);
     certificadoCentral = d.certificado;
+    if (d.licencia) await guardarLicenciaDeCentral(d.licencia).catch(() => {});
     version = Number(d.version);
     versionKardex = Number(d.versionKardex ?? desdeKardex);
     if (d.completo || (version <= desde && versionKardex <= desdeKardex)) break;

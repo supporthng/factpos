@@ -1,4 +1,4 @@
-<#
+﻿<#
   FactPOS · Instalador del SERVIDOR de la sucursal (Windows 10/11)
 
   Qué hace:
@@ -16,9 +16,15 @@
     ... -Demo                         # carga los datos de demostración
     ... -PinSecreto "su-secreto"      # el MISMO de la central y las demás sucursales
     ... -NombreRed factpos-norte      # si hay dos servidores en la misma red
-    ... -CentralUrl https://su-proyecto.vercel.app -SucursalId <id> -CentralClave <clave>
-                                      # conecta esta sucursal con la nube (los datos
-                                      # salen en Administración > Sucursales > "Conectar su servidor")
+    ... -CentralUrl https://<api-de-su-nube> -CodigoInstalacion K7PD-4QX9
+                                      # queda dado de alta solo (el código lo genera la Administración
+                                      # al crear la sucursal o en Sucursales > "Código de instalación")
+    ... -CentralUrl https://<api-de-su-nube> [-Rnc 101000000]
+                                      # sin código: envía una solicitud que aparece en
+                                      # Administración > Sucursales > "Servidores esperando alta"
+    ... -CentralUrl ... -SucursalId <id> -CentralClave <clave> -PinSecreto <...>
+                                      # o a mano, con los datos de "Conectar a mano"
+    ... -Reenlazar                    # este servidor ya estaba enlazado: darlo de alta de nuevo
 #>
 #Requires -RunAsAdministrator
 param(
@@ -30,6 +36,9 @@ param(
   [string]$CentralUrl = "",
   [string]$SucursalId = "",
   [string]$CentralClave = "",
+  [string]$CodigoInstalacion = "",
+  [string]$Rnc = "",
+  [switch]$Reenlazar,
   [switch]$Demo
 )
 $ErrorActionPreference = "Stop"
@@ -39,9 +48,11 @@ function Listo($t) { Write-Host "   $t" -ForegroundColor Green }
 function Clave([int]$n = 24) { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count $n | ForEach-Object { [char]$_ }) }
 function RefrescarPath { $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") }
 
+$Alta = $false
 if ($CentralUrl) {
   $CentralUrl = $CentralUrl.TrimEnd("/")
-  if ($SucursalId -notmatch '^[0-9a-fA-F-]{36}$') { throw "Con -CentralUrl hace falta -SucursalId (el identificador de la sucursal en la central)" }
+  if (-not $SucursalId -and -not $CentralClave) { $Alta = $true }   # se da de alta con código
+  elseif ($SucursalId -notmatch '^[0-9a-fA-F-]{36}$' -or $CentralClave -notmatch '^fps_') { throw "A mano hacen falta -SucursalId (identificador de 36 caracteres) y -CentralClave (empieza con fps_). O no ponga ninguno de los dos para dar de alta con código." }
   try { Invoke-RestMethod "$CentralUrl/salud" -TimeoutSec 15 | Out-Null }
   catch { Write-Host "   OJO: ahora no responde $CentralUrl. Se instala igual; sincroniza cuando haya conexión." -ForegroundColor Yellow }
 }
@@ -96,11 +107,21 @@ $envArchivo = "$Carpeta\.env"
 if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   Listo "La base factpos ya existe; se conserva (actualización)"
   if ($CentralUrl) {
-    # Conectar (o cambiar) la central sin tocar lo demás del .env
-    $lineas = Get-Content $envArchivo | Where-Object { $_ -notmatch '^(CENTRAL_URL|SUCURSAL_ID|CENTRAL_CLAVE)=' }
-    $lineas += "CENTRAL_URL=$CentralUrl", "SUCURSAL_ID=$SucursalId", "CENTRAL_CLAVE=$CentralClave"
-    $lineas | Set-Content -Path $envArchivo -Encoding UTF8
-    Listo "Conectada a la central $CentralUrl"
+    $actual = Get-Content $envArchivo
+    $yaEnlazado = [bool]($actual | Where-Object { $_ -match '^CENTRAL_CLAVE=fps_' })
+    if ($Alta -and $yaEnlazado -and -not $Reenlazar) {
+      $Alta = $false
+      Listo "Este servidor ya está dado de alta en la central; se conserva (use -Reenlazar para darlo de alta de nuevo)"
+    } else {
+      # Conectar (o cambiar) la central sin tocar lo demás del .env
+      $quitar = if ($PinSecreto) { '^(CENTRAL_URL|SUCURSAL_ID|CENTRAL_CLAVE|PIN_SECRETO)=' } else { '^(CENTRAL_URL|SUCURSAL_ID|CENTRAL_CLAVE)=' }
+      $lineas = @($actual | Where-Object { $_ -notmatch $quitar })
+      $lineas = @($lineas | Where-Object { $_ -notmatch '^(ALTA_CODIGO|ALTA_RNC)=' })
+      $lineas += "CENTRAL_URL=$CentralUrl", "SUCURSAL_ID=$SucursalId", "CENTRAL_CLAVE=$CentralClave", "ALTA_CODIGO=$CodigoInstalacion", "ALTA_RNC=$Rnc"
+      if ($PinSecreto) { $lineas += "PIN_SECRETO=$PinSecreto" }
+      $lineas | Set-Content -Path $envArchivo -Encoding UTF8
+      Listo $(if ($Alta) { "Lista para darse de alta en $CentralUrl" } else { "Conectada a la central $CentralUrl" })
+    }
   }
 } else {
   $claveBD = Clave 24
@@ -108,6 +129,7 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   else { & $psql -U postgres -h localhost -c "CREATE ROLE factpos LOGIN PASSWORD '$claveBD'" | Out-Null }
   $hayBase = & $psql -U postgres -h localhost -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'"
   if ($hayBase -ne "1") { & $psql -U postgres -h localhost -c "CREATE DATABASE factpos OWNER factpos" | Out-Null }
+  if (-not $PinSecreto -and $Alta) { $PinSecreto = Clave 32 }   # lo reemplaza el de la central al darse de alta
   if (-not $PinSecreto) { $PinSecreto = Clave 32; Write-Host "   OJO: se generó un PIN_SECRETO nuevo. Si ya tiene central u otras sucursales, cópielo de allá al archivo .env" -ForegroundColor Yellow }
   @"
 # FactPOS · servidor de sucursal (generado por el instalador)
@@ -122,6 +144,9 @@ CLAVE_ACCESO=
 CENTRAL_URL=$CentralUrl
 SUCURSAL_ID=$SucursalId
 CENTRAL_CLAVE=$CentralClave
+# Alta (se borran solas al quedar dado de alta)
+ALTA_CODIGO=$CodigoInstalacion
+ALTA_RNC=$Rnc
 CERT_P12_RUTA=
 CERT_P12_CLAVE=
 "@ | Set-Content -Path $envArchivo -Encoding UTF8
@@ -183,3 +208,35 @@ Write-Host " o abra en el navegador:"
 foreach ($d in $s.direcciones) { Write-Host "     $d/terminal/" -ForegroundColor White }
 Write-Host " Registro: $Carpeta\logs\servidor.log"
 Write-Host "========================================================`n" -ForegroundColor Green
+
+# ---------------------------------------------------------- Alta con código
+if ($Alta) {
+  Paso "Alta de este servidor en la Administración"
+  $codigo = ""; $fin = (Get-Date).AddMinutes(30); $enlazado = $false
+  if ($CodigoInstalacion) { Write-Host "   Canjeando el código de instalación $CodigoInstalacion..." } else { Write-Host "   Enviando la solicitud a la Administración..." }
+  while ((Get-Date) -lt $fin) {
+    try { $a = Invoke-RestMethod "http://localhost:$Puerto/alta.json" -TimeoutSec 3 } catch { $a = $null }
+    if ($a.estado -eq "ENLAZADO") { $enlazado = $true; break }
+    if ($a.codigo -and $a.codigo -ne $codigo) {
+      $codigo = $a.codigo
+      Write-Host ""
+      if ($CodigoInstalacion) { Write-Host "   El código de instalación no sirvió (vencido, ya usado o mal escrito). Se envió una solicitud." -ForegroundColor Yellow }
+      Write-Host "   Solicitud enviada. Este equipo es «$env:COMPUTERNAME», código:" -ForegroundColor White
+      Write-Host "   ┌──────────────────────────────┐" -ForegroundColor White
+      Write-Host ("   │   CÓDIGO:   {0,-17}│" -f $codigo) -ForegroundColor White
+      Write-Host "   └──────────────────────────────┘" -ForegroundColor White
+      Write-Host "   En la Administración › Sucursales y terminales › «Servidores esperando alta»"
+      Write-Host "   aparece $env:COMPUTERNAME: pulse «Confirmar…», elija o cree la sucursal y confirme."
+      Write-Host "   Esta ventana sigue sola cuando quede dado de alta. Enter = seguir sin esperar" -ForegroundColor DarkGray
+      Write-Host "   (el código también se ve en http://localhost:$Puerto/alta)." -ForegroundColor DarkGray
+    }
+    if ($a.estado -eq "SIN_CONEXION" -and -not $codigo) { Write-Host "   Sin conexión con la nube ($($a.error)). Reintentando..." -ForegroundColor Yellow }
+    try { if ([Console]::KeyAvailable -and [Console]::ReadKey($true).Key -eq "Enter") { break } } catch { }
+    Start-Sleep -Seconds 3
+  }
+  if ($enlazado) {
+    Listo "Dado de alta como la sucursal «$($a.sucursal)». Ya baja productos, precios y usuarios de la nube."
+  } else {
+    Write-Host "   Todavía sin dar de alta. El servidor sigue esperando: hágalo cuando quiera con el código de http://localhost:$Puerto/alta" -ForegroundColor Yellow
+  }
+}

@@ -1,20 +1,28 @@
 import { useState } from "react";
 import { api, rd, num, sesionActual } from "../api";
-import { Aviso, Encabezado, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
+import { Aviso, Encabezado, SelectorAlmacen, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
 
 const TIPOS = [
-  { v: "MERMA", t: "Merma / dañado" },
-  { v: "VENCIMIENTO", t: "Vencido" },
-  { v: "CONSUMO_INTERNO", t: "Consumo interno" },
-  { v: "AJUSTE_SALIDA", t: "Ajuste de salida" },
-  { v: "AJUSTE_ENTRADA", t: "Ajuste de entrada" },
+  { v: "AJUSTE_ENTRADA", t: "Entrada (suma)", entrada: true },
+  { v: "AJUSTE_SALIDA", t: "Salida (resta)" },
+  { v: "MERMA", t: "Salida · merma / dañado" },
+  { v: "VENCIMIENTO", t: "Salida · vencido" },
+  { v: "CONSUMO_INTERNO", t: "Salida · consumo interno" },
+];
+/** Justificaciones frecuentes (se puede escribir cualquier otra) */
+const MOTIVOS = [
+  "Mercancía dañada o rota", "Producto vencido", "Diferencia encontrada en conteo físico", "Error al registrar una compra",
+  "Mercancía recibida sin factura", "Devolución a proveedor", "Consumo interno de la tienda", "Robo o pérdida",
+  "Muestra o degustación", "Corrección de existencia inicial",
 ];
 interface Linea { productoId: string; tipo: string; cantidad: string; nota: string }
 const nueva = (): Linea => ({ productoId: "", tipo: "MERMA", cantidad: "", nota: "" });
 
 export function Ajustes() {
   const { sucursales, productos } = useCatalogo();
-  const [sucursalId, setSucursalId] = useState(sucursales[0]?.id ?? "");
+  const [sucursalId, setSucursalIdCrudo] = useState(sucursales[0]?.id ?? "");
+  const [almacenId, setAlmacenId] = useState("");
+  const setSucursalId = (v: string) => { setSucursalIdCrudo(v); setAlmacenId(""); };
   const [motivo, setMotivo] = useState("");
   const [lineas, setLineas] = useState<Linea[]>([nueva()]);
   const [msg, setMsg] = useState<{ t: string; tipo: "error" | "ok" } | null>(null);
@@ -29,7 +37,7 @@ export function Ajustes() {
     try {
       const r = await api("/central/ajustes", {
         cuerpo: {
-          sucursalId, usuarioId: sesionActual().usuarioId, motivo,
+          sucursalId, almacenId: almacenId || undefined, usuarioId: sesionActual().usuarioId, motivo: motivo.trim(),
           items: validas.map((l) => ({ productoId: l.productoId, tipo: l.tipo, cantidad: l.cantidad, nota: l.nota || undefined })),
         },
       });
@@ -44,11 +52,15 @@ export function Ajustes() {
 
   return (
     <>
-      <Encabezado titulo="Ajustes de inventario" descripcion="Mermas, vencidos, consumo interno y correcciones. Cada ajuste queda en el kardex con su responsable." />
+      <Encabezado titulo="Ajustes de inventario" descripcion="Entradas y salidas de mercancía fuera de compras y ventas: mermas, vencidos, consumo interno y correcciones. Cada ajuste exige una justificación y queda en el kardex con su responsable." />
       <div className="panel">
-        <div className="dos-col">
+        <div className="tres-col">
           <label className="campo"><span>Sucursal</span><SelectorSucursal valor={sucursalId} onCambio={setSucursalId} todas={false} /></label>
-          <label className="campo"><span>Motivo</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. botellas rotas al descargar" /></label>
+          <label className="campo"><span>Almacén</span><SelectorAlmacen sucursalId={sucursalId} valor={almacenId} onCambio={setAlmacenId} /></label>
+          <label className="campo"><span>Justificación del ajuste (obligatoria)</span>
+            <input list="motivos-ajuste" value={motivo} maxLength={200} onChange={(e) => setMotivo(e.target.value)} placeholder="Elija o escriba: ej. botellas rotas al descargar" />
+            <datalist id="motivos-ajuste">{MOTIVOS.map((m) => <option key={m} value={m} />)}</datalist>
+          </label>
         </div>
         <table className="tabla tabla-edicion">
           <thead><tr><th>Producto</th><th>Tipo</th><th className="der">Cantidad</th><th>Nota</th><th></th></tr></thead>
@@ -56,7 +68,7 @@ export function Ajustes() {
             {lineas.map((l, i) => (
               <tr key={i}>
                 <td style={{ minWidth: 260 }}><SelectorProducto valor={l.productoId} onCambio={(v) => set(i, "productoId", v)} /></td>
-                <td><select value={l.tipo} onChange={(e) => set(i, "tipo", e.target.value)}>{TIPOS.map((t) => <option key={t.v} value={t.v}>{t.t}</option>)}</select></td>
+                <td><select className={l.tipo === "AJUSTE_ENTRADA" ? "texto-ok" : "texto-alerta"} value={l.tipo} onChange={(e) => set(i, "tipo", e.target.value)}>{TIPOS.map((t) => <option key={t.v} value={t.v}>{t.t}</option>)}</select></td>
                 <td className="der"><input className="numero" inputMode="decimal" value={l.cantidad} onChange={(e) => set(i, "cantidad", e.target.value.replace(/[^\d.]/g, ""))} /></td>
                 <td><input value={l.nota} onChange={(e) => set(i, "nota", e.target.value)} /></td>
                 <td><button className="enlace" onClick={() => setLineas((ls) => ls.length > 1 ? ls.filter((_, j) => j !== i) : [nueva()])}>Quitar</button></td>
@@ -67,7 +79,10 @@ export function Ajustes() {
         <div className="fila-acciones">
           <button className="boton fantasma" onClick={() => setLineas([...lineas, nueva()])}>+ Agregar línea</button>
           <span className="flex" />
-          <button className="boton primario" disabled={!validas.length || motivo.trim().length < 3} onClick={guardar}>Aplicar ajuste</button>
+          {validas.length > 0 && motivo.trim().length < 3 && <span className="suave pequeno">Escriba la justificación para aplicar</span>}
+          <button className="boton primario" disabled={!validas.length || motivo.trim().length < 3} onClick={guardar}>
+            Aplicar ajuste{validas.length ? ` · ${validas.filter((l) => l.tipo === "AJUSTE_ENTRADA").length} entrada(s), ${validas.filter((l) => l.tipo !== "AJUSTE_ENTRADA").length} salida(s)` : ""}
+          </button>
         </div>
         {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       </div>
@@ -84,8 +99,9 @@ export function Ajustes() {
           { titulo: "#", valor: (f) => f.numero },
           { titulo: "Fecha", valor: (f) => new Date(f.creadoEn).toLocaleString("es-DO") },
           { titulo: "Sucursal", valor: (f) => f.sucursal },
+          { titulo: "Almacén", valor: (f) => f.almacen },
           { titulo: "Origen", valor: (f) => <span className="pastilla">{f.origen === "CONTEO" ? "Conteo" : "Manual"}</span> },
-          { titulo: "Motivo", valor: (f) => f.motivo },
+          { titulo: "Justificación", valor: (f) => f.motivo },
           { titulo: "Usuario", valor: (f) => f.usuario },
           { titulo: "Líneas", valor: (f) => num(f.lineas), der: true },
           { titulo: "Valor", valor: (f) => <span className={Number(f.valor) < 0 ? "texto-alerta" : ""}>{rd(f.valor)}</span>, der: true },

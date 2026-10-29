@@ -22,6 +22,8 @@ const costo = z.string().regex(/^\d+(\.\d{1,4})?$/, "Costo inválido");
 
 const CompraSchema = z.object({
   sucursalId: uuid,
+  /** Almacén de la sucursal que recibe la mercancía (si no se indica, el principal) */
+  almacenId: uuid.nullable().optional(),
   proveedorId: uuid,
   numeroFactura: z.string().trim().max(30).nullable().default(null),
   ncfProveedor: z.string().trim().regex(/^[BE]\d{10,12}$/, "NCF inválido (ej. B0100000001 o E310000000001)").nullable().default(null),
@@ -54,12 +56,13 @@ export async function rutasCentralCompras(app: FastifyInstance) {
     const f = z.object({ sucursalId: uuid.optional(), desde: z.string().optional(), hasta: z.string().optional() }).parse(req.query);
     const r = await pool.query(
       `SELECT c.id, c.fecha_factura AS fecha, c.numero_factura AS "numeroFactura", c.ncf_proveedor AS ncf, c.condicion,
-              c.subtotal, c.itbis, c.total, s.nombre AS sucursal, pv.nombre AS proveedor, u.nombre AS usuario, c.creado_en AS "creadoEn",
+              c.subtotal, c.itbis, c.total, s.nombre AS sucursal, al.nombre AS almacen, pv.nombre AS proveedor, u.nombre AS usuario, c.creado_en AS "creadoEn",
               (SELECT COUNT(*) FROM compra_items ci WHERE ci.compra_id = c.id) AS lineas,
               (SELECT COUNT(*) FROM compra_items ci WHERE ci.compra_id = c.id AND ci.en_oferta) AS "lineasEnOferta",
               (SELECT COALESCE(SUM((ci.costo_regular - ci.costo_unitario) * ci.cantidad), 0)::numeric(14,2)
                  FROM compra_items ci WHERE ci.compra_id = c.id AND ci.en_oferta AND ci.costo_regular IS NOT NULL) AS ahorro
          FROM compras c JOIN sucursales s ON s.id = c.sucursal_id JOIN proveedores pv ON pv.id = c.proveedor_id
+         JOIN almacenes al ON al.id = c.almacen_id
          JOIN usuarios u ON u.id = c.usuario_id
         WHERE s.empresa_id = $1 AND ($2::uuid IS NULL OR c.sucursal_id = $2)
           AND ($3::date IS NULL OR c.fecha_factura >= $3) AND ($4::date IS NULL OR c.fecha_factura <= $4)
@@ -73,8 +76,8 @@ export async function rutasCentralCompras(app: FastifyInstance) {
   app.get("/central/compras/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const c = (await pool.query(
-      `SELECT c.*, s.nombre AS sucursal, pv.nombre AS proveedor, pv.rnc
-         FROM compras c JOIN sucursales s ON s.id = c.sucursal_id JOIN proveedores pv ON pv.id = c.proveedor_id
+      `SELECT c.*, s.nombre AS sucursal, al.nombre AS almacen, pv.nombre AS proveedor, pv.rnc
+         FROM compras c JOIN sucursales s ON s.id = c.sucursal_id JOIN almacenes al ON al.id = c.almacen_id JOIN proveedores pv ON pv.id = c.proveedor_id
         WHERE c.id = $1 AND s.empresa_id = $2`, [id, empresaDe(req)],
     )).rows[0];
     if (!c) throw new ErrorNegocio("Compra no encontrada", 404);
@@ -95,10 +98,12 @@ export async function rutasCentralCompras(app: FastifyInstance) {
 
     const r = await enTransaccion(async (c) => {
       const suc = (await c.query(
-        `SELECT s.id, (SELECT a.id FROM almacenes a WHERE a.sucursal_id = s.id AND a.es_principal) AS almacen
-           FROM sucursales s WHERE s.id = $1 AND s.empresa_id = $2`, [b.sucursalId, empresaId],
+        `SELECT s.id, (SELECT a.id FROM almacenes a WHERE a.sucursal_id = s.id
+                          AND (CASE WHEN $3::uuid IS NULL THEN a.es_principal ELSE a.id = $3 END)) AS almacen
+           FROM sucursales s WHERE s.id = $1 AND s.empresa_id = $2`, [b.sucursalId, empresaId, b.almacenId ?? null],
       )).rows[0];
-      if (!suc?.almacen) throw new ErrorNegocio("Sucursal no encontrada o sin almacén principal");
+      if (!suc) throw new ErrorNegocio("Sucursal no encontrada");
+      if (!suc.almacen) throw new ErrorNegocio(b.almacenId ? "Ese almacén no es de la sucursal elegida" : "La sucursal no tiene almacén principal");
       const prov = await c.query("SELECT 1 FROM proveedores WHERE id = $1 AND empresa_id = $2", [b.proveedorId, empresaId]);
       if (!prov.rowCount) throw new ErrorNegocio("Proveedor no encontrado");
       if (b.ncfProveedor) {

@@ -1,4 +1,6 @@
 import { procesarEnvios } from "../correo/envios.js";
+import { aplicarCambioLocal, esCambioLocal } from "../sync/subida-local.js";
+import { licenciaParaSucursal } from "../licencia/cliente.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { huellaConexion } from "./sesion.js";
@@ -188,7 +190,9 @@ export async function rutasCentralSync(app: FastifyInstance) {
         WHERE c.empresa_id = $1 AND c.activo`,
       [e, f.sucursalId],
     );
-    return { desde: f.desde, version, versionKardex, completo, cambios, componentes, certificado: cert.rows[0]?.huella ?? null };
+    // La licencia de la empresa viaja con cada sincronización (la sucursal la verifica sola)
+    const licencia = await licenciaParaSucursal().catch(() => undefined);
+    return { desde: f.desde, version, versionKardex, completo, cambios, componentes, certificado: cert.rows[0]?.huella ?? null, licencia };
   });
 
   // ------------------------------------------------------------- SUBIDA
@@ -208,8 +212,9 @@ export async function rutasCentralSync(app: FastifyInstance) {
   app.post("/central/sync/subir", { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
     const b = esquemaSubida.parse(req.body);
     await verificarConexion(req, b.sucursalId);
-    const s = await pool.query("SELECT 1 FROM sucursales WHERE id = $1", [b.sucursalId]);
+    const s = await pool.query<{ empresa_id: string }>("SELECT empresa_id FROM sucursales WHERE id = $1", [b.sucursalId]);
     if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    const empresaId = s.rows[0].empresa_id;
 
     const aplicados: (string | number)[] = [];
     const errores: { id: string | number; error: string }[] = [];
@@ -219,7 +224,9 @@ export async function rutasCentralSync(app: FastifyInstance) {
       await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`sync:${b.sucursalId}`]);
       await modoSincronizacion(c);
       for (const it of b.items) {
-        const r = await conPuntoDeGuardado(c, () => aplicarSubida(c, b.sucursalId, it.tabla, it.payload));
+        const r = await conPuntoDeGuardado(c, () => esCambioLocal(it.tabla)
+          ? aplicarCambioLocal(c, b.sucursalId, empresaId, it.tabla, it.payload) // administración local de la sucursal
+          : aplicarSubida(c, b.sucursalId, it.tabla, it.payload));
         if (r.ok) aplicados.push(it.id);
         else errores.push({ id: it.id, error: r.error.message.slice(0, 300) });
       }

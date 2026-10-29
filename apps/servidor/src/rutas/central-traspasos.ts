@@ -1,4 +1,5 @@
 import { sucursalesDe } from "../sesion.js";
+import { verificarCupoSucursal } from "../licencia/cliente.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
@@ -44,6 +45,10 @@ export async function rutasCentralTraspasos(app: FastifyInstance) {
   app.put("/central/sucursales/:id/tipo", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const { tipo } = z.object({ tipo: z.enum(["TIENDA", "ALMACEN"]) }).parse(req.body);
+    if (tipo === "TIENDA") {
+      const actual = (await pool.query("SELECT tipo, activo FROM sucursales WHERE id = $1", [id])).rows[0];
+      if (actual?.activo && actual.tipo !== "TIENDA") await verificarCupoSucursal(pool, empresaDe(req), id);
+    }
     const r = await pool.query("UPDATE sucursales SET tipo = $2 WHERE id = $1 AND empresa_id = $3 RETURNING id, nombre, tipo",
       [id, tipo, empresaDe(req)]);
     if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);

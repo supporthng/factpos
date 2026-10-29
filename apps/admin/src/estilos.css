@@ -494,7 +494,7 @@ small.bloque { display: block; font-size: 11.5px; font-weight: 400; white-space:
 
 /* Usuarios: acceso por sucursal */
 .acceso-sucursales { margin: 10px 0; }
-.lista-sucursales { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 14px; padding: 4px 0 2px 26px; }
+.acceso-sucursales .lista-sucursales { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 14px; padding: 4px 0 2px 26px; }
 
 /* Correo y envíos */
 .correo-conexion .encabezado-sub { margin-bottom: 10px; }
@@ -527,3 +527,28 @@ small.bloque { display: block; font-size: 11.5px; font-weight: 400; white-space:
 }
 .envio-correo > p.suave { margin: 4px 0 14px; }
 .envio-correo .fila-acciones .suave { text-align: right; }
+
+/* Alta de servidores con código */
+.alta-servidor { border-left: 4px solid var(--marca, #2563eb); }
+.en-linea input.codigo-alta { flex: 0 0 auto; font-size: 26px; letter-spacing: .12em; text-transform: uppercase; width: 12ch; text-align: center; padding: 8px 10px; }
+.esperando-alta { border-left: 4px solid var(--alerta, #c77700); }
+.fila-solicitud { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--borde, #e3e7ec); }
+.fila-solicitud:first-of-type { border-top: 0; }
+.codigo-instalacion { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; background: var(--fondo-suave, #f2f6fb); border-radius: 10px; padding: 10px 14px; margin: 8px 0; }
+.codigo-grande { font-size: 24px; font-weight: 700; letter-spacing: .1em; }
+
+/* Licencias */
+.aviso-licencia { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: #fff4e0; color: #7a4a00; border: 1px solid #f1d29b; border-radius: var(--radio); padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }
+.aviso-licencia.grave { background: #fdecec; color: #8a1c1c; border-color: #f2b8b8; }
+.pastilla.ok { background: #e3f4ea; color: #146c3a; }
+.pastilla.aviso { background: #fff4e0; color: #8a5300; }
+.pastilla.alerta { background: #fdecec; color: #a12020; }
+.clave-activacion { border-left: 4px solid var(--primario); }
+.detalle-cliente { background: var(--fondo); }
+.detalle-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; padding: 6px 4px; }
+.historial-licencia { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
+.historial-licencia b { text-transform: capitalize; }
+tr.inactiva td { opacity: .55; }
+@media (max-width: 800px) { .detalle-grid { grid-template-columns: 1fr; } }
+.tarjeta-entrar.ancha { width: min(600px, 100%); }
+.aviso-local { background: #e8f1fb; color: #18406b; border: 1px solid #c2d8f0; border-radius: var(--radio); padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }

@@ -1,4 +1,5 @@
 import { leerTema } from "./escala";
+import { AvisoLicencia } from "./AvisoLicencia";
 import { useEffect, useState } from "react";
 import { api, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
 import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
@@ -79,7 +80,7 @@ export function App() {
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={() => setTurno(undefined)} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
 
-  return <Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />;
+  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} /></>;
 }
 
 function Pantalla({ children }: { children: React.ReactNode }) {

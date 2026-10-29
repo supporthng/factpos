@@ -1,5 +1,20 @@
 /** Conexión con la administración central. */
-const CLAVE = "factpos.admin";
+
+/**
+ * Configuración que pone el PORTAL al servir esta página:
+ *   /             → { modo: "portal" }                      (clientes y licencias)
+ *   /<cliente>/   → { modo: "cliente", slug, cliente, api } (la administración de ESE cliente)
+ * Sin ella (servida por un servidor FactPOS o en desarrollo) funciona como siempre.
+ */
+export const CONFIG: { modo?: "portal" | "cliente"; slug?: string; cliente?: string; api?: string } =
+  (window as unknown as { __FACTPOS__?: typeof CONFIG }).__FACTPOS__ ?? {};
+export const enPortal = CONFIG.modo === "portal";
+/** "sucursal" = administración LOCAL en el servidor de una tienda (sin internet); lo dice /central/sesion */
+let modo: string | null = null;
+export const fijarModoServidor = (m: string | null) => { modo = m; };
+export const esLocal = () => modo === "sucursal";
+// Cada cliente guarda su sesión aparte (todas las páginas comparten el dominio del portal)
+const CLAVE = CONFIG.slug ? `factpos.admin:${CONFIG.slug}` : enPortal ? "factpos.admin:portal" : "factpos.admin";
 
 export interface Sesion {
   servidor: string;   // URL de la central
