@@ -1,4 +1,5 @@
 import { procesarEnvios } from "../correo/envios.js";
+import { versionActual } from "../actualizacion.js";
 import { aplicarCambioLocal, esCambioLocal } from "../sync/subida-local.js";
 import { licenciaParaSucursal } from "../licencia/cliente.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -192,7 +193,8 @@ export async function rutasCentralSync(app: FastifyInstance) {
     );
     // La licencia de la empresa viaja con cada sincronización (la sucursal la verifica sola)
     const licencia = await licenciaParaSucursal().catch(() => undefined);
-    return { desde: f.desde, version, versionKardex, completo, cambios, componentes, certificado: cert.rows[0]?.huella ?? null, licencia };
+    return { desde: f.desde, version, versionKardex, completo, cambios, componentes, certificado: cert.rows[0]?.huella ?? null, licencia,
+      versionPrincipal: versionActual() };
   });
 
   // ------------------------------------------------------------- SUBIDA

@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { seguirAlPrincipal } from "../actualizacion.js";
 import { guardarLicenciaDeCentral } from "../licencia/cliente.js";
 import { pool } from "../db.js";
 import { TABLAS_BAJADA } from "../rutas/central-sync.js";
@@ -44,7 +45,42 @@ const opciones: Record<string, Parameters<typeof aplicarFilas>[4]> = {
   categorias: { orden: "ORDER BY (r.padre_id IS NOT NULL)" },
 };
 
-async function pedir(ruta: string, init: RequestInit = {}) {
+/**
+ * El MASTER del negocio está detrás de un túnel cuya dirección cambia. Si no
+ * responde, se le pregunta al portal de FactPOS la dirección actual por el
+ * nombre corto de la empresa (FACTPOS_EMPRESA) y se guarda en el .env.
+ */
+let ultimaResolucion = 0;
+export async function resolverCentral(log?: (m: string) => void): Promise<boolean> {
+  const empresa = (process.env.FACTPOS_EMPRESA ?? "").trim().toLowerCase();
+  if (!empresa || Date.now() - ultimaResolucion < 60_000) return false;
+  ultimaResolucion = Date.now();
+  const portal = (process.env.FACTPOS_PORTAL_URL || "https://factpos.vercel.app").replace(/\/+$/, "");
+  try {
+    const r = await fetch(`${portal}/licencias/cliente/${encodeURIComponent(empresa)}`, { signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) return false;
+    const d = (await r.json()) as { apiUrl?: string | null };
+    const nueva = (d.apiUrl ?? "").replace(/\/+$/, "");
+    if (!nueva || nueva === configSync().url) return false;
+    const { guardarEnEnv } = await import("./alta.js");
+    guardarEnEnv({ CENTRAL_URL: nueva });
+    log?.(`Sincronización: el servidor principal ahora está en ${nueva}`);
+    return true;
+  } catch { return false; }
+}
+
+async function pedir(ruta: string, init: RequestInit = {}, reintento = true): Promise<any> {
+  try {
+    return await pedirUnaVez(ruta, init);
+  } catch (e) {
+    // Sin respuesta del master (o el túnel ya no existe: Cloudflare responde 530/404): ¿cambió de dirección?
+    const err = e as Error & { estado?: number };
+    if (reintento && (!err.estado || [404, 502, 503, 530].includes(err.estado)) && (await resolverCentral(console.log))) return pedir(ruta, init, false);
+    throw e;
+  }
+}
+
+async function pedirUnaVez(ruta: string, init: RequestInit = {}) {
   const { url, clave } = configSync();
   const r = await fetch(`${url}${ruta}`, {
     ...init,
@@ -60,7 +96,7 @@ async function pedir(ruta: string, init: RequestInit = {}) {
   if (!r.ok) {
     let msg = texto;
     try { msg = JSON.parse(texto).error ?? texto; } catch { /* texto */ }
-    throw new Error(`La central respondió ${r.status}: ${msg.slice(0, 200)}`);
+    throw Object.assign(new Error(`La central respondió ${r.status}: ${msg.slice(0, 200)}`), { estado: r.status });
   }
   return JSON.parse(texto);
 }
@@ -131,6 +167,8 @@ export interface Cambios {
   certificado?: string | null;
   /** Licencia de la empresa (firmada por el proveedor) */
   licencia?: { token: string | null; instalacionId: string; pruebaDesde: string };
+  /** Versión de FactPOS del servidor principal (las sucursales lo siguen) */
+  versionPrincipal?: string;
 }
 
 /** Aplica en esta base un paquete de cambios de la central (todo o nada). */
@@ -178,6 +216,7 @@ export async function bajar(): Promise<{ filas: number; version: number; certifi
     filas += await aplicarCambios(d);
     certificadoCentral = d.certificado;
     if (d.licencia) await guardarLicenciaDeCentral(d.licencia).catch(() => {});
+    if (!process.env.VERCEL) seguirAlPrincipal(d.versionPrincipal, console.log);
     version = Number(d.version);
     versionKardex = Number(d.versionKardex ?? desdeKardex);
     if (d.completo || (version <= desde && versionKardex <= desdeKardex)) break;

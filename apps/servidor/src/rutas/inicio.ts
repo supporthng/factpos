@@ -18,7 +18,10 @@ import { hashPin } from "../autorizacion.js";
 export async function rutasInicio(app: FastifyInstance) {
   const vacia = async () => !(await pool.query("SELECT 1 FROM empresas LIMIT 1")).rowCount;
 
-  app.get("/central/inicio", async () => ({ necesitaConfigurar: await vacia(), pideClave: !!process.env.CLAVE_ACCESO }));
+  app.get("/central/inicio", async (req) => ({
+    necesitaConfigurar: await vacia(),
+    pideClave: !!process.env.CLAVE_ACCESO && !(!req.headers["cf-connecting-ip"] && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.ip)),
+  }));
 
   app.post("/central/inicio", async (req, rep) => {
     const b = z.object({
@@ -34,7 +37,9 @@ export async function rutasInicio(app: FastifyInstance) {
     }).parse(req.body);
 
     const esperada = process.env.CLAVE_ACCESO;
-    if (esperada) {
+    // En el propio equipo (servidor master recién instalado) no hace falta la clave
+    const local = !req.headers["cf-connecting-ip"] && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.ip);
+    if (esperada && !local) {
       const h = (t: string) => createHash("sha256").update(t).digest();
       if (!b.claveAcceso || !timingSafeEqual(h(b.claveAcceso), h(esperada))) {
         throw new ErrorNegocio("La clave de acceso de la instalación no es correcta (es la variable CLAVE_ACCESO de Vercel)", 401);

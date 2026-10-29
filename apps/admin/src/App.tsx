@@ -2,6 +2,7 @@ import { Correo } from "./paginas/Correo";
 import { useEffect, useState, type ComponentType } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 import { Portal } from "./paginas/Portal";
+import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, useCatalogo, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
@@ -50,6 +51,7 @@ const SECCIONES = [
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, p: ["admin.config"] },
   { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, p: ["admin.config"] },
   { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, p: ["admin.config"] },
+  { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, p: ["admin.config"] },
 ] as const;
 /** En el portal del proveedor solo hay clientes/licencias y su propio equipo. */
 const SECCIONES_PORTAL = [

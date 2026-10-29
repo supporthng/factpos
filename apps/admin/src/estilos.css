@@ -552,3 +552,4 @@ tr.inactiva td { opacity: .55; }
 @media (max-width: 800px) { .detalle-grid { grid-template-columns: 1fr; } }
 .tarjeta-entrar.ancha { width: min(600px, 100%); }
 .aviso-local { background: #e8f1fb; color: #18406b; border: 1px solid #c2d8f0; border-radius: var(--radio); padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }
+.notas-version { white-space: pre-wrap; font: inherit; background: var(--fondo); border-radius: var(--radio); padding: 12px; max-height: 280px; overflow: auto; }

@@ -6,7 +6,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
-import { firmarLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
+import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
 
 /**
  * PORTAL DEL PROVEEDOR (MODO=portal) — p. ej. https://factpos.vercel.app
@@ -115,6 +115,43 @@ export async function rutasPortal(app: FastifyInstance) {
       [l.id, b.version ?? null, b.sucursalesEnUso ?? null]);
     if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
     return { licencia: emitir(l, b.instalacionId) };
+  });
+
+  /** El servidor MASTER de un cliente informa la dirección actual de su túnel. */
+  app.post("/licencias/tunel", async (req) => {
+    const b = z.object({ licenciaId: uuid, instalacionId: uuid, secreto: z.string().min(20).max(80),
+      url: z.string().regex(/^https:\/\/[a-z0-9.-]+(:\d+)?$/i, "Dirección de túnel inválida").max(200) }).parse(req.body);
+    const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [b.licenciaId])).rows[0];
+    if (!l || l.instalacion_id !== b.instalacionId || !igual(l.secreto_hash, huella(b.secreto))) {
+      frenar(req.ip ?? "?");
+      throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia", 401);
+    }
+    await pool.query("UPDATE portal_clientes SET api_url = $2 WHERE id = $1", [l.cliente_id, b.url]);
+    await pool.query("UPDATE portal_licencias SET ultimo_contacto = now() WHERE id = $1", [l.id]);
+    return { ok: true, web: `/${l.slug}/` };
+  });
+
+  /** Última versión publicada de FactPOS (GitHub Releases con etiqueta v1.2.3). */
+  app.get("/licencias/version", async () => {
+    const r = await ultimaVersion();
+    if (!r) throw new ErrorNegocio("Todavía no hay versiones publicadas", 404);
+    return { version: r.version, notas: r.notas, publicada: r.publicada };
+  });
+
+  /**
+   * Descarga de una versión: solo para instalaciones con licencia válida (la licencia
+   * firmada viaja en x-licencia). Devuelve una dirección de descarga temporal.
+   */
+  app.get("/licencias/descargar", async (req) => {
+    const token = String(req.headers["x-licencia"] ?? "");
+    let d: DatosLicencia;
+    try { d = leerLicencia(token); } catch { throw new ErrorNegocio("Licencia inválida", 401); }
+    const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [d.id])).rows[0];
+    if (!l || l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("La licencia no está activa: comuníquese con su proveedor", 403);
+    if (l.instalacion_id && l.instalacion_id !== d.instalacion) throw new ErrorNegocio("Licencia de otra instalación", 403);
+    const v = await ultimaVersion();
+    if (!v?.asset) throw new ErrorNegocio("No hay un paquete publicado para descargar", 404);
+    return { version: v.version, url: await urlDescarga(v.asset) };
   });
 
   app.get("/licencias/cliente/:slug", async (req) => {
@@ -250,6 +287,42 @@ export async function rutasPortal(app: FastifyInstance) {
 
   // ================================================================ PÁGINAS
   await rutasPaginas(app);
+}
+
+// -------------------------------------------------------------------------------------------
+// Versiones publicadas (GitHub Releases). Repositorio privado: GITHUB_TOKEN con permiso de lectura.
+// -------------------------------------------------------------------------------------------
+interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null }
+let cacheVersion: { v: Publicada | null; t: number } | null = null;
+const encabezadosGitHub = (extra: Record<string, string> = {}) => ({
+  "user-agent": "factpos-portal", accept: "application/vnd.github+json",
+  ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}), ...extra,
+});
+async function ultimaVersion(): Promise<Publicada | null> {
+  if (cacheVersion && Date.now() - cacheVersion.t < 10 * 60_000) return cacheVersion.v;
+  const repo = process.env.FACTPOS_REPO || "supporthng/factpos";
+  try {
+    const r = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, { headers: encabezadosGitHub(), signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    const lista = (await r.json()) as { tag_name: string; draft: boolean; body: string | null; published_at: string | null;
+      assets: { name: string; url: string; browser_download_url: string }[] }[];
+    const rel = lista.find((x) => !x.draft && /^v\d+\.\d+\.\d+$/.test(x.tag_name));
+    const asset = rel?.assets.find((a) => /^FactPOS-Instalador.*\.zip$/.test(a.name));
+    const v = rel ? { version: rel.tag_name.slice(1), notas: rel.body, publicada: rel.published_at,
+      asset: asset ? { url: asset.url, descarga: asset.browser_download_url } : null } : null;
+    cacheVersion = { v, t: Date.now() };
+    return v;
+  } catch {
+    return cacheVersion?.v ?? null;
+  }
+}
+/** Repositorio privado: GitHub entrega una dirección firmada y temporal del archivo. */
+async function urlDescarga(a: { url: string; descarga: string }) {
+  if (!process.env.GITHUB_TOKEN) return a.descarga;
+  const r = await fetch(a.url, { headers: encabezadosGitHub({ accept: "application/octet-stream" }), redirect: "manual", signal: AbortSignal.timeout(15_000) });
+  const lugar = r.headers.get("location");
+  if (!lugar) throw new ErrorNegocio(`No se pudo preparar la descarga (GitHub ${r.status})`, 502);
+  return lugar;
 }
 
 /** Estado por fecha (para la lista del portal). */

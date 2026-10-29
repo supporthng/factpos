@@ -10,7 +10,8 @@ interface EstadoLicencia {
   estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | "PRUEBA" | "PRUEBA_VENCIDA";
   permiteVender: boolean; dias: number; mensaje: string | null; error: string | null;
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
-  instalacionId: string; activada: boolean; local?: boolean; ultimoContacto: string | null; ultimoError: string | null; portal: string; sucursalesEnUso: number;
+  instalacionId: string; activada: boolean; local?: boolean;
+  tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null } | null; web?: string | null; ultimoContacto: string | null; ultimoError: string | null; portal: string; sucursalesEnUso: number;
 }
 const NOMBRES: Record<EstadoLicencia["estado"], string> = {
   VIGENTE: "Vigente", POR_VENCER: "Por vencer", GRACIA: "Vencida · en gracia", VENCIDA: "Vencida · solo consulta",
@@ -86,6 +87,19 @@ export function Licencia() {
             Al proveedor solo se le informa el número de licencia, esta instalación, la versión y cuántas sucursales están activas.
             Sus ventas, productos y clientes nunca salen de su nube.
           </p>
+        </div>
+      )}
+      {d.tunel && (
+        <div className="panel">
+          <h3 style={{ marginTop: 0 }}>Acceso desde internet</h3>
+          {d.web && <p>Administración web de su empresa: <a href={d.web} target="_blank" rel="noreferrer"><b>{d.web}</b></a></p>}
+          <p className="suave pequeno">
+            Túnel: {d.tunel.activo ? <span className="texto-ok">abierto</span> : <span className="texto-alerta">cerrado</span>}
+            {d.tunel.url && <> · <span className="mono">{d.tunel.url}</span></>}
+            {d.tunel.reportado && <> · avisado al portal {new Date(d.tunel.reportado).toLocaleTimeString("es-DO")}</>}
+            {d.tunel.error && <span className="texto-alerta"> · {d.tunel.error}</span>}
+          </p>
+          {!d.activada && <p className="suave pequeno">La dirección web queda lista al activar la licencia.</p>}
         </div>
       )}
       <p className="suave pequeno">Instalación: <span className="mono">{d.instalacionId}</span> · Portal: {d.portal}</p>

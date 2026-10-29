@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
-import { configSync, iniciarSincronizacion } from "./sucursal.js";
+import { configSync, iniciarSincronizacion, resolverCentral } from "./sucursal.js";
 
 /**
  * Alta del servidor de una tienda con un código (lado de la tienda).
@@ -55,7 +55,14 @@ export function guardarEnEnv(valores: Record<string, string>) {
   for (const [k, v] of Object.entries(valores)) process.env[k] = v;
 }
 
-async function llamar<T>(ruta: string, cuerpo: unknown): Promise<T> {
+async function llamar<T>(ruta: string, cuerpo: unknown, reintento = true): Promise<T> {
+  try { return await llamarUnaVez<T>(ruta, cuerpo); } catch (e) {
+    const st = (e as { status?: number }).status;
+    if (reintento && (!st || [502, 503, 530].includes(st)) && (await resolverCentral())) return llamar<T>(ruta, cuerpo, false);
+    throw e;
+  }
+}
+async function llamarUnaVez<T>(ruta: string, cuerpo: unknown): Promise<T> {
   const r = await fetch(`${configSync().url}${ruta}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo),
     signal: AbortSignal.timeout(20_000),

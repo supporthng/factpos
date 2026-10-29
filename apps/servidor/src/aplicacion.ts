@@ -1,4 +1,6 @@
 import { contextoCaja } from "./contexto.js";
+import { rutasActualizacion } from "./actualizacion.js";
+import { permitidoPorTunel, tunelActivo, vieneDelTunel } from "./tunel.js";
 import { rutasCentralCorreo } from "./rutas/central-correo.js";
 import { rutasCentralAlta } from "./rutas/central-alta.js";
 import { rutasPortal } from "./licencia/portal.js";
@@ -63,6 +65,15 @@ export async function crearApp() {
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
       }
+    });
+  }
+
+  // Servidor MASTER con túnel: desde internet solo entra la administración (las cajas, en la red local)
+  if (tunelActivo()) {
+    app.addHook("onRequest", async (req, rep) => {
+      if (!vieneDelTunel(req.headers)) return;
+      const ruta = req.url.split("?")[0];
+      if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
     });
   }
 
@@ -207,6 +218,7 @@ export async function crearApp() {
     if (config.modo === "central" || !syncActiva()) await app.register(rutasLicenciaCentral);
     await app.register(rutasPadronCentral);
   }
+  await app.register(rutasActualizacion); // el portal ya volvió antes
   if (config.modo === "sucursal") {
     await app.register(rutasAltaLocal); // http://<servidor>:3000/alta → código para darlo de alta
     await app.register(rutasLicenciaSucursal);

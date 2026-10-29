@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { estadoTunel, reportarTunel, tunelActivo } from "../tunel.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -97,6 +98,7 @@ const versionApp = () => {
 
 export async function activarLicencia(clave: string, apiUrl?: string) {
   const f = await filaLicencia();
+  apiUrl = estadoTunel().url ?? apiUrl; // master con túnel: la web y las sucursales entran por ahí
   const r = await llamarPortal<{ licencia: string; secreto: string; cliente: { nombre: string } }>("/licencias/activar", {
     clave, instalacionId: f.instalacion_id, version: versionApp(), sucursalesEnUso: await sucursalesEnUso(), apiUrl,
   });
@@ -105,6 +107,7 @@ export async function activarLicencia(clave: string, apiUrl?: string) {
   await pool.query("UPDATE licencia SET token = $1, secreto = $2, portal_url = $3, ultimo_contacto = now(), ultimo_error = NULL, actualizado_en = now() WHERE id = 1",
     [r.licencia, r.secreto, PORTAL_URL()]);
   olvidarLicencia();
+  await reportarTunel(PORTAL_URL()).catch(() => false);
   return estadoLicencia();
 }
 
@@ -180,10 +183,14 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     const f = await filaLicencia();
     // Si toca, se renueva en segundo plano (no hace esperar a la pantalla)
     renovarSiToca().catch(() => {});
+    const e = await estadoLicencia();
     return {
-      ...publico(await estadoLicencia()),
+      ...publico(e),
       instalacionId: f.instalacion_id, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
       portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(),
+      // Servidor master: dirección pública y acceso web por el portal
+      tunel: tunelActivo() ? estadoTunel() : null,
+      web: e.datos ? `${PORTAL_URL()}/${e.datos.cliente.slug}/` : null,
     };
   });
   app.post("/central/licencia/activar", async (req) => {
