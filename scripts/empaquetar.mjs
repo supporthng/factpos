@@ -23,7 +23,7 @@ if (!existsSync(join(raiz, "apps/servidor/dist/index.js")) || !existsSync(join(r
 rmSync(salida, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 const copiar = (de, a = de) => cpSync(join(raiz, de), join(dir, a), { recursive: true });
-for (const f of ["package.json", "package-lock.json", ".env.example", "README.md"]) copiar(f);
+for (const f of ["package.json", "package-lock.json", ".env.example", "README.md"]) if (existsSync(join(raiz, f))) copiar(f); // .env.example puede faltar (GitHub web no sube archivos que empiezan con punto)
 copiar("db/migrations");
 copiar("instalador");
 rmSync(join(dir, "instalador/setup"), { recursive: true, force: true }); // fuentes del setup.exe (no van en el paquete)

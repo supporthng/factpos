@@ -95,17 +95,49 @@ Listo ("Node.js " + (& node -v))
 
 # ------------------------------------------------------------- PostgreSQL
 Paso "PostgreSQL"
-$pgBin = Get-ChildItem "C:\Program Files\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+# Dónde está psql.exe: registro de PostgreSQL, carpeta normal o PATH
+function BuscarPsql {
+  $rutas = @()
+  foreach ($k in "HKLM:\SOFTWARE\PostgreSQL\Installations\*", "HKLM:\SOFTWARE\WOW6432Node\PostgreSQL\Installations\*") {
+    Get-ItemProperty $k -ErrorAction SilentlyContinue | ForEach-Object { if ($_."Base Directory") { $rutas += (Join-Path $_."Base Directory" "bin\psql.exe") } }
+  }
+  $rutas += (Get-ChildItem "$env:ProgramFiles\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
+  $c = Get-Command psql -ErrorAction SilentlyContinue
+  if ($c) { $rutas += $c.Source }
+  foreach ($r in $rutas) { if ($r -and (Test-Path $r)) { return Get-Item $r } }
+  return $null
+}
+# El instalador de PostgreSQL puede seguir trabajando después de que winget termina: se espera
+function EsperarPsql([int]$segundos) {
+  $hasta = (Get-Date).AddSeconds($segundos)
+  do { $p = BuscarPsql; if ($p) { return $p }; Start-Sleep -Seconds 5 } while ((Get-Date) -lt $hasta)
+  return $null
+}
+$pgBin = BuscarPsql
 if (-not $pgBin) {
   if (-not $ClavePostgres) { $ClavePostgres = Clave 20 }
-  winget install -e --id PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements --accept-source-agreements `
-    --override "--mode unattended --unattendedmodeui none --superpassword $ClavePostgres --serverport 5432 --servicename postgresql-16"
-  $pgBin = Get-ChildItem "C:\Program Files\PostgreSQL\*\bin\psql.exe" | Sort-Object FullName -Descending | Select-Object -First 1
-  # Se guarda la clave del superusuario solo para el administrador del equipo
+  # La clave se guarda ANTES de instalar (si algo falla a medias, no se pierde)
   $claveArchivo = "$Carpeta\postgres-superusuario.txt"
   New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
   Set-Content -Path $claveArchivo -Value "Usuario: postgres`r`nClave: $ClavePostgres"
   icacls $claveArchivo /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
+  $opciones = "--mode unattended --unattendedmodeui none --superpassword $ClavePostgres --serverport 5432 --servicename postgresql-16 --prefix `"$env:ProgramFiles\PostgreSQL\16`" --datadir `"$env:ProgramFiles\PostgreSQL\16\data`""
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Write-Host "   Instalando PostgreSQL 16 con winget (puede tardar varios minutos)..."
+    winget install -e --id PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements --accept-source-agreements --override $opciones
+    $pgBin = EsperarPsql 600
+  }
+  if (-not $pgBin) {
+    # Respaldo: instalador oficial de EDB descargado directo
+    Write-Host "   winget no dejó PostgreSQL instalado; se descarga el instalador oficial..." -ForegroundColor Yellow
+    $exe = Join-Path $env:TEMP "postgresql-16-windows-x64.exe"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64.exe" -OutFile $exe -UseBasicParsing
+    $p = Start-Process -FilePath $exe -ArgumentList $opciones -Wait -PassThru
+    if ($p.ExitCode -ne 0) { Write-Host "   El instalador de PostgreSQL terminó con código $($p.ExitCode)" -ForegroundColor Yellow }
+    $pgBin = EsperarPsql 300
+  }
+  if (-not $pgBin) { throw "PostgreSQL no quedó instalado. Instálelo a mano desde https://www.postgresql.org/download/windows/ (versión 16, puerto 5432) y vuelva a ejecutar el instalador escribiendo la clave del usuario postgres." }
   Listo "PostgreSQL instalado. La clave del superusuario quedó en $claveArchivo"
 } elseif (-not $ClavePostgres) {
   if ($NoInteractivo) { throw "PostgreSQL ya estaba instalado en este equipo: escriba la clave del usuario postgres en el instalador" }

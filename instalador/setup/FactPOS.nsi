@@ -62,7 +62,6 @@ Var Codigo
 Var Servidor
 Var Destino
 Var Vende         ; 1 = esta PC también vende (caja aquí)
-Var Impresora
 Var ClavePg
 Var PgInstalado
 Var TextoFinal
@@ -81,7 +80,6 @@ Var hServidor
 Var hDestino
 Var hVende
 Var hClavePg
-Var hImpresora
 
 ; ------------------------------------------------------------------ páginas
 !define MUI_WELCOMEPAGE_TITLE "Bienvenido a FactPOS ${VERSION}"
@@ -89,7 +87,7 @@ Var hImpresora
 !insertmacro MUI_PAGE_WELCOME
 Page custom PaginaTipo PaginaTipoSalir
 Page custom PaginaDatos PaginaDatosSalir
-Page custom PaginaImpresora PaginaImpresoraSalir
+; La impresora se elige después: la caja imprime por la predeterminada de Windows
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SaltarCarpeta
 !define MUI_DIRECTORYPAGE_TEXT_TOP "FactPOS se instalará en esta carpeta. Los datos quedan en la base de datos del equipo."
 !insertmacro MUI_PAGE_DIRECTORY
@@ -278,57 +276,6 @@ Function PaginaDatosSalir
   ${EndIf}
 FunctionEnd
 
-; ------------------------------------------------------------------ 3. impresora
-Function PaginaImpresora
-  ${If} $Tipo == "admin"
-    Abort
-  ${EndIf}
-  ${If} $Tipo != "caja"
-  ${AndIf} $Vende != "1"
-    Abort
-  ${EndIf}
-  !insertmacro MUI_HEADER_TEXT "Impresora de facturas" "La impresora térmica de esta caja."
-  nsDialogs::Create 1018
-  Pop $0
-  ${NSD_CreateLabel} 0 0 100% 20u "Elija la impresora térmica. Las facturas saldrán directo por ella, sin la ventana de imprimir."
-  Pop $0
-  ${NSD_CreateDropList} 0 24u 80% 80u ""
-  Pop $hImpresora
-  ${NSD_CB_AddString} $hImpresora "(Usar la impresora predeterminada de Windows)"
-  ; Lista de impresoras del equipo
-  nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_Printer).Name | Out-File -Encoding Default '$PLUGINSDIR\impresoras.txt'"`
-  Pop $0
-  ClearErrors
-  FileOpen $1 "$PLUGINSDIR\impresoras.txt" r
-  ${IfNot} ${Errors}
-    ${Do}
-      FileRead $1 $2
-      ${If} ${Errors}
-        ${Break}
-      ${EndIf}
-      ${TrimNewLines} "$2" $2
-      ${If} $2 != ""
-        ${NSD_CB_AddString} $hImpresora "$2"
-      ${EndIf}
-    ${Loop}
-    FileClose $1
-  ${EndIf}
-  ${If} $Impresora != ""
-    ${NSD_CB_SelectString} $hImpresora "$Impresora"
-  ${Else}
-    ${NSD_CB_SelectString} $hImpresora "(Usar la impresora predeterminada de Windows)"
-  ${EndIf}
-  ${NSD_CreateLabel} 0 44u 100% 30u "Si la impresora todavía no aparece, instale primero su controlador y vuelva a ejecutar este instalador eligiendo «Caja»; o déjela así y elíjala después en Windows como predeterminada."
-  Pop $0
-  nsDialogs::Show
-FunctionEnd
-
-Function PaginaImpresoraSalir
-  ${NSD_GetText} $hImpresora $Impresora
-  ${If} $Impresora == "(Usar la impresora predeterminada de Windows)"
-    StrCpy $Impresora ""
-  ${EndIf}
-FunctionEnd
 
 ; ------------------------------------------------------------------ 4. carpeta (solo servidores)
 Function SaltarCarpeta
@@ -378,9 +325,6 @@ Section "FactPOS" SecPrincipal
     ${If} $Fallo == "0"
     ${AndIf} $Vende == "1"
       StrCpy $2 "-Servidor 'http://localhost:3000' -NoInteractivo"
-      ${If} $Impresora != ""
-        StrCpy $2 "$2 -Impresora '$Impresora'"
-      ${EndIf}
       DetailPrint "Instalando la caja en esta computadora…"
       !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-caja.ps1" "$2"
     ${EndIf}
@@ -395,9 +339,6 @@ Section "FactPOS" SecPrincipal
       StrCpy $2 "-NoInteractivo"
       ${If} $Servidor != ""
         StrCpy $2 "$2 -Servidor '$Servidor'"
-      ${EndIf}
-      ${If} $Impresora != ""
-        StrCpy $2 "$2 -Impresora '$Impresora'"
       ${EndIf}
       DetailPrint "Buscando el servidor de la tienda e instalando la caja…"
       !insertmacro Ejecutar "$PLUGINSDIR\instalador\instalar-caja.ps1" "$2"
