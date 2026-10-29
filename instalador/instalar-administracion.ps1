@@ -12,10 +12,11 @@
 #>
 param(
   [string]$Url = "",
-  [switch]$SinMenuInicio
+  [switch]$SinMenuInicio,
+  [switch]$NoInteractivo
 )
 $ErrorActionPreference = "Stop"
-try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+if (-not $env:FACTPOS_INSTALADOR) { try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { } }
 function Paso($t) { Write-Host "`n== $t" -ForegroundColor Cyan }
 function Listo($t) { Write-Host "   $t" -ForegroundColor Green }
 
@@ -86,7 +87,7 @@ if (-not $SinMenuInicio) {
 
 Write-Host "`n   Listo. Para tenerla en la barra de tareas: ábrala, clic derecho en su ícono › Anclar a la barra de tareas." -ForegroundColor Green
 Write-Host "   En el celular: abra $Url en Chrome › menú ⋮ › «Instalar aplicación» (o en iPhone: Compartir › «Agregar a inicio»)."
-$abrir = Read-Host "`n   ¿Abrir la administración ahora? (S/n)"
+$abrir = if ($NoInteractivo) { "n" } else { Read-Host "`n   ¿Abrir la administración ahora? (S/n)" }
 if (-not $abrir -or $abrir.Trim().ToLower().StartsWith("s")) {
   Start-Process "$([Environment]::GetFolderPath('Desktop'))\FactPOS Administración.lnk"
 }

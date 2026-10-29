@@ -26,6 +26,7 @@ const copiar = (de, a = de) => cpSync(join(raiz, de), join(dir, a), { recursive:
 for (const f of ["package.json", "package-lock.json", ".env.example", "README.md"]) copiar(f);
 copiar("db/migrations");
 copiar("instalador");
+rmSync(join(dir, "instalador/setup"), { recursive: true, force: true }); // fuentes del setup.exe (no van en el paquete)
 // Doble clic en la raíz del paquete: menú para elegir qué se instala
 copiar("instalador/INSTALAR FactPOS.bat", "INSTALAR FactPOS.bat");
 // Los instaladores traen la dirección del PORTAL de FactPOS (variable PORTAL_URL de GitHub):
@@ -41,6 +42,16 @@ for (const p of ["packages/compartido", "apps/servidor", "apps/terminal", "apps/
 }
 // Solo lo que se usa en producción
 correr("npm ci --omit=dev --ignore-scripts --no-audit --no-fund", dir);
+// Fuera pruebas y ejemplos de las dependencias (pesan y traen nombres de archivo raros)
+const podar = (d) => {
+  for (const n of readdirSync(d)) {
+    const p = join(d, n);
+    if (!statSync(p).isDirectory()) continue;
+    if (["test", "tests", "__tests__", "example", "examples", ".github"].includes(n)) rmSync(p, { recursive: true, force: true });
+    else podar(p);
+  }
+};
+podar(join(dir, "node_modules"));
 
 // ZIP
 const archivos = {};
@@ -55,3 +66,14 @@ agregar(dir);
 const zip = join(salida, `FactPOS-Instalador-${version}.zip`);
 writeFileSync(zip, zipSync(archivos, { level: 6 }));
 console.log(`\nListo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB, ${Object.keys(archivos).length} archivos) · Portal: ${adminUrl}`);
+
+// Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
+let makensis = null;
+try { execSync("makensis -VERSION", { stdio: "ignore" }); makensis = "makensis"; } catch { /* sin NSIS */ }
+if (makensis) {
+  const setup = join(salida, `FactPOS-Setup-${version}.exe`);
+  execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${setup}" FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
+  console.log(`Listo: ${relative(raiz, setup)} (${(statSync(setup).size / 1e6).toFixed(1)} MB)`);
+} else {
+  console.log("(No se armó FactPOS-Setup.exe: instale NSIS → apt install nsis / choco install nsis)");
+}

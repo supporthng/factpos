@@ -325,3 +325,39 @@ mismas rutas `/central/*` sobre su base local y limitada a esa sucursal (`SUCURS
   («se hace en la nube»): traspasos, pedidos, e-CF (secuencias, certificado, configuración), correo,
   cuentas por cobrar, terminales, alta de servidores y licencia.
 - Una tienda sin nube (sin `CENTRAL_URL`) lo hace todo localmente, incluida la configuración inicial y la licencia.
+
+## Servidor master y FactPOS-Setup.exe
+
+Cada negocio tiene un **servidor principal (master)** en su oficina o tienda principal: es el modo
+`central` instalado en una PC (no en Vercel), con su base local, la administración completa y sus propias
+cajas. Por defecto no hace falta nube por cliente.
+
+- **Túnel** (`src/tunel.ts`, `TUNEL=cloudflare`): el master lanza `cloudflared tunnel --url
+  http://localhost:<puerto>` (túnel rápido, sin cuenta), toma la dirección `*.trycloudflare.com` y se la
+  informa al portal (`POST /licencias/tunel`, autenticado con la licencia). Por el túnel solo entra
+  `/central/*`, `/admin/*` y `/salud` (cabecera `cf-connecting-ip`); las cajas, solo en la red local.
+- **Web del dueño**: `https://<portal>/<empresa>/` (el portal sirve la administración y le pasa la
+  dirección actual del túnel).
+- **Sucursales** (`FACTPOS_EMPRESA`): si el master no responde, preguntan al portal su dirección actual
+  (`GET /licencias/cliente/:slug`) y la guardan en el `.env`.
+- **Licencia**: el instalador deja `LICENCIA_CLAVE` y el master la activa solo al tener internet.
+- **Actualizaciones** (`src/actualizacion.ts`): el portal lee GitHub Releases `vX.Y.Z` (`FACTPOS_REPO`,
+  `GITHUB_TOKEN` si el repo es privado) y entrega la descarga solo a licencias válidas. Administración ›
+  Actualizaciones › Instalar: descarga, descomprime y corre `instalador/actualizar.ps1` como tarea de
+  Windows (detiene, copia, migra, arranca; si falla vuelve a la anterior). Las sucursales siguen al master
+  en un momento sin ventas.
+  **Publicar una versión**: suba `version` en `package.json` y cree la etiqueta `vX.Y.Z` en GitHub.
+- **FactPOS-Setup.exe** (`instalador/setup/FactPOS.nsi`, NSIS, 64 bits): asistente gráfico con
+  Servidor principal, Servidor de sucursal, Caja y Administración; corre los `.ps1` con `-NoInteractivo`.
+  Se arma en CI (`apt install nsis`) o localmente con `npm run empaquetar` si hay `makensis`.
+  Sin firma de código, Windows SmartScreen muestra «Windows protegió su PC» › «Más información» › «Ejecutar de todas formas».
+
+### Túnel fijo con factpos.app
+
+Con la licencia activa, el master pide su túnel fijo (`POST /licencias/tunel/fijo`). El portal lo crea en
+Cloudflare (`src/licencia/cloudflare.ts`): túnel `factpos-<empresa>`, regla `<empresa>.factpos.app →
+http://localhost:<puerto>` y registro DNS CNAME con proxy. El master guarda `TUNEL_TOKEN` y `TUNEL_URL` en su
+`.env` y pasa a `cloudflared tunnel run --token …`. Mientras tanto (o si el portal no tiene Cloudflare
+configurado) usa el túnel rápido. Variables del portal: `CLOUDFLARE_API_TOKEN` (Account › Cloudflare Tunnel ›
+Edit + Zone › DNS › Edit), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `FACTPOS_DOMINIO=factpos.app`.
+El dueño entra por `https://factpos.app/<empresa>/` o directo a `https://<empresa>.factpos.app/admin/`.

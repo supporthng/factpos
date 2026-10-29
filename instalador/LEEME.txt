@@ -1,6 +1,15 @@
 ﻿FACTPOS · INSTALACIÓN (Windows 10 / 11)
 ========================================================
 
+INSTALADOR GRÁFICO: FactPOS-Setup.exe (recomendado)
+   Descárguelo de GitHub > Releases y ábralo en cada computadora. Elija:
+     · Servidor principal del negocio (master): uno por negocio; administra todo,
+       guarda los datos, vende y abre el acceso por internet (túnel).
+     · Servidor de una sucursal: uno por cada tienda adicional.
+     · Caja: busca sola el servidor en la red.
+     · Administración: acceso para la oficina o el dueño.
+   Lo de abajo (INSTALAR FactPOS.bat) hace lo mismo desde una consola.
+
 UN SOLO INSTALADOR PARA TODO
    Descargue FactPOS-Instalador.zip (GitHub > Releases > «FactPOS · Última versión»),
    descomprímalo en cada computadora y haga doble clic en "INSTALAR FactPOS.bat".

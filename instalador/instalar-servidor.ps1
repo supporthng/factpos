@@ -25,6 +25,11 @@
     ... -CentralUrl ... -SucursalId <id> -CentralClave <clave> -PinSecreto <...>
                                       # o a mano, con los datos de "Conectar a mano"
     ... -Reenlazar                    # este servidor ya estaba enlazado: darlo de alta de nuevo
+    ... -Master -Empresa royalliquorstore [-Licencia FPS-XXXX-XXXX-XXXX-XXXX]
+                                      # SERVIDOR PRINCIPAL del negocio: administra todo, abre un túnel
+                                      # de Cloudflare para la web y las sucursales y vende también
+    ... -Empresa royalliquorstore     # sucursal: encuentra sola a su servidor principal (por el portal)
+    ... -NoInteractivo                # sin preguntas (lo usa el instalador FactPOS-Setup.exe)
 #>
 #Requires -RunAsAdministrator
 param(
@@ -39,7 +44,12 @@ param(
   [string]$CodigoInstalacion = "",
   [string]$Rnc = "",
   [switch]$Reenlazar,
-  [switch]$Demo
+  [switch]$Demo,
+  [switch]$Master,
+  [string]$Empresa = "",
+  [string]$Licencia = "",
+  [string]$Portal = "https://factpos.vercel.app",
+  [switch]$NoInteractivo
 )
 $ErrorActionPreference = "Stop"
 $origen = Split-Path -Parent $PSScriptRoot
@@ -48,7 +58,19 @@ function Listo($t) { Write-Host "   $t" -ForegroundColor Green }
 function Clave([int]$n = 24) { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count $n | ForEach-Object { [char]$_ }) }
 function RefrescarPath { $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") }
 
+$Empresa = $Empresa.Trim().ToLower()
+$Portal = $Portal.TrimEnd("/")
+if ($Master -and -not $Empresa) { throw "El servidor principal necesita el nombre corto de la empresa (-Empresa)" }
+# Sucursal que solo conoce su empresa: el portal dice dónde está su servidor principal
+if (-not $Master -and $Empresa -and -not $CentralUrl) {
+  try {
+    $c = Invoke-RestMethod "$Portal/licencias/cliente/$Empresa" -TimeoutSec 15
+    if ($c.apiUrl) { $CentralUrl = $c.apiUrl; Listo "Empresa: $($c.nombre) · servidor principal en $CentralUrl" }
+    else { Write-Host "   OJO: el servidor principal de $($c.nombre) todavía no está conectado. Esta sucursal lo buscará sola." -ForegroundColor Yellow }
+  } catch { Write-Host "   OJO: no se pudo consultar el portal ahora. Esta sucursal buscará a su servidor principal sola." -ForegroundColor Yellow }
+}
 $Alta = $false
+if (-not $Master -and $Empresa -and -not $SucursalId) { $Alta = $true }
 if ($CentralUrl) {
   $CentralUrl = $CentralUrl.TrimEnd("/")
   if (-not $SucursalId -and -not $CentralClave) { $Alta = $true }   # se da de alta con código
@@ -86,6 +108,7 @@ if (-not $pgBin) {
   icacls $claveArchivo /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
   Listo "PostgreSQL instalado. La clave del superusuario quedó en $claveArchivo"
 } elseif (-not $ClavePostgres) {
+  if ($NoInteractivo) { throw "PostgreSQL ya estaba instalado en este equipo: escriba la clave del usuario postgres en el instalador" }
   $seg = Read-Host "PostgreSQL ya está instalado. Escriba la clave del usuario postgres" -AsSecureString
   $ClavePostgres = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
 }
@@ -106,6 +129,13 @@ $existe = & $psql -U postgres -h localhost -tAc "SELECT 1 FROM pg_roles WHERE ro
 $envArchivo = "$Carpeta\.env"
 if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   Listo "La base factpos ya existe; se conserva (actualización)"
+  if ($Master -or $Empresa) {
+    $vars = [ordered]@{ FACTPOS_EMPRESA = $Empresa; FACTPOS_PORTAL_URL = $Portal }
+    if ($Master) { $vars.MODO = "central"; $vars.TUNEL = "cloudflare"; if ($Licencia) { $vars.LICENCIA_CLAVE = $Licencia } }
+    $lineas = @(Get-Content $envArchivo | Where-Object { $l = $_; -not ($vars.Keys | Where-Object { $l -like "$_=*" }) })
+    foreach ($k in $vars.Keys) { $lineas += "$k=$($vars[$k])" }
+    $lineas | Set-Content -Path $envArchivo -Encoding UTF8
+  }
   if ($CentralUrl) {
     $actual = Get-Content $envArchivo
     $yaEnlazado = [bool]($actual | Where-Object { $_ -match '^CENTRAL_CLAVE=fps_' })
@@ -129,12 +159,12 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   else { & $psql -U postgres -h localhost -c "CREATE ROLE factpos LOGIN PASSWORD '$claveBD'" | Out-Null }
   $hayBase = & $psql -U postgres -h localhost -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'"
   if ($hayBase -ne "1") { & $psql -U postgres -h localhost -c "CREATE DATABASE factpos OWNER factpos" | Out-Null }
-  if (-not $PinSecreto -and $Alta) { $PinSecreto = Clave 32 }   # lo reemplaza el de la central al darse de alta
+  if (-not $PinSecreto -and ($Alta -or $Master)) { $PinSecreto = Clave 32 }   # sucursal: lo reemplaza el del principal al darse de alta
   if (-not $PinSecreto) { $PinSecreto = Clave 32; Write-Host "   OJO: se generó un PIN_SECRETO nuevo. Si ya tiene central u otras sucursales, cópielo de allá al archivo .env" -ForegroundColor Yellow }
   @"
 # FactPOS · servidor de sucursal (generado por el instalador)
 DATABASE_URL=postgres://factpos:$claveBD@localhost:5432/factpos
-MODO=sucursal
+MODO=$(if ($Master) { "central" } else { "sucursal" })
 PUERTO=$Puerto
 HOST=0.0.0.0
 NOMBRE_RED=$NombreRed
@@ -147,6 +177,11 @@ CENTRAL_CLAVE=$CentralClave
 # Alta (se borran solas al quedar dado de alta)
 ALTA_CODIGO=$CodigoInstalacion
 ALTA_RNC=$Rnc
+# Empresa en el portal de FactPOS (licencia, túnel, actualizaciones)
+FACTPOS_EMPRESA=$Empresa
+FACTPOS_PORTAL_URL=$Portal
+TUNEL=$(if ($Master) { "cloudflare" } else { "" })
+LICENCIA_CLAVE=$Licencia
 CERT_P12_RUTA=
 CERT_P12_CLAVE=
 "@ | Set-Content -Path $envArchivo -Encoding UTF8
@@ -158,9 +193,25 @@ Remove-Item Env:\PGPASSWORD
 Push-Location $Carpeta
 & node apps\servidor\dist\migrar.js
 if ($LASTEXITCODE -ne 0) { throw "Fallaron las migraciones" }
-if ($Demo -and -not $CentralUrl) { & node apps\servidor\dist\semilla.js; Listo "Datos de demostración cargados" }
+if ($Demo -and -not $CentralUrl -and -not $Master) { & node apps\servidor\dist\semilla.js; Listo "Datos de demostración cargados" }
 if ($CentralUrl) { Listo "Productos, precios, usuarios y existencias se descargan de la central al arrancar" }
 Pop-Location
+
+# ------------------------------------------------- Túnel (servidor principal)
+if ($Master) {
+  Paso "Túnel de Cloudflare (acceso desde internet sin abrir el router)"
+  $cf = "$Carpeta\bin\cloudflared.exe"
+  New-Item -ItemType Directory -Force -Path "$Carpeta\bin" | Out-Null
+  if (-not (Test-Path $cf)) {
+    try {
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile $cf -UseBasicParsing
+      Listo "cloudflared descargado"
+    } catch {
+      Write-Host "   OJO: no se pudo descargar cloudflared ($($_.Exception.Message)). Sin túnel, la web y las sucursales no llegan a este servidor; reinstale con internet." -ForegroundColor Yellow
+    }
+  } else { Listo "cloudflared ya estaba" }
+}
 
 # ------------------------------------------------- Arranque con Windows
 Paso "Servidor como servicio (arranca con Windows)"
@@ -210,7 +261,21 @@ Write-Host " Registro: $Carpeta\logs\servidor.log"
 Write-Host "========================================================`n" -ForegroundColor Green
 
 # ---------------------------------------------------------- Alta con código
-if ($Alta) {
+if ($Master) {
+  Paso "Servidor principal"
+  Write-Host "   Abra http://localhost:$Puerto/admin/ en este equipo para la configuración inicial (empresa y usuario)."
+  if ($Licencia) { Write-Host "   La licencia se activa sola en cuanto haya internet." } else { Write-Host "   Active la licencia en Administración › Licencia." }
+  Write-Host "   Cuando la licencia esté activa, la administración web queda en $Portal/$Empresa/"
+}
+if ($Alta -and $NoInteractivo) {
+  Paso "Alta de este servidor"
+  Start-Sleep -Seconds 8
+  try { $a = Invoke-RestMethod "http://localhost:$Puerto/alta.json" -TimeoutSec 5 } catch { $a = $null }
+  if ($a.estado -eq "ENLAZADO") { Listo "Dado de alta como la sucursal «$($a.sucursal)»" }
+  elseif ($a.codigo) { Write-Host "   Solicitud enviada (código $($a.codigo)): confírmela en Administración › Sucursales › Servidores esperando alta." }
+  else { Write-Host "   El alta sigue en curso; su estado se ve en http://localhost:$Puerto/alta" }
+}
+if ($Alta -and -not $NoInteractivo) {
   Paso "Alta de este servidor en la Administración"
   $codigo = ""; $fin = (Get-Date).AddMinutes(30); $enlazado = $false
   if ($CodigoInstalacion) { Write-Host "   Canjeando el código de instalación $CodigoInstalacion..." } else { Write-Host "   Enviando la solicitud a la Administración..." }

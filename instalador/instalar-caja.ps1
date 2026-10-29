@@ -21,7 +21,8 @@ param(
   [string]$Servidor = "",
   [string]$Impresora = "",
   [switch]$Ventana,
-  [switch]$SinInicioAutomatico
+  [switch]$SinInicioAutomatico,
+  [switch]$NoInteractivo   # sin preguntas (lo usa FactPOS-Setup.exe)
 )
 $ErrorActionPreference = "Stop"
 function Paso($t) { Write-Host "`n== $t" -ForegroundColor Cyan }
@@ -74,6 +75,9 @@ while (-not $Servidor) {
     $d = $hallados[$lista[0]]
     Listo ("Encontrado: {0} · {1} · {2}" -f $d.empresa, ($d.sucursales -join ", "), $lista[0])
     $Servidor = $lista[0]
+  } elseif ($lista.Count -gt 1 -and $NoInteractivo) {
+    $Servidor = $lista[0]
+    Write-Host "   Hay varios servidores FactPOS en esta red; se usa $Servidor. Si no es el de esta tienda, vuelva a instalar escribiendo su IP." -ForegroundColor Yellow
   } elseif ($lista.Count -gt 1) {
     Write-Host "   Hay varios servidores FactPOS en esta red:"
     for ($i = 0; $i -lt $lista.Count; $i++) {
@@ -83,6 +87,7 @@ while (-not $Servidor) {
     do { $n = Read-Host "   ¿Cuál es el de esta sucursal? (número)" } until ($n -match '^\d+$' -and [int]$n -ge 1 -and [int]$n -le $lista.Count)
     $Servidor = $lista[[int]$n - 1]
   } else {
+    if ($NoInteractivo) { throw "No se encontró el servidor FactPOS en la red. Revise que esté encendido y en la misma red, o escriba su IP en el instalador." }
     Write-Host "   No se encontró ningún servidor. Revise que esté encendido, instalado y en la misma red (mismo router o Wi-Fi)." -ForegroundColor Yellow
     $r = Read-Host "   Enter = buscar de nuevo · o escriba la dirección del servidor (ej. 192.168.1.10)"
     if ($r) {
@@ -93,7 +98,9 @@ while (-not $Servidor) {
     }
   }
 }
-$Servidor = $Servidor.TrimEnd("/")
+$Servidor = $Servidor.Trim().TrimEnd("/")
+if ($Servidor -notmatch '^https?://') { $Servidor = "http://$Servidor" }
+if ($Servidor -notmatch ':\d+$') { $Servidor = "$($Servidor):3000" }
 try { $info = Invoke-RestMethod "$Servidor/descubrir" -TimeoutSec 5 } catch { throw "No responde un servidor FactPOS en $Servidor" }
 Listo "Servidor: $Servidor  ($($info.empresa) · $($info.sucursales -join ', '))"
 
