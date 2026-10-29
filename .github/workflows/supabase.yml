@@ -1,0 +1,42 @@
+name: Base de datos en Supabase
+
+# Aplica las migraciones nuevas a la base de Supabase cada vez que cambian
+# en la rama main. También se puede correr a mano desde la pestaña Actions
+# (con la opción de cargar los datos de demostración).
+#
+# Requiere el secreto del repositorio SUPABASE_DB_URL:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   (cadena "Session pooler" de Supabase, puerto 5432)
+
+on:
+  push:
+    branches: [main]
+    paths: ["db/migrations/**"]
+  workflow_dispatch:
+    inputs:
+      demostracion:
+        description: "Cargar datos de demostración (solo en una base nueva)"
+        type: boolean
+        default: false
+
+concurrency: supabase-migraciones
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      DATABASE_SSL: si
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @factpos/compartido
+      - name: Aplicar migraciones
+        run: npm run db:migrar
+      - name: Cargar datos de demostración
+        if: ${{ inputs.demostracion }}
+        run: npm run semilla

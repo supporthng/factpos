@@ -1,0 +1,28 @@
+# Vigilancia de las sucursales: cada 5 minutos le pide a la API en la nube que revise
+# qué servidores de tienda dejaron de comunicarse y avise al servicio técnico.
+# (Vercel no tiene procesos de fondo; su cron del plan gratis es solo diario.)
+#
+# Secretos del repositorio (Settings › Secrets › Actions):
+#   CENTRAL_URL   dirección de la API, ej. https://factpos-api.vercel.app
+#   CRON_SECRET   el mismo valor de la variable CRON_SECRET en Vercel
+name: Vigilancia de sucursales
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Revisar sucursales y avisar a soporte
+        env:
+          CENTRAL_URL: ${{ secrets.CENTRAL_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CENTRAL_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Faltan los secretos CENTRAL_URL y CRON_SECRET: no se vigila"; exit 0
+          fi
+          curl -fsS --max-time 60 -H "Authorization: Bearer $CRON_SECRET" "$CENTRAL_URL/central/vigilancia"

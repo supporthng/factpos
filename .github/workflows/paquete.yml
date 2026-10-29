@@ -1,0 +1,36 @@
+name: Paquete de instalación
+
+# Arma FactPOS-Servidor-<versión>.zip (servidor compilado + caja + administración
+# + instaladores de Windows). Al publicar una etiqueta v1.2.3 lo adjunta a la
+# versión (Releases) del repositorio; a mano queda en "Artifacts".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  paquete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run empaquetar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FactPOS-Servidor
+          path: paquete/*.zip
+      - name: Publicar en Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" paquete/*.zip --title "FactPOS $GITHUB_REF_NAME" --generate-notes

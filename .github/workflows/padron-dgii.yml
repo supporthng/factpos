@@ -1,0 +1,28 @@
+name: Padrón DGII
+
+# Descarga el listado de RNC de la DGII (DGII_RNC.zip) y lo carga en la base
+# de Supabase, para que la Administración en la nube complete nombres por RNC.
+# Corre el día 1 de cada mes y también a mano desde la pestaña Actions.
+# (Los servidores de las sucursales lo actualizan solos cada semana.)
+
+on:
+  schedule:
+    - cron: "17 9 1 * *"
+  workflow_dispatch:
+
+jobs:
+  padron:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      DATABASE_SSL: si
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @factpos/compartido
+      - name: Descargar y cargar el padrón
+        run: npm run padron
