@@ -38,6 +38,7 @@ param(
   [string]$NombreRed = "factpos",
   [string]$PinSecreto = "",
   [string]$ClavePostgres = "",
+  [int]$PuertoPostgres = 0,           # 0 = automático (5432 o el primero libre)
   [string]$CentralUrl = "",
   [string]$SucursalId = "",
   [string]$CentralClave = "",
@@ -109,22 +110,65 @@ function BuscarPsql {
 }
 # El instalador de PostgreSQL puede seguir trabajando después de que winget termina: se espera
 function EsperarPsql([int]$segundos) {
-  $hasta = (Get-Date).AddSeconds($segundos)
-  do { $p = BuscarPsql; if ($p) { return $p }; Start-Sleep -Seconds 5 } while ((Get-Date) -lt $hasta)
+  $desde = Get-Date; $hasta = $desde.AddSeconds($segundos); $aviso = $desde
+  do {
+    $p = BuscarPsql; if ($p) { return $p }
+    if (((Get-Date) - $aviso).TotalSeconds -ge 30) { $aviso = Get-Date; AvisoEspera $desde }
+    Start-Sleep -Seconds 5
+  } while ((Get-Date) -lt $hasta)
   return $null
+}
+# Mensaje cada 30 s para que se vea que sigue trabajando
+function AvisoEspera($desde) {
+  $min = [int][Math]::Floor(((Get-Date) - $desde).TotalMinutes)
+  Write-Host "   Preparando la base de datos, por favor espere... ($min min; suele tardar de 3 a 10)"
+  if ($min -ge 12) { Write-Host "   Si sigue igual, revise con Alt+Tab si hay una ventana de PostgreSQL esperando respuesta." -ForegroundColor Yellow }
+}
+# Ejecuta un instalador avisando mientras trabaja
+function EjecutarConAviso([string]$exe, [string[]]$argumentos) {
+  $p = Start-Process -FilePath $exe -ArgumentList $argumentos -NoNewWindow -PassThru
+  $desde = Get-Date
+  while (-not $p.WaitForExit(30000)) { AvisoEspera $desde }
+  return $p.ExitCode
+}
+function PuertoOcupado([int]$p) { [bool](Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue) }
+# Puerto de un PostgreSQL ya instalado (lo anota su instalador en el registro)
+function PuertoRegistrado {
+  foreach ($k in "HKLM:\SOFTWARE\PostgreSQL\Services\*", "HKLM:\SOFTWARE\WOW6432Node\PostgreSQL\Services\*") {
+    $v = Get-ItemProperty $k -ErrorAction SilentlyContinue | Where-Object { $_.Port } | Select-Object -First 1
+    if ($v) { return [int]$v.Port }
+  }
+  return 5432
+}
+# Reinstalación: la clave de postgres y el puerto ya quedaron guardados la primera vez
+$archivoClave = "$Carpeta\postgres-superusuario.txt"
+if (-not $ClavePostgres -and (Test-Path $archivoClave)) {
+  $m = Select-String -Path $archivoClave -Pattern '^Clave:\s*(\S+)' | Select-Object -First 1
+  if ($m) { $ClavePostgres = $m.Matches[0].Groups[1].Value; Listo "Se usa la clave de PostgreSQL guardada en la instalación anterior" }
+}
+if ($PuertoPostgres -eq 0 -and (Test-Path "$Carpeta\.env")) {
+  $m = Select-String -Path "$Carpeta\.env" -Pattern '^DATABASE_URL=.*@[^:/]+:(\d+)/' | Select-Object -First 1
+  if ($m) { $PuertoPostgres = [int]$m.Matches[0].Groups[1].Value }
 }
 $pgBin = BuscarPsql
 if (-not $pgBin) {
+  # Otro programa (u otro PostgreSQL) puede estar usando el 5432: se elige el primero libre
+  if ($PuertoPostgres -eq 0) {
+    $PuertoPostgres = 5432
+    while ((PuertoOcupado $PuertoPostgres) -and $PuertoPostgres -lt 5450) { $PuertoPostgres++ }
+    if ($PuertoPostgres -ne 5432) { Write-Host "   El puerto 5432 está ocupado por otro programa: PostgreSQL de FactPOS usará el $PuertoPostgres" -ForegroundColor Yellow }
+  }
   if (-not $ClavePostgres) { $ClavePostgres = Clave 20 }
   # La clave se guarda ANTES de instalar (si algo falla a medias, no se pierde)
   $claveArchivo = "$Carpeta\postgres-superusuario.txt"
   New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
   Set-Content -Path $claveArchivo -Value "Usuario: postgres`r`nClave: $ClavePostgres"
   icacls $claveArchivo /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
-  $opciones = "--mode unattended --unattendedmodeui none --superpassword $ClavePostgres --serverport 5432 --servicename postgresql-16 --prefix `"$env:ProgramFiles\PostgreSQL\16`" --datadir `"$env:ProgramFiles\PostgreSQL\16\data`""
+  $opciones = "--mode unattended --unattendedmodeui none --superpassword $ClavePostgres --serverport $PuertoPostgres --servicename postgresql-16"
+  # Sin comillas internas: PowerShell 5 las rompe al pasarlas a winget (queda en C:\Program Files\PostgreSQL\16, lo normal)
   if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "   Instalando PostgreSQL 16 con winget (puede tardar varios minutos)..."
-    winget install -e --id PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements --accept-source-agreements --override $opciones
+    Write-Host "   Preparando la base de datos (PostgreSQL 16). Puede tardar varios minutos; por favor espere..."
+    EjecutarConAviso "winget" @("install", "-e", "--id", "PostgreSQL.PostgreSQL.16", "--silent", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity", "--override", "`"$opciones`"") | Out-Null
     $pgBin = EsperarPsql 600
   }
   if (-not $pgBin) {
@@ -133,18 +177,20 @@ if (-not $pgBin) {
     $exe = Join-Path $env:TEMP "postgresql-16-windows-x64.exe"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64.exe" -OutFile $exe -UseBasicParsing
-    $p = Start-Process -FilePath $exe -ArgumentList $opciones -Wait -PassThru
-    if ($p.ExitCode -ne 0) { Write-Host "   El instalador de PostgreSQL terminó con código $($p.ExitCode)" -ForegroundColor Yellow }
+    $codigo = EjecutarConAviso $exe @($opciones)
+    if ($codigo -ne 0) { Write-Host "   El instalador de PostgreSQL terminó con código $codigo" -ForegroundColor Yellow }
     $pgBin = EsperarPsql 300
   }
-  if (-not $pgBin) { throw "PostgreSQL no quedó instalado. Instálelo a mano desde https://www.postgresql.org/download/windows/ (versión 16, puerto 5432) y vuelva a ejecutar el instalador escribiendo la clave del usuario postgres." }
+  if (-not $pgBin) { throw "PostgreSQL no quedó instalado. Instálelo a mano desde https://www.postgresql.org/download/windows/ (versión 16) y vuelva a ejecutar el instalador escribiendo la clave del usuario postgres." }
   Listo "PostgreSQL instalado. La clave del superusuario quedó en $claveArchivo"
 } elseif (-not $ClavePostgres) {
+  if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
   if ($NoInteractivo) { throw "PostgreSQL ya estaba instalado en este equipo: escriba la clave del usuario postgres en el instalador" }
   $seg = Read-Host "PostgreSQL ya está instalado. Escriba la clave del usuario postgres" -AsSecureString
   $ClavePostgres = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
 }
 $psql = $pgBin.FullName
+if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
 Listo "Usando $psql"
 
 # ------------------------------------------------------------- Archivos
@@ -157,7 +203,7 @@ Listo "Archivos copiados"
 # ---------------------------------------------------------- Base de datos
 Paso "Base de datos"
 $env:PGPASSWORD = $ClavePostgres
-$existe = & $psql -U postgres -h localhost -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'"
+$existe = & $psql -U postgres -h localhost -p $PuertoPostgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'"
 $envArchivo = "$Carpeta\.env"
 if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   Listo "La base factpos ya existe; se conserva (actualización)"
@@ -187,15 +233,15 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   }
 } else {
   $claveBD = Clave 24
-  if ($existe -eq "1") { & $psql -U postgres -h localhost -c "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveBD'" | Out-Null }
-  else { & $psql -U postgres -h localhost -c "CREATE ROLE factpos LOGIN PASSWORD '$claveBD'" | Out-Null }
-  $hayBase = & $psql -U postgres -h localhost -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'"
-  if ($hayBase -ne "1") { & $psql -U postgres -h localhost -c "CREATE DATABASE factpos OWNER factpos" | Out-Null }
+  if ($existe -eq "1") { & $psql -U postgres -h localhost -p $PuertoPostgres -c "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveBD'" | Out-Null }
+  else { & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE ROLE factpos LOGIN PASSWORD '$claveBD'" | Out-Null }
+  $hayBase = & $psql -U postgres -h localhost -p $PuertoPostgres -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'"
+  if ($hayBase -ne "1") { & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE DATABASE factpos OWNER factpos" | Out-Null }
   if (-not $PinSecreto -and ($Alta -or $Master)) { $PinSecreto = Clave 32 }   # sucursal: lo reemplaza el del principal al darse de alta
   if (-not $PinSecreto) { $PinSecreto = Clave 32; Write-Host "   OJO: se generó un PIN_SECRETO nuevo. Si ya tiene central u otras sucursales, cópielo de allá al archivo .env" -ForegroundColor Yellow }
   @"
 # FactPOS · servidor de sucursal (generado por el instalador)
-DATABASE_URL=postgres://factpos:$claveBD@localhost:5432/factpos
+DATABASE_URL=postgres://factpos:$claveBD@localhost:$PuertoPostgres/factpos
 MODO=$(if ($Master) { "central" } else { "sucursal" })
 PUERTO=$Puerto
 HOST=0.0.0.0
@@ -275,14 +321,25 @@ Listo "Reglas creadas"
 
 # ------------------------------------------------------- Comprobación
 Paso "Comprobando"
-$ok = $false
-foreach ($i in 1..30) {
-  try { $s = Invoke-RestMethod "http://localhost:$Puerto/descubrir" -TimeoutSec 2; $ok = $true; break } catch { Start-Sleep -Seconds 2 }
-}
-if (-not $ok) { throw "El servidor no respondió. Revise $Carpeta\logs\servidor.log" }
-
+# Accesos directos (antes de esperar, para que queden aunque el arranque tarde)
 $escritorio = [Environment]::GetFolderPath("CommonDesktopDirectory")
-Set-Content "$escritorio\FactPOS - Servidor.url" "[InternetShortcut]`r`nURL=http://localhost:$Puerto/terminal/"
+$icono = "$Carpeta\instalador\factpos.ico"
+function AccesoWeb($nombre, $url) {
+  Set-Content "$escritorio\$nombre.url" "[InternetShortcut]`r`nURL=$url`r`nIconFile=$icono`r`nIconIndex=0"
+}
+Remove-Item "$escritorio\FactPOS - Servidor.url" -ErrorAction SilentlyContinue
+AccesoWeb "FactPOS Administración" "http://localhost:$Puerto/admin/"
+AccesoWeb "FactPOS Caja (navegador)" "http://localhost:$Puerto/terminal/"
+Listo "Accesos en el escritorio: «FactPOS Administración» y «FactPOS Caja (navegador)»"
+
+# La primera vez el servidor prepara la base de datos: puede tardar unos minutos en responder
+$ok = $false
+$desde = Get-Date
+while (((Get-Date) - $desde).TotalSeconds -lt 300) {
+  try { $s = Invoke-RestMethod "http://localhost:$Puerto/descubrir" -TimeoutSec 3; $ok = $true; break } catch { Start-Sleep -Seconds 3 }
+  if ([int]((Get-Date) - $desde).TotalSeconds % 30 -lt 4) { Write-Host "   Arrancando el servidor por primera vez, por favor espere..." }
+}
+if (-not $ok) { throw "El servidor todavía no responde. Espere unos minutos y abra http://localhost:$Puerto/admin/ ; si no abre, revise $Carpeta\logs\servidor.log" }
 
 Write-Host "`n========================================================" -ForegroundColor Green
 Write-Host " FactPOS está funcionando en este equipo." -ForegroundColor Green

@@ -29,10 +29,9 @@ export async function verificarClave(clave: string, guardado: string | null | un
   return esperado.length === calc.length && timingSafeEqual(esperado, calc);
 }
 
-/** Contraseña aceptable: 8+ caracteres con letras y números. */
+/** Contraseña aceptable: 4 caracteres o más. */
 export function claveSegura(clave: string) {
-  if (clave.length < 8) return "La contraseña debe tener al menos 8 caracteres";
-  if (!/[a-zA-Z]/.test(clave) || !/\d/.test(clave)) return "La contraseña debe tener letras y números";
+  if (clave.length < 4) return "La contraseña debe tener al menos 4 caracteres";
   return null;
 }
 

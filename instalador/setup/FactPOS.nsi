@@ -67,6 +67,7 @@ Var PgInstalado
 Var TextoFinal
 Var Abrir
 Var Fallo
+Var Registro    ; archivo con todo lo que mostró la instalación
 
 ; controles
 Var hR1
@@ -118,6 +119,10 @@ Function .onInit
     StrCpy $PgInstalado "1"
   ${EndIf}
   FindClose $0
+  ; Reinstalación de FactPOS: la clave quedó guardada, no se pide
+  ${If} ${FileExists} "$INSTDIR\postgres-superusuario.txt"
+    StrCpy $PgInstalado "0"
+  ${EndIf}
 FunctionEnd
 
 ; ------------------------------------------------------------------ 1. tipo
@@ -288,7 +293,7 @@ FunctionEnd
 ; ------------------------------------------------------------------ instalación
 !macro Ejecutar SCRIPT ARGS
   DetailPrint ""
-  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[Text.Encoding]::Default; try { & '${SCRIPT}' ${ARGS}; exit 0 } catch { Write-Host ('ERROR: ' + $$_.Exception.Message); exit 1 }"`
+  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[Text.Encoding]::Default; try { Start-Transcript -Path '$Registro' -Append | Out-Null } catch {}; try { & '${SCRIPT}' ${ARGS}; $$c = 0 } catch { Write-Host ('ERROR: ' + $$_.Exception.Message); $$c = 1 }; try { Stop-Transcript | Out-Null } catch {}; exit $$c"`
   Pop $0
   ${If} $0 != "0"
     StrCpy $Fallo "1"
@@ -300,6 +305,14 @@ Section "FactPOS" SecPrincipal
   System::Call 'Kernel32::SetEnvironmentVariable(t "FACTPOS_INSTALADOR", t "1")'
   StrCpy $Fallo "0"
 
+  ${If} $Tipo == "master"
+  ${OrIf} $Tipo == "sucursal"
+    CreateDirectory "$INSTDIR\logs"
+    StrCpy $Registro "$INSTDIR\logs\instalacion.log"
+  ${Else}
+    CreateDirectory "$LOCALAPPDATA\FactPOS"
+    StrCpy $Registro "$LOCALAPPDATA\FactPOS\instalacion.log"
+  ${EndIf}
   ${If} $Tipo == "master"
   ${OrIf} $Tipo == "sucursal"
     DetailPrint "Preparando los archivos de FactPOS…"
@@ -320,7 +333,8 @@ Section "FactPOS" SecPrincipal
     ${If} $ClavePg != ""
       StrCpy $1 "$1 -ClavePostgres '$ClavePg'"
     ${EndIf}
-    DetailPrint "Instalando el servidor (Node.js, PostgreSQL, base de datos y servicio). Puede tardar varios minutos…"
+    DetailPrint "Instalando el servidor y preparando la base de datos. Puede tardar de 5 a 15 minutos; por favor espere…"
+    SetDetailsPrint both
     !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-servidor.ps1" "$1"
     ${If} $Fallo == "0"
     ${AndIf} $Vende == "1"
@@ -364,7 +378,7 @@ Section "FactPOS" SecPrincipal
   ${If} $Fallo == "1"
     SetDetailsView show
     DetailPrint ""
-    DetailPrint "La instalación no terminó bien. Lea los mensajes de arriba (también en $INSTDIR\logs)."
+    DetailPrint "La instalación no terminó bien. Lea los mensajes de arriba (también quedaron en $Registro)."
     MessageBox MB_ICONEXCLAMATION "La instalación no terminó bien. Revise los mensajes en la lista de detalles y corrija lo que indican; luego vuelva a ejecutar el instalador (conserva lo ya instalado)."
   ${EndIf}
 SectionEnd
@@ -372,7 +386,7 @@ SectionEnd
 ; ------------------------------------------------------------------ final
 Function PrepararFinal
   ${If} $Fallo == "1"
-    StrCpy $TextoFinal "La instalación no terminó bien.$\r$\n$\r$\nRevise los mensajes que se mostraron y vuelva a ejecutar el instalador. Si necesita ayuda, envíe a su proveedor la carpeta logs de $INSTDIR."
+    StrCpy $TextoFinal "La instalación no terminó bien.$\r$\n$\r$\nRevise los mensajes que se mostraron y vuelva a ejecutar el instalador. Si necesita ayuda, envíe a su proveedor el archivo $Registro."
     StrCpy $Abrir ""
     Return
   ${EndIf}
@@ -413,6 +427,8 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\FactPOS Administración.lnk"
   SetShellVarContext all
   Delete "$DESKTOP\FactPOS - Servidor.url"
+  Delete "$DESKTOP\FactPOS Administración.url"
+  Delete "$DESKTOP\FactPOS Caja (navegador).url"
   SetShellVarContext current
   ; Programa (se conservan .env, logs y respaldos; la base de datos queda en PostgreSQL)
   RMDir /r "$INSTDIR\apps"

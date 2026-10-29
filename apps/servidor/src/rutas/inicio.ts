@@ -32,7 +32,7 @@ export async function rutasInicio(app: FastifyInstance) {
       sucursal: z.string().trim().min(2).max(80).default("Principal"),
       nombre: z.string().trim().min(2).max(80),
       usuario: z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,30}$/, "Usuario: 3 a 30 letras, números, punto o guion"),
-      clave: z.string().min(8).max(200),
+      clave: z.string().max(200),
       pin: z.string().regex(/^\d{4,6}$/, "PIN de 4 a 6 números").optional(),
     }).parse(req.body);
 

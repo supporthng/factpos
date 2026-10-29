@@ -121,7 +121,7 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
         <div className="dos-col">
           <label className="campo">
             <span>{usuario?.tieneClave ? "Nueva contraseña (vacía = no cambia)" : "Contraseña de la Administración"}</span>
-            <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="new-password" disabled={!usaAdmin} placeholder={usaAdmin ? "8 o más, con letras y números" : "Su rol no usa la Administración"} />
+            <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="new-password" disabled={!usaAdmin} placeholder={usaAdmin ? "4 o más caracteres" : "Su rol no usa la Administración"} />
           </label>
           <label className="campo">
             <span>{usuario?.tienePin ? "Nuevo PIN (vacío = no cambia)" : "PIN de caja"}</span>
