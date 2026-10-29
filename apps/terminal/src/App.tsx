@@ -1,3 +1,4 @@
+import { leerTema } from "./escala";
 import { useEffect, useState } from "react";
 import { api, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
 import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
@@ -19,8 +20,12 @@ export interface ConfigCaja {
 
 /** Tema camaleón: los colores del logo del cliente pintan la terminal. */
 function aplicarMarca(m: ConfigCaja["marca"]) {
-  for (const [k, v] of Object.entries(temaTerminal(m))) document.documentElement.style.setProperty(k, v);
+  marcaActual = m;
+  for (const [k, v] of Object.entries(temaTerminal(m, leerTema()))) document.documentElement.style.setProperty(k, v);
 }
+let marcaActual: ConfigCaja["marca"] | null = null;
+// Al cambiar de tema claro/oscuro, los colores de la marca se recalculan para ese fondo
+window.addEventListener("factpos:tema", () => { if (marcaActual) aplicarMarca(marcaActual); });
 export interface Usuario { id: string; nombre: string; tienePin?: boolean }
 export interface Turno { id: string; abiertoEn: string; fondoInicial: string; usuarioId: string; usuario: string }
 

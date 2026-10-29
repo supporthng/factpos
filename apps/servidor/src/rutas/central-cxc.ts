@@ -1,3 +1,4 @@
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
@@ -155,8 +156,9 @@ export async function rutasCentralCxc(app: FastifyInstance) {
       tipo: z.enum(["RETIRO", "GASTO", "DEPOSITO", "ABONO_CLIENTE", "LIQUIDACION_DELIVERY"]).optional(),
     }).parse(req.query);
     const filtro = `WHERE s.empresa_id = $1 AND (m.creado_en AT TIME ZONE 'America/Santo_Domingo')::date BETWEEN $2 AND $3
-                      AND ($4::uuid IS NULL OR m.sucursal_id = $4) AND ($5::text IS NULL OR m.tipo = $5)`;
-    const params = [empresaDe(req), f.desde, f.hasta, f.sucursalId ?? null, f.tipo ?? null];
+                      AND ($4::uuid IS NULL OR m.sucursal_id = $4) AND ($5::text IS NULL OR m.tipo = $5)
+                      AND ($6::uuid[] IS NULL OR m.sucursal_id = ANY($6))`;
+    const params = [empresaDe(req), f.desde, f.hasta, f.sucursalId ?? null, f.tipo ?? null, sucursalesDe(req)];
     const [filas, porTipo, porCategoria] = await Promise.all([
       pool.query(`${SQL_MOVIMIENTO} ${filtro} ORDER BY m.creado_en DESC LIMIT 1000`, params),
       pool.query(`SELECT m.tipo, COUNT(*)::int AS cantidad, SUM(m.monto) AS monto FROM movimientos_caja m JOIN sucursales s ON s.id = m.sucursal_id ${filtro} GROUP BY m.tipo`, params),

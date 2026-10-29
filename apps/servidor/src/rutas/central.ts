@@ -1,3 +1,4 @@
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
@@ -28,8 +29,67 @@ export async function rutasCentral(app: FastifyInstance) {
   // Panorama
   // -------------------------------------------------------------------
   app.get("/central/sucursales", async (req) => {
-    const r = await pool.query("SELECT * FROM rpt_resumen_sucursales WHERE empresa_id = $1 ORDER BY sucursal", [empresaDe(req)]);
+    const r = await pool.query(
+      "SELECT * FROM rpt_resumen_sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR sucursal_id = ANY($2)) ORDER BY sucursal",
+      [empresaDe(req), sucursalesDe(req)],
+    );
     return r.rows;
+  });
+
+  /**
+   * Lo que pide atención hoy, para el Resumen: servidores caídos, cierres con
+   * diferencia, comprobantes rechazados, certificado, secuencias, correos
+   * que no salieron. Más la venta de ayer y la del mismo día de la semana pasada.
+   */
+  app.get("/central/resumen/atencion", async (req) => {
+    const e = empresaDe(req);
+    const suc = sucursalesDe(req);
+    const p = [e, suc];
+    const enSuc = (col: string) => `($2::uuid[] IS NULL OR ${col} = ANY($2))`;
+    const hoyRd = "(now() AT TIME ZONE 'America/Santo_Domingo')::date";
+    const [comparar, cierres, ecf, incidentes, cert, secuencias, correos] = await Promise.all([
+      pool.query(
+        `SELECT COALESCE(SUM(venta_total) FILTER (WHERE fecha = ${hoyRd} - 1), 0) AS ayer,
+                COALESCE(SUM(venta_total) FILTER (WHERE fecha = ${hoyRd} - 7), 0) AS "semanaPasada",
+                COALESCE(SUM(transacciones) FILTER (WHERE fecha = ${hoyRd} - 1), 0) AS "transaccionesAyer"
+           FROM rpt_ventas_sucursal v JOIN sucursales s ON s.id = v.sucursal_id
+          WHERE s.empresa_id = $1 AND ${enSuc("v.sucursal_id")} AND v.fecha >= ${hoyRd} - 7`, p),
+      pool.query(
+        `SELECT c.turno_id AS id, c.sucursal, c.caja, c.cajero, c.cerrado_en AS "cerradoEn", c.diferencia
+           FROM rpt_cierres_caja c JOIN sucursales s ON s.id = c.sucursal_id
+          WHERE s.empresa_id = $1 AND ${enSuc("c.sucursal_id")} AND c.fecha >= ${hoyRd} - 1
+          ORDER BY c.cerrado_en DESC LIMIT 50`, p),
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE d.estado = 'RECHAZADO' AND d.creado_en > now() - interval '7 days')::int AS rechazados,
+                COUNT(*) FILTER (WHERE d.estado IN ('PENDIENTE','CONTINGENCIA','EN_PROCESO','ENVIADO') AND d.creado_en < now() - interval '1 hour')::int AS atrasados
+           FROM ecf_documentos d JOIN sucursales s ON s.id = d.sucursal_id WHERE s.empresa_id = $1 AND ${enSuc("d.sucursal_id")}`, p),
+      pool.query(
+        `SELECT i.id, i.tipo, i.titulo, i.desde, i.hasta FROM incidentes i
+          WHERE i.empresa_id = $1 AND i.tipo <> 'PRUEBA' AND (i.hasta IS NULL OR (i.resuelto_en IS NULL AND i.desde > now() - interval '3 days'))
+            AND ($2::uuid[] IS NULL OR i.sucursal_id IS NULL OR i.sucursal_id = ANY($2))
+          ORDER BY (i.hasta IS NULL) DESC, i.desde DESC LIMIT 10`, p),
+      pool.query(
+        `SELECT (SELECT vence FROM certificados_digitales WHERE empresa_id = $1 AND activo) AS vence,
+                (SELECT COUNT(*)::int FROM sucursales s WHERE s.empresa_id = $1 AND s.activo AND s.tipo <> 'ALMACEN'
+                    AND NOT s.certificado_habilitado AND ${enSuc("s.id")}) AS "sinActivar"`, p),
+      pool.query(
+        `SELECT q.sucursal, q.tipo_ecf AS tipo, COALESCE(q.disponibles, 0) AS disponibles, COALESCE(cf.alerta_restantes, 500) AS alerta
+           FROM rpt_ecf_secuencias q LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = q.empresa_id
+          WHERE q.empresa_id = $1 AND ${enSuc("q.sucursal_id")} AND q.tipo_ecf IN ('E31','E32','E34')
+            AND COALESCE(q.disponibles, 0) <= COALESCE(cf.alerta_restantes, 500)
+          ORDER BY 3 LIMIT 10`, p),
+      pool.query(
+        `SELECT COUNT(*)::int AS n FROM correos_enviados WHERE empresa_id = $1 AND estado = 'ERROR' AND creado_en > now() - interval '3 days'`, [e]),
+    ]);
+    return {
+      ...comparar.rows[0],
+      cierres: cierres.rows,
+      ecf: ecf.rows[0],
+      incidentes: incidentes.rows,
+      certificado: cert.rows[0],
+      secuencias: secuencias.rows,
+      correosConError: correos.rows[0].n,
+    };
   });
 
   /** Inventario consolidado: una fila por producto con la existencia de cada sucursal. */
@@ -47,10 +107,11 @@ export async function rutasCentral(app: FastifyInstance) {
         WHERE empresa_id = $1
           AND ($2::text IS NULL OR nombre ILIKE '%' || $2 || '%' OR sku ILIKE $2 || '%')
           AND ($3::uuid IS NULL OR categoria_id = $3)
+          AND ($5::uuid[] IS NULL OR sucursal_id = ANY($5))
         GROUP BY producto_id, sku, nombre
        HAVING $4::boolean IS NOT TRUE OR BOOL_OR(bajo_minimo)
         ORDER BY nombre LIMIT 500`,
-      [empresaDe(req), f.q ?? null, f.categoriaId ?? null, f.soloBajoMinimo === "1"],
+      [empresaDe(req), f.q ?? null, f.categoriaId ?? null, f.soloBajoMinimo === "1", sucursalesDe(req)],
     );
     return r.rows;
   });

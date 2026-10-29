@@ -1,3 +1,4 @@
+import { sesionActual } from "./api";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { api } from "./api";
 
@@ -49,7 +50,7 @@ export function SelectorSucursal({ valor, onCambio, todas = true }: { valor: str
   const { sucursales } = useCatalogo();
   return (
     <select value={valor} onChange={(e) => onCambio(e.target.value)}>
-      {todas && <option value="">Todas las sucursales</option>}
+      {todas && <option value="">{sesionActual().sucursales ? "Todas mis sucursales" : "Todas las sucursales"}</option>}
       {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
     </select>
   );

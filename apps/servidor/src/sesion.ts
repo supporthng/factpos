@@ -44,6 +44,15 @@ export interface SesionAdmin { t: "admin"; u: string; e: string; n: string; p: s
 export interface SesionCaja { t: "caja"; u: string; e: string; c: string; n: string; p: string[]; exp: number }
 export type Sesion = SesionAdmin | SesionCaja;
 
+/**
+ * Sucursales que puede ver/operar el usuario de la administración (null = todas).
+ * Lo pone el gancho de sesiones en la cabecera x-sucursales, nunca el navegador.
+ */
+export function sucursalesDe(req: { headers: Record<string, unknown> }): string[] | null {
+  const h = req.headers["x-sucursales"];
+  return typeof h === "string" && h ? h.split(",") : null;
+}
+
 export function crearToken(s: Omit<SesionAdmin, "exp"> | Omit<SesionCaja, "exp">, horas: number) {
   const cuerpo = b64(JSON.stringify({ ...s, exp: Date.now() + horas * 3600_000 }));
   return `${cuerpo}.${firmar(cuerpo)}`;
@@ -107,7 +116,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
     [/^\/central\/(traspasos|pedidos-sucursal)/, "admin.traspasos"],
     [/^\/central\/cxc/, "admin.cxc"],
     [/^\/central\/(fiscal|padron)/, "admin.fiscal"],
-    [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes)/, "admin.config"],
+    [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo)/, "admin.config"],
   ];
   return mapa.find(([re]) => re.test(ruta))?.[1] ?? "*";
 }

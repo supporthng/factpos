@@ -87,6 +87,7 @@ export async function rutasContingencia(app: FastifyInstance) {
         monto: z.string().regex(/^\d+(\.\d{1,2})?$/), recibido: z.string().optional(), referencia: z.string().max(60).optional(),
       })).min(1),
       clienteId: uuid.optional(),
+      notas: z.string().trim().max(300).optional(),
     }).parse(req.body);
     // Quien vendió es quien entró a la caja en ese momento (va en la venta guardada)
     const s = sesionCaja(req);
@@ -105,7 +106,7 @@ export async function rutasContingencia(app: FastifyInstance) {
       if (usado.rowCount) throw new ErrorNegocio(`El e-NCF ${b.encf} ya fue usado`, 409);
       const v = await registrarVenta(c, cajaId, {
         ventaId: b.ventaId, usuarioId: usuarioVenta, clienteId: b.clienteId, tipoDocumento: "E32",
-        items: b.items, pagos: b.pagos,
+        items: b.items, pagos: b.pagos, notas: b.notas,
       }, { contingencia: { creadoEn: b.creadoEn, encf: b.encf, rangoId: reserva.rows[0].rango_id, turnoId: b.turnoId } });
       return { id: v.id, numero: v.numero, encf: b.encf, total: v.total };
     });

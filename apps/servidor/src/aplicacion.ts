@@ -1,3 +1,5 @@
+import { contextoCaja } from "./contexto.js";
+import { rutasCentralCorreo } from "./rutas/central-correo.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { ZodError } from "zod";
@@ -66,13 +68,20 @@ export async function crearApp() {
 
     // Administración: sesión de usuario con permiso para la sección
     if (ruta.startsWith("/central/")) {
-      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/cambios" || ruta === "/central/vigilancia") return;
+      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
       // Si lo desactivaron o le cambiaron el rol, aplica de inmediato (no espera a que venza la sesión)
       const v = await usuarioVigente(s.u);
       if (!v.activo) return rep.code(401).send({ error: "Su usuario fue desactivado", sesion: true });
       s.p = v.permisos;
+      // Sucursales a las que tiene acceso: se revisa toda sucursal que venga en la petición
+      delete req.headers["x-sucursales"];
+      if (v.sucursales) {
+        const fuera = sucursalesPedidas(req).filter((id) => !v.sucursales!.includes(id));
+        if (fuera.length) return rep.code(403).send({ error: "Su usuario no tiene acceso a esa sucursal" });
+        req.headers["x-sucursales"] = v.sucursales.join(",");
+      }
       const p = permisoDeRuta(metodo, ruta);
       if (p && !tienePermiso(s.p, p)) {
         return rep.code(403).send({ error: "Su usuario no tiene permiso para esta acción" });
@@ -96,6 +105,9 @@ export async function crearApp() {
       if (!v.activo) return rep.code(401).send({ error: "Su usuario fue desactivado", sesion: true });
       const cajaId = ruta.startsWith("/cajas/") ? ruta.split("/")[2] : null;
       if (cajaId && cajaId !== s.c) return rep.code(403).send({ error: "La sesión es de otra caja" });
+      if (v.sucursales && cajaId && !v.sucursales.includes((await contextoCaja(cajaId)).sucursalId)) {
+        return rep.code(401).send({ error: "Su usuario ya no tiene acceso a esta sucursal", sesion: true });
+      }
       (req as typeof req & { sesionCaja: unknown }).sesionCaja = { ...s, p: v.permisos };
       // Quien hace la operación es quien entró con su PIN
       if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) (req.body as Record<string, unknown>).usuarioId = s.u;
@@ -163,6 +175,7 @@ export async function crearApp() {
     await app.register(rutasCentralTraspasos);
     await app.register(rutasCentralCxc);
     await app.register(rutasCentralIncidentes);
+    await app.register(rutasCentralCorreo);
     await app.register(rutasPadronCentral);
   }
 
@@ -197,4 +210,25 @@ function causaBase(e: Error & { code?: string }): string {
         ? "La base no respondió a tiempo. En Vercel use la conexión 'Transaction pooler' de Supabase (puerto 6543)."
         : e.message;
   }
+}
+
+
+/** Toda sucursal que menciona una petición de la administración (para revisar el acceso). */
+function sucursalesPedidas(req: { query: unknown; body: unknown; params: unknown; url: string }): string[] {
+  const ids: string[] = [];
+  const clave = /^(sucursal|origen|destino|surte)(Sucursal)?(Id|Ids)$|^sucursal(Origen|Destino)Id$|^sucursalIds$/i;
+  const revisar = (o: unknown, nivel: number) => {
+    if (!o || typeof o !== "object") return;
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (clave.test(k)) {
+        for (const x of Array.isArray(v) ? v : [v]) if (typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x)) ids.push(x.toLowerCase());
+      } else if (nivel < 1 && Array.isArray(v)) v.forEach((x) => revisar(x, nivel + 1));
+    }
+  };
+  revisar(req.query, 0);
+  revisar(req.body, 0);
+  // /central/sucursales/:id/...
+  const m = /^\/central\/sucursales\/([0-9a-f-]{36})/i.exec(req.url);
+  if (m) ids.push(m[1].toLowerCase());
+  return ids;
 }

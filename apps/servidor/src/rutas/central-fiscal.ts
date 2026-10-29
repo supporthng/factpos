@@ -1,7 +1,10 @@
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.js";
+import { usarCertificado } from "../fiscal/firma.js";
 
 /**
  * Administración de la facturación electrónica (central):
@@ -99,8 +102,8 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT s.*, COALESCE(cf.alerta_restantes, 500) AS alerta
          FROM rpt_ecf_secuencias s LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = s.empresa_id
-        WHERE s.empresa_id = $1 ORDER BY s.sucursal, s.tipo_ecf`,
-      [empresaDe(req)],
+        WHERE s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.sucursal_id = ANY($2)) ORDER BY s.sucursal, s.tipo_ecf`,
+      [empresaDe(req), sucursalesDe(req)],
     );
     return r.rows;
   });
@@ -114,9 +117,9 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
               d.track_id AS "trackId", d.mensajes, d.url_qr AS "urlQr", s.nombre AS sucursal
          FROM ecf_documentos d JOIN sucursales s ON s.id = d.sucursal_id AND s.empresa_id = $1
         WHERE ($2::text IS NULL OR d.estado = $2) AND ($3::uuid IS NULL OR d.sucursal_id = $3)
-          AND ($4::text IS NULL OR d.encf = upper($4))
+          AND ($4::text IS NULL OR d.encf = upper($4)) AND ($5::uuid[] IS NULL OR d.sucursal_id = ANY($5))
         ORDER BY d.creado_en DESC LIMIT 300`,
-      [empresaDe(req), f.estado ?? null, f.sucursalId ?? null, f.encf ?? null],
+      [empresaDe(req), f.estado ?? null, f.sucursalId ?? null, f.encf ?? null, sucursalesDe(req)],
     );
     return r.rows;
   });
@@ -125,8 +128,9 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT d.estado, COUNT(*) AS documentos, COALESCE(SUM(d.monto_total), 0) AS monto
          FROM ecf_documentos d JOIN sucursales s ON s.id = d.sucursal_id AND s.empresa_id = $1
+        WHERE ($2::uuid[] IS NULL OR d.sucursal_id = ANY($2))
         GROUP BY d.estado`,
-      [empresaDe(req)],
+      [empresaDe(req), sucursalesDe(req)],
     );
     return r.rows;
   });
@@ -154,5 +158,64 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     );
     if (!r.rowCount) throw new ErrorNegocio("Este documento no está pendiente de envío", 409);
     return r.rows[0];
+  });
+  // ---- Certificado digital (.p12) ----
+  /** El certificado activo y si cada sucursal ya lo tiene cargado. */
+  app.get("/central/fiscal/certificado", async (req) => {
+    const e = empresaDe(req);
+    const c = (await pool.query(
+      `SELECT c.id, c.titular, c.emisor, c.numero_serie AS "numeroSerie", c.valido_desde AS "validoDesde", c.vence,
+              c.huella, c.subido_en AS "subidoEn", u.nombre AS "subidoPor"
+         FROM certificados_digitales c LEFT JOIN usuarios u ON u.id = c.subido_por
+        WHERE c.empresa_id = $1 AND c.activo`,
+      [e],
+    )).rows[0] ?? null;
+    const sucursales = (await pool.query(
+      `SELECT s.id, s.nombre, s.tipo, s.certificado_habilitado AS habilitado, x.certificado_huella AS huella, x.certificado_error AS error,
+              x.certificado_en AS "revisadoEn", x.ultima_bajada AS "ultimaConexion"
+         FROM sucursales s LEFT JOIN sync_sucursales x ON x.sucursal_id = s.id
+        WHERE s.empresa_id = $1 AND s.activo AND ($2::uuid[] IS NULL OR s.id = ANY($2)) ORDER BY s.nombre`,
+      [e, sucursalesDe(req)],
+    )).rows.map((s) => ({
+      ...s,
+      estado: !s.habilitado ? (s.huella ? "QUITANDO" : "DESACTIVADO")
+        : !s.ultimaConexion ? "SIN_SERVIDOR" : s.error ? "ERROR" : c && s.huella === c.huella ? "CARGADO" : "PENDIENTE",
+    }));
+    // Central instalada en una PC (no en Vercel): también firma, se informa su propio estado
+    const propio = process.env.VERCEL ? null : { huella: huellaEnUso() };
+    return { certificado: c, sucursales, servidorPropio: propio };
+  });
+
+  /** Activar o desactivar el uso del certificado en una o varias sucursales. */
+  app.put("/central/fiscal/certificado/sucursales", async (req) => {
+    const b = z.object({ sucursalIds: z.array(uuid).min(1).max(500), habilitado: z.boolean() }).parse(req.body);
+    const r = await pool.query(
+      `UPDATE sucursales SET certificado_habilitado = $3
+        WHERE empresa_id = $1 AND id = ANY($2::uuid[]) AND certificado_habilitado <> $3 RETURNING id`,
+      [empresaDe(req), b.sucursalIds, b.habilitado],
+    );
+    return { cambiadas: r.rowCount };
+  });
+
+  /** Subir (o reemplazar) el certificado. Se revisa la contraseña y la vigencia antes de guardarlo. */
+  app.post("/central/fiscal/certificado", { bodyLimit: 2 * 1024 * 1024 }, async (req, rep) => {
+    const b = z.object({
+      archivo: z.string().min(100).max(1_500_000), // .p12 en base64
+      clave: z.string().max(200),
+    }).parse(req.body);
+    const p12 = Buffer.from(b.archivo.replace(/^data:[^,]*,/, ""), "base64");
+    const usuario = uuid.safeParse(req.headers["x-usuario-id"]);
+    const r = await enTransaccion(async (c) => {
+      const cert = await guardarCertificado(c, empresaDe(req), { p12, clave: b.clave }, usuario.success ? usuario.data : null);
+      if (cert.vence.getTime() < Date.now()) throw new ErrorNegocio(`Este certificado venció el ${cert.vence.toISOString().slice(0, 10)}: pida la renovación a la entidad certificadora`);
+      if (cert.validoDesde && cert.validoDesde.getTime() > Date.now() + 86400e3) throw new ErrorNegocio("Este certificado todavía no es válido (revise la fecha de la computadora o espere a que empiece su vigencia)");
+      return cert;
+    }).catch((e: Error) => {
+      if (e instanceof ErrorNegocio) throw e;
+      throw new ErrorNegocio(e.message);
+    });
+    if (!process.env.VERCEL) usarCertificado(r); // central en una PC: lo usa de una vez
+    rep.code(201);
+    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella };
   });
 }

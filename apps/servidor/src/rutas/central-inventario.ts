@@ -1,3 +1,4 @@
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { PoolClient } from "pg";
 import { z } from "zod";
@@ -83,6 +84,8 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "delivery": { vista: "rpt_delivery", fecha: true, sucursal: true, orden: "fecha DESC" },
   "saldo-clientes": { vista: "rpt_saldo_clientes", orden: "saldo DESC" },
   "sucursales": { vista: "rpt_resumen_sucursales", sucursal: true, orden: "sucursal" },
+  "ventas-sucursal": { vista: "rpt_ventas_sucursal", fecha: true, sucursal: true, orden: "fecha DESC, venta_total DESC" },
+  "cierres-caja": { vista: "rpt_cierres_caja", fecha: true, sucursal: true, orden: "cerrado_en DESC" },
 };
 
 function enviarCsv(rep: FastifyReply, nombre: string, filas: Record<string, unknown>[]) {
@@ -152,8 +155,9 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         WHERE ($2::uuid IS NULL OR a.sucursal_id = $2)
           AND ($3::date IS NULL OR a.creado_en >= $3::date)
           AND ($4::date IS NULL OR a.creado_en < $4::date + 1)
+          AND ($5::uuid[] IS NULL OR a.sucursal_id = ANY($5))
         GROUP BY a.id, s.nombre, u.nombre ORDER BY a.creado_en DESC LIMIT 300`,
-      [empresaDe(req), f.sucursalId ?? null, f.desde ?? null, f.hasta ?? null],
+      [empresaDe(req), f.sucursalId ?? null, f.desde ?? null, f.hasta ?? null, sucursalesDe(req)],
     );
     return r.rows;
   });
@@ -204,8 +208,9 @@ export async function rutasCentralInventario(app: FastifyInstance) {
          JOIN almacenes a ON a.id = c.almacen_id
          JOIN sucursales s ON s.id = a.sucursal_id AND s.empresa_id = $1
          LEFT JOIN conteo_items i ON i.conteo_id = c.id
+        WHERE ($2::uuid[] IS NULL OR s.id = ANY($2))
         GROUP BY c.id, s.nombre ORDER BY c.creado_en DESC LIMIT 100`,
-      [empresaDe(req)],
+      [empresaDe(req), sucursalesDe(req)],
     );
     return r.rows;
   });
@@ -318,6 +323,11 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         params.push(f.sucursalId);
         cond.push(`sucursal_id = $${params.length}`);
       }
+      const permitidas = sucursalesDe(req);
+      if (permitidas) {
+        params.push(permitidas);
+        cond.push(`sucursal_id = ANY($${params.length}::uuid[])`);
+      }
     }
     if (def.fecha && f.desde) { params.push(f.desde); cond.push(`fecha >= $${params.length}::date`); }
     if (def.fecha && f.hasta) { params.push(f.hasta); cond.push(`fecha <= $${params.length}::date`); }
@@ -422,8 +432,8 @@ export async function rutasCentralInventario(app: FastifyInstance) {
       pool.query(
         `SELECT s.id, s.codigo, s.nombre, s.tipo,
                 (SELECT a.id FROM almacenes a WHERE a.sucursal_id = s.id AND a.es_principal) AS "almacenId"
-           FROM sucursales s WHERE s.empresa_id = $1 AND s.activo ORDER BY s.nombre`,
-        [e],
+           FROM sucursales s WHERE s.empresa_id = $1 AND s.activo AND ($2::uuid[] IS NULL OR s.id = ANY($2)) ORDER BY s.nombre`,
+        [e, sucursalesDe(req)],
       ),
       pool.query(
         `SELECT p.id, p.sku, p.nombre, p.categoria_id AS "categoriaId",

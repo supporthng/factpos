@@ -18,6 +18,7 @@ export interface VentaPendiente {
   items: { presentacionId: string; cantidad: string; precioVariable?: string }[];
   pagos: { formaPago: string; monto: string; recibido?: string; referencia?: string }[];
   clienteId?: string;
+  notas?: string;
   total: string;
   ticket: VentaRegistrada;
   error?: string;
@@ -192,7 +193,7 @@ export async function enviarPendientes(ajustes: Ajustes) {
       try {
         await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/ventas/contingencia`, {
           cuerpo: { ventaId: p.ventaId, usuarioId: p.usuarioOriginal, usuarioOriginal: p.usuarioOriginal, turnoId: p.turnoId, creadoEn: p.creadoEn,
-                    encf: p.encf, items: p.items, pagos: p.pagos, clienteId: p.clienteId },
+                    encf: p.encf, items: p.items, pagos: p.pagos, clienteId: p.clienteId, notas: p.notas },
         });
         pend = pend.filter((x) => x.ventaId !== p.ventaId);
         enviados++;

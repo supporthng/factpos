@@ -159,7 +159,7 @@ export function Facturas({ ajustes, usuario, onReimprimir, onAnulada, onCorregir
   );
 }
 
-export interface VentaPausada<L> { id: string; hora: string; lineas: L[]; cliente: any; cupon: any; total: string; descuentos: any }
+export interface VentaPausada<L> { id: string; hora: string; lineas: L[]; cliente: any; cupon: any; total: string; descuentos: any; notas?: string }
 
 /** Ventas en pausa: se retoman con un clic. */
 export function Pausadas<L>({ pausadas, onRetomar, onDescartar, onCerrar }: {

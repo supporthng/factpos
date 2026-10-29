@@ -2,6 +2,8 @@ import { hostname } from "node:os";
 import { pool } from "../db.js";
 import { TABLAS_BAJADA } from "../rutas/central-sync.js";
 import { aplicarFilas, aplicarKardex, modoSincronizacion, type Modo } from "./aplicar.js";
+import { guardarCertificado, huellaEnUso, type FilaCertificado } from "../fiscal/certificado-guardado.js";
+import { quitarCertificado, usarCertificado } from "../fiscal/firma.js";
 
 /**
  * Sincronización del servidor de una sucursal con la central en la nube.
@@ -124,6 +126,8 @@ export interface Cambios {
   completo: boolean;
   cambios: Record<string, unknown[]>;
   componentes?: Record<string, { componente_id: string; cantidad: string | number }[]>;
+  /** Huella del certificado digital vigente en la central */
+  certificado?: string | null;
 }
 
 /** Aplica en esta base un paquete de cambios de la central (todo o nada). */
@@ -160,14 +164,16 @@ export async function aplicarCambios(d: Cambios) {
   }
 }
 
-export async function bajar(): Promise<{ filas: number; version: number }> {
+export async function bajar(): Promise<{ filas: number; version: number; certificadoCentral?: string | null }> {
   const { sucursalId } = configSync();
   let desde = await leerCursor("central_seguro");
   let desdeKardex = await leerCursor("kardex_seguro");
   let filas = 0, version = desde, versionKardex = desdeKardex;
+  let certificadoCentral: string | null | undefined;
   for (let pagina = 0; pagina < 200; pagina++) {
     const d: Cambios = await pedir(`/central/sync/cambios?sucursalId=${sucursalId}&desde=${desde}&desdeKardex=${desdeKardex}`);
     filas += await aplicarCambios(d);
+    certificadoCentral = d.certificado;
     version = Number(d.version);
     versionKardex = Number(d.versionKardex ?? desdeKardex);
     if (d.completo || (version <= desde && versionKardex <= desdeKardex)) break;
@@ -188,13 +194,60 @@ export async function bajar(): Promise<{ filas: number; version: number }> {
     await guardarCursor(pool, "central_seguro", seguro.v);
     await guardarCursor(pool, "kardex_seguro", seguro.k);
   }
-  return { filas, version };
+  return { filas, version, certificadoCentral };
 }
 
 // ---------------------------------------------------------------- CICLO
+// ----------------------------------------------------------- CERTIFICADO
+/** Cada cuánto se pregunta por el certificado digital (y al arrancar). */
+const CERT_CADA_MS = 10 * 60_000;
+let certRevisado = 0;
+let certError: string | null = null;
+let certFallida: string | null = null; // huella que no se pudo cargar (no se reintenta en cada vuelta)
+
+/**
+ * Baja el certificado digital que se subió en la Administración, si es distinto
+ * del que este servidor tiene en uso, y lo pone a firmar. Nunca detiene la
+ * sincronización: si falla, se informa a la central y se reintenta luego.
+ */
+export async function revisarCertificado(forzar = false) {
+  if (!forzar && Date.now() - certRevisado < CERT_CADA_MS) return null;
+  certRevisado = Date.now();
+  const { sucursalId } = configSync();
+  const q = new URLSearchParams({ sucursalId });
+  const h = huellaEnUso();
+  if (h) q.set("huella", h);
+  if (certError) q.set("error", certError.slice(0, 300));
+  const r = (await pedir(`/central/sync/certificado?${q}`)) as { igual?: boolean; habilitado?: boolean; certificado?: FilaCertificado | null };
+  if (r.igual) { certError = null; return "igual"; }
+  if (!r.certificado) {
+    certError = null;
+    if (r.habilitado === false || !r.certificado) {
+      // Desactivada (o ya no hay certificado): se deja de usar el que había bajado
+      const habia = await pool.query("UPDATE certificados_digitales SET activo = FALSE WHERE activo RETURNING id");
+      quitarCertificado();
+      if (habia.rowCount) { certRevisado = 0; return "desactivado"; }
+    }
+    return r.habilitado === false ? "deshabilitado" : "sin_certificado";
+  }
+  if (process.env.CERT_P12_RUTA) { certError = "Este servidor usa el certificado del archivo .env (CERT_P12_RUTA), no el de la Administración"; return "archivo"; }
+  try {
+    const cert = await guardarCertificado(pool, r.certificado.empresa_id, r.certificado, null);
+    usarCertificado(cert);
+    certError = null;
+    certRevisado = 0; // se informa enseguida a la central que ya lo tiene
+    return "nuevo";
+  } catch (e) {
+    certError = (e as Error).message;
+    certFallida = r.certificado.huella;
+    certRevisado = 0;
+    throw e;
+  }
+}
+
 let enCurso: Promise<unknown> | null = null;
 /** Una vuelta completa. Si ya hay una corriendo, espera a que termine y hace otra. */
-export async function sincronizarAhora(): Promise<{ enviados: number; errores: number; filas: number; version: number }> {
+export async function sincronizarAhora(): Promise<{ enviados: number; errores: number; filas: number; version: number; certificado?: string | null }> {
   while (enCurso) await enCurso.catch(() => {});
   const p = vueltaCompleta();
   enCurso = p;
@@ -217,7 +270,15 @@ async function vueltaCompleta() {
     await marca("ultima_subida = now()", []);
     const b = await bajar();
     await marca("ultima_bajada = now(), ultimo_error = $2", [s.errores ? `${s.errores} elemento(s) no se pudieron subir; se reintentan` : null]);
-    return { ...s, ...b };
+    // Si la central tiene otro certificado, se pide ya (sin esperar los 10 minutos)
+    const enUso = huellaEnUso();
+    const usaElDeLaAdministracion = !process.env.CERT_P12_RUTA && enUso !== null;
+    const otro = !process.env.CERT_P12_RUTA && (
+      (!!b.certificadoCentral && b.certificadoCentral !== enUso && b.certificadoCentral !== certFallida) ||
+      (b.certificadoCentral === null && usaElDeLaAdministracion) // lo desactivaron: dejar de usarlo ya
+    );
+    const cert = await revisarCertificado(otro).catch((e: Error) => `error: ${e.message}`);
+    return { ...s, ...b, certificado: cert };
   } catch (e) {
     await marca("ultimo_error = $2", [(e as Error).message.slice(0, 500)]).catch(() => {});
     throw e;
@@ -242,6 +303,9 @@ export function iniciarSincronizacion(log: (m: string) => void) {
       if (fallando) log("Sincronización: conexión con la central restablecida");
       fallando = false;
       if (r.enviados || r.filas) log(`Sincronización: subidos ${r.enviados}, aplicados ${r.filas} cambios (versión ${r.version})`);
+      if (r.certificado === "nuevo") log("e-CF: se cargó el certificado digital subido en la Administración");
+      else if (r.certificado === "desactivado") log("e-CF: la Administración desactivó el certificado en esta sucursal; solo se factura en ambiente Simulado");
+      else if (r.certificado?.startsWith("error")) log(`e-CF: certificado de la Administración no cargado (${r.certificado.slice(7)})`);
     } catch (e) {
       if (!fallando) log(`Sincronización: ${(e as Error).message}. Se sigue vendiendo; se reintenta solo.`);
       fallando = true;

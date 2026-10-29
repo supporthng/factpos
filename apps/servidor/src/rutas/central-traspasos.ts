@@ -1,3 +1,4 @@
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
@@ -77,11 +78,12 @@ export async function rutasCentralTraspasos(app: FastifyInstance) {
         WHERE so.empresa_id = $1
           AND ($2::text IS NULL OR t.estado = $2)
           AND ($3::uuid IS NULL OR t.origen_sucursal_id = $3 OR t.destino_sucursal_id = $3)
+          AND ($6::uuid[] IS NULL OR t.origen_sucursal_id = ANY($6) OR t.destino_sucursal_id = ANY($6))
           AND ($4::date IS NULL OR (t.enviado_en AT TIME ZONE 'America/Santo_Domingo')::date >= $4)
           AND ($5::date IS NULL OR (t.enviado_en AT TIME ZONE 'America/Santo_Domingo')::date <= $5)
         GROUP BY t.id, so.id, sd.id, p.numero, ue.nombre, ur.nombre
         ORDER BY t.enviado_en DESC LIMIT 300`,
-      [empresaDe(req), f.estado ?? null, f.sucursalId ?? null, f.desde ?? null, f.hasta ?? null],
+      [empresaDe(req), f.estado ?? null, f.sucursalId ?? null, f.desde ?? null, f.hasta ?? null, sucursalesDe(req)],
     );
     return r.rows;
   });
@@ -244,8 +246,9 @@ export async function rutasCentralTraspasos(app: FastifyInstance) {
          LEFT JOIN usuarios u ON u.id = p.creado_por
          LEFT JOIN transferencias t ON t.id = p.transferencia_id
         WHERE p.empresa_id = $1 AND ($2::text IS NULL OR p.estado = $2)
+          AND ($3::uuid[] IS NULL OR p.sucursal_id = ANY($3) OR p.surte_sucursal_id = ANY($3))
         ORDER BY (p.estado = 'PENDIENTE') DESC, p.creado_en DESC LIMIT 200`,
-      [empresaDe(req), f.estado ?? null],
+      [empresaDe(req), f.estado ?? null, sucursalesDe(req)],
     );
     return r.rows;
   });

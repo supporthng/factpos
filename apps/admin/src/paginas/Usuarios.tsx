@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { api, sesionActual } from "../api";
-import { Aviso, Encabezado, Tabla, useDatos } from "../ui";
+import { Aviso, Encabezado, Tabla, useCatalogo, useDatos } from "../ui";
 
-interface Usuario { id: string; nombre: string; usuario: string; activo: boolean; rolId: string; rol: string; tienePin: boolean; tieneClave: boolean }
+interface Usuario { id: string; nombre: string; usuario: string; activo: boolean; rolId: string; rol: string; tienePin: boolean; tieneClave: boolean; sucursales: string[] | null }
 interface Rol { id: string; nombre: string; permisos: string[]; usuarios: number }
 interface Permiso { id: string; grupo: "Caja" | "Administración"; nombre: string }
 
@@ -30,6 +30,9 @@ function ListaUsuarios() {
   const roles = useDatos<Rol[]>("/central/roles");
   const [editar, setEditar] = useState<Usuario | "nuevo" | null>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const { sucursales } = useCatalogo();
+  const nombresSucursales = (ids: string[] | null) =>
+    !ids ? <span className="suave">Todas</span> : ids.map((id) => sucursales.find((s) => s.id === id)?.nombre ?? "otra").join(", ");
   return (
     <>
       <div className="fila-acciones" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -44,6 +47,7 @@ function ListaUsuarios() {
           { titulo: "Nombre", valor: (u) => <span className={u.activo ? "" : "suave"}><b>{u.nombre}</b>{!u.activo && " (inactivo)"}</span> },
           { titulo: "Usuario", valor: (u) => <span className="mono">{u.usuario}</span> },
           { titulo: "Rol", valor: (u) => u.rol },
+          { titulo: "Sucursales", valor: (u) => nombresSucursales(u.sucursales) },
           { titulo: "Administración", valor: (u) => (u.tieneClave ? "Con contraseña" : <span className="suave">Sin contraseña</span>) },
           { titulo: "Caja", valor: (u) => (u.tienePin ? "Con PIN" : <span className="suave">Sin PIN</span>) },
           { titulo: "", valor: (u) => <button className="enlace" onClick={() => setEditar(u)}>Editar</button> },
@@ -69,6 +73,11 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
   const [pin, setPin] = useState("");
   const [quitarPin, setQuitarPin] = useState(false);
   const [activo, setActivo] = useState(usuario?.activo ?? true);
+  const { sucursales: todas } = useCatalogo();
+  const [soloAlgunas, setSoloAlgunas] = useState(!!usuario?.sucursales);
+  const [elegidas, setElegidas] = useState<Set<string>>(new Set(usuario?.sucursales ?? []));
+  const alternarSucursal = (id: string) => { const n = new Set(elegidas); if (n.has(id)) n.delete(id); else n.add(id); setElegidas(n); };
+  const sucursalesElegidas = soloAlgunas ? [...elegidas] : null;
   const [error, setError] = useState("");
   const yo = usuario?.id === sesionActual().usuarioId;
   const rol = roles.find((r) => r.id === rolId);
@@ -80,13 +89,13 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
     setError("");
     try {
       if (!usuario) {
-        await api("/central/usuarios", { cuerpo: { nombre, usuario: nick, rolId, clave: clave || undefined, pin: pin || undefined } });
+        await api("/central/usuarios", { cuerpo: { nombre, usuario: nick, rolId, clave: clave || undefined, pin: pin || undefined, sucursales: sucursalesElegidas } });
         onListo(`${nombre} creado.${pin ? " Ya puede entrar a la caja con su PIN." : ""}`);
       } else {
         await api(`/central/usuarios/${usuario.id}`, {
           metodo: "PATCH",
           cuerpo: {
-            nombre, ...(yo ? {} : { rolId, activo }),
+            nombre, ...(yo ? {} : { rolId, activo, sucursales: sucursalesElegidas }),
             ...(clave ? { clave } : {}),
             ...(quitarPin ? { pin: null } : pin ? { pin } : {}),
           },
@@ -119,12 +128,27 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
             <input inputMode="numeric" value={pin} disabled={quitarPin || !usaCaja} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={usaCaja ? "4 a 6 números" : "Su rol no usa la caja"} autoComplete="off" />
           </label>
         </div>
+        <fieldset className="grupo-permisos acceso-sucursales" disabled={yo}>
+          <legend>Sucursales a las que tiene acceso</legend>
+          <label className="interruptor"><input type="radio" name="acceso" checked={!soloAlgunas} onChange={() => setSoloAlgunas(false)} /><span>Todas, incluidas las que se creen después</span></label>
+          <label className="interruptor"><input type="radio" name="acceso" checked={soloAlgunas} onChange={() => setSoloAlgunas(true)} /><span>Solo estas:</span></label>
+          {soloAlgunas && (
+            <div className="lista-sucursales">
+              {todas.map((s) => (
+                <label key={s.id} className="interruptor"><input type="checkbox" checked={elegidas.has(s.id)} onChange={() => alternarSucursal(s.id)} /><span>{s.nombre}{s.tipo === "ALMACEN" ? " (almacén)" : ""}</span></label>
+              ))}
+            </div>
+          )}
+          <p className="suave pequeno" style={{ margin: "4px 0 0" }}>
+            {yo ? "Su propio acceso lo cambia otro administrador." : "Solo podrá entrar a las cajas de esas sucursales y, en la Administración, solo verá y operará esas sucursales."}
+          </p>
+        </fieldset>
         {usuario?.tienePin && <label className="interruptor"><input type="checkbox" checked={quitarPin} onChange={(e) => setQuitarPin(e.target.checked)} /><span>Quitarle el PIN (ya no entra a la caja)</span></label>}
         {usuario && !yo && <label className="interruptor"><input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /><span>{activo ? "Activo" : "Inactivo: no puede entrar"}</span></label>}
         {error && <Aviso texto={error} />}
         <div className="acciones-modal">
           <button type="button" className="boton" onClick={onCerrar}>Cancelar</button>
-          <button className="boton primario" disabled={nombre.trim().length < 2 || nick.length < 3 || !rolId}>{usuario ? "Guardar" : "Crear usuario"}</button>
+          <button className="boton primario" disabled={nombre.trim().length < 2 || nick.length < 3 || !rolId || (soloAlgunas && !elegidas.size)}>{usuario ? "Guardar" : "Crear usuario"}</button>
         </div>
       </form>
     </div>

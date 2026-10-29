@@ -42,6 +42,32 @@ const SQL_MOVIMIENTO = `
     JOIN turnos t ON t.id = m.turno_id JOIN cajas ca ON ca.id = t.caja_id JOIN sucursales s ON s.id = m.sucursal_id`;
 
 export async function rutasCajaMovimientos(app: FastifyInstance) {
+  /**
+   * Abrir la gaveta sin venta: con PIN del supervisor y queda en la auditoría.
+   * La gaveta la abre la impresora (la caja imprime un ticket mínimo).
+   */
+  app.post("/cajas/:cajaId/gaveta", async (req, rep) => {
+    const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
+    const b = z.object({
+      usuarioId: uuid,
+      motivo: z.string().trim().min(3, "Escriba el motivo").max(200),
+      autorizacion: z.string().max(2000),
+    }).parse(req.body);
+    const aprob = verificarAutorizacion(b.autorizacion, "caja.retiro", cajaId);
+    const ctx = await contextoCaja(cajaId);
+    const id = uuidv7();
+    await enTransaccion(async (c) => {
+      await c.query(
+        `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+         VALUES ($1,$2,$3,$4,'caja.gaveta','caja',$5,$6)`,
+        [id, ctx.sucursalId, b.usuarioId, aprob.supervisorId, cajaId, JSON.stringify({ motivo: b.motivo })],
+      );
+      await encolarFilas(c, "auditoria", [id]);
+    });
+    rep.code(201);
+    return { ok: true, supervisor: aprob.supervisor };
+  });
+
   app.get("/cajas/:cajaId/movimientos", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
     const turnoId = await turnoAbierto(pool, cajaId);

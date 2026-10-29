@@ -1,8 +1,10 @@
+import { procesarEnvios } from "../correo/envios.js";
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { pool, ErrorNegocio } from "../db.js";
-import { avisoDePrueba, canalesConfigurados, vigilar } from "../incidentes.js";
+import { avisoDePrueba, canales, vigilar } from "../incidentes.js";
 
 /** Incidentes en la administración y la vigilancia periódica (cron). */
 const uuid = z.string().uuid();
@@ -19,10 +21,11 @@ export async function rutasCentralIncidentes(app: FastifyInstance) {
          FROM incidentes i LEFT JOIN sucursales s ON s.id = i.sucursal_id LEFT JOIN cajas ca ON ca.id = i.caja_id
          LEFT JOIN usuarios u ON u.id = i.resuelto_por
         WHERE i.empresa_id = $1 AND i.tipo <> 'PRUEBA' AND ($2::boolean IS NOT TRUE OR i.resuelto_en IS NULL)
+          AND ($3::uuid[] IS NULL OR i.sucursal_id IS NULL OR i.sucursal_id = ANY($3))
         ORDER BY (i.hasta IS NULL) DESC, i.desde DESC LIMIT 300`,
-      [empresaDe(req), f.abiertos === "1"],
+      [empresaDe(req), f.abiertos === "1", sucursalesDe(req)],
     );
-    return { canales: canalesConfigurados(), incidentes: r.rows };
+    return { canales: await canales(empresaDe(req)), incidentes: r.rows };
   });
 
   /** Soporte anota qué pasó y lo da por revisado. */
@@ -54,6 +57,8 @@ export async function rutasCentralIncidentes(app: FastifyInstance) {
     const dado = (req.headers.authorization ?? "").replace(/^Bearer /, "");
     const h = (t: string) => createHash("sha256").update(t).digest();
     if (!secreto || !timingSafeEqual(h(dado), h(secreto))) return rep.code(401).send({ error: "No autorizado" });
-    return vigilar((m) => req.log.info(m));
+    const v = await vigilar((m) => req.log.info(m));
+    const correos = await procesarEnvios((m) => req.log.warn(m)).catch((e: Error) => ({ error: e.message }));
+    return { ...v, correos };
   });
 }

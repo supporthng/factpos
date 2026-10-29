@@ -33,3 +33,18 @@ export function iniciarEscala() {
   aplicarEscala();
   window.addEventListener("resize", aplicarEscala);
 }
+
+/** Tema de esta terminal: claro (predeterminado) u oscuro. */
+export type Tema = "claro" | "oscuro";
+const CLAVE_TEMA = "factpos.tema";
+export function leerTema(): Tema {
+  try { return localStorage.getItem(CLAVE_TEMA) === "oscuro" ? "oscuro" : "claro"; } catch { return "claro"; }
+}
+export function aplicarTema() {
+  document.documentElement.dataset.tema = leerTema();
+}
+export function guardarTema(t: Tema) {
+  try { localStorage.setItem(CLAVE_TEMA, t); } catch { /* sin almacenamiento */ }
+  aplicarTema();
+  window.dispatchEvent(new Event("factpos:tema"));
+}

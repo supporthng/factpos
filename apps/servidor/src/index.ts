@@ -6,6 +6,7 @@ import { config } from "./config.js";
 import { migrar } from "./migrar.js";
 import { iniciarCola } from "./fiscal/cola.js";
 import { certificado } from "./fiscal/firma.js";
+import { cargarCertificadoGuardado } from "./fiscal/certificado-guardado.js";
 import { iniciarActualizacionPadron } from "./padron.js";
 import { iniciarAnuncioEnRed } from "./red.js";
 import { iniciarSincronizacion } from "./sync/sucursal.js";
@@ -49,6 +50,7 @@ if (enVercel) {
 
 if (!enVercel) {
   // Facturación electrónica: certificado listo y cola de envío a la DGII
+  await cargarCertificadoGuardado((m) => app.log.warn(m));
   const cert = certificado();
   app.log.info(cert.prueba ? "e-CF: usando CERTIFICADO DE PRUEBA (solo ambiente simulado)" : `e-CF: certificado de ${cert.titular}, vence ${cert.vence.toISOString().slice(0, 10)}`);
   iniciarCola((m) => app.log.info(m));

@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { uuidv7 } from "@factpos/compartido";
+import { avisoIncidentePorCorreo, incidentesPorCorreo, procesarEnvios } from "./correo/envios.js";
 import { pool } from "./db.js";
 import { encolarFilas } from "./sync/outbox.js";
 
@@ -44,6 +45,16 @@ export const canalesConfigurados = () => [
   process.env.SOPORTE_CORREO && process.env.RESEND_API_KEY ? "Correo" : null,
 ].filter(Boolean) as string[];
 
+/** Canales de aviso: los del servidor (.env) más el correo configurado en el panel. */
+let cacheCanales: { t: number; empresa: string | null; correo: boolean } | null = null;
+export async function canales(empresaId: string | null = null) {
+  if (!cacheCanales || cacheCanales.empresa !== empresaId || Date.now() - cacheCanales.t > 60_000) {
+    cacheCanales = { t: Date.now(), empresa: empresaId, correo: await incidentesPorCorreo(empresaId) };
+  }
+  return [...canalesConfigurados(), ...(cacheCanales.correo ? ["Correo (panel)"] : [])];
+}
+export const olvidarCanales = () => { cacheCanales = null; };
+
 const duracion = (desde: string, hasta: string | null) => {
   const min = Math.round(((hasta ? new Date(hasta) : new Date()).getTime() - new Date(desde).getTime()) / 60000);
   return min < 1 ? "menos de 1 min" : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
@@ -68,9 +79,13 @@ export function textoAviso(i: Incidente & { sucursal?: string | null; caja?: str
   return lineas.filter(Boolean).join("\n");
 }
 
-async function enviar(texto: string, i: unknown) {
+async function enviar(texto: string, i: unknown, empresaId: string | null) {
   const errores: string[] = [];
   const tareas: Promise<void>[] = [];
+  const errCorreo: string[] = [];
+  // Correo configurado en Administración › Correo y envíos (null = no configurado)
+  const porCorreo = avisoIncidentePorCorreo(empresaId, texto)
+    .then((r) => (r ? 1 : 0)).catch((e: Error) => { errCorreo.push(`Correo: ${e.message}`); return 0; });
   const tg = process.env.SOPORTE_TELEGRAM_TOKEN, chat = process.env.SOPORTE_TELEGRAM_CHAT;
   if (tg && chat) {
     tareas.push(fetch(`https://api.telegram.org/bot${tg}/sendMessage`, {
@@ -96,8 +111,9 @@ async function enviar(texto: string, i: unknown) {
       }), signal: AbortSignal.timeout(15000),
     }).then((r) => { if (!r.ok) errores.push(`Correo ${r.status}`); }).catch((e) => { errores.push(`Correo: ${e.message}`); }));
   }
-  await Promise.all(tareas);
-  return { enviados: tareas.length - errores.length, errores };
+  const fallidas = await Promise.all(tareas).then(() => errores.length);
+  const porPanel = await porCorreo;
+  return { enviados: tareas.length - fallidas + porPanel, errores: [...errores, ...errCorreo] };
 }
 
 /**
@@ -106,7 +122,7 @@ async function enviar(texto: string, i: unknown) {
  * configurados, el incidente queda igual a la vista en la administración.
  */
 export async function avisarPendientes(log: (m: string) => void = () => {}) {
-  if (!canalesConfigurados().length) return 0;
+  if (!(await canales()).length) return 0;
   const r = await pool.query<Incidente & { sucursal: string | null; caja: string | null; empresa: string | null; aviso: "inicio" | "fin" }>(
     `SELECT i.*, s.nombre AS sucursal, ca.nombre AS caja, e.nombre_comercial AS empresa,
             CASE WHEN i.notificado_en IS NULL THEN 'inicio' ELSE 'fin' END AS aviso
@@ -122,7 +138,7 @@ export async function avisarPendientes(log: (m: string) => void = () => {}) {
   for (const i of r.rows) {
     // Un incidente que ya terminó cuando se avisa por primera vez va en un solo mensaje
     const fin = i.aviso === "fin";
-    const res = await enviar(textoAviso(i, fin), i);
+    const res = await enviar(textoAviso(i, fin), i, i.empresa_id ?? null);
     if (res.enviados > 0) {
       await pool.query(
         fin ? "UPDATE incidentes SET notificado_fin = now() WHERE id = $1"
@@ -140,8 +156,8 @@ export async function avisoDePrueba(empresaId: string, usuario: string) {
     id: uuidv7(), empresa_id: empresaId, sucursal_id: null, caja_id: null, tipo: "PRUEBA" as const, gravedad: "BAJA",
     titulo: `Aviso de prueba enviado por ${usuario}`, detalle: null, desde: new Date().toISOString(), hasta: new Date().toISOString(),
   };
-  const r = await enviar(textoAviso(i), i);
-  return { canales: canalesConfigurados(), ...r };
+  const r = await enviar(textoAviso(i), i, empresaId);
+  return { canales: await canales(empresaId), ...r };
 }
 
 // --------------------------------------------------------------- Vigilancia (central)
@@ -184,9 +200,12 @@ export async function cerrarSinComunicacion(sucursalId?: string) {
 }
 
 export function iniciarVigilancia(log: (m: string) => void) {
-  const t = setInterval(() => { vigilar(log).catch((e) => log(`Vigilancia: ${e.message}`)); }, 60_000);
+  const t = setInterval(() => {
+    vigilar(log).catch((e) => log(`Vigilancia: ${e.message}`));
+    procesarEnvios(log).catch((e) => log(`Correos: ${e.message}`));
+  }, 60_000);
   t.unref();
-  log(`Vigilancia de sucursales activa. Avisos a soporte por: ${canalesConfigurados().join(", ") || "ningún canal configurado (solo en la administración)"}`);
+  log(`Vigilancia de sucursales activa. Avisos a soporte por: ${[...canalesConfigurados(), "correo si se configura en el panel"].join(", ") || "ningún canal configurado (solo en la administración)"}`);
 }
 
 // --------------------------------------------------------------- Latido (sucursal)

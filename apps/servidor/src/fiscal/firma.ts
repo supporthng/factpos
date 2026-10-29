@@ -14,30 +14,77 @@ import { SignedXml } from "xml-crypto";
  *   CERT_P12_RUTA=/ruta/certificado.p12
  *   CERT_P12_CLAVE=********
  *
+ * O, más cómodo, se sube en Administración › Facturación electrónica ›
+ * Certificado: baja cifrado a cada sucursal (ver fiscal/certificado-guardado.ts).
+ * El archivo del .env, si está, tiene prioridad.
+ *
  * Sin certificado se usa uno de PRUEBA generado al vuelo (solo ambiente SIMULADO).
  */
-export interface Certificado { llavePem: string; certPem: string; prueba: boolean; titular: string; vence: Date }
+export interface Certificado {
+  llavePem: string; certPem: string; prueba: boolean; titular: string; vence: Date;
+  /** De dónde salió: archivo del .env, el que se subió en la Administración, o el de prueba */
+  origen?: "archivo" | "administracion" | "prueba";
+  emisor?: string; numeroSerie?: string; validoDesde?: Date; huella?: string;
+}
 
 let cache: Certificado | null = null;
+
+/**
+ * Lee un .p12/.pfx con su contraseña. Revisa que traiga la llave privada,
+ * que corresponda al certificado y lo describe (titular, emisor, vigencia).
+ * Lanza errores en palabras simples (contraseña mala, archivo dañado...).
+ */
+export function leerP12(der: Buffer, clave: string): Certificado {
+  let p12: forge.pkcs12.Pkcs12Pfx;
+  try {
+    p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der.toString("binary")), clave);
+  } catch (e) {
+    const m = (e as Error).message ?? "";
+    if (/password|MAC/i.test(m)) throw new Error("La contraseña del certificado no es correcta");
+    throw new Error("El archivo no es un certificado .p12 / .pfx válido");
+  }
+  const bolsas = (tipo: string) => p12.getBags({ bagType: tipo })[tipo] ?? [];
+  const llave = (bolsas(forge.pki.oids.pkcs8ShroudedKeyBag)[0]?.key ?? bolsas(forge.pki.oids.keyBag)[0]?.key) as forge.pki.rsa.PrivateKey | undefined;
+  if (!llave) throw new Error("El certificado no trae la llave privada (pida a la entidad certificadora el archivo .p12 completo)");
+  // Puede venir la cadena completa: se toma el certificado que corresponde a la llave
+  const certs = bolsas(forge.pki.oids.certBag).map((b) => b.cert).filter((c): c is forge.pki.Certificate => !!c);
+  const cert = certs.find((c) => {
+    const pub = c.publicKey as forge.pki.rsa.PublicKey;
+    return pub?.n && pub.n.equals(llave.n) && pub.e.equals(llave.e);
+  });
+  if (!cert) throw new Error("La llave privada no corresponde a ningún certificado del archivo");
+  const campo = (a: forge.pki.Certificate["subject"], n: string) => String(a.getField(n)?.value ?? "");
+  const derCert = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
+  return {
+    llavePem: forge.pki.privateKeyToPem(llave),
+    certPem: forge.pki.certificateToPem(cert),
+    prueba: false,
+    titular: campo(cert.subject, "CN") || campo(cert.subject, "O") || "(sin nombre)",
+    emisor: campo(cert.issuer, "CN") || campo(cert.issuer, "O"),
+    numeroSerie: cert.serialNumber,
+    validoDesde: cert.validity.notBefore,
+    vence: cert.validity.notAfter,
+    huella: forge.md.sha256.create().update(derCert).digest().toHex(),
+  };
+}
+
+/** Pone en uso un certificado (el que se subió en la Administración). */
+export function usarCertificado(c: Certificado) {
+  if (process.env.CERT_P12_RUTA) return false; // el archivo del .env manda
+  cache = { ...c, origen: "administracion" };
+  return true;
+}
+
+/** Deja de usar el certificado de la Administración (la sucursal quedó desactivada). */
+export function quitarCertificado() {
+  if (cache?.origen === "administracion") cache = null;
+}
 
 export function certificado(): Certificado {
   if (cache) return cache;
   const ruta = process.env.CERT_P12_RUTA;
   if (ruta) {
-    const p12 = forge.pkcs12.pkcs12FromAsn1(
-      forge.asn1.fromDer(readFileSync(ruta).toString("binary")),
-      process.env.CERT_P12_CLAVE ?? "",
-    );
-    const llave = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0]?.key;
-    const cert = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag]?.[0]?.cert;
-    if (!llave || !cert) throw new Error("El certificado .p12 no contiene llave privada o certificado");
-    cache = {
-      llavePem: forge.pki.privateKeyToPem(llave),
-      certPem: forge.pki.certificateToPem(cert),
-      prueba: false,
-      titular: String(cert.subject.getField("CN")?.value ?? ""),
-      vence: cert.validity.notAfter,
-    };
+    cache = { ...leerP12(readFileSync(ruta), process.env.CERT_P12_CLAVE ?? ""), origen: "archivo" };
     return cache;
   }
   // Certificado de prueba (autofirmado)
@@ -53,7 +100,7 @@ export function certificado(): Certificado {
   cert.setSubject(sujeto);
   cert.setIssuer(sujeto);
   cert.sign(llave, forge.md.sha256.create());
-  cache = { llavePem, certPem: forge.pki.certificateToPem(cert), prueba: true, titular: "PRUEBA", vence: cert.validity.notAfter };
+  cache = { llavePem, certPem: forge.pki.certificateToPem(cert), prueba: true, titular: "PRUEBA", vence: cert.validity.notAfter, origen: "prueba" };
   return cache;
 }
 

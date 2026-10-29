@@ -65,7 +65,7 @@ export async function emitirEcfVenta(
   const pagos = (await c.query("SELECT forma_pago, monto FROM venta_pagos WHERE venta_id = $1", [ventaId])).rows;
 
   if (certificado().prueba && v.ambiente !== "SIMULADO") {
-    throw new ErrorNegocio("No hay certificado digital instalado en este servidor: no se puede facturar en el ambiente de la DGII", 503);
+    throw new ErrorNegocio("Esta sucursal no tiene el certificado digital activado: actívelo en Administración › Facturación electrónica › Certificado digital", 503);
   }
   const { rangoId, encf, venceSecuencia } = reservado
     ? { ...reservado, venceSecuencia: (await c.query("SELECT vence_en FROM ecf_rangos WHERE id = $1", [reservado.rangoId])).rows[0].vence_en }

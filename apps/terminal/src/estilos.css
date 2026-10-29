@@ -1,26 +1,45 @@
 /* FactPOS Terminal — alto contraste, pensado para pantallas de caja y uso con teclado */
 :root {
-  /* Azul tinta (no negro): descansa la vista en turnos largos */
+  /* Tema claro (predeterminado): gris frío de fondo, paneles blancos, tinta azul oscura */
+  --fondo: #e7ecf1;
+  --panel: #ffffff;
+  --panel-2: #f1f4f7;
+  --borde: #d2dae3;
+  --texto: #122130;
+  --suave: #5a6b7c;
+  --tinta: #0f1d29;          /* bloque del total: como el visor de una caja registradora */
+  /* Los colores de FactPOS, cada uno con un significado */
+  --primario: #0f766e;       /* acción y marca (se adapta al cliente) */
+  --info: #2563eb;           /* selección */
+  --ok: #15803d;             /* existencia suficiente */
+  --oferta: #b45309;         /* ofertas y ahorro */
+  --cupon: #6d28d9;
+  --error: #c62828;
+  --cobrar: #0f766e;
+  --cobrar-hover: #0b5f58;
+  --radio: 12px;
+  font-family: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+  background: var(--fondo);
+}
+/* Tema oscuro (opcional por terminal): azul tinta, descansa la vista en turnos largos */
+:root[data-tema="oscuro"] {
   --fondo: #0f1923;
   --panel: #152230;
   --panel-2: #1c2d3d;
   --borde: #273b4e;
   --texto: #eef4f8;
   --suave: #8ea5b8;
-  /* Los cuatro colores de FactPOS, cada uno con un significado */
-  --primario: #2dd4bf;     /* acción y marca (se adapta al cliente) */
-  --info: #60a5fa;         /* selección */
-  --ok: #a3e635;           /* existencia suficiente */
-  --oferta: #fbbf24;       /* ofertas y ahorro */
+  --tinta: #08121a;
+  --primario: #2dd4bf;
+  --info: #60a5fa;
+  --ok: #a3e635;
+  --oferta: #fbbf24;
   --cupon: #c4b5fd;
   --error: #f87171;
   --cobrar: #14b8a6;
   --cobrar-hover: #0d9488;
-  --radio: 12px;
-  font-family: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
-  font-variant-numeric: tabular-nums;
-  color: var(--texto);
-  background: var(--fondo);
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -448,6 +467,186 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 @keyframes latido-alerta { 50% { background: #991b1b; } }
 @media (prefers-reduced-motion: reduce) { .aviso-conexion.sin { animation: none; } }
 @media print { .aviso-conexion { display: none !important; } }
-.aviso-sin-servidor-chico { background: rgba(185,28,28,.15); color: #fca5a5; border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.aviso-sin-servidor-chico { background: rgba(185,28,28,.15); color: var(--error); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
 .aviso-cobro-contingencia { background: rgba(185,28,28,.14); border: 1px solid rgba(248,113,113,.5); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
 .pos:has(> .aviso-conexion) { padding-bottom: 46px; }
+
+
+/* =====================================================================
+   Pantalla de venta híbrida
+   Lista de la venta siempre a la vista; catálogo con fotos opcional (F1);
+   total grande como el visor de una caja; funciones con su tecla abajo.
+   ===================================================================== */
+.pos-hibrido { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100%; background: var(--fondo); }
+.icono { flex: none; }
+
+/* Barra superior con el color de la marca */
+.pv-barra { display: flex; align-items: center; gap: 18px; padding: 8px 14px; background: var(--barra-marca, #12324a); color: #fff; min-height: 58px; }
+.pv-marca { flex: none; display: flex; align-items: center; }
+.pv-marca .marca, .pv-marca .marca > span { color: #fff; }
+.pv-marca .marca > span > span { color: color-mix(in srgb, #fff 55%, var(--primario)); }
+.pv-datos { display: flex; align-items: stretch; margin: 0; flex: 1; min-width: 0; }
+.pv-datos > div { display: flex; flex-direction: column; justify-content: center; padding: 0 16px; border-left: 1px solid rgba(255,255,255,.18); min-width: 0; }
+.pv-datos > div:first-child { border-left: 0; padding-left: 4px; }
+.pv-datos dt { font-size: 11px; color: rgba(255,255,255,.72); line-height: 1.2; text-transform: capitalize; }
+.pv-datos dd { margin: 0; font-weight: 700; font-size: 15px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-fecha dd { font-size: 17px; font-variant-numeric: tabular-nums; }
+.pv-estado { flex: none; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; padding: 5px 11px; border-radius: 999px; background: rgba(255,255,255,.12); }
+.pv-estado i { width: 9px; height: 9px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.25); }
+.pv-estado.sin { background: #b91c1c; }
+.pv-estado.sin i { background: #fff; box-shadow: none; }
+.pv-barra-acciones { display: flex; gap: 6px; flex: none; }
+.pv-icono { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; padding: 5px 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #fff; font-size: 12px; font-weight: 600; position: relative; }
+.pv-icono:hover { background: rgba(255,255,255,.14); }
+.pv-icono.activo { background: #fff; color: var(--barra-marca, #12324a); }
+.pv-icono kbd { position: absolute; top: -6px; right: -4px; margin: 0; font-size: 9px; padding: 0 4px; background: var(--panel); color: var(--texto); border-color: transparent; }
+.pv-icono:focus-visible, .pv-funcion:focus-visible, .pv-metodo:focus-visible, .pv-cliente:focus-visible { outline: 3px solid var(--info); outline-offset: 2px; }
+
+/* Escáner + cliente */
+.pv-entrada { display: grid; grid-template-columns: minmax(0, 1fr) 400px auto; gap: 10px; padding: 12px 14px 10px; align-items: stretch; }
+.pv-escaner { display: flex; align-items: center; background: var(--panel); border: 2px solid var(--primario); border-radius: 12px; padding-left: 14px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--primario) 14%, transparent); }
+.pv-escaner > .icono { width: 28px; height: 28px; color: var(--texto); }
+.pv-escaner input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none !important; font-size: 21px; padding: 13px 12px; }
+.pv-buscar { display: flex; align-items: center; gap: 4px; align-self: stretch; padding: 0 16px; border: 0; border-radius: 0 9px 9px 0; background: var(--primario); color: var(--texto-sobre-cobrar, #fff); }
+.pv-buscar .icono { width: 24px; height: 24px; }
+.pv-buscar kbd { background: rgba(255,255,255,.2); color: inherit; border-color: transparent; }
+.pv-cliente { display: flex; align-items: center; gap: 10px; text-align: left; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 6px 12px; color: var(--texto); min-width: 0; }
+.pv-cliente:hover { border-color: var(--primario); }
+.pv-cliente > .icono { width: 26px; height: 26px; color: var(--suave); }
+.pv-cliente.con-cliente { border-color: color-mix(in srgb, var(--info) 55%, var(--borde)); background: color-mix(in srgb, var(--info) 6%, var(--panel)); }
+.pv-cliente.con-cliente > .icono { color: var(--info); }
+.pv-cliente-texto { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.2; }
+.pv-cliente-texto b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+.pv-cliente-texto small { color: var(--suave); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-cliente-accion { flex: none; font-size: 12px; font-weight: 700; color: var(--primario); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; }
+.pv-quitar-cliente { width: 40px; border: 1px solid var(--borde); background: var(--panel); color: var(--suave); border-radius: 12px; font-size: 24px; }
+.pv-quitar-cliente:hover { color: var(--error); border-color: var(--error); }
+.pv-entrada:not(:has(.pv-quitar-cliente)) { grid-template-columns: minmax(0, 1fr) 400px; }
+
+/* Cuerpo: [catálogo] · venta · cobro */
+.pv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; padding: 0 14px 10px; min-height: 0; }
+.con-catalogo .pv-cuerpo { grid-template-columns: minmax(0, 40fr) minmax(0, 46fr) 312px; }
+.pv-catalogo { min-height: 0; min-width: 0; display: flex; background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; overflow: hidden; }
+.pv-catalogo .catalogo { padding: 12px; gap: 10px; flex: 1; }
+.pv-catalogo .rejilla { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 9px; }
+.pv-catalogo .tarjeta-producto .info { padding: 8px 10px 9px; }
+
+.pv-venta { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; overflow: hidden; }
+.pv-venta-cabeza { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--borde); }
+.pv-venta-cabeza h2 { margin: 0; font-size: 18px; letter-spacing: -.2px; }
+.pv-venta-cabeza .suave { font-size: 13px; white-space: nowrap; }
+.pv-venta-cabeza .boton { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 14px; }
+.pv-venta-cabeza .boton kbd { margin: 0; }
+.flex { flex: 1; }
+
+.pv-tabla { flex: 1; min-height: 0; overflow: auto; }
+.pv-fila { display: grid; grid-template-columns: 30px minmax(0, 1fr) 124px 92px 84px 104px 38px; gap: 8px; align-items: center; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--borde); font-size: 16px; cursor: default; }
+.pv-fila.pv-cabeza { position: sticky; top: 0; z-index: 1; background: var(--panel-2); color: var(--suave); font-size: 12px; font-weight: 700; padding-top: 7px; padding-bottom: 7px; }
+.pv-fila.seleccionada { background: color-mix(in srgb, var(--info) 9%, var(--panel)); box-shadow: inset 4px 0 0 var(--info); }
+.pv-fila .centro, .centro { text-align: center; }
+.pv-num { color: var(--suave); font-size: 13px; }
+.pv-desc { min-width: 0; line-height: 1.3; }
+.pv-desc > b { font-weight: 700; }
+.pv-desc > .suave { font-size: 14px; }
+.pv-etiquetas { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 2px; font-size: 12px; }
+.pv-etiquetas em { font-style: normal; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.pv-etiquetas .t-oferta { background: color-mix(in srgb, var(--oferta) 14%, transparent); color: var(--oferta); }
+.pv-etiquetas .t-desc { background: color-mix(in srgb, var(--info) 12%, transparent); color: var(--info); }
+.pv-etiquetas .t-cupon { background: color-mix(in srgb, var(--cupon) 14%, transparent); color: var(--cupon); }
+.pv-precio-mini { display: none; color: var(--suave); }
+.pv-ahorro { color: var(--oferta); font-weight: 600; }
+.pv-fila small { color: var(--suave); font-size: 12px; }
+.pv-quitar { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--suave); }
+.pv-quitar:hover { color: var(--error); background: color-mix(in srgb, var(--error) 10%, transparent); }
+.mini-x { border: 0; background: none; color: var(--suave); font-size: 16px; line-height: 1; padding: 0 3px; }
+.mini-x:hover { color: var(--error); }
+
+.celda-cantidad { display: inline-grid; grid-template-columns: 32px 46px 32px; align-items: stretch; border: 1px solid var(--borde); border-radius: 9px; overflow: hidden; background: var(--panel); }
+.celda-cantidad button { border: 0; background: var(--panel-2); color: var(--texto); font-size: 18px; font-weight: 700; padding: 0; }
+.celda-cantidad button:hover { background: color-mix(in srgb, var(--primario) 14%, var(--panel-2)); }
+.celda-cantidad input { width: 100%; border: 0; border-radius: 0; text-align: center; font-weight: 800; font-size: 16px; padding: 6px 0; background: var(--panel); }
+.celda-cantidad input:focus { box-shadow: inset 0 0 0 2px var(--info); }
+.celda-peso { font-weight: 700; }
+
+.pv-vacio { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 56px 20px; color: var(--suave); text-align: center; }
+.pv-vacio .icono { width: 56px; height: 56px; opacity: .35; }
+.pv-vacio b { font-size: 20px; color: var(--texto); }
+
+.pv-acciones-linea { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--borde); background: var(--panel-2); }
+.pv-acciones-linea .boton { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 14px; background: var(--panel); }
+.pv-acciones-linea .boton kbd { margin: 0 0 0 2px; }
+.pv-acciones-linea .boton.con-nota { border-color: var(--info); color: var(--info); }
+.pv-nota-texto { margin: 0; padding: 6px 14px 8px; font-size: 13px; color: var(--suave); background: var(--panel-2); border-top: 1px dashed var(--borde); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Con catálogo: la lista se vuelve compacta (precio debajo del nombre) */
+.con-catalogo .pv-fila { grid-template-columns: minmax(0, 1fr) 112px 96px 32px; padding-left: 12px; gap: 6px; font-size: 15px; }
+.con-catalogo .pv-fila > :nth-child(1), .con-catalogo .pv-fila > :nth-child(4), .con-catalogo .pv-fila > :nth-child(5) { display: none; }
+.con-catalogo .pv-precio-mini { display: inline; }
+.con-catalogo .celda-cantidad { grid-template-columns: 30px 40px 30px; }
+.con-catalogo .pv-venta-cabeza .suave { display: none; }
+.con-catalogo .pv-acciones-linea .boton kbd { display: none; }
+
+/* Cobro: el total como el visor de la caja */
+.pv-cobro { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
+.pv-total { background: var(--tinta); color: #fff; border-radius: 14px; padding: 14px 16px 12px; border-top: 5px solid var(--primario); display: flex; flex-direction: column; gap: 2px; }
+.pv-total > span { font-size: 13px; font-weight: 700; color: rgba(255,255,255,.7); letter-spacing: .02em; }
+.pv-total > b { font-size: 44px; line-height: 1.05; font-weight: 800; font-stretch: 112%; letter-spacing: -1px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pv-total > small { font-size: 13px; color: rgba(255,255,255,.72); }
+.con-catalogo .pv-total > b { font-size: 38px; }
+.pv-desglose { margin: 0; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 6px 14px; }
+.pv-desglose > div { display: flex; justify-content: space-between; padding: 4px 0; font-size: 15px; }
+.pv-desglose dt { color: var(--suave); }
+.pv-desglose dd { margin: 0; font-weight: 600; }
+.pv-desglose .ahorro dt, .pv-desglose .ahorro dd { color: var(--oferta); }
+.pv-titulo-pago { font-size: 13px; font-weight: 700; color: var(--suave); margin-top: 2px; }
+.pv-metodos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pv-metodo { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-radius: 11px; border: 1px solid var(--borde); background: var(--panel); color: var(--texto); font-weight: 700; font-size: 15px; }
+.pv-metodo .icono { color: var(--primario); width: 22px; height: 22px; }
+.pv-metodo:hover:not(:disabled) { border-color: var(--primario); background: color-mix(in srgb, var(--primario) 7%, var(--panel)); }
+.pv-metodo:disabled { opacity: .5; cursor: not-allowed; }
+.pv-cobro .boton.cobrar { margin: 2px 0 0; padding: 16px; font-size: 24px; }
+.pv-cobro .boton.cobrar kbd { background: rgba(255,255,255,.2); color: inherit; border-color: transparent; }
+.pv-ultima { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--suave); background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 7px 10px; }
+.pv-ultima .cambio { color: var(--ok); }
+
+/* Funciones con su tecla */
+.pv-funciones { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; padding: 0 14px 12px; }
+.pv-funcion { --c: var(--suave); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 62px; padding: 7px 6px 6px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c) 35%, var(--borde)); background: color-mix(in srgb, var(--c) 9%, var(--panel)); color: var(--texto); font-size: 13px; font-weight: 700; line-height: 1.15; text-align: center; }
+.pv-funcion .icono { color: var(--c); width: 22px; height: 22px; }
+.pv-funcion kbd { margin: 0; font-size: 10px; padding: 0 5px; background: transparent; border-color: color-mix(in srgb, var(--c) 40%, var(--borde)); color: var(--suave); }
+.pv-funcion:hover:not(:disabled) { background: color-mix(in srgb, var(--c) 16%, var(--panel)); border-color: var(--c); }
+.pv-funcion:active:not(:disabled) { transform: translateY(1px); }
+.pv-funcion:disabled { opacity: .45; cursor: not-allowed; }
+.pv-funcion.rojo { --c: #dc2626; } .pv-funcion.azul { --c: #2563eb; } .pv-funcion.ambar { --c: #d97706; } .pv-funcion.violeta { --c: #7c3aed; }
+.pv-funcion.verde { --c: #16a34a; } .pv-funcion.gris { --c: #64748b; } .pv-funcion.tinta { --c: var(--texto); }
+
+/* Herramientas */
+.ancho-completo { width: 100%; margin-bottom: 12px; }
+.ancho-completo button { flex: 1; padding: 9px; }
+.nota-venta { width: 100%; font: inherit; color: var(--texto); background: var(--panel-2); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; resize: vertical; }
+.fila-botones { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.boton.peligro-lleno { background: var(--error); color: #fff; }
+.tabla-existencias { margin-top: 12px; display: flex; flex-direction: column; }
+.te-fila { display: grid; grid-template-columns: minmax(0, 1fr) 120px 170px 96px; gap: 10px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--borde); }
+.te-cabeza { font-size: 12px; font-weight: 700; color: var(--suave); }
+.existencia.ok { color: var(--ok); font-weight: 700; } .existencia.bajo { color: var(--oferta); font-weight: 700; } .existencia.agotado { color: var(--error); font-weight: 700; }
+.t-nota { margin-top: 4px; font-size: 11px; }
+.ticket.solo-impresion { position: absolute; left: -9999px; top: 0; }
+
+/* Pantallas más estrechas (1024 × 768, 4:3) */
+@media (max-aspect-ratio: 4/3) {
+  .pv-cuerpo { grid-template-columns: minmax(0, 1fr) 300px; }
+  .con-catalogo .pv-cuerpo { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 280px; }
+  .pv-entrada { grid-template-columns: minmax(0, 1fr) 300px auto; }
+  .pv-datos > div:nth-child(1) { display: none; }
+  .pv-icono span { display: none; }
+  .pv-icono { min-width: 44px; }
+  .pv-fila { grid-template-columns: minmax(0, 1fr) 118px 88px 98px 34px; }
+  .pv-fila > :nth-child(1), .pv-fila > :nth-child(5) { display: none; }
+  .pv-funcion { font-size: 12px; }
+  .pv-total > b { font-size: 32px; letter-spacing: -.6px; }
+}
+
+.pos-hibrido ~ .aviso, .pos-hibrido .aviso { bottom: 92px; z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.entrada-grande.entrada-texto { text-align: left; }

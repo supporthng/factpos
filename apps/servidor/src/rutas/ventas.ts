@@ -31,6 +31,8 @@ const VentaSchema = CarritoSchema.extend({
   /** Autorización del supervisor (requerida si hay descuentos manuales) */
   autorizacionDescuento: z.string().max(2000).optional(),
   motivoDescuento: z.string().trim().max(200).optional(),
+  /** Observaciones de la venta (salen en el ticket) */
+  notas: z.string().trim().max(300).optional(),
   tipoDocumento: z.enum(["E32", "E31"]).default("E32"),
   pagos: z
     .array(
@@ -52,6 +54,7 @@ export interface VentaInput extends Carrito {
   ventaId?: string;
   autorizacionDescuento?: string;
   motivoDescuento?: string;
+  notas?: string;
   tipoDocumento: "E32" | "E31";
   pagos: { formaPago: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "DELIVERY" | "OTRO"; monto: string; recibido?: string; referencia?: string }[];
 }
@@ -246,14 +249,14 @@ export async function registrarVenta(
   const ventaId = body.ventaId ?? uuidv7();
   const v = await c.query<{ numero: string }>(
     `INSERT INTO ventas (id, sucursal_id, caja_id, turno_id, usuario_id, cliente_id, numero_interno,
-                         tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia)
+                         tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia, notas)
      VALUES ($1,$2,$3,$4,$5,$6,
              (SELECT COALESCE(MAX(numero_interno), 0) + 1 FROM ventas WHERE caja_id = $3),
-             $7,$8,$9,$10,$11,0,$12, COALESCE($13::timestamptz, now()), $14)
+             $7,$8,$9,$10,$11,0,$12, COALESCE($13::timestamptz, now()), $14, $15)
      RETURNING numero_interno AS numero`,
     [ventaId, ctx.sucursalId, cajaId, turnoId, body.usuarioId, body.clienteId ?? null,
      body.tipoDocumento, credito.gt(0) ? "CREDITO" : "CONTADO",
-     q.totales.subtotal, q.totales.descuento, q.totales.itbis, q.totales.total, cont?.creadoEn ?? null, !!cont],
+     q.totales.subtotal, q.totales.descuento, q.totales.itbis, q.totales.total, cont?.creadoEn ?? null, !!cont, body.notas || null],
   );
   const numero = v.rows[0].numero;
 

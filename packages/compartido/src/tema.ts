@@ -140,8 +140,9 @@ export function temaAdmin(m: Marca): Record<string, string> {
 }
 
 /** Variables CSS de la Terminal (tema oscuro, alto contraste). */
-export function temaTerminal(m: Marca): Record<string, string> {
-  const panel = "#16202a";
+/** Colores de la Terminal a partir de la marca. Sirve para el tema claro (predeterminado) y el oscuro. */
+export function temaTerminal(m: Marca, fondo: "claro" | "oscuro" = "oscuro"): Record<string, string> {
+  const panel = fondo === "claro" ? "#ffffff" : "#16202a";
   const boton = ajustarContraste(m.primario, "#ffffff", 4.5); // botón con texto blanco legible
   return {
     "--primario": ajustarContraste(m.primario, panel, 4.5),
@@ -149,5 +150,7 @@ export function temaTerminal(m: Marca): Record<string, string> {
     "--cobrar-hover": conLuminosidad(boton, Math.max(0, rgbAHsl(hexARgb(boton))[2] - 0.08)),
     "--texto-sobre-cobrar": "#ffffff",
     "--acento-marca": ajustarContraste(m.secundario && !esNeutro(m.secundario) ? m.secundario : m.primario, panel, 3),
+    // Barra superior con el color de la marca (texto blanco legible)
+    "--barra-marca": ajustarContraste(conLuminosidad(boton, Math.min(rgbAHsl(hexARgb(boton))[2], 0.3)), "#ffffff", 7),
   };
 }

@@ -1,3 +1,4 @@
+import { Correo } from "./paginas/Correo";
 import { useEffect, useState } from "react";
 import { api, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
@@ -39,12 +40,13 @@ const SECCIONES = [
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, p: ["admin.cxc", "admin.reportes"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, p: ["admin.reportes"] },
   { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, p: ["admin.fiscal"] },
+  { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, p: ["admin.fiscal"] },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, p: ["admin.reportes"] },
   { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Configuración", C: Sucursales, p: ["admin.config"] },
   { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Configuración", C: Incidentes, p: ["admin.config"] },
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, p: ["admin.usuarios"] },
+  { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, p: ["admin.config"] },
   { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, p: ["admin.config"] },
-  { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Configuración", C: Padron, p: ["admin.fiscal"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"];
 
@@ -68,15 +70,21 @@ export function App() {
   useEffect(() => {
     if (!sesion) return;
     // Permisos al día (si el administrador cambió el rol, se refleja al abrir)
-    api<{ usuario: { permisos: string[]; nombre: string } }>("/central/sesion")
-      .then((r) => { fijarSesion({ ...sesion, permisos: r.usuario.permisos, nombre: r.usuario.nombre }); setRefresco((x) => x + 1); })
+    api<{ usuario: { permisos: string[]; nombre: string; sucursales: string[] | null } }>("/central/sesion")
+      .then((r) => { fijarSesion({ ...sesion, permisos: r.usuario.permisos, nombre: r.usuario.nombre, sucursales: r.usuario.sucursales }); setRefresco((x) => x + 1); })
       .catch(() => {});
     api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch((e) => setError(e.message));
     api<{ logo: string | null; primario: string; secundario: string | null; nombre: string }>("/central/marca")
       .then((m) => { aplicarTemaAdmin(m); setLogo(m.logo); })
       .catch(() => {});
   }, [sesion]);
-  useEffect(() => { location.hash = seccion; }, [seccion]);
+  useEffect(() => { if (location.hash.slice(1) !== seccion) location.hash = seccion; }, [seccion]);
+  // Enlaces internos (#seccion) desde cualquier pantalla, y atrás/adelante del navegador
+  useEffect(() => {
+    const f = () => { const h = location.hash.slice(1).split("?")[0] as Seccion; if (h) setSeccion(h); };
+    addEventListener("hashchange", f);
+    return () => removeEventListener("hashchange", f);
+  }, []);
 
   if (!sesion || !catalogo && error) {
     return <Entrar error={error} onListo={(s) => { fijarSesion(s); setError(""); setSesion(s); }} />;

@@ -9,6 +9,8 @@ export interface Sesion {
   usuarioId: string;
   nombre: string;
   permisos: string[];
+  /** Sucursales a las que tiene acceso (null = todas) */
+  sucursales?: string[] | null;
 }
 
 export function leerSesion(): Sesion | null {

@@ -1,6 +1,6 @@
 // Service worker mínimo: permite instalar la app y abrirla aunque falle la red
 // (los datos siempre se piden en vivo a la central).
-const CACHE = "factpos-admin-v5";
+const CACHE = "factpos-admin-v7";
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./manifest.webmanifest", "./iconos/factpos-192.png"])));
   self.skipWaiting();

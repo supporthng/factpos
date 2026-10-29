@@ -1,3 +1,4 @@
+import { sucursalesDe } from "../sesion.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
@@ -62,8 +63,9 @@ export async function rutasCentralCompras(app: FastifyInstance) {
          JOIN usuarios u ON u.id = c.usuario_id
         WHERE s.empresa_id = $1 AND ($2::uuid IS NULL OR c.sucursal_id = $2)
           AND ($3::date IS NULL OR c.fecha_factura >= $3) AND ($4::date IS NULL OR c.fecha_factura <= $4)
+          AND ($5::uuid[] IS NULL OR c.sucursal_id = ANY($5))
         ORDER BY c.fecha_factura DESC, c.creado_en DESC LIMIT 300`,
-      [empresaDe(req), f.sucursalId ?? null, f.desde || null, f.hasta || null],
+      [empresaDe(req), f.sucursalId ?? null, f.desde || null, f.hasta || null, sucursalesDe(req)],
     );
     return r.rows;
   });

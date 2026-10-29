@@ -37,8 +37,8 @@ export async function rutasSesionCaja(app: FastifyInstance) {
     const llave = `caja:${cajaId}:${b.usuarioId}`;
     frenar(llave);
     const ctx = await contextoCaja(cajaId);
-    const r = await pool.query<{ id: string; nombre: string; pin_hash: string | null; permisos: string[] }>(
-      `SELECT u.id, u.nombre, u.pin_hash, ro.permisos FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
+    const r = await pool.query<{ id: string; nombre: string; pin_hash: string | null; permisos: string[]; sucursales: string[] | null }>(
+      `SELECT u.id, u.nombre, u.pin_hash, ro.permisos, u.sucursales FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
         WHERE u.id = $1 AND u.empresa_id = $2 AND u.activo`,
       [b.usuarioId, ctx.empresaId],
     );
@@ -49,6 +49,7 @@ export async function rutasSesionCaja(app: FastifyInstance) {
       fallo(llave, 1);
       throw new ErrorNegocio("PIN incorrecto", 401);
     }
+    if (u.sucursales && !u.sucursales.includes(ctx.sucursalId)) throw new ErrorNegocio(`${u.nombre} no tiene acceso a esta sucursal`, 403);
     if (!tienePermiso(u.permisos, "venta.crear")) throw new ErrorNegocio(`${u.nombre} no tiene permiso para vender en caja`, 403);
     fallos.delete(llave);
     const token = crearToken({ t: "caja", u: u.id, e: ctx.empresaId, c: cajaId, n: u.nombre, p: u.permisos }, 16);
@@ -86,14 +87,14 @@ export async function rutasSesionCentral(app: FastifyInstance) {
   app.get("/central/sesion", async (req) => {
     const s = sesionAdmin(req);
     const r = await pool.query(
-      `SELECT u.id, u.nombre, ro.permisos, e.id AS "empresaId", e.nombre_comercial AS empresa
+      `SELECT u.id, u.nombre, ro.permisos, u.sucursales, e.id AS "empresaId", e.nombre_comercial AS empresa
          FROM usuarios u JOIN roles ro ON ro.id = u.rol_id JOIN empresas e ON e.id = u.empresa_id
         WHERE u.id = $1 AND u.activo`,
       [s.u],
     );
     if (!r.rowCount) throw new ErrorNegocio("Su usuario fue desactivado", 401);
     const u = r.rows[0];
-    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos }, empresa: { id: u.empresaId, nombre: u.empresa } };
+    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa } };
   });
 
   app.post("/central/sesion/clave", async (req) => {
@@ -111,7 +112,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
   app.get("/central/usuarios", async (req) => {
     const r = await pool.query(
       `SELECT u.id, u.nombre, u.usuario, u.activo, u.rol_id AS "rolId", ro.nombre AS rol,
-              u.pin_hash IS NOT NULL AS "tienePin", u.clave_hash LIKE 'scrypt$%' AS "tieneClave"
+              u.pin_hash IS NOT NULL AS "tienePin", u.clave_hash LIKE 'scrypt$%' AS "tieneClave", u.sucursales
          FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
         WHERE u.empresa_id = $1 ORDER BY u.activo DESC, u.nombre`,
       [sesionAdmin(req).e],
@@ -125,7 +126,16 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     rolId: uuid,
     clave: z.string().max(200).optional(),
     pin: pinValido.optional(),
+    /** null = todas las sucursales */
+    sucursales: z.array(uuid).min(1).max(500).nullable().default(null),
   });
+  const sucursalesDeEmpresa = async (empresaId: string, ids: string[] | null) => {
+    if (!ids) return null;
+    const unicos = [...new Set(ids)];
+    const r = await pool.query("SELECT COUNT(*)::int AS n FROM sucursales WHERE empresa_id = $1 AND id = ANY($2::uuid[])", [empresaId, unicos]);
+    if (r.rows[0].n !== unicos.length) throw new ErrorNegocio("Alguna de las sucursales elegidas no existe");
+    return unicos;
+  };
 
   const guardarPin = async (empresaId: string, id: string, pin: string | null) => {
     try {
@@ -148,8 +158,9 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     const id = uuidv7();
     try {
       await pool.query(
-        "INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-        [id, s.e, b.rolId, b.nombre, b.usuario, b.clave ? await hashClave(b.clave) : "pendiente", b.pin ? hashPin(s.e, b.pin) : null],
+        "INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash, sucursales) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        [id, s.e, b.rolId, b.nombre, b.usuario, b.clave ? await hashClave(b.clave) : "pendiente", b.pin ? hashPin(s.e, b.pin) : null,
+         await sucursalesDeEmpresa(s.e, b.sucursales)],
       );
     } catch (e: any) {
       if (e.code === "23505") {
@@ -170,6 +181,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
       activo: z.boolean().optional(),
       clave: z.string().max(200).optional(),
       pin: pinValido.nullable().optional(),
+      sucursales: z.array(uuid).min(1).max(500).nullable().optional(),
     }).parse(req.body);
     const u = (await pool.query("SELECT id FROM usuarios WHERE id = $1 AND empresa_id = $2", [id, s.e])).rows[0];
     if (!u) throw new ErrorNegocio("Usuario no encontrado", 404);
@@ -182,6 +194,10 @@ export async function rutasSesionCentral(app: FastifyInstance) {
       [id, b.nombre ?? null, b.rolId ?? null, b.activo ?? null, b.clave ? await hashClave(b.clave) : null],
     );
     if (b.pin !== undefined) await guardarPin(s.e, id, b.pin);
+    if (b.sucursales !== undefined) {
+      if (id === s.u && b.sucursales) throw new ErrorNegocio("No puede limitarse las sucursales a usted mismo");
+      await pool.query("UPDATE usuarios SET sucursales = $2 WHERE id = $1", [id, await sucursalesDeEmpresa(s.e, b.sucursales)]);
+    }
     olvidarUsuario(id);
     // Siempre debe quedar al menos un administrador activo
     const admins = await pool.query(
@@ -265,13 +281,13 @@ export const leerSesionAdmin = (req: FastifyRequest) => {
 };
 
 /** Estado vigente del usuario (activo y permisos de su rol), con 30 s de memoria. */
-const vigentes = new Map<string, { activo: boolean; permisos: string[]; t: number }>();
+const vigentes = new Map<string, { activo: boolean; permisos: string[]; sucursales: string[] | null; t: number }>();
 export async function usuarioVigente(id: string) {
   const v = vigentes.get(id);
   if (v && v.t > Date.now() - 30_000) return v;
-  const r = await pool.query<{ activo: boolean; permisos: string[] }>(
-    "SELECT u.activo, ro.permisos FROM usuarios u JOIN roles ro ON ro.id = u.rol_id WHERE u.id = $1", [id]);
-  const n = { activo: !!r.rows[0]?.activo, permisos: r.rows[0]?.permisos ?? [], t: Date.now() };
+  const r = await pool.query<{ activo: boolean; permisos: string[]; sucursales: string[] | null }>(
+    "SELECT u.activo, ro.permisos, u.sucursales FROM usuarios u JOIN roles ro ON ro.id = u.rol_id WHERE u.id = $1", [id]);
+  const n = { activo: !!r.rows[0]?.activo, permisos: r.rows[0]?.permisos ?? [], sucursales: r.rows[0]?.sucursales ?? null, t: Date.now() };
   vigentes.set(id, n);
   return n;
 }

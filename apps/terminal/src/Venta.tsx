@@ -11,26 +11,38 @@ import { PanelDelivery } from "./Delivery";
 import { Ticket, type VentaRegistrada } from "./Ticket";
 import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
-import { TAMANOS, leerTamano, guardarTamano, type Tamano } from "./escala";
+import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
 import { guardarCache, leerCache, useConexion } from "./contingencia";
 
-/** Tamaño de letra de esta terminal (además del ajuste automático a la pantalla). */
+/** Tamaño de letra y tema de esta terminal (además del ajuste automático a la pantalla). */
 export function TamanoPantalla() {
   const [t, setT] = useState<Tamano>(leerTamano());
+  const [tema, setTema] = useState<Tema>(leerTema());
   return (
-    <div className="tamano-pantalla">
-      <span className="suave">Tamaño de letra de esta terminal</span>
-      <div className="selector-modo">
-        {(Object.keys(TAMANOS) as Tamano[]).map((k) => (
-          <button key={k} className={t === k ? "activo" : ""} onClick={() => { setT(k); guardarTamano(k); }}>{TAMANOS[k].nombre}</button>
-        ))}
+    <>
+      <div className="tamano-pantalla">
+        <span className="suave">Tamaño de letra de esta terminal</span>
+        <div className="selector-modo">
+          {(Object.keys(TAMANOS) as Tamano[]).map((k) => (
+            <button key={k} className={t === k ? "activo" : ""} onClick={() => { setT(k); guardarTamano(k); }}>{TAMANOS[k].nombre}</button>
+          ))}
+        </div>
       </div>
-    </div>
+      <div className="tamano-pantalla">
+        <span className="suave">Colores de la pantalla</span>
+        <div className="selector-modo">
+          <button className={tema === "claro" ? "activo" : ""} onClick={() => { setTema("claro"); guardarTema("claro"); }}>Claro</button>
+          <button className={tema === "oscuro" ? "activo" : ""} onClick={() => { setTema("oscuro"); guardarTema("oscuro"); }}>Oscuro</button>
+        </div>
+      </div>
+    </>
   );
 }
 import { ClientesCaja } from "./Clientes";
 import { TurnoCaja } from "./Turno";
-import { Descuento, Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
+import { Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
+import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
+import type { MetodoPago } from "./Cobro";
 
 export interface Cliente {
   id: string; nombre: string; tipoDocumento: string; documento: string | null; telefono: string | null;
@@ -38,9 +50,14 @@ export interface Cliente {
   /** Recién creado en caja para pedir comprobante fiscal: el cobro sale marcado E31 */
   nuevoParaFiscal?: boolean;
 }
-interface Linea { prod: ProductoCatalogo; cantidad: string; descuentoManual?: string; motivoDescuento?: string; precioVariable?: string }
+interface Linea {
+  prod: ProductoCatalogo; cantidad: string; descuentoManual?: string; motivoDescuento?: string; precioVariable?: string;
+  /** Precio bajado en caja con aprobación (se cobra como descuento) */
+  precioCambiado?: string;
+}
 
-type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "pausadas";
+type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "pausadas"
+  | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -59,7 +76,11 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [aviso, setAviso] = useState<{ texto: string; tipo: "error" | "ok" } | null>(null);
   const [ultima, setUltima] = useState<ResultadoVenta | null>(null);
   const [codigo, setCodigo] = useState("");
+  const [notas, setNotas] = useState("");
+  const [metodo, setMetodo] = useState<MetodoPago>("EFECTIVO");
+  const [alcanceDescuento, setAlcanceDescuento] = useState<"linea" | "factura">("linea");
   const entrada = useRef<HTMLInputElement>(null);
+  const reloj = useReloj();
   const idx = useMemo(() => (catalogo ? indexarCatalogo(catalogo) : null), [catalogo]);
 
   // Catálogo en memoria: se descarga al iniciar y se refresca solo si cambió
@@ -232,11 +253,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setModal("buscar");
   };
 
-  // Modo de venta: Escáner (lista rápida) o Catálogo (tarjetas). Cada terminal recuerda el suyo.
+  // Pantalla híbrida: la lista de la venta siempre a la vista; el catálogo con fotos
+  // se muestra u oculta (F1). Cada terminal recuerda su preferencia.
   const [modo, setModo] = useState<"escaner" | "catalogo">(() => {
     try { return (localStorage.getItem("factpos.modo") as "escaner" | "catalogo") || "escaner"; } catch { return "escaner"; }
   });
   useEffect(() => { try { localStorage.setItem("factpos.modo", modo); } catch { /* sin almacenamiento */ } }, [modo]);
+  const verCatalogo = modo === "catalogo";
   const enCarrito = useMemo(() => {
     const m = new Map<string, number>();
     for (const l of lineas) m.set(l.prod.presentacionId, (m.get(l.prod.presentacionId) ?? 0) + Number(l.cantidad));
@@ -247,14 +270,30 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
   const cambiarCantidad = (i: number, delta: number) => {
     if (delta > 0 && lineas[i] && !hayExistencia(lineas, lineas[i].prod, delta)) return;
-    setLineas((ls) => ls.map((l, j) => (j === i ? { ...l, cantidad: String(Math.max(1, Number(l.cantidad) + delta)) } : l)));
+    setLineas((ls) => ls.map((l, j) => (j === i ? ajustarDescuentoPorPrecio({ ...l, cantidad: String(Math.max(1, Number(l.cantidad) + delta)) }) : l)));
   };
+  /** Cantidad escrita a mano en la línea */
+  const fijarCantidad = (i: number, valor: string) => {
+    const l = lineas[i];
+    const n = Number(valor);
+    if (!l || !Number.isFinite(n) || n <= 0) return;
+    const entero = l.prod.esPesable ? n : Math.round(n);
+    if (entero > Number(l.cantidad) && !hayExistencia(lineas, l.prod, entero - Number(l.cantidad))) return;
+    setLineas((ls) => ls.map((x, j) => (j === i ? ajustarDescuentoPorPrecio({ ...x, cantidad: String(entero) }) : x)));
+  };
+  /** Si el precio se cambió en caja, la rebaja sigue la cantidad. */
+  const ajustarDescuentoPorPrecio = (l: Linea): Linea => {
+    if (!l.precioCambiado) return l;
+    const actual = Number(l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? 0);
+    return { ...l, descuentoManual: Math.max(0, (actual - Number(l.precioCambiado)) * Number(l.cantidad)).toFixed(2) };
+  };
+  const precioDe = (l: Linea) => l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? "0";
   const quitar = (i: number) => {
     setLineas((ls) => ls.filter((_, j) => j !== i));
     setSel((s) => Math.min(s, lineas.length - 2));
   };
   const nuevaVenta = () => {
-    setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); avisadas.current = new Set();
+    setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); setNotas(""); setMetodo("EFECTIVO"); avisadas.current = new Set();
   };
 
   // Aprobación del supervisor para los descuentos de esta venta
@@ -273,7 +312,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     if (!lineas.length) return;
     setPausadas((ps) => [...ps, {
       id: crypto.randomUUID(), hora: new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" }),
-      lineas, cliente, cupon, total: cot.r?.totales.total ?? "0", descuentos: aprobacion,
+      lineas, cliente, cupon, total: cot.r?.totales.total ?? "0", descuentos: aprobacion, notas,
     }]);
     nuevaVenta();
     avisar("Venta en pausa. F5 para retomarla.", "ok");
@@ -283,7 +322,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setPausadas((ps) => ps.filter((x) => x.id !== p.id));
     // El catálogo pudo cambiar: se toman los datos vigentes del producto
     setLineas(p.lineas.map((l) => ({ ...l, prod: idx?.porId.get(l.prod.presentacionId) ?? l.prod })));
-    setCliente(p.cliente); setCupon(p.cupon); setAprobacion(p.descuentos ?? null); setSel(p.lineas.length - 1);
+    setCliente(p.cliente); setCupon(p.cupon); setAprobacion(p.descuentos ?? null); setNotas(p.notas ?? ""); setSel(p.lineas.length - 1);
     setModal(null);
   };
   const reimprimirUltima = async () => {
@@ -296,6 +335,12 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     }
   };
 
+  const cobrarCon = (m: MetodoPago) => { setMetodo(m); abrirCobro(); };
+  const hayLinea = sel >= 0 && !!lineas[sel];
+  const abrirDescuento = (alcance: "linea" | "factura") => { if (!lineas.length) return; setAlcanceDescuento(hayLinea ? alcance : "factura"); setModal("descuento"); };
+  /** Bloquear: la venta en curso pasa a pausa y la caja vuelve a la pantalla del PIN. */
+  const bloquear = () => { if (lineas.length) pausar(); onSalir(); };
+
   // Atajos de teclado
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -303,18 +348,27 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         if (e.key === "Escape") setModal(null);
         return;
       }
+      const conAlt: Record<string, () => void> = {
+        p: () => hayLinea && setModal("cambiarPrecio"),
+        n: () => setModal("nota"),
+        q: () => lineas.length && setModal("cotizacion"),
+        e: () => catalogo && setModal("existencias"),
+        g: () => setModal("gaveta"),
+      };
+      if (e.altKey && conAlt[e.key.toLowerCase()]) { e.preventDefault(); conAlt[e.key.toLowerCase()](); return; }
       const mapa: Record<string, () => void> = {
         F1: () => setModo((m) => (m === "escaner" ? "catalogo" : "escaner")),
         F2: () => { setBusqueda(""); setModal("buscar"); },
         F3: () => pausar(),
         F4: () => setModal("cliente"),
         F5: () => setModal("pausadas"),
-        F7: () => sel >= 0 && lineas[sel] && setModal("descuento"),
-        F9: () => setModal("facturas"),
         F6: () => setModal("cupon"),
+        F7: () => abrirDescuento("linea"),
         F8: () => config.modulos.delivery.activo && setModal("delivery"),
+        F9: () => setModal("facturas"),
         F10: () => setModal("turno"),
-        F12: () => { abrirCobro(); },
+        F12: () => cobrarCon("EFECTIVO"),
+        Escape: () => lineas.length && setModal("cancelar"),
         Delete: () => sel >= 0 && quitar(sel),
         ArrowUp: () => setSel((s) => Math.max(0, s - 1)),
         ArrowDown: () => setSel((s) => Math.min(lineas.length - 1, s + 1)),
@@ -323,199 +377,202 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       };
       const f = mapa[e.key];
       const campo = document.activeElement as HTMLInputElement | null;
+      const enCantidad = !!campo?.closest?.(".celda-cantidad");
       const campoVacio = !campo || !("value" in campo) || campo.value === "";
-      if (f && (e.key.startsWith("F") || e.key === "Delete" || e.key.startsWith("Arrow") || campoVacio)) {
+      if (f && (e.key.startsWith("F") || e.key === "Delete" || e.key === "Escape" || (e.key.startsWith("Arrow") && !enCantidad) || (campoVacio && !enCantidad))) {
         e.preventDefault();
         f();
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [modal, lineas, sel, cot.error, codigo, config, cliente, cupon, aprobacion, pausadas, modo]);
+  }, [modal, lineas, sel, cot.error, codigo, config, cliente, cupon, aprobacion, pausadas, modo, notas, catalogo]);
 
   // El campo de código siempre recupera el foco
   useEffect(() => {
     if (modal) return;
-    if (modo === "catalogo") (document.querySelector("[data-entrada-principal]") as HTMLInputElement | null)?.focus();
-    else entrada.current?.focus();
+    entrada.current?.focus();
   }, [modal, lineas, modo]);
 
   const total = cot.r?.totales.total ?? "0.00";
 
+  const articulos = lineas.reduce((a, l) => a + (l.prod.esPesable ? 1 : Number(l.cantidad)), 0);
+  const descuentoTotal = Number(cot.r?.totales.descuento ?? 0);
+
   return (
-    <div className="pos">
+    <div className={"pos pos-hibrido" + (verCatalogo ? " con-catalogo" : "")}>
       <AvisoConexion />
-      <header className="barra">
-        {config.marca.logo
-          ? <img className="logo-barra" src={config.marca.logo} alt={config.empresa} />
-          : <div className="marca pequena con-icono"><SimboloFactPOS tamano={30} /><span>Fact<span>POS</span></span></div>}
-        <div className="barra-info">
-          <b>{config.nombre} · {usuario.nombre}</b><span>{config.sucursal}</span>
+      <header className="pv-barra">
+        <div className="pv-marca">
+          {config.marca.logo
+            ? <img className="logo-barra" src={config.marca.logo} alt={config.empresa} />
+            : <span className="marca pequena con-icono"><SimboloFactPOS tamano={28} /><span>Fact<span>POS</span></span></span>}
         </div>
-        <div className="selector-modo" role="tablist" aria-label="Modo de venta">
-          <button role="tab" aria-selected={modo === "escaner"} className={modo === "escaner" ? "activo" : ""} onClick={() => setModo("escaner")}>Escáner</button>
-          <button role="tab" aria-selected={modo === "catalogo"} className={modo === "catalogo" ? "activo" : ""} onClick={() => setModo("catalogo")}>Catálogo</button>
-          <kbd>F1</kbd>
-        </div>
-        <div className="barra-acciones">
-          <button className="boton fantasma" onClick={() => setModal("pausadas")}>En pausa{pausadas.length ? ` (${pausadas.length})` : ""} <kbd>F5</kbd></button>
-          <button className="boton fantasma" onClick={() => setModal("facturas")}>Facturas <kbd>F9</kbd></button>
-          {config.modulos.delivery.activo && <button className="boton fantasma" onClick={() => setModal("delivery")}>Delivery <kbd>F8</kbd></button>}
-          <button className="boton fantasma" onClick={() => setModal("turno")}>Turno <kbd>F10</kbd></button>
-          <button className="boton fantasma" onClick={onSalir}>Salir</button>
-        </div>
+        <dl className="pv-datos">
+          <div><dt>Sucursal</dt><dd>{config.sucursal}</dd></div>
+          <div><dt>Caja</dt><dd>{config.nombre}</dd></div>
+          <div><dt>Cajero</dt><dd>{usuario.nombre}</dd></div>
+          <div className="pv-fecha"><dt>{reloj.fecha}</dt><dd>{reloj.hora}</dd></div>
+        </dl>
+        <EstadoServidor />
+        <nav className="pv-barra-acciones" aria-label="Opciones de la caja">
+          <button className={"pv-icono" + (verCatalogo ? " activo" : "")} aria-pressed={verCatalogo} onClick={() => setModo(verCatalogo ? "escaner" : "catalogo")} title="Mostrar u ocultar el catálogo con fotos (F1)">
+            <Icono n="catalogo" /><span>Catálogo</span><kbd>F1</kbd>
+          </button>
+          <button className="pv-icono" onClick={() => setModal("ajustes")} title="Tamaño de letra, colores y atajos"><Icono n="ajustes" /><span>Ajustes</span></button>
+          <button className="pv-icono" onClick={bloquear} title="La venta queda en pausa y se pide el PIN"><Icono n="candado" /><span>Bloquear</span></button>
+          <button className="pv-icono" onClick={onSalir}><Icono n="salir" /><span>Salir</span></button>
+        </nav>
       </header>
 
-      <main className={"pos-cuerpo" + (modo === "catalogo" ? " modo-catalogo" : "")}>
-        {modo === "catalogo" && catalogo && (
-          <VistaCatalogo catalogo={catalogo} nivel={nivelCliente} enCarrito={enCarrito}
-            onAgregar={(p) => agregar(p, "1")} onCodigo={procesarCodigo} />
-        )}
-        {modo === "escaner" && <section className="carrito">
-          <div className="entrada-codigo">
-            <input
-              ref={entrada}
-              value={codigo}
-              placeholder={catalogo ? "Escanee o escriba código / nombre   (3*código = cantidad)" : "Cargando catálogo…"}
-              onChange={(e) => setCodigo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  procesarEntrada(codigo);
-                  setCodigo("");
-                }
-              }}
-            />
-            <span className="suave">{catalogo ? `${catalogo.productos.length} productos` : ""}</span>
-          </div>
+      <div className="pv-entrada">
+        <div className="pv-escaner">
+          <Icono n="codigo" />
+          <input
+            ref={entrada}
+            value={codigo}
+            aria-label="Código de barras, código o nombre del producto"
+            placeholder={catalogo ? "Escanee o escriba código / nombre   ·   3*código = 3 unidades" : "Cargando catálogo…"}
+            onChange={(e) => setCodigo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { procesarEntrada(codigo); setCodigo(""); }
+            }}
+          />
+          <button className="pv-buscar" onClick={() => { setBusqueda(codigo.trim()); setCodigo(""); setModal("buscar"); }} title="Buscar producto (F2)">
+            <Icono n="lupa" /><kbd>F2</kbd>
+          </button>
+        </div>
+        <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
+          <Icono n="persona" />
+          <span className="pv-cliente-texto">
+            <small>Cliente{cliente?.lista ? ` · ${cliente.lista}` : ""}</small>
+            <b>{cliente ? cliente.nombre : "Consumidor final"}</b>
+            {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
+          </span>
+          <span className="pv-cliente-accion">{cliente ? "Cambiar" : "RNC / Cédula"} <kbd>F4</kbd></span>
+        </button>
+        {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a consumidor final" onClick={() => setCliente(null)}>×</button>}
+      </div>
 
-          <div className="tabla-carrito">
-            <div className="fila encabezado">
-              <span>Producto</span><span className="der">Cant.</span><span className="der">Precio</span><span className="der">Total</span>
+      <main className="pv-cuerpo">
+        {verCatalogo && catalogo && (
+          <section className="pv-catalogo" aria-label="Catálogo">
+            <VistaCatalogo catalogo={catalogo} nivel={nivelCliente} enCarrito={enCarrito}
+              onAgregar={(p) => agregar(p, "1")} onCodigo={procesarCodigo} />
+          </section>
+        )}
+
+        <section className="pv-venta" aria-label="Productos de la venta">
+          <header className="pv-venta-cabeza">
+            <h2>Venta en curso</h2>
+            <span className="suave">{lineas.length ? `${lineas.length} línea(s) · ${articulos % 1 ? articulos.toFixed(2) : articulos} artículo(s)` : "Sin productos"}</span>
+            <span className="flex" />
+            <button className="boton fantasma" disabled={!lineas.length} onClick={pausar}><Icono n="pausa" />Suspender <kbd>F3</kbd></button>
+            <button className="boton fantasma" disabled={!lineas.length || !cot.r} onClick={() => setModal("cotizacion")}><Icono n="documento" />Cotización <kbd>Alt+Q</kbd></button>
+          </header>
+
+          <div className="pv-tabla" role="table" aria-label="Detalle de la venta">
+            <div className="pv-fila pv-cabeza" role="row">
+              <span role="columnheader">#</span><span role="columnheader">Descripción</span><span role="columnheader" className="centro">Cant.</span>
+              <span role="columnheader" className="der">Precio</span><span role="columnheader" className="der">Desc.</span><span role="columnheader" className="der">Total</span><span />
             </div>
-            {lineas.length === 0 && <div className="vacio">Escanee el primer producto</div>}
+            {lineas.length === 0 && (
+              <div className="pv-vacio">
+                <Icono n="codigo" />
+                <b>Escanee el primer producto</b>
+                <span>o escriba su nombre arriba{verCatalogo ? ", o tóquelo en el catálogo" : " · F1 muestra el catálogo con fotos"}</span>
+              </div>
+            )}
             {lineas.map((l, i) => {
               const c = cot.r?.lineas[i];
-              const precio = l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? "0";
+              const precio = precioDe(l);
+              const desc = c ? Number(c.calc.descuento) : 0;
               return (
-                <div key={i} className={"fila" + (i === sel ? " seleccionada" : "")} onClick={() => setSel(i)}>
-                  <span>
+                <div key={i} role="row" className={"pv-fila" + (i === sel ? " seleccionada" : "")} onClick={() => setSel(i)}>
+                  <span className="pv-num">{i + 1}</span>
+                  <span className="pv-desc">
                     <b>{l.prod.nombre}</b> <span className="suave">{l.prod.presentacion}</span>
-                    {c?.oferta && <span className="etiqueta-oferta">{c.oferta.nombre} −{rd(c.oferta.descuento)}{c.oferta.agotada && ` · solo ${Number(c.oferta.unidades)} en oferta`}</span>}
-                    {c && Number(c.descuentoCupon) > 0 && <span className="etiqueta-cupon">Cupón −{rd(c.descuentoCupon)}</span>}
-                    {l.descuentoManual && <span className="etiqueta-cupon">Descuento aprobado −{rd(l.descuentoManual)}
-                      <button className="mini-x" title="Quitar descuento" onClick={(e) => { e.stopPropagation(); setLineas((ls) => ls.map((x, j) => j === i ? { ...x, descuentoManual: undefined, motivoDescuento: undefined } : x)); }}>×</button></span>}
+                    <span className="pv-etiquetas">
+                      <span className="pv-precio-mini">{rd(precio)}{l.prod.esPesable ? "/lb" : " c/u"}</span>
+                      {c?.oferta && <em className="t-oferta">{c.oferta.nombre}{c.oferta.agotada && ` · solo ${Number(c.oferta.unidades)} en oferta`}</em>}
+                      {l.precioCambiado && <em className="t-desc">Precio cambiado a {rd(l.precioCambiado)}</em>}
+                      {l.descuentoManual && !l.precioCambiado && <em className="t-desc">Descuento aprobado</em>}
+                      {c && Number(c.descuentoCupon) > 0 && <em className="t-cupon">Cupón</em>}
+                      {(l.descuentoManual || l.precioCambiado) && (
+                        <button className="mini-x" title="Quitar descuento o cambio de precio" onClick={(e) => { e.stopPropagation(); setLineas((ls) => ls.map((x, j) => j === i ? { ...x, descuentoManual: undefined, motivoDescuento: undefined, precioCambiado: undefined } : x)); }}>×</button>
+                      )}
+                    </span>
                   </span>
-                  <span className="der cantidad">
-                    {!l.prod.esPesable && <button className="mini" onClick={(e) => { e.stopPropagation(); cambiarCantidad(i, -1); }}>−</button>}
-                    {l.prod.esPesable ? Number(l.cantidad).toFixed(3) : l.cantidad}
-                    {!l.prod.esPesable && <button className="mini" onClick={(e) => { e.stopPropagation(); cambiarCantidad(i, 1); }}>+</button>}
+                  <span className="centro">
+                    <CeldaCantidad linea={l} onMenos={() => (Number(l.cantidad) > 1 ? cambiarCantidad(i, -1) : quitar(i))} onMas={() => cambiarCantidad(i, 1)}
+                      onFijar={(v) => fijarCantidad(i, v)} onListo={() => entrada.current?.focus()} />
                   </span>
-                  <span className="der">{rd(precio)}</span>
+                  <span className="der">{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
+                  <span className={"der" + (desc > 0 ? " pv-ahorro" : " suave")}>{desc > 0 ? `−${rd(desc.toFixed(2))}` : "—"}</span>
                   <span className="der fuerte">{c ? rd(c.calc.total) : "—"}</span>
+                  <button className="pv-quitar" aria-label={`Quitar ${l.prod.nombre}`} title="Quitar (Supr)" onClick={(e) => { e.stopPropagation(); quitar(i); }}><Icono n="basura" /></button>
                 </div>
               );
             })}
           </div>
-          <div className="ayuda-teclas">
-            <span><kbd>F2</kbd> Buscar</span><span><kbd>F3</kbd> Pausar</span><span><kbd>F4</kbd> Cliente</span><span><kbd>F6</kbd> Cupón</span>
-            <span><kbd>F7</kbd> Descuento</span><span><kbd>+</kbd><kbd>−</kbd> Cantidad</span><span><kbd>Supr</kbd> Quitar</span><span><kbd>F12</kbd> Cobrar</span>
-          </div>
-        </section>}
 
-        <aside className="resumen">
-          <div className="bloque" onClick={() => setModal("cliente")}>
-            <span className="suave">Cliente</span>
-            {cliente ? (
-              <div>
-                <b>{cliente.nombre}</b>
-                <div className="suave">Precio: {cliente.lista ?? "Precio 1 · Detalle"}{cliente.documento ? ` · ${cliente.documento}` : ""}</div>
-                <button className="enlace" onClick={(e) => { e.stopPropagation(); setCliente(null); }}>Quitar</button>
-              </div>
-            ) : <b>Consumidor final</b>}
+          <div className="pv-acciones-linea" aria-label="Acciones de la línea seleccionada">
+            <button className="boton fantasma" disabled={!hayLinea} onClick={() => sel >= 0 && quitar(sel)}><Icono n="basura" />Quitar <kbd>Supr</kbd></button>
+            <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.esPesable} onClick={() => (document.querySelector(".pv-fila.seleccionada .celda-cantidad input") as HTMLInputElement | null)?.select()}>
+              <Icono n="editar" />Cantidad <kbd>+</kbd><kbd>−</kbd>
+            </button>
+            <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.precioVariable} onClick={() => setModal("cambiarPrecio")}><Icono n="etiqueta" />Precio <kbd>Alt+P</kbd></button>
+            <button className="boton fantasma" disabled={!lineas.length} onClick={() => abrirDescuento("linea")}><Icono n="porciento" />Descuento <kbd>F7</kbd></button>
+            <button className={"boton fantasma" + (notas ? " con-nota" : "")} onClick={() => setModal("nota")}><Icono n="nota" />{notas ? "Nota ✓" : "Nota"} <kbd>Alt+N</kbd></button>
+            <button className={"boton fantasma" + (cupon ? " con-nota" : "")} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}><Icono n="cupon" />{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"} <kbd>F6</kbd></button>
           </div>
-          {modo === "catalogo" && (
-            <section className="carrito-lateral" aria-label="Productos en la venta">
-              <header className="cl-cabecera">
-                <h2>Productos en la venta</h2>
-                {lineas.length > 0 && (
-                  <span>{lineas.length} {lineas.length === 1 ? "artículo" : "artículos"} · {
-                    lineas.reduce((a, l) => a + (l.prod.esPesable ? 1 : Number(l.cantidad)), 0)} u.</span>
-                )}
-              </header>
-              {lineas.length > 0 && (
-                <div className="cl-columnas" aria-hidden="true">
-                  <span>Cant.</span><span>Producto</span><span className="der">Precio</span><span className="der">Total</span><span />
-                </div>
-              )}
-              <div className="cl-lista">
-                {lineas.length === 0 && <p className="vacio-compacto">Toque un producto o escanéelo para agregarlo</p>}
-                {lineas.map((l, i) => {
-                  const c = cot.r?.lineas[i];
-                  const precio = l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? "0";
-                  const descuento = c ? Number(c.calc.descuento) : 0;
-                  return (
-                    <div key={i} className={"cl-linea" + (i === sel ? " seleccionada" : "")} onClick={() => setSel(i)}>
-                      {l.prod.esPesable
-                        ? <span className="cl-peso">{Number(l.cantidad).toFixed(3)}<small>lb</small></span>
-                        : <span className="paso compacto">
-                            <button aria-label="Quitar uno" onClick={(e) => { e.stopPropagation(); Number(l.cantidad) > 1 ? cambiarCantidad(i, -1) : quitar(i); }}>−</button>
-                            <b>{l.cantidad}</b>
-                            <button aria-label="Agregar uno" onClick={(e) => { e.stopPropagation(); cambiarCantidad(i, 1); }}>+</button>
-                          </span>}
-                      <div className="cl-texto">
-                        <b>{l.prod.nombre}{Number(l.prod.factor) > 1 && <small> · {l.prod.presentacion}</small>}</b>
-                        <span className="cl-sub">
-                          {c?.oferta && <em className="t-oferta">{c.oferta.nombre}{c.oferta.agotada && ` · solo ${Number(c.oferta.unidades)} en oferta`}</em>}
-                          {l.descuentoManual && <em className="t-desc">Descuento aprobado</em>}
-                          {Number(c?.descuentoCupon ?? 0) > 0 && <em className="t-desc">Cupón</em>}
-                        </span>
-                      </div>
-                      <span className="cl-precio">{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
-                      <div className="cl-total">
-                        <b>{c ? rd(c.calc.total) : "—"}</b>
-                        {descuento > 0 && <s>{rd(c!.calc.bruto)}</s>}
-                      </div>
-                      <button className="cl-quitar" aria-label={`Quitar ${l.prod.nombre}`} onClick={(e) => { e.stopPropagation(); quitar(i); }}>
-                        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-          {cupon && (
-            <div className="bloque">
-              <span className="suave">Cupón</span>
-              <b>{cupon.codigo}</b> <button className="enlace" onClick={() => setCupon(null)}>Quitar</button>
-            </div>
-          )}
+          {notas && <p className="pv-nota-texto"><b>Nota:</b> {notas}</p>}
+        </section>
+
+        <aside className="pv-cobro" aria-label="Total y cobro">
+          <div className="pv-total">
+            <span>Total a pagar</span>
+            <b aria-live="polite">{rd(total)}</b>
+            {cot.r && <small>{articulos % 1 ? articulos.toFixed(2) : articulos} artículo(s){descuentoTotal > 0 ? ` · ahorra ${rd(descuentoTotal.toFixed(2))}` : ""}</small>}
+          </div>
+          <dl className="pv-desglose">
+            <div><dt>Subtotal</dt><dd>{rd(cot.r?.totales.subtotal ?? 0)}</dd></div>
+            <div className={descuentoTotal > 0 ? "ahorro" : ""}><dt>Descuentos</dt><dd>{descuentoTotal > 0 ? `−${rd(descuentoTotal.toFixed(2))}` : rd(0)}</dd></div>
+            <div><dt>ITBIS</dt><dd>{rd(cot.r?.totales.itbis ?? 0)}</dd></div>
+          </dl>
           {cot.error && <p className="error">{cot.error}</p>}
-          <div className="totales">
-            <div><span>Subtotal</span><span>{rd(cot.r?.totales.subtotal ?? 0)}</span></div>
-            <div><span>ITBIS</span><span>{rd(cot.r?.totales.itbis ?? 0)}</span></div>
-            {Number(cot.r?.totales.descuento ?? 0) > 0 && (
-              <div className="ahorro"><span>Ahorro</span><span>−{rd(cot.r!.totales.descuento)}</span></div>
-            )}
-            <div className="gran-total"><span>Total</span><span>{rd(total)}</span></div>
+
+          <span className="pv-titulo-pago">Forma de pago</span>
+          <div className="pv-metodos">
+            {([["EFECTIVO", "Efectivo", "billete"], ["TARJETA", "Tarjeta", "tarjeta"], ["TRANSFERENCIA", "Transferencia", "banco"], ["MIXTO", "Mixto", "mixto"]] as const).map(([m, t, ic]) => (
+              <button key={m} className="pv-metodo" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon(m)}>
+                <Icono n={ic} /><span>{t}</span>
+              </button>
+            ))}
           </div>
-          <button className="boton cobrar" disabled={!lineas.length || !!cot.error} onClick={abrirCobro}>
+          <button className="boton cobrar" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>
           </button>
-          <div className="dos-botones">
-            <button className="boton fantasma" disabled={!lineas.length} onClick={pausar}>Pausar <kbd>F3</kbd></button>
-            <button className="boton fantasma" disabled={!lineas.length} onClick={nuevaVenta}>Cancelar venta</button>
-          </div>
           {ultima && (
-            <div className="ultima">
-              <span className="suave">Última venta #{ultima.numero} · {ultima.fiscal.encf}</span>
-              <b>{rd(ultima.total)}</b>
-              {Number(ultima.cambio) > 0 && <span className="cambio">Cambio {rd(ultima.cambio)}</span>}
-              <button className="enlace" onClick={reimprimirUltima}>Reimprimir última factura</button>
+            <div className="pv-ultima">
+              <span>Última: #{ultima.numero} · {rd(ultima.total)}{Number(ultima.cambio) > 0 && <> · <b className="cambio">cambio {rd(ultima.cambio)}</b></>}</span>
+              <button className="enlace" onClick={reimprimirUltima}>Reimprimir</button>
             </div>
           )}
         </aside>
       </main>
+
+      <footer className="pv-funciones" aria-label="Funciones">
+        <BotonFuncion tono="rojo" icono="x" texto="Cancelar venta" tecla="Esc" disabled={!lineas.length} onClick={() => setModal("cancelar")} />
+        <BotonFuncion tono="azul" icono="lupa" texto="Buscar producto" tecla="F2" onClick={() => { setBusqueda(""); setModal("buscar"); }} />
+        <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
+        <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturas")} />
+        <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
+        <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
+        <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
+        {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
+        <BotonFuncion tono="tinta" icono="cierre" texto="Turno y cierre" tecla="F10" onClick={() => setModal("turno")} />
+      </footer>
 
       {aviso && <div className={"aviso " + aviso.tipo}>{aviso.texto}</div>}
       {ofertasAcabadas.length > 0 && (
@@ -539,6 +596,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           items={lineas.map((l) => ({ presentacionId: l.prod.presentacionId, cantidad: l.cantidad, descuentoManual: l.descuentoManual, precioVariable: l.precioVariable }))}
           aprobacionDescuento={lineas.some((l) => l.descuentoManual) ? aprobacion?.token : undefined}
           motivoDescuento={lineas.filter((l) => l.motivoDescuento).map((l) => `${l.prod.nombre}: ${l.motivoDescuento}`).join("; ") || undefined}
+          metodo={metodo}
+          notas={notas}
           onCerrar={() => setModal(null)}
           alFallar={conTope ? () => { cargarCatalogo().catch(() => {}); } : undefined}
           local={{
@@ -570,13 +629,20 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           onAceptar={(precio) => { const p = pendiente; setPendiente(null); setModal(null); agregar(p.prod, p.cantidad, precio); }}
           onCerrar={() => { setPendiente(null); setModal(null); }} />
       )}
-      {modal === "descuento" && sel >= 0 && lineas[sel] && cot.r && (
-        <Descuento
+      {modal === "descuento" && cot.r && (
+        <DescuentoVenta
           ajustes={ajustes}
-          linea={`${lineas[sel].prod.nombre} × ${lineas[sel].cantidad}`}
-          importe={new Decimal(lineas[sel].cantidad).mul(lineas[sel].precioVariable ?? precioPara(lineas[sel].prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? 0).toFixed(2)}
-          onAplicar={(monto, motivo, a) => {
-            setLineas((ls) => ls.map((x, j) => (j === sel ? { ...x, descuentoManual: monto, motivoDescuento: motivo } : x)));
+          inicial={alcanceDescuento}
+          linea={hayLinea ? `${lineas[sel].prod.nombre} × ${lineas[sel].cantidad}` : null}
+          importeLinea={hayLinea ? new Decimal(lineas[sel].cantidad).mul(precioDe(lineas[sel])).toFixed(2) : "0"}
+          importeFactura={lineas.reduce((a, l) => a.plus(new Decimal(l.cantidad).mul(precioDe(l))), new Decimal(0)).toFixed(2)}
+          onAplicar={(alc, monto, motivo, a) => {
+            if (alc === "linea") {
+              setLineas((ls) => ls.map((x, j) => (j === sel ? { ...x, descuentoManual: monto, motivoDescuento: motivo, precioCambiado: undefined } : x)));
+            } else {
+              const partes = repartir(monto, lineas.map((l) => Number(l.cantidad) * Number(precioDe(l))));
+              setLineas((ls) => ls.map((x, j) => ({ ...x, descuentoManual: Number(partes[j]) > 0 ? partes[j] : undefined, motivoDescuento: `Descuento a la factura: ${motivo}`, precioCambiado: undefined })));
+            }
             setAprobacion(a);
             setModal(null);
             avisar(`Descuento aprobado por ${a.supervisor}`, "ok");
@@ -584,6 +650,36 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           onCerrar={() => setModal(null)}
         />
       )}
+      {modal === "cambiarPrecio" && hayLinea && (
+        <CambiarPrecio ajustes={ajustes} nombre={lineas[sel].prod.nombre} cantidad={lineas[sel].cantidad} precioActual={precioDe(lineas[sel])}
+          onAplicar={(nuevo, descuento, motivo, a) => {
+            setLineas((ls) => ls.map((x, j) => (j === sel ? { ...x, precioCambiado: nuevo, descuentoManual: descuento, motivoDescuento: motivo } : x)));
+            setAprobacion(a);
+            setModal(null);
+            avisar(`Precio aprobado por ${a.supervisor}`, "ok");
+          }}
+          onCerrar={() => setModal(null)} />
+      )}
+      {modal === "nota" && <NotaVenta inicial={notas} onGuardar={(t) => { setNotas(t); setModal(null); }} onCerrar={() => setModal(null)} />}
+      {modal === "cotizacion" && cot.r && (
+        <CotizacionImpresa config={config} usuario={usuario} cliente={cliente} notas={notas} totales={cot.r.totales}
+          lineas={cot.r.lineas.map((c, i) => ({
+            descripcion: `${lineas[i].prod.nombre} ${lineas[i].prod.presentacion}`.trim(), cantidad: lineas[i].cantidad,
+            precio: precioDe(lineas[i]), total: c.calc.total,
+            nota: c.oferta?.nombre ?? (lineas[i].precioCambiado ? `Precio especial ${rd(lineas[i].precioCambiado!)}` : lineas[i].descuentoManual ? "Descuento aplicado" : null),
+          }))}
+          onCerrar={() => setModal(null)} />
+      )}
+      {modal === "existencias" && catalogo && (
+        <Existencias catalogo={catalogo} nivel={nivelCliente} onAgregar={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
+      )}
+      {modal === "gaveta" && (
+        <AbrirGaveta ajustes={ajustes} usuario={usuario} onListo={(sup) => { setModal(null); avisar(`Gaveta abierta · autorizó ${sup}`, "ok"); }} onCerrar={() => setModal(null)} />
+      )}
+      {modal === "cancelar" && (
+        <ConfirmarCancelar articulos={lineas.length} total={total} onConfirmar={() => { nuevaVenta(); setModal(null); avisar("Venta cancelada", "ok"); }} onCerrar={() => setModal(null)} />
+      )}
+      {modal === "ajustes" && <AjustesTerminal config={config} onCerrar={() => setModal(null)} />}
       {modal === "facturas" && (
         <Facturas
           ajustes={ajustes} usuario={usuario}
@@ -647,7 +743,7 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar }: {
   }, [q, catalogo]);
   return (
     <Modal titulo="Buscar producto" onCerrar={onCerrar}>
-      <input autoFocus className="entrada-grande" value={q} placeholder="Nombre o SKU"
+      <input autoFocus className="entrada-grande entrada-texto" value={q} placeholder="Nombre o SKU"
         onChange={(e) => { setQ(e.target.value); setI(0); }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") setI((x) => Math.min(res.length - 1, x + 1));
@@ -682,7 +778,7 @@ function PedirCupon({ ajustes, clienteId, onAplicar, onCerrar }: {
   };
   return (
     <Modal titulo="Aplicar cupón" onCerrar={onCerrar}>
-      <input autoFocus className="entrada-grande mayusculas" value={codigo} placeholder="Código del cupón"
+      <input autoFocus className="entrada-grande entrada-texto mayusculas" value={codigo} placeholder="Código del cupón"
         onChange={(e) => setCodigo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && validar()} />
       {msg && <p className="error">{msg}</p>}
       <button className="boton primario ancho" onClick={validar}>Aplicar</button>
@@ -733,4 +829,98 @@ function AvisoConexion() {
   if (c.pendientes) return <div className="aviso-conexion enviando" role="status"><b>Hay {c.pendientes} venta(s) guardadas por enviar</b><span>Entre con su PIN para enviarlas.</span></div>;
   if (c.aviso) return <div className="aviso-conexion ok" role="status"><b>✓ {c.aviso}</b></div>;
   return null;
+}
+
+/** Fecha y hora de RD para la barra (se actualiza cada 20 s). */
+function useReloj() {
+  const [ahora, setAhora] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setAhora(new Date()), 20_000); return () => clearInterval(t); }, []);
+  const z = { timeZone: "America/Santo_Domingo" } as const;
+  return {
+    fecha: ahora.toLocaleDateString("es-DO", { ...z, weekday: "short", day: "numeric", month: "short" }),
+    hora: ahora.toLocaleTimeString("es-DO", { ...z, hour: "numeric", minute: "2-digit" }),
+  };
+}
+
+/** Punto de estado del servidor de la tienda, siempre a la vista. */
+function EstadoServidor() {
+  const c = useConexion();
+  return (
+    <span className={"pv-estado" + (c.enLinea ? "" : " sin")} role="status" title={c.enLinea ? "Conectada al servidor de la tienda" : "Sin servidor: solo factura de consumo al contado"}>
+      <i aria-hidden="true" />{c.enLinea ? "En línea" : "Sin servidor"}
+    </span>
+  );
+}
+
+/** Cantidad de la línea: − [n] +, y se puede escribir. Enter o salir del campo la confirma. */
+function CeldaCantidad({ linea, onMenos, onMas, onFijar, onListo }: {
+  linea: { cantidad: string; prod: ProductoCatalogo }; onMenos: () => void; onMas: () => void; onFijar: (v: string) => void; onListo: () => void;
+}) {
+  const [valor, setValor] = useState(linea.cantidad);
+  useEffect(() => setValor(linea.cantidad), [linea.cantidad]);
+  if (linea.prod.esPesable) return <span className="celda-peso">{Number(linea.cantidad).toFixed(3)} <small>lb</small></span>;
+  const confirmar = () => { if (valor !== linea.cantidad) onFijar(valor); };
+  return (
+    <span className="celda-cantidad" onClick={(e) => e.stopPropagation()}>
+      <button type="button" aria-label="Uno menos" onClick={onMenos}>−</button>
+      <input inputMode="numeric" aria-label={`Cantidad de ${linea.prod.nombre}`} value={valor}
+        onChange={(e) => setValor(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
+        onFocus={(e) => e.target.select()}
+        onBlur={confirmar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); confirmar(); onListo(); }
+          if (e.key === "Escape") { e.stopPropagation(); setValor(linea.cantidad); onListo(); }
+        }} />
+      <button type="button" aria-label="Uno más" onClick={onMas}>+</button>
+    </span>
+  );
+}
+
+function BotonFuncion({ tono, icono, texto, tecla, onClick, disabled }: {
+  tono: "rojo" | "azul" | "ambar" | "violeta" | "verde" | "gris" | "tinta"; icono: string; texto: string; tecla: string; onClick: () => void; disabled?: boolean;
+}) {
+  return (
+    <button className={"pv-funcion " + tono} onClick={onClick} disabled={disabled}>
+      <Icono n={icono} />
+      <span>{texto}</span>
+      {tecla && <kbd>{tecla}</kbd>}
+    </button>
+  );
+}
+
+/** Íconos de trazo, del mismo grosor, para la pantalla de venta. */
+function Icono({ n }: { n: string }) {
+  const d: Record<string, React.ReactNode> = {
+    catalogo: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    ajustes: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
+    candado: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
+    salir: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
+    codigo: <><path d="M3 5v14M6 5v14M10 5v14M13 5v14M17 5v14M21 5v14" /></>,
+    lupa: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
+    persona: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+    pausa: <><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></>,
+    documento: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></>,
+    basura: <><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" /></>,
+    editar: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>,
+    etiqueta: <><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.5" /></>,
+    porciento: <><path d="M19 5 5 19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
+    nota: <><path d="M4 4h16v12l-4 4H4z" /><path d="M16 20v-4h4M8 9h8M8 13h5" /></>,
+    cupon: <><path d="M3 8a2 2 0 0 0 0 4v4h18v-4a2 2 0 0 1 0-4V4H3z" transform="translate(0 2)" /><path d="M13 6v14" strokeDasharray="2 2" /></>,
+    billete: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></>,
+    tarjeta: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20M6 15h4" /></>,
+    banco: <><path d="M3 10 12 4l9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18" /></>,
+    mixto: <><rect x="2" y="7" width="12" height="9" rx="1.5" /><rect x="10" y="10" width="12" height="9" rx="1.5" /></>,
+    x: <><path d="M6 6l12 12M18 6 6 18" /></>,
+    devolucion: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></>,
+    caja: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></>,
+    impresora: <><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M6 14h12v7H6z" /></>,
+    gaveta: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 12h18M10 16h4" /></>,
+    moto: <><circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" /><path d="M9 17h6l-3-6h-4M15 6h3l3 8" /></>,
+    cierre: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+  };
+  return (
+    <svg className="icono" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {d[n] ?? null}
+    </svg>
+  );
 }

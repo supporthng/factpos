@@ -34,6 +34,9 @@ Sistema de gestión de negocio para **supermercados, colmados, licoreras y tiend
 ## Reglas del negocio implementadas
 
 **Terminal (punto de venta)**
+
+- **Pantalla híbrida**: la lista de la venta siempre a la vista (número, descripción, cantidad editable, precio, descuento, total), el catálogo con fotos se muestra u oculta con F1, el total grande como el visor de una caja, formas de pago a un toque (efectivo, tarjeta, transferencia, mixto) y barra de funciones con su tecla. Tema claro u oscuro por terminal.
+- **Cambiar precio** (Alt+P, solo hacia abajo) y **descuento a un artículo o a toda la factura** (F7), ambos con PIN del supervisor y motivo; **nota de la venta** (Alt+N) que sale en la factura; **cotización** impresa sin comprobante ni inventario (Alt+Q); **precio y existencia** (Alt+E); **abrir gaveta** con PIN del supervisor, auditada (Alt+G); **bloquear** la caja (la venta queda en pausa).
 - Escaneo instantáneo con el catálogo en memoria (0 viajes al servidor); el servidor solo interviene al cobrar: ~40 ms una venta de 40 líneas, incluida la firma del e-CF.
 - Reglas del producto revisadas en la caja: **precio variable** dentro de un rango y **bloqueo de venta sin existencia** cuando el producto lo pide. El aviso del precio ignora el Enter del lector para que no se confirme solo.
 - Cantidades (`3*código`), etiquetas de balanza, búsqueda por nombre.
@@ -175,6 +178,8 @@ Un servidor nuevo arranca con la base vacía y baja todo de la central (producto
 - **Administración**: usuario y contraseña (8+ caracteres, letras y números). La sesión dura 12 horas; si se desactiva un usuario o se le cambia el rol, aplica de inmediato. Demostración: `admin` / `admin1234` (cámbiela en *Su nombre › Cambiar mi contraseña*).
 - **Caja**: el cajero elige su nombre y teclea su **PIN** (4 a 6 números). Toda operación de la caja va firmada con su sesión, que solo sirve en esa caja. Demostración: María `1111`, Carlos (supervisor) `4321`, Administrador `1234`.
 - **Roles** (*Usuarios y permisos › Roles*): cada rol marca qué puede hacer en la caja (vender, aprobar descuentos, anulaciones, retiros, gastos, cobrar abonos…) y en la administración (productos, precios, compras, traspasos, recibir traspasos, cuentas por cobrar, reportes, fiscal, configuración, usuarios).
+- **Sucursales de cada usuario** (*Usuarios y permisos › Editar*): *todas* (incluidas las que se creen después) o *solo estas*. Un usuario limitado solo entra a las cajas de sus sucursales y, en la Administración, solo ve y opera esas sucursales (selectores, reportes, resumen, comprobantes, movimientos); pedir otra a propósito devuelve 403.
+- **Certificado digital** (*Facturación electrónica › Certificado digital*): se sube una vez (es de la empresa, un solo RNC), se guarda cifrado y se **activa o desactiva por sucursal**. Las sucursales activadas lo bajan solas y firman con él aunque luego se queden sin internet.
 - **Servidores de sucursal**: cada uno se conecta a la nube con su propia **clave de conexión** (*Sucursales › Conectar su servidor › Generar clave*), que solo sirve para esa sucursal. Se puede cambiar en cualquier momento.
 
 ## Caja: retiros, gastos y abonos
@@ -191,6 +196,17 @@ Un servidor nuevo arranca con la base vacía y baja todo de la central (producto
 - Cada caja tiene **apartados 30 e-NCF E32** que se reponen solos mientras hay servidor. La factura sale con su e-NCF y la leyenda *"Emitida en contingencia · firma electrónica pendiente"*. Al volver el servidor, la caja manda sus ventas en orden (sin duplicar), el servidor las registra con su hora real, las firma y las envía a la DGII.
 - Si el servidor se reinicia y nadie había entrado, entran sin servidor solo quienes ya usaron esa caja (el PIN se verifica en la caja).
 - ⚠️ **Confirmar con la DGII o el PSE** que este procedimiento de contingencia (ticket sin código de seguridad, firmado después) es aceptable, y reportar los e-NCF apartados que nunca se usen.
+
+## Correo: cierres de caja y resumen del día
+
+En *Administración › Correo y envíos*:
+
+- **Cuenta de correo**: Gmail / Google Workspace (con *contraseña de aplicación*), Outlook / Microsoft 365, Zoho, el SMTP del hosting o Resend. La contraseña se guarda cifrada (con `PIN_SECRETO`) y nunca vuelve al navegador. *Enviar prueba* confirma que funciona antes de guardar.
+- **Cierre de caja**: apenas la sucursal sube el cierre del turno, sale un correo con lo vendido, el cuadre por forma de pago (esperado, contado, diferencia), retiros, gastos y la nota del cajero. Opción: *solo cuando haya faltante o sobrante*.
+- **Resumen del día**: a la hora elegida (hora de RD), lo del día anterior: ventas por sucursal y contra el mismo día de la semana pasada, formas de pago, cierres con diferencia, comprobantes rechazados, incidentes y productos bajo mínimo.
+- **Avisos al servicio técnico** por correo (además de Telegram o webhook).
+- Por envío: destinatarios y sucursales. *Ver ejemplo* muestra el correo con datos reales. La bitácora *Enviados* guarda cada correo; si falla se reintenta solo (5, 10, 20… minutos) y se puede reenviar.
+- Los correos salen de la central. El resumen diario necesita la tarea **Vigilancia de sucursales** (ver abajo: `CRON_SECRET`).
 
 ## Avisos al servicio técnico
 

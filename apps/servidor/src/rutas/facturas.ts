@@ -13,7 +13,7 @@ const uuid = z.string().uuid();
 export async function datosTicket(c: Pick<PoolClient, "query">, ventaId: string) {
   const r = await c.query(
     `SELECT v.id, v.numero_interno AS numero, v.tipo_documento AS "tipoDocumento", v.creado_en AS fecha,
-            v.subtotal, v.descuento, v.itbis, v.total, v.motivo,
+            v.subtotal, v.descuento, v.itbis, v.total, v.motivo, v.notas,
             COALESCE((SELECT SUM(cambio) FROM venta_pagos WHERE venta_id = v.id), 0)::text AS cambio,
             (SELECT jsonb_build_object('codigo', cu.codigo, 'total', u.descuento) FROM cupon_usos u JOIN cupones cu ON cu.id = u.cupon_id WHERE u.venta_id = v.id) AS cupon,
             (SELECT jsonb_agg(jsonb_build_object(

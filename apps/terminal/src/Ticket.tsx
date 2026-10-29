@@ -12,6 +12,8 @@ export interface VentaRegistrada {
   pagos: { formaPago: string; monto: string; recibido?: string; cambio?: string; referencia?: string }[];
   fiscal: { encf: string; codigoSeguridad: string; fechaFirma: string; urlQr: string; modo: "ECF" | "RFCE"; venceSecuencia: string };
   cliente?: { nombre: string; documento: string | null } | null;
+  /** Observaciones de la venta */
+  notas?: string | null;
   /** Hecha en la caja sin servidor: el e-CF se firma al volver el servidor */
   contingencia?: boolean;
 }
@@ -92,6 +94,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
             <div key={i} className="t-fila"><span>{PAGO[p.formaPago] ?? p.formaPago}{p.formaPago === "TARJETA" && p.referencia ? ` · Aprob. ${p.referencia}` : ""}</span><span>{rd(p.recibido ?? p.monto)}</span></div>
           ))}
           {Number(venta.cambio) > 0 && <div className="t-fila"><span>Cambio</span><span>{rd(venta.cambio)}</span></div>}
+          {venta.notas && <div className="t-nota">Nota: {venta.notas}</div>}
           <div className="t-linea" />
           <div className="t-centro">
             {venta.contingencia || !venta.fiscal.codigoSeguridad ? (

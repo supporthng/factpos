@@ -1,7 +1,8 @@
+import { procesarEnvios } from "../correo/envios.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { huellaConexion } from "./sesion.js";
-import { avisarPendientes, canalesConfigurados, cerrarSinComunicacion } from "../incidentes.js";
+import { avisarPendientes, canales, cerrarSinComunicacion } from "../incidentes.js";
 import { z } from "zod";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { aplicarFilas, aplicarKardex, conPuntoDeGuardado, modoSincronizacion } from "../sync/aplicar.js";
@@ -180,8 +181,14 @@ export async function rutasCentralSync(app: FastifyInstance) {
     );
     // La sucursal volvió a hablar: se cierra su incidente (y se avisa a soporte)
     await cerrarSinComunicacion(f.sucursalId);
-    if (canalesConfigurados().length) await avisarPendientes((m) => req.log.warn(m)).catch(() => 0);
-    return { desde: f.desde, version, versionKardex, completo, cambios, componentes };
+    if ((await canales()).length) await avisarPendientes((m) => req.log.warn(m)).catch(() => 0);
+    // Huella del certificado digital vigente: si la sucursal tiene otro, lo pide de una vez
+    const cert = await pool.query<{ huella: string }>(
+      `SELECT c.huella FROM certificados_digitales c JOIN sucursales s ON s.id = $2 AND s.certificado_habilitado
+        WHERE c.empresa_id = $1 AND c.activo`,
+      [e, f.sucursalId],
+    );
+    return { desde: f.desde, version, versionKardex, completo, cambios, componentes, certificado: cert.rows[0]?.huella ?? null };
   });
 
   // ------------------------------------------------------------- SUBIDA
@@ -229,11 +236,47 @@ export async function rutasCentralSync(app: FastifyInstance) {
     if (errores.length) req.log.warn({ sucursal: b.sucursalId, errores: errores.slice(0, 5) }, "sync: elementos no aplicados");
     // La sucursal volvió a hablar: se cierra su incidente y se avisa a soporte lo pendiente
     await cerrarSinComunicacion(b.sucursalId);
-    if (canalesConfigurados().length) await avisarPendientes((m) => req.log.warn(m)).catch(() => 0);
+    if ((await canales()).length) await avisarPendientes((m) => req.log.warn(m)).catch(() => 0);
+    // Llegaron cierres de caja: se envían por correo de una vez (sin esperar la vigilancia)
+    if (b.items.some((i) => i.tabla === "turnos")) {
+      await Promise.race([procesarEnvios((m) => req.log.warn(m)).catch(() => null), new Promise((r) => setTimeout(r, 8000))]);
+    }
     return { aplicados, errores };
   });
 
   // ------------------------------------------------------------- ESTADO
+  // ------------------------------------------------------- CERTIFICADO
+  /**
+   * El servidor de la sucursal pregunta por el certificado digital e informa
+   * cuál tiene en uso (huella) y si tuvo algún problema al cargarlo. Solo se
+   * le manda el certificado (cifrado) cuando es distinto del que tiene.
+   */
+  app.get("/central/sync/certificado", async (req) => {
+    const f = z.object({
+      sucursalId: uuid,
+      huella: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+      error: z.string().max(300).optional(),
+    }).parse(req.query);
+    await verificarConexion(req, f.sucursalId);
+    await pool.query(
+      `INSERT INTO sync_sucursales (sucursal_id, certificado_huella, certificado_error, certificado_en) VALUES ($1,$2,$3,now())
+       ON CONFLICT (sucursal_id) DO UPDATE SET certificado_huella = $2, certificado_error = $3, certificado_en = now()`,
+      [f.sucursalId, f.huella ?? null, f.error ?? null],
+    );
+    const r = await pool.query(
+      `SELECT s.certificado_habilitado AS habilitado, c.id, c.empresa_id, c.titular, c.emisor, c.numero_serie, c.valido_desde, c.vence, c.huella, c.cifrado, c.subido_por, c.subido_en
+         FROM sucursales s LEFT JOIN certificados_digitales c ON c.empresa_id = s.empresa_id AND c.activo
+        WHERE s.id = $1`,
+      [f.sucursalId],
+    );
+    const { habilitado, ...c } = r.rows[0] ?? {};
+    // Desactivada desde la Administración: no se le entrega (y la sucursal deja de usarlo)
+    if (!habilitado) return { certificado: null, habilitado: false };
+    if (!c.id) return { certificado: null, habilitado: true };
+    if (c.huella === f.huella) return { igual: true };
+    return { certificado: c };
+  });
+
   app.get("/central/sync/estado", async (req) => {
     const empresaId = uuid.parse(req.headers["x-empresa-id"]);
     const r = await pool.query(

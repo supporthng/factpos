@@ -13,17 +13,19 @@ const TIPOS: Record<string, string> = {
 
 /** Facturación electrónica: estado de envíos a la DGII, secuencias e-NCF y configuración. */
 export function Fiscal() {
-  const [vista, setVista] = useState<"envios" | "secuencias" | "config">("envios");
+  const [vista, setVista] = useState<"envios" | "secuencias" | "certificado" | "config">("envios");
   return (
     <>
       <Encabezado titulo="Facturación electrónica" descripcion="Comprobantes e-CF, envíos a la DGII y secuencias e-NCF de cada sucursal." />
       <div className="pestanas">
         <button className={vista === "envios" ? "activa" : ""} onClick={() => setVista("envios")}>Envíos a la DGII</button>
         <button className={vista === "secuencias" ? "activa" : ""} onClick={() => setVista("secuencias")}>Secuencias e-NCF</button>
+        <button className={vista === "certificado" ? "activa" : ""} onClick={() => setVista("certificado")}>Certificado digital</button>
         <button className={vista === "config" ? "activa" : ""} onClick={() => setVista("config")}>Configuración</button>
       </div>
       {vista === "envios" && <Envios />}
       {vista === "secuencias" && <Secuencias />}
+      {vista === "certificado" && <CertificadoDigital />}
       {vista === "config" && <Configuracion />}
     </>
   );
@@ -202,9 +204,155 @@ function Configuracion() {
       </div>
       {c.transmisor === "PSE" && <label className="campo"><span>Dirección del API del PSE</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>}
       <label className="campo"><span>Avisar cuando queden menos de (e-NCF)</span><input inputMode="numeric" value={c.alertaRestantes} onChange={(e) => setC({ ...c, alertaRestantes: e.target.value.replace(/\D/g, "") })} /></label>
-      <p className="suave pequeno">El certificado digital (.p12) se instala en el servidor de cada sucursal, porque la firma se hace al momento de vender, aunque no haya internet.</p>
       <button className="boton primario" onClick={guardar}>Guardar</button>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ CERTIFICADO
+interface DatosCertificado {
+  certificado: { titular: string; emisor: string | null; numeroSerie: string | null; validoDesde: string; vence: string; huella: string; subidoEn: string; subidoPor: string | null } | null;
+  sucursales: { id: string; nombre: string; tipo?: string; habilitado: boolean; estado: "CARGADO" | "PENDIENTE" | "ERROR" | "SIN_SERVIDOR" | "DESACTIVADO" | "QUITANDO"; error: string | null; revisadoEn: string | null }[];
+  servidorPropio: { huella: string | null } | null;
+}
+const fechaLarga = (v: string) => new Date(v).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" });
+const ESTADO_CERT: Record<string, { texto: string; clase: string }> = {
+  CARGADO: { texto: "Cargado", clase: "recibida" },
+  PENDIENTE: { texto: "Se carga en la próxima sincronización", clase: "en_transito" },
+  ERROR: { texto: "No se pudo cargar", clase: "con_diferencia" },
+  SIN_SERVIDOR: { texto: "Activado · falta conectar su servidor", clase: "" },
+  DESACTIVADO: { texto: "Desactivado", clase: "" },
+  QUITANDO: { texto: "Se retira en la próxima sincronización", clase: "en_transito" },
+};
+
+/**
+ * El certificado digital (.p12) se sube una vez aquí. Se guarda cifrado y cada
+ * servidor de sucursal lo baja y firma con él al vender, aunque no haya internet.
+ */
+function CertificadoDigital() {
+  const { datos, recargar } = useDatos<DatosCertificado>("/central/fiscal/certificado");
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [clave, setClave] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [reemplazar, setReemplazar] = useState(false);
+  const c = datos?.certificado ?? null;
+  const tiendas = (datos?.sucursales ?? []).filter((s) => s.tipo !== "ALMACEN");
+  const apagadas = tiendas.filter((s) => !s.habilitado);
+  const cambiarUso = async (ids: string[], habilitado: boolean) => {
+    setMsg(null);
+    try { await api("/central/fiscal/certificado/sucursales", { metodo: "PUT", cuerpo: { sucursalIds: ids, habilitado } }); recargar(); }
+    catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const dias = c ? Math.floor((new Date(c.vence).getTime() - Date.now()) / 86400e3) : 0;
+  const tono = !c ? "" : dias < 0 ? "vencido" : dias <= 30 ? "pronto" : dias <= 60 ? "atento" : "bien";
+
+  const subir = async () => {
+    if (!archivo) return;
+    setEnviando(true); setMsg(null);
+    try {
+      const base64 = await new Promise<string>((ok, mal) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, ""));
+        r.onerror = () => mal(new Error("No se pudo leer el archivo"));
+        r.readAsDataURL(archivo);
+      });
+      const r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave } });
+      setMsg({ t: `Certificado de ${r.titular} guardado. Las sucursales activadas lo cargan solas en su próxima sincronización; active abajo las que deben usarlo.`, tipo: "ok" });
+      setArchivo(null); setClave(""); setReemplazar(false);
+      recargar();
+    } catch (e) {
+      setMsg({ t: (e as Error).message, tipo: "error" });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const formulario = (
+    <div className="cert-subir">
+      <label className="campo"><span>Archivo del certificado (.p12 o .pfx)</span>
+        <input type="file" accept=".p12,.pfx,application/x-pkcs12" onChange={(e) => { setArchivo(e.target.files?.[0] ?? null); setMsg(null); }} />
+      </label>
+      <label className="campo"><span>Contraseña del certificado</span>
+        <input type="password" autoComplete="off" value={clave} onChange={(e) => setClave(e.target.value)} placeholder="La que le dio la entidad certificadora" />
+      </label>
+      <div className="fila-acciones">
+        <button className="boton primario" disabled={!archivo || enviando} onClick={subir}>{enviando ? "Revisando…" : c ? "Reemplazar certificado" : "Subir certificado"}</button>
+        {c && <button className="boton" onClick={() => { setReemplazar(false); setMsg(null); }}>Cancelar</button>}
+      </div>
+      <p className="suave pequeno">Se revisa la contraseña y la vigencia antes de guardarlo. Queda cifrado: nadie puede descargarlo desde aquí.</p>
+    </div>
+  );
+
+  if (!datos) return null;
+  return (
+    <div className="cert-pagina">
+      {!c ? (
+        <div className="panel cert-vacio">
+          <h3>Todavía no hay certificado</h3>
+          <p>Mientras no lo suba, las sucursales firman con un certificado de prueba que solo sirve en el ambiente <b>Simulado</b>. Para facturar de verdad necesita el certificado digital de la empresa (.p12), emitido por una entidad autorizada por INDOTEL.</p>
+          {formulario}
+        </div>
+      ) : (
+        <div className={"panel cert-tarjeta " + tono}>
+          <div className="cert-vigencia">
+            <b>{dias < 0 ? "Vencido" : dias === 0 ? "Vence hoy" : `${dias} días`}</b>
+            <span>{dias < 0 ? `desde el ${fechaLarga(c.vence)}` : `de vigencia · vence el ${fechaLarga(c.vence)}`}</span>
+          </div>
+          <div className="cert-datos">
+            <h3>{c.titular}</h3>
+            <dl>
+              <dt>Emitido por</dt><dd>{c.emisor || "—"}</dd>
+              <dt>Válido desde</dt><dd>{fechaLarga(c.validoDesde)}</dd>
+              <dt>Número de serie</dt><dd className="mono-corto">{c.numeroSerie || "—"}</dd>
+              <dt>Subido</dt><dd>{fechaLarga(c.subidoEn)}{c.subidoPor ? ` por ${c.subidoPor}` : ""}</dd>
+            </dl>
+            {dias >= 0 && dias <= 30 && <Aviso tipo="error" texto="Pida la renovación ya: cuando venza, las sucursales no podrán firmar facturas." />}
+            {dias < 0 && <Aviso tipo="error" texto="Con el certificado vencido no se pueden firmar e-CF. Suba el renovado." />}
+            {!reemplazar && <button className="boton" onClick={() => setReemplazar(true)}>Reemplazar por uno nuevo</button>}
+          </div>
+          {reemplazar && formulario}
+        </div>
+      )}
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+
+      {tiendas.length > 0 && (
+        <div className="panel">
+          <div className="encabezado-sub">
+            <h3 style={{ margin: 0 }}>Uso en cada sucursal</h3>
+            {apagadas.length > 0 && <button className="boton" onClick={() => cambiarUso(apagadas.map((s) => s.id), true)}>Activar en todas</button>}
+          </div>
+          <p className="suave pequeno" style={{ marginTop: 6 }}>
+            El certificado es de la empresa (un solo RNC). Actívelo en las sucursales que ya deben facturar ante la DGII; las desactivadas solo facturan en el ambiente Simulado.
+          </p>
+          {c && datos.servidorPropio && (
+            <p className="suave pequeno">Este servidor: {datos.servidorPropio.huella === c.huella ? "lo tiene cargado y firma con él." : "todavía no lo usa (si tiene CERT_P12_RUTA en el .env, manda ese archivo)."}</p>
+          )}
+          <Tabla
+            filas={tiendas}
+            clave={(s) => s.id}
+            vacio="No hay sucursales"
+            columnas={[
+              { titulo: "Sucursal", valor: (s) => s.nombre },
+              { titulo: "Usar certificado", ancho: "150px", valor: (s) => (
+                <label className="interruptor">
+                  <input type="checkbox" checked={s.habilitado} onChange={(e) => cambiarUso([s.id], e.target.checked)} aria-label={`Usar certificado en ${s.nombre}`} />
+                  <span>{s.habilitado ? "Activado" : "Desactivado"}</span>
+                </label>
+              ) },
+              { titulo: "En su servidor", valor: (s) => s.estado === "DESACTIVADO" ? <span className="suave">—</span> : (
+                <>
+                  <span className={"pastilla " + ESTADO_CERT[s.estado].clase}>{s.habilitado && !c ? "Esperando que suba el certificado" : ESTADO_CERT[s.estado].texto}</span>
+                  {s.error && s.habilitado && <div className="error pequeno">{s.error}</div>}
+                </>
+              ) },
+              { titulo: "Última revisión", valor: (s) => (s.revisadoEn ? new Date(s.revisadoEn).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" }) : "—") },
+            ]}
+          />
+          <p className="suave pequeno">Cada servidor pregunta por el certificado al arrancar y cada 10 minutos. Lo guarda en su disco: si después se queda sin internet, sigue firmando.</p>
+        </div>
+      )}
     </div>
   );
 }

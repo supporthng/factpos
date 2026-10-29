@@ -4,9 +4,10 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "@fontsource-variable/archivo/wdth.css";
 import "./estilos.css";
-import { iniciarEscala } from "./escala";
+import { aplicarTema, iniciarEscala } from "./escala";
 
 
+aplicarTema();
 iniciarEscala();
 
 // La pantalla de la caja queda guardada para abrir aunque se caiga el servidor.

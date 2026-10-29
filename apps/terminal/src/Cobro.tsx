@@ -25,7 +25,9 @@ export interface CobroLocal {
   hayDescuentos: boolean;
 }
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, alFallar }: {
+export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "MIXTO";
+
+export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, alFallar, metodo = "EFECTIVO", notas }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
@@ -33,10 +35,15 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   onCerrar: () => void; onVendido: (r: ResultadoVenta) => void;
   /** Se llama si el cobro falla (p. ej. para refrescar ofertas con tope) */
   alFallar?: () => void;
+  /** Forma de pago elegida en la pantalla de venta (la ventana abre lista para esa forma) */
+  metodo?: MetodoPago;
+  /** Observaciones de la venta */
+  notas?: string;
 }) {
-  const [tarjeta, setTarjeta] = useState("");
+  const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
+  const [verOtros, setVerOtros] = useState(metodo !== "EFECTIVO");
   const [refTarjeta, setRefTarjeta] = useState("");
-  const [transferencia, setTransferencia] = useState("");
+  const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
   const [credito, setCredito] = useState("");
   const [recibido, setRecibido] = useState("");
   // Cliente creado en caja para pedir comprobante: la factura sale de crédito fiscal (E31)
@@ -86,8 +93,9 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
       const ticket = await venderSinServidor(ajustes, {
         ventaId, usuarioOriginal: usuario.id, turnoId: local.turnoId,
         items: items.map((i) => ({ presentacionId: i.presentacionId, cantidad: i.cantidad, precioVariable: i.precioVariable })),
-        pagos, clienteId: cliente?.id, total,
+        pagos, clienteId: cliente?.id, total, notas: notas || undefined,
         ticket: {
+          notas: notas || null,
           id: ventaId, tipoDocumento: "E32", ...local.totales, cambio: cambioTotal.toFixed(2), cupon: null, lineas: local.lineas,
           pagos, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null,
         },
@@ -100,7 +108,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         cuerpo: {
           ventaId, usuarioId: usuario.id, clienteId: cliente?.id, cuponCodigo: cupon?.codigo,
           tipoDocumento: fiscal ? "E31" : "E32", items, pagos,
-          autorizacionDescuento: aprobacionDescuento, motivoDescuento,
+          autorizacionDescuento: aprobacionDescuento, motivoDescuento, notas: notas || undefined,
         },
       });
       onVendido({ ...r, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null });
@@ -141,7 +149,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
       <div className="cobro-efectivo">
         <label className="campo">
           <span>Efectivo recibido {efectivo.gt(0) && <em>· a cobrar en efectivo {rd(efectivo.toFixed(2))}</em>}</span>
-          <input autoFocus className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
+          <input autoFocus={metodo === "EFECTIVO" || metodo === "MIXTO"} className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
             onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
         </label>
         <div className="billetes">
@@ -153,10 +161,10 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         {recibido && cambio.gte(0) && <div className="cambio-grande">Cambio: {rd(cambio.toFixed(2))}</div>}
       </div>
 
-      <details className="otros-pagos">
+      <details className="otros-pagos" open={verOtros} onToggle={(e) => setVerOtros((e.target as HTMLDetailsElement).open)}>
         <summary>Tarjeta, transferencia o crédito (pago mixto)</summary>
         {campo("Tarjeta", tarjeta, setTarjeta, (
-          <input className={"ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación" aria-label="Número de aprobación del voucher"
+          <input autoFocus={metodo === "TARJETA"} className={"ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación" aria-label="Número de aprobación del voucher"
             value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
         ))}
         <div className="billetes">
