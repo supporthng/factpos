@@ -1,5 +1,5 @@
 import { activarLicencia, filaLicencia, PORTAL_URL } from "./licencia/cliente.js";
-import { estadoTunel, iniciarTunel, reportarTunel, tunelActivo } from "./tunel.js";
+import { estadoTunel, iniciarTunel, pedirTunelFijo, reportarTunel, tunelActivo } from "./tunel.js";
 import { guardarEnEnv } from "./sync/alta.js";
 
 /**
@@ -34,6 +34,12 @@ export async function iniciarMaster(log: (m: string) => void) {
 
   if (tunelActivo()) {
     iniciarTunel(log, () => { reportarTunel(PORTAL_URL(), log).catch(() => {}); });
-    setInterval(() => { if (estadoTunel().url) reportarTunel(PORTAL_URL(), log).catch(() => {}); }, 30 * 60_000).unref();
+    // Con la licencia activa se pide el túnel FIJO (<empresa>.factpos.app); mientras tanto, el rápido
+    const fijo = () => pedirTunelFijo(PORTAL_URL(), guardarEnEnv, log).catch(() => false);
+    setTimeout(fijo, 30_000).unref();
+    setInterval(() => {
+      if (estadoTunel().url) reportarTunel(PORTAL_URL(), log).catch(() => {});
+      fijo();
+    }, 30 * 60_000).unref();
   }
 }

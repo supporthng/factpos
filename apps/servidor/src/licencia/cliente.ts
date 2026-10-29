@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { estadoTunel, reportarTunel, tunelActivo } from "../tunel.js";
+import { estadoTunel, pedirTunelFijo, reportarTunel, tunelActivo } from "../tunel.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -108,6 +108,9 @@ export async function activarLicencia(clave: string, apiUrl?: string) {
     [r.licencia, r.secreto, PORTAL_URL()]);
   olvidarLicencia();
   await reportarTunel(PORTAL_URL()).catch(() => false);
+  // Master: con la licencia activa ya puede tener su dirección fija (<empresa>.factpos.app)
+  const { guardarEnEnv } = await import("../sync/alta.js");
+  pedirTunelFijo(PORTAL_URL(), guardarEnEnv).catch(() => false);
   return estadoLicencia();
 }
 

@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
 import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
 
 /**
@@ -126,7 +127,8 @@ export async function rutasPortal(app: FastifyInstance) {
       frenar(req.ip ?? "?");
       throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia", 401);
     }
-    await pool.query("UPDATE portal_clientes SET api_url = $2 WHERE id = $1", [l.cliente_id, b.url]);
+    // Si el cliente ya tiene dirección fija, solo esa vale (un túnel rápido viejo no la reemplaza)
+    await pool.query("UPDATE portal_clientes SET api_url = $2 WHERE id = $1 AND (tunel_host IS NULL OR $2 = 'https://' || tunel_host)", [l.cliente_id, b.url]);
     await pool.query("UPDATE portal_licencias SET ultimo_contacto = now() WHERE id = $1", [l.id]);
     return { ok: true, web: `/${l.slug}/` };
   });
@@ -154,6 +156,30 @@ export async function rutasPortal(app: FastifyInstance) {
     return { version: v.version, url: await urlDescarga(v.asset) };
   });
 
+  /**
+   * El master pide su túnel FIJO (<empresa>.factpos.app). El portal lo crea en
+   * Cloudflare la primera vez y entrega el token (cada vez, a la misma instalación).
+   */
+  app.post("/licencias/tunel/fijo", async (req) => {
+    const b = z.object({ licenciaId: uuid, instalacionId: uuid, secreto: z.string().min(20).max(80),
+      puerto: z.number().int().min(1).max(65535).default(3000) }).parse(req.body);
+    if (!cloudflareListo()) throw new ErrorNegocio("El portal todavía no tiene configurado el túnel fijo (Cloudflare)", 503);
+    const l = (await pool.query<FilaLicencia & { tunel_id: string | null }>(
+      `SELECT l.id, l.cliente_id, l.estado, l.instalacion_id, l.secreto_hash, c.slug, c.activo AS cliente_activo, c.tunel_id
+         FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id WHERE l.id = $1`, [b.licenciaId])).rows[0];
+    if (!l || l.instalacion_id !== b.instalacionId || !igual(l.secreto_hash, huella(b.secreto))) {
+      frenar(req.ip ?? "?");
+      throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia", 401);
+    }
+    if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("La licencia está suspendida", 403);
+    const t = await asegurarTunel(l.slug, l.tunel_id, b.puerto).catch((e: Error) => { throw new ErrorNegocio(e.message, 502); });
+    await pool.query(
+      `UPDATE portal_clientes SET tunel_id = $2, tunel_host = $3, tunel_creado_en = COALESCE(tunel_creado_en, now()), api_url = $4 WHERE id = $1`,
+      [l.cliente_id, t.id, t.host, t.url]);
+    await evento(pool, { licenciaId: l.id, clienteId: l.cliente_id, tipo: "TUNEL_FIJO", detalle: { host: t.host } });
+    return { url: t.url, token: t.token };
+  });
+
   app.get("/licencias/cliente/:slug", async (req) => {
     const { slug } = z.object({ slug: z.string().max(40) }).parse(req.params);
     const c = (await pool.query("SELECT nombre, slug, api_url AS \"apiUrl\" FROM portal_clientes WHERE slug = $1 AND activo", [slug.toLowerCase()])).rows[0];
@@ -166,7 +192,7 @@ export async function rutasPortal(app: FastifyInstance) {
 
   app.get("/central/portal/clientes", async () => {
     const r = await pool.query(
-      `SELECT c.id, c.slug, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn",
+      `SELECT c.id, c.slug, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
               l.id AS "licenciaId", l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado AS "estadoLicencia",
               l.clave_pista AS "clavePista", l.instalacion_id IS NOT NULL AS activada, l.activada_en AS "activadaEn",
               l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso"

@@ -9,7 +9,7 @@ import { Aviso, Encabezado, useDatos } from "../ui";
  */
 interface Cliente {
   id: string; slug: string; nombre: string; rnc: string | null; contacto: string | null; correo: string | null; telefono: string | null;
-  apiUrl: string | null; notas: string | null; activo: boolean; creadoEn: string;
+  apiUrl: string | null; notas: string | null; activo: boolean; creadoEn: string; tunelHost: string | null;
   licenciaId: string | null; sucursales: number | null; vence: string | null; estadoLicencia: "ACTIVA" | "SUSPENDIDA" | null;
   clavePista: string | null; activada: boolean; activadaEn: string | null; ultimoContacto: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | null;
@@ -65,7 +65,11 @@ export function Portal() {
                   <td><b>{c.nombre}</b><div className="suave pequeno">{[c.rnc && `RNC ${c.rnc}`, c.contacto, c.telefono].filter(Boolean).join(" · ")}</div></td>
                   <td>
                     <a href={`/${c.slug}/`} target="_blank" rel="noreferrer" className="mono">/{c.slug}/</a>
-                    {!c.apiUrl && <div className="texto-alerta pequeno">Falta la dirección de su nube</div>}
+                    {c.tunelHost
+                      ? <div className="suave pequeno">Servidor: <span className="mono">{c.tunelHost}</span></div>
+                      : c.apiUrl?.includes("trycloudflare")
+                        ? <div className="suave pequeno">Túnel temporal (espera su dirección fija)</div>
+                        : !c.apiUrl && <div className="texto-alerta pequeno">Su servidor principal todavía no se conectó</div>}
                   </td>
                   <td>
                     {c.estadoLicencia === "SUSPENDIDA" ? <span className="pastilla alerta">Suspendida</span>
@@ -135,7 +139,7 @@ function NuevoCliente({ onCerrar, onCreado }: { onCerrar: () => void; onCreado: 
         <label className="campo"><span>Teléfono</span><input value={c.telefono} onChange={(e) => set("telefono", e.target.value)} /></label>
       </div>
       <p className="suave pequeno">Su administración web quedará en <b className="mono">{location.origin}/{c.slug || "nombrecorto"}/</b></p>
-      <label className="campo"><span>Dirección de la API de su nube (se puede poner después)</span>
+      <label className="campo"><span>Dirección de su servidor (déjela vacía: el servidor principal la informa solo)</span>
         <input value={c.apiUrl} onChange={(e) => set("apiUrl", e.target.value.trim())} placeholder="https://royalliquorstore-api.vercel.app" />
       </label>
       <h4>Licencia</h4>
@@ -178,7 +182,7 @@ function DetalleCliente({ c, onCambio, onClave }: { c: Cliente; onCambio: () => 
           <span className="flex" />
           <button className="boton primario" onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}/licencia`, { metodo: "PUT", cuerpo: l }), "Licencia guardada. El cliente la recibe sola en su próxima actualización (máx. 12 h) o al pulsar «Actualizar ahora».")}>Guardar licencia</button>
         </div>
-        <h4>Su nube</h4>
+        <h4>Su servidor (dirección)</h4>
         <div className="en-linea">
           <input value={api_} onChange={(e) => setApi(e.target.value.trim())} placeholder="https://cliente-api.vercel.app" />
           <button className="boton" onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}`, { metodo: "PUT", cuerpo: { apiUrl: api_ || null } }), "Dirección guardada")}>Guardar</button>
