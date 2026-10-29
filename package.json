@@ -1,0 +1,27 @@
+{
+  "name": "factpos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FactPOS: sistema punto de venta para supermercados, colmados y licoreras",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "preparar": "npm run build && npm run semilla",
+    "start": "npm run start -w @factpos/servidor",
+    "build": "npm run build -w @factpos/compartido && npm run build -w @factpos/servidor && npm run build -w @factpos/terminal && npm run build -w @factpos/admin",
+    "test": "npm test -w @factpos/compartido",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrar": "npm run migrar -w @factpos/servidor",
+    "dev:servidor": "npm run dev -w @factpos/servidor",
+    "dev:terminal": "npm run dev -w @factpos/terminal",
+    "dev:admin": "npm run dev -w @factpos/admin",
+    "semilla": "npm run semilla -w @factpos/servidor",
+    "padron": "npm run padron -w @factpos/servidor --",
+    "empaquetar": "node scripts/empaquetar.mjs"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

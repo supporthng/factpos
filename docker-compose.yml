@@ -1,0 +1,46 @@
+# Servidor local de una sucursal: base de datos + API FactPOS.
+# Uso: docker compose up -d
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: factpos
+      POSTGRES_PASSWORD: factpos
+      POSTGRES_DB: factpos
+      TZ: America/Santo_Domingo
+    ports:
+      - "5432:5432"
+    volumes:
+      - datos_db:/var/lib/postgresql/data
+      - ./respaldos:/respaldos
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factpos"]
+      interval: 5s
+      retries: 10
+
+  servidor:
+    build:
+      context: .
+      dockerfile: apps/servidor/Dockerfile
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://factpos:factpos@db:5432/factpos
+      PUERTO: 3000
+      HOST: 0.0.0.0
+      TZ: America/Santo_Domingo
+      MODO: sucursal                 # "central" en la nube (Administración)
+      PIN_SECRETO: ${PIN_SECRETO:-cambiar-este-secreto}
+      # Certificado digital para firmar los e-CF (solo en sucursales)
+      CERT_P12_RUTA: ${CERT_P12_RUTA:-}
+      CERT_P12_CLAVE: ${CERT_P12_CLAVE:-}
+    volumes:
+      - ./certificados:/certificados:ro
+    ports:
+      - "3000:3000"
+
+volumes:
+  datos_db:

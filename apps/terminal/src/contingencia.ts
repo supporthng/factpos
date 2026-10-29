@@ -1,0 +1,246 @@
+import { useEffect, useState } from "react";
+import { uuidv7 } from "@factpos/compartido";
+import { api, ErrorApi, alPerderConexion, sesionCaja, type Ajustes } from "./api";
+import { borrar, guardar, leer } from "./almacen";
+import type { VentaRegistrada } from "./Ticket";
+
+/**
+ * Contingencia: la caja sigue vendiendo si se cae el servidor de la sucursal.
+ *
+ *  - Vigila el servidor (cada 15 s; cada 5 s mientras está caído).
+ *  - Sin servidor: cada venta (consumo E32, al contado) usa un e-NCF apartado,
+ *    se imprime como "pendiente de firma" y queda guardada en la caja (IndexedDB).
+ *  - Al volver: manda las ventas en orden, informa el corte (incidente para el
+ *    servicio técnico) y repone los e-NCF apartados.
+ */
+export interface VentaPendiente {
+  ventaId: string; usuarioOriginal: string; turnoId: string; creadoEn: string; encf: string; rangoId: string;
+  items: { presentacionId: string; cantidad: string; precioVariable?: string }[];
+  pagos: { formaPago: string; monto: string; recibido?: string; referencia?: string }[];
+  clienteId?: string;
+  total: string;
+  ticket: VentaRegistrada;
+  error?: string;
+}
+export interface EstadoConexion {
+  enLinea: boolean;
+  desde: string | null;     // cuándo se perdió el servidor
+  pendientes: number;
+  enviando: boolean;
+  errores: number;
+  aviso: string | null;     // mensaje de "conexión restablecida…"
+  reserva: number;          // e-NCF apartados que quedan
+}
+
+let estado: EstadoConexion = { enLinea: true, desde: null, pendientes: 0, enviando: false, errores: 0, aviso: null, reserva: 0 };
+const oyentes = new Set<(e: EstadoConexion) => void>();
+const cambiar = (p: Partial<EstadoConexion>) => { estado = { ...estado, ...p }; oyentes.forEach((f) => f(estado)); };
+export const estadoConexion = () => estado;
+
+export function useConexion() {
+  const [e, setE] = useState(estado);
+  useEffect(() => { oyentes.add(setE); return () => { oyentes.delete(setE); }; }, []);
+  return e;
+}
+
+const k = (cajaId: string, que: string) => `${que}:${cajaId}`;
+interface Corte { id: string; desde: string; ventas: number; monto: number }
+
+// ------------------------------------------------------------------ Caché para arrancar sin servidor
+export const guardarCache = (ajustes: Ajustes, que: "config" | "catalogo" | "turno" | "usuarios", valor: unknown) =>
+  guardar(k(ajustes.cajaId, que), valor).catch(() => {});
+export const leerCache = <T,>(ajustes: Ajustes, que: "config" | "catalogo" | "turno" | "usuarios") => leer<T>(k(ajustes.cajaId, que));
+
+// ------------------------------------------------------------------ PIN sin servidor
+/** Al entrar con servidor se guarda una huella del PIN: si luego se cae, la misma persona puede volver a entrar. */
+export async function recordarPin(ajustes: Ajustes, usuario: { id: string; nombre: string }, pin: string) {
+  const sal = uuidv7();
+  const mapa = (await leer<Record<string, { nombre: string; sal: string; huella: string }>>(k(ajustes.cajaId, "pines"))) ?? {};
+  mapa[usuario.id] = { nombre: usuario.nombre, sal, huella: huellaPin(sal, pin) };
+  await guardar(k(ajustes.cajaId, "pines"), mapa).catch(() => {});
+}
+export async function usuariosSinServidor(ajustes: Ajustes) {
+  const mapa = (await leer<Record<string, { nombre: string }>>(k(ajustes.cajaId, "pines"))) ?? {};
+  return Object.entries(mapa).map(([id, u]) => ({ id, nombre: u.nombre, tienePin: true }));
+}
+export async function verificarPinSinServidor(ajustes: Ajustes, usuarioId: string, pin: string) {
+  const mapa = (await leer<Record<string, { sal: string; huella: string }>>(k(ajustes.cajaId, "pines"))) ?? {};
+  const u = mapa[usuarioId];
+  return !!u && u.huella === huellaPin(u.sal, pin);
+}
+/** Huella lenta (10 mil vueltas de SHA-256) para que no se pueda adivinar el PIN copiando la caja. */
+function huellaPin(sal: string, pin: string) {
+  let h = sha256(`${sal}:${pin}`);
+  for (let i = 0; i < 10000; i++) h = sha256(h + sal);
+  return h;
+}
+
+// ------------------------------------------------------------------ Vigilancia del servidor
+let vigilando: Ajustes | null = null;
+let fallosSeguidos = 0;
+
+export async function iniciarVigilancia(ajustes: Ajustes) {
+  if (vigilando?.cajaId === ajustes.cajaId) return;
+  vigilando = ajustes;
+  const pend = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
+  const corte = await leer<Corte>(k(ajustes.cajaId, "corte"));
+  const reserva = (await leer<unknown[]>(k(ajustes.cajaId, "reserva")))?.length ?? 0;
+  cambiar({ pendientes: pend.length, reserva, errores: pend.filter((p) => p.error).length, ...(corte ? { enLinea: false, desde: corte.desde } : {}) });
+  alPerderConexion(() => { void sinServidor(); });
+  const vuelta = async () => {
+    const ok = await responde(ajustes.servidor);
+    if (ok) {
+      fallosSeguidos = 0;
+      if (!estado.enLinea || estado.pendientes > 0) await volvioServidor(ajustes);
+      else if (estado.reserva < 10) await refrescarReserva(ajustes);
+    } else if (++fallosSeguidos >= 2 || !estado.enLinea) {
+      await sinServidor();
+    }
+    setTimeout(vuelta, estado.enLinea ? 15000 : 5000);
+  };
+  setTimeout(vuelta, 1500);
+}
+
+async function responde(servidor: string) {
+  try {
+    const r = await fetch(`${servidor.replace(/\/$/, "")}/descubrir`, { signal: AbortSignal.timeout(3000), cache: "no-store" });
+    return r.ok;
+  } catch { return false; }
+}
+
+async function sinServidor() {
+  if (!vigilando) return;
+  if (estado.enLinea) {
+    const corte = (await leer<Corte>(k(vigilando.cajaId, "corte"))) ?? { id: uuidv7(), desde: new Date().toISOString(), ventas: 0, monto: 0 };
+    await guardar(k(vigilando.cajaId, "corte"), corte).catch(() => {});
+    cambiar({ enLinea: false, desde: corte.desde, aviso: null });
+  }
+}
+
+async function volvioServidor(ajustes: Ajustes) {
+  cambiar({ enLinea: true });
+  const enviados = await enviarPendientes(ajustes);
+  const corte = await leer<Corte>(k(ajustes.cajaId, "corte"));
+  // Un corte de segundos sin ventas (un cable que se movió) no se reporta
+  if (corte && estado.pendientes === 0 && corte.ventas === 0 && Date.now() - new Date(corte.desde).getTime() < 60_000) {
+    await borrar(k(ajustes.cajaId, "corte"));
+    cambiar({ desde: null });
+    await refrescarReserva(ajustes);
+    return;
+  }
+  if (corte && estado.pendientes === 0) {
+    try {
+      await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/incidentes`, {
+        cuerpo: { id: corte.id, desde: corte.desde, hasta: new Date().toISOString(), ventas: corte.ventas, monto: corte.monto.toFixed(2) },
+      });
+      await borrar(k(ajustes.cajaId, "corte"));
+      cambiar({ desde: null });
+    } catch { /* sin sesión todavía: se reintenta en la próxima vuelta */ }
+  }
+  if (corte || enviados) {
+    cambiar({ aviso: enviados ? `Conexión con el servidor restablecida · se enviaron ${enviados} venta(s) guardadas en esta caja` : "Conexión con el servidor restablecida" });
+    setTimeout(() => cambiar({ aviso: null }), 12000);
+  }
+  await refrescarReserva(ajustes);
+}
+
+// ------------------------------------------------------------------ e-NCF apartados
+export async function refrescarReserva(ajustes: Ajustes) {
+  if (!sesionCaja()) return;
+  try {
+    const r = await api<{ numeros: { encf: string; rangoId: string }[] }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/contingencia/reserva`, { cuerpo: {} });
+    // No se vuelven a ofrecer números que la caja ya usó y aún no ha enviado
+    const pend = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
+    const usados = new Set(pend.map((p) => p.encf));
+    const lista = r.numeros.filter((n) => !usados.has(n.encf));
+    await guardar(k(ajustes.cajaId, "reserva"), lista);
+    cambiar({ reserva: lista.length });
+  } catch { /* se intenta luego */ }
+}
+
+// ------------------------------------------------------------------ Venta sin servidor
+export async function venderSinServidor(ajustes: Ajustes, v: Omit<VentaPendiente, "encf" | "rangoId" | "ticket" | "creadoEn"> & { ticket: Omit<VentaRegistrada, "fiscal" | "fecha" | "numero"> }) {
+  const reserva = (await leer<{ encf: string; rangoId: string }[]>(k(ajustes.cajaId, "reserva"))) ?? [];
+  const num = reserva.shift();
+  if (!num) throw new Error("Esta caja no tiene números e-NCF de reserva: no puede facturar sin servidor. Llame al servicio técnico.");
+  const creadoEn = new Date().toISOString();
+  const pend = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
+  const ticket: VentaRegistrada = {
+    ...v.ticket, numero: `P${String(pend.length + 1).padStart(3, "0")}`, fecha: creadoEn, contingencia: true,
+    fiscal: { encf: num.encf, codigoSeguridad: "", fechaFirma: "", urlQr: "", modo: "RFCE", venceSecuencia: "" },
+  };
+  const venta: VentaPendiente = { ...v, encf: num.encf, rangoId: num.rangoId, creadoEn, ticket };
+  // Primero se guarda la venta y el número usado; si no se puede guardar, no se vende
+  await guardar(k(ajustes.cajaId, "pendientes"), [...pend, venta]);
+  await guardar(k(ajustes.cajaId, "reserva"), reserva);
+  const corte = (await leer<Corte>(k(ajustes.cajaId, "corte"))) ?? { id: uuidv7(), desde: creadoEn, ventas: 0, monto: 0 };
+  await guardar(k(ajustes.cajaId, "corte"), { ...corte, ventas: corte.ventas + 1, monto: corte.monto + Number(v.total) });
+  cambiar({ pendientes: pend.length + 1, reserva: reserva.length, enLinea: false, desde: estado.desde ?? corte.desde });
+  return ticket;
+}
+
+let enviando = false;
+/** Manda las ventas guardadas, una por una y en orden. Devuelve cuántas entraron. */
+export async function enviarPendientes(ajustes: Ajustes) {
+  if (enviando || !sesionCaja()) return 0;
+  enviando = true;
+  cambiar({ enviando: true });
+  let enviados = 0;
+  try {
+    let pend = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
+    for (const p of [...pend]) {
+      try {
+        await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/ventas/contingencia`, {
+          cuerpo: { ventaId: p.ventaId, usuarioId: p.usuarioOriginal, usuarioOriginal: p.usuarioOriginal, turnoId: p.turnoId, creadoEn: p.creadoEn,
+                    encf: p.encf, items: p.items, pagos: p.pagos, clienteId: p.clienteId },
+        });
+        pend = pend.filter((x) => x.ventaId !== p.ventaId);
+        enviados++;
+      } catch (e) {
+        if (e instanceof ErrorApi && (e.estado === 0 || e.estado === 401)) break; // sin servidor o sin sesión: luego
+        pend = pend.map((x) => (x.ventaId === p.ventaId ? { ...x, error: (e as Error).message } : x));
+      }
+      await guardar(k(ajustes.cajaId, "pendientes"), pend);
+    }
+    cambiar({ pendientes: pend.length, errores: pend.filter((p) => p.error).length });
+  } finally {
+    enviando = false;
+    cambiar({ enviando: false });
+  }
+  return enviados;
+}
+
+export const ventasPendientes = (ajustes: Ajustes) => leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes")).then((x) => x ?? []);
+
+// ------------------------------------------------------------------ SHA-256 (sin crypto.subtle: la caja abre por http en la red local)
+function sha256(texto: string): string {
+  const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+  const bytes = new TextEncoder().encode(texto);
+  const largo = bytes.length * 8;
+  const total = ((bytes.length + 9 + 63) >> 6) << 6;
+  const m = new Uint8Array(total);
+  m.set(bytes); m[bytes.length] = 0x80;
+  const dv = new DataView(m.buffer);
+  dv.setUint32(total - 4, largo >>> 0); dv.setUint32(total - 8, Math.floor(largo / 2 ** 32));
+  let [a0, b0, c0, d0, e0, f0, g0, h0] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const w = new Uint32Array(64);
+  const rot = (x: number, n: number) => (x >>> n) | (x << (32 - n));
+  for (let i = 0; i < total; i += 64) {
+    for (let t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
+    for (let t = 16; t < 64; t++) {
+      const s0 = rot(w[t - 15], 7) ^ rot(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+      const s1 = rot(w[t - 2], 17) ^ rot(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+    }
+    let [a, b, c, d, e, f, g, h] = [a0, b0, c0, d0, e0, f0, g0, h0];
+    for (let t = 0; t < 64; t++) {
+      const t1 = (h + (rot(e, 6) ^ rot(e, 11) ^ rot(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) >>> 0;
+      const t2 = ((rot(a, 2) ^ rot(a, 13) ^ rot(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    a0 = (a0 + a) >>> 0; b0 = (b0 + b) >>> 0; c0 = (c0 + c) >>> 0; d0 = (d0 + d) >>> 0;
+    e0 = (e0 + e) >>> 0; f0 = (f0 + f) >>> 0; g0 = (g0 + g) >>> 0; h0 = (h0 + h) >>> 0;
+  }
+  return [a0, b0, c0, d0, e0, f0, g0, h0].map((x) => x.toString(16).padStart(8, "0")).join("");
+}
+export const _sha256 = sha256; // para pruebas

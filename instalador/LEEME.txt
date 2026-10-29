@@ -1,0 +1,72 @@
+FACTPOS · INSTALACIÓN EN UNA SUCURSAL (Windows 10 / 11)
+========================================================
+
+Lo que necesita
+  - Una computadora para el SERVIDOR (puede ser también una de las cajas).
+    Recomendado: 8 GB de RAM, disco SSD, cable de red (no Wi-Fi) y UPS.
+  - Las CAJAS conectadas a la misma red que el servidor.
+  - Internet en el servidor solo para instalar y para la DGII
+    (las cajas siguen facturando aunque se caiga el internet).
+
+1) SERVIDOR (una sola vez)
+   a. Descomprima FactPOS-Servidor-X.Y.Z.zip en el escritorio.
+   b. Clic derecho en el menú Inicio > "Terminal (Administrador)".
+   c. Escriba (cambie la ruta si lo descomprimió en otro lugar):
+        cd "$env:USERPROFILE\Desktop\FactPOS"
+        powershell -ExecutionPolicy Bypass -File .\instalador\instalar-servidor.ps1
+      Opciones útiles:
+        -Demo                     carga datos de prueba (para practicar)
+        -PinSecreto "..."         el mismo que la central y las demás sucursales
+        -NombreRed factpos-norte  si hay dos servidores en la misma red
+        -CentralUrl https://... -SucursalId ... -CentralClave ...
+                                  conecta la sucursal con la central en la nube
+                                  (los datos están en Administración > Sucursales >
+                                  "Conectar su servidor"). Con esto NO use -Demo:
+                                  productos, precios y existencias bajan solos.
+   d. Al final muestra la dirección de las cajas, por ejemplo:
+        http://factpos.local:3000/terminal/
+   El servidor queda arrancando solo cada vez que se enciende el equipo.
+   Registro de lo que pasa: C:\FactPOS\logs\servidor.log
+
+2) CADA CAJA
+   a. Copie la carpeta "instalador" a la caja (o el ZIP completo).
+   b. Abra PowerShell (no hace falta Administrador) y escriba:
+        powershell -ExecutionPolicy Bypass -File .\instalar-caja.ps1 -Impresora "NOMBRE DE LA TÉRMICA"
+      (si no sabe el nombre, ejecútelo sin -Impresora y le muestra la lista)
+   c. El instalador ENCUENTRA SOLO el servidor en la red y crea en el
+      escritorio "FactPOS Caja": abre en pantalla completa e imprime directo,
+      sin la ventana de imprimir. También se abre sola al encender.
+   d. La primera vez, elija qué caja es (Caja 1, Caja 2…).
+   Para salir de la pantalla completa: Alt + F4.
+
+Sin instalador en la caja
+   Abra Edge o Chrome en  http://factpos.local:3000/terminal/
+   (la pantalla también busca el servidor sola si no lo encuentra).
+
+Si la caja no encuentra el servidor
+   - Que estén en la misma red (mismo router / mismo Wi-Fi).
+   - En el servidor, que la red sea "Privada" o que el instalador haya creado
+     las reglas del firewall (FactPOS servidor, búsqueda de cajas, nombre en la red).
+   - Pruebe con la IP:  -Servidor http://192.168.1.10:3000
+   - Recomendado: reserve en el router una IP fija para el servidor.
+
+Conexión con la central (nube)
+   - Cada 15 segundos el servidor SUBE las ventas, turnos y clientes nuevos, y
+     BAJA precios, productos, ofertas y los traspasos que manda el almacén.
+   - Sin internet las cajas siguen vendiendo: lo pendiente sube solo al volver.
+   - Para ver el estado:  http://factpos.local:3000/sync/estado
+   - Los traspasos (despachar y recibir) se hacen en la Administración.
+   - Para conectar un servidor ya instalado: vuelva a ejecutar
+     instalar-servidor.ps1 con -CentralUrl -SucursalId -CentralClave.
+
+Si se cae el servidor
+   - Las cajas SIGUEN VENDIENDO (factura de consumo, al contado) y muestran un
+     aviso rojo. Las ventas quedan guardadas en cada caja.
+   - Al volver el servidor las envían solas; la caja muestra el aviso verde.
+   - El servicio técnico recibe el aviso (Telegram / correo) desde la nube.
+   - Para que la caja abra aunque el servidor esté apagado, instálela con
+     instalar-caja.ps1 (habilita la copia local de la pantalla).
+
+Actualizar a una versión nueva
+   Descomprima el ZIP nuevo y vuelva a ejecutar instalar-servidor.ps1:
+   conserva la base de datos y el .env, y aplica las migraciones nuevas.

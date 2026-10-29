@@ -1,0 +1,180 @@
+import { useMemo, useState } from "react";
+import { Decimal } from "decimal.js";
+import type { Cupon } from "@factpos/compartido";
+import { api, rd, ErrorApi, type Ajustes } from "./api";
+import { uuidv7 } from "@factpos/compartido";
+import { useConexion, venderSinServidor } from "./contingencia";
+import type { Usuario } from "./App";
+import type { Cliente } from "./Venta";
+import { Modal } from "./Venta";
+
+import type { VentaRegistrada } from "./Ticket";
+export type ResultadoVenta = VentaRegistrada;
+
+const BILLETES = [100, 200, 500, 1000, 2000];
+
+/**
+ * Cobro con pago mixto. El efectivo cubre lo que no se pague con otros medios;
+ * el cambio se calcula sobre lo recibido. Enter confirma.
+ */
+/** Lo que la caja ya calculó con su catálogo: con esto imprime si no hay servidor. */
+export interface CobroLocal {
+  lineas: VentaRegistrada["lineas"];
+  totales: { subtotal: string; descuento: string; itbis: string; total: string };
+  turnoId: string;
+  hayDescuentos: boolean;
+}
+
+export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, alFallar }: {
+  ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
+  items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
+  aprobacionDescuento?: string; motivoDescuento?: string;
+  local?: CobroLocal;
+  onCerrar: () => void; onVendido: (r: ResultadoVenta) => void;
+  /** Se llama si el cobro falla (p. ej. para refrescar ofertas con tope) */
+  alFallar?: () => void;
+}) {
+  const [tarjeta, setTarjeta] = useState("");
+  const [refTarjeta, setRefTarjeta] = useState("");
+  const [transferencia, setTransferencia] = useState("");
+  const [credito, setCredito] = useState("");
+  const [recibido, setRecibido] = useState("");
+  // Cliente creado en caja para pedir comprobante: la factura sale de crédito fiscal (E31)
+  const [fiscal, setFiscal] = useState(!!cliente?.nuevoParaFiscal);
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState("");
+  // Mismo id si se reintenta: el servidor no duplica la venta
+  const [ventaId] = useState(() => uuidv7());
+  const conexion = useConexion();
+  const sinServidor = !conexion.enLinea;
+
+  const n = (v: string) => new Decimal(v || 0);
+  const otros = n(tarjeta).plus(n(transferencia)).plus(n(credito));
+  const efectivo = Decimal.max(new Decimal(total).minus(otros), 0);
+  const cambio = recibido ? n(recibido).minus(efectivo) : new Decimal(0);
+  const disponibleCredito = cliente ? n(cliente.limiteCredito).minus(cliente.saldo) : new Decimal(0);
+
+  const motivoNoContingencia = cupon ? "Sin servidor no se aplican cupones: quite el cupón" :
+    local?.hayDescuentos ? "Sin servidor no se aplican descuentos: quítelos" :
+    n(credito).gt(0) ? "Sin servidor no se vende a crédito" :
+    fiscal ? "Sin servidor no se emiten facturas de crédito fiscal (E31): solo de consumo" : "";
+  const error = useMemo(() => {
+    if (sinServidor && motivoNoContingencia) return motivoNoContingencia;
+    if (otros.gt(total)) return "Los pagos superan el total";
+    if (n(tarjeta).gt(0) && !/^[A-Za-z0-9-]{4,}$/.test(refTarjeta.trim())) return "Escriba el número de aprobación del voucher de la tarjeta";
+    if (efectivo.gt(0) && recibido && cambio.lt(0)) return "El efectivo recibido no alcanza";
+    if (n(credito).gt(0) && !cliente) return "Para vender a crédito seleccione un cliente (F4)";
+    if (n(credito).gt(disponibleCredito)) return `Crédito disponible: ${rd(disponibleCredito.toFixed(2))}`;
+    if (fiscal && !(cliente && ["RNC", "CEDULA"].includes(cliente.tipoDocumento))) return "Crédito fiscal requiere cliente con RNC o cédula";
+    return "";
+  }, [otros, efectivo, recibido, cambio, credito, cliente, fiscal, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
+
+  const cobrar = async () => {
+    if (error || enviando) return;
+    setEnviando(true);
+    setMsg("");
+    const pagos = [
+      ...(n(tarjeta).gt(0) ? [{ formaPago: "TARJETA", monto: n(tarjeta).toFixed(2), referencia: refTarjeta || undefined }] : []),
+      ...(n(transferencia).gt(0) ? [{ formaPago: "TRANSFERENCIA", monto: n(transferencia).toFixed(2) }] : []),
+      ...(n(credito).gt(0) ? [{ formaPago: "CREDITO", monto: n(credito).toFixed(2) }] : []),
+      ...(efectivo.gt(0) ? [{ formaPago: "EFECTIVO", monto: efectivo.toFixed(2), recibido: (recibido ? n(recibido) : efectivo).toFixed(2) }] : []),
+    ];
+    // Sin servidor: la venta se guarda en la caja con un e-NCF de reserva
+    const contingencia = async () => {
+      if (!local) throw new Error("No hay conexión con el servidor de la sucursal");
+      const cambioTotal = pagos.reduce((a, p) => a.plus(p.recibido ? n(p.recibido).minus(p.monto) : 0), new Decimal(0));
+      const ticket = await venderSinServidor(ajustes, {
+        ventaId, usuarioOriginal: usuario.id, turnoId: local.turnoId,
+        items: items.map((i) => ({ presentacionId: i.presentacionId, cantidad: i.cantidad, precioVariable: i.precioVariable })),
+        pagos, clienteId: cliente?.id, total,
+        ticket: {
+          id: ventaId, tipoDocumento: "E32", ...local.totales, cambio: cambioTotal.toFixed(2), cupon: null, lineas: local.lineas,
+          pagos, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null,
+        },
+      });
+      onVendido(ticket);
+    };
+    try {
+      if (sinServidor) return await contingencia();
+      const r = await api<ResultadoVenta>(ajustes.servidor, `/cajas/${ajustes.cajaId}/ventas`, {
+        cuerpo: {
+          ventaId, usuarioId: usuario.id, clienteId: cliente?.id, cuponCodigo: cupon?.codigo,
+          tipoDocumento: fiscal ? "E31" : "E32", items, pagos,
+          autorizacionDescuento: aprobacionDescuento, motivoDescuento,
+        },
+      });
+      onVendido({ ...r, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null });
+    } catch (e) {
+      // Se cayó el servidor justo al cobrar: si se puede, se guarda en la caja
+      if (e instanceof ErrorApi && e.estado === 0 && !motivoNoContingencia && local) {
+        try { await contingencia(); return; } catch (e2) { setMsg((e2 as Error).message); setEnviando(false); return; }
+      }
+      const m = (e as Error).message;
+      // Si otra caja vendió las últimas unidades en oferta, el total cambió: se recalcula
+      if (alFallar && /no coinciden con el total/.test(m)) {
+        alFallar();
+        setMsg("Otra caja vendió las últimas unidades en oferta y el total cambió. Revise el nuevo total y cobre de nuevo.");
+      } else setMsg(m);
+      setEnviando(false);
+    }
+  };
+
+  const campo = (etiqueta: string, valor: string, set: (v: string) => void, extra?: React.ReactNode) => (
+    <label className="campo fila-campo">
+      <span>{etiqueta}</span>
+      <input inputMode="decimal" value={valor} placeholder="0.00"
+        onChange={(e) => set(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+      {extra}
+    </label>
+  );
+
+  return (
+    <Modal titulo="Cobrar" onCerrar={onCerrar}>
+      {sinServidor && (
+        <div className="aviso-cobro-contingencia">
+          <b>Sin conexión con el servidor.</b> La venta se guarda en esta caja y la factura sale como
+          <b> consumo (E32) en contingencia</b>. Solo efectivo, tarjeta o transferencia.
+        </div>
+      )}
+      <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>
+
+      <div className="cobro-efectivo">
+        <label className="campo">
+          <span>Efectivo recibido {efectivo.gt(0) && <em>· a cobrar en efectivo {rd(efectivo.toFixed(2))}</em>}</span>
+          <input autoFocus className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
+            onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+        </label>
+        <div className="billetes">
+          <button className="boton fantasma" onClick={() => setRecibido(efectivo.toFixed(2))}>Exacto</button>
+          {BILLETES.filter((b) => b >= efectivo.toNumber()).slice(0, 4).map((b) => (
+            <button key={b} className="boton fantasma" onClick={() => setRecibido(String(b))}>{rd(b)}</button>
+          ))}
+        </div>
+        {recibido && cambio.gte(0) && <div className="cambio-grande">Cambio: {rd(cambio.toFixed(2))}</div>}
+      </div>
+
+      <details className="otros-pagos">
+        <summary>Tarjeta, transferencia o crédito (pago mixto)</summary>
+        {campo("Tarjeta", tarjeta, setTarjeta, (
+          <input className={"ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación" aria-label="Número de aprobación del voucher"
+            value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+        ))}
+        <div className="billetes">
+          <button className="boton fantasma" onClick={() => { setTarjeta(new Decimal(total).minus(n(transferencia)).minus(n(credito)).toFixed(2)); setRecibido(""); }}>Todo con tarjeta</button>
+        </div>
+        {campo("Transferencia", transferencia, setTransferencia)}
+        {cliente && Number(cliente.limiteCredito) > 0 && campo(`Crédito (disp. ${rd(disponibleCredito.toFixed(2))})`, credito, setCredito)}
+      </details>
+
+      <label className="check">
+        <input type="checkbox" checked={fiscal} onChange={(e) => setFiscal(e.target.checked)} />
+        Factura de crédito fiscal (E31){cliente ? ` · ${cliente.nombre}` : ""}
+      </label>
+
+      {(error || msg) && <p className="error">{error || msg}</p>}
+      <button className="boton cobrar" disabled={!!error || enviando} onClick={cobrar}>
+        {enviando ? "Registrando…" : "Confirmar cobro (Enter)"}
+      </button>
+    </Modal>
+  );
+}
