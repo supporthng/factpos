@@ -36,7 +36,16 @@ try {
   app = Fastify();
   app.all("/*", async (_req, rep) => rep.code(503).send({ estado: "mal_configurado", causa: motivo }));
 }
-await app.listen({ port: config.puerto, host: config.host });
+if (enVercel) {
+  // Vercel intercepta listen() para quedarse con el servidor, pero nunca avisa
+  // que "ya escucha": esperar ese aviso deja la función colgada y Vercel
+  // responde 500 INTERNAL_FUNCTION_INVOCATION_FAILED. Se prepara la app y se
+  // llama listen() sin esperarlo.
+  await app.ready();
+  app.listen({ port: config.puerto, host: config.host }).catch((e) => console.error(`[arranque] ${(e as Error).message}`));
+} else {
+  await app.listen({ port: config.puerto, host: config.host });
+}
 
 if (!enVercel) {
   // Facturación electrónica: certificado listo y cola de envío a la DGII
