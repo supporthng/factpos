@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: factpos
+          POSTGRES_PASSWORD: factpos
+          POSTGRES_DB: factpos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U factpos"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://factpos:factpos@localhost:5432/factpos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Aplicar migraciones a una base limpia
+        run: npm run db:migrar
