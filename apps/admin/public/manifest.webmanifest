@@ -1,0 +1,42 @@
+{
+  "name": "FactPOS Administración",
+  "short_name": "FactPOS Admin",
+  "description": "Administración central de sucursales: inventario, precios, ofertas, traspasos y reportes",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0E1B26",
+  "theme_color": "#0E1B26",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "iconos/factpos.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/factpos-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/factpos-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/factpos-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "iconos/factpos-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
