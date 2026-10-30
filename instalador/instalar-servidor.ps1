@@ -1,4 +1,4 @@
-<#
+﻿<#
   FactPOS · Instalador del SERVIDOR de la sucursal (Windows 10/11)
 
   Qué hace:

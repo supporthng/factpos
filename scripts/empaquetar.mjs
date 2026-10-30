@@ -53,6 +53,14 @@ for (const f of ["instalador/instalar-administracion.ps1", "instalador/instalar-
   const ruta = join(dir, f);
   writeFileSync(ruta, readFileSync(ruta, "utf8").replaceAll("__PORTAL_URL__", adminUrl));
 }
+// Windows PowerShell 5.1 lee los .ps1 SIN BOM como ANSI: "│" pasa a "â”‚" y ese "”"
+// cierra las cadenas (error "Falta el paréntesis de cierre"). Forzar UTF-8 CON BOM.
+for (const nombre of readdirSync(join(dir, "instalador"))) {
+  if (!nombre.toLowerCase().endsWith(".ps1")) continue;
+  const ruta = join(dir, "instalador", nombre);
+  const texto = readFileSync(ruta, "utf8").replace(/^﻿/, "");
+  writeFileSync(ruta, "﻿" + texto, "utf8");
+}
 for (const p of ["packages/compartido", "apps/servidor", "apps/terminal", "apps/admin"]) {
   copiar(`${p}/package.json`);
   copiar(`${p}/dist`);

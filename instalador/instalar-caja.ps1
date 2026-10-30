@@ -1,4 +1,4 @@
-<#
+﻿<#
   FactPOS · Instalador de una CAJA (Windows 10/11)
 
   Qué hace:
