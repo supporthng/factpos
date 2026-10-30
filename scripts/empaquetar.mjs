@@ -25,7 +25,13 @@ mkdirSync(dir, { recursive: true });
 const copiar = (de, a = de) => cpSync(join(raiz, de), join(dir, a), { recursive: true });
 for (const f of ["package.json", "package-lock.json", ".env.example", "README.md"]) if (existsSync(join(raiz, f))) copiar(f); // .env.example puede faltar (GitHub web no sube archivos que empiezan con punto)
 copiar("db/migrations");
-copiar("instalador");
+// Copiar solo scripts de instalación; Electron se distribuye aparte como ejecutable.
+// Nunca copiar instalador/escritorio/node_modules ni su carpeta out al paquete.
+mkdirSync(join(dir, "instalador"), { recursive: true });
+for (const nombre of readdirSync(join(raiz, "instalador"))) {
+  if (["escritorio", "setup"].includes(nombre)) continue;
+  cpSync(join(raiz, "instalador", nombre), join(dir, "instalador", nombre), { recursive: true });
+}
 // El ejecutable Electron se compila antes de empaquetar, en una carpeta fuera de paquete/.
 const escritorioDir = join(raiz, "instalador/escritorio/out");
 const ejecutables = existsSync(escritorioDir) ? readdirSync(escritorioDir).filter(n => /^FactPOS-Escritorio-.*\.exe$/i.test(n)) : [];

@@ -332,10 +332,19 @@ async function ultimaVersion(): Promise<Publicada | null> {
     if (!r.ok) throw new Error(`GitHub ${r.status}`);
     const lista = (await r.json()) as { tag_name: string; draft: boolean; body: string | null; published_at: string | null;
       assets: { name: string; url: string; browser_download_url: string }[] }[];
-    const rel = lista.find((x) => !x.draft && /^v\d+\.\d+\.\d+$/.test(x.tag_name));
-    const asset = rel?.assets.find((a) => /^FactPOS-Instalador.*\.zip$/.test(a.name));
-    const v = rel ? { version: rel.tag_name.slice(1), notas: rel.body, publicada: rel.published_at,
-      asset: asset ? { url: asset.url, descarga: asset.browser_download_url } : null } : null;
+    // La rama main publica bajo la etiqueta «ultima», no «vX.Y.Z».
+    // La versión efectiva se obtiene del nombre del ZIP publicado.
+    const candidatas = lista.filter((x) => !x.draft && (x.tag_name === "ultima" || /^v\d+\.\d+\.\d+$/.test(x.tag_name)));
+    const publicadas = candidatas.flatMap((rel) => rel.assets
+      .filter((a) => /^FactPOS-Instalador-\d+\.\d+\.\d+\.zip$/i.test(a.name))
+      .map((asset) => ({ rel, asset, version: asset.name.match(/FactPOS-Instalador-(\d+\.\d+\.\d+)\.zip/i)![1] })));
+    publicadas.sort((a, b) => {
+      const aa = a.version.split(".").map(Number), bb = b.version.split(".").map(Number);
+      return (bb[0] - aa[0]) || (bb[1] - aa[1]) || (bb[2] - aa[2]);
+    });
+    const encontrada = publicadas[0];
+    const v = encontrada ? { version: encontrada.version, notas: encontrada.rel.body, publicada: encontrada.rel.published_at,
+      asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url } } : null;
     cacheVersion = { v, t: Date.now() };
     return v;
   } catch {

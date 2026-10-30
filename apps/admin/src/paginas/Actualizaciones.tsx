@@ -35,7 +35,7 @@ export function Actualizaciones() {
           <div className="kpis">
             <Kpi titulo="Versión instalada" valor={d.actual} />
             <Kpi titulo="Última publicada" valor={d.disponible ?? "—"} tono={d.hayNueva ? "alerta" : "ok"}
-              detalle={d.publicada ? new Date(d.publicada).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) : "Sin conexión con el portal"} />
+              detalle={d.publicada ? new Date(d.publicada).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) : "No se pudo consultar la versión publicada"} />
           </div>
           {d.proceso && (
             <Aviso tipo={d.proceso.estado === "ERROR" ? "error" : "info"}
@@ -51,8 +51,10 @@ export function Actualizaciones() {
               {!puede("*") && <p className="suave pequeno">Solo un administrador puede instalarla.</p>}
               {d.modo === "central" && <p className="suave pequeno">Después, cada sucursal se actualiza sola en un momento sin ventas.</p>}
             </div>
+          ) : d.disponible ? (
+            <p className="suave">Tiene la versión más reciente publicada.</p>
           ) : (
-            <p className="suave">Tiene la versión más reciente.</p>
+            <Aviso tipo="info" texto="No se ha podido verificar si hay actualizaciones. Compruebe la conexión del servidor con el portal y que exista una publicación de instalador completada en GitHub Releases." />
           )}
           {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
         </>
