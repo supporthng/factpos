@@ -11,7 +11,7 @@ import { SQL_RESTANTES } from "../promociones.js";
  * cuántas quedan sin esperar). `$s` = parámetro con la sucursal.
  */
 const sqlVersion = (s: string) => `(SELECT last_value FROM sync_version)::text || '-' || COALESCE((
-    SELECT SUM(CASE WHEN v.tipo_documento = 'E34' THEN -i.unidades_oferta ELSE i.unidades_oferta END)
+    SELECT SUM(CASE WHEN v.tipo_documento IN ('E34','ANU') THEN -i.unidades_oferta ELSE i.unidades_oferta END)
       FROM venta_items i JOIN ventas v ON v.id = i.venta_id
      WHERE v.sucursal_id = ${s}
        AND i.oferta_id IN (SELECT id FROM ofertas WHERE unidades_maximas IS NOT NULL AND activo AND termina_en > now())), 0)::text`;

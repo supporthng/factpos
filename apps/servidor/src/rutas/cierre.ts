@@ -38,13 +38,13 @@ export async function reporteTurno(c: Q, turnoId: string) {
 
   const [ventas, pagos, anuladas, movs] = await Promise.all([
     c.query(
-      `SELECT COUNT(*) FILTER (WHERE tipo_documento <> 'E34') AS facturas,
+      `SELECT COUNT(*) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS facturas,
               COUNT(*) FILTER (WHERE tipo_documento = 'E31') AS "creditoFiscal",
-              COALESCE(SUM(CASE WHEN tipo_documento = 'E34' THEN -total ELSE total END), 0)::text AS total,
-              COALESCE(SUM(CASE WHEN tipo_documento = 'E34' THEN -itbis ELSE itbis END), 0)::text AS itbis,
-              COALESCE(SUM(CASE WHEN tipo_documento = 'E34' THEN -descuento ELSE descuento END), 0)::text AS descuentos,
-              MIN(numero_interno) FILTER (WHERE tipo_documento <> 'E34') AS "primeraFactura",
-              MAX(numero_interno) FILTER (WHERE tipo_documento <> 'E34') AS "ultimaFactura"
+              COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -total ELSE total END), 0)::text AS total,
+              COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -itbis ELSE itbis END), 0)::text AS itbis,
+              COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -descuento ELSE descuento END), 0)::text AS descuentos,
+              MIN(numero_interno) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS "primeraFactura",
+              MAX(numero_interno) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS "ultimaFactura"
          FROM ventas WHERE turno_id = $1`,
       [turnoId],
     ),
@@ -54,7 +54,7 @@ export async function reporteTurno(c: Q, turnoId: string) {
       [turnoId],
     ),
     c.query(
-      `SELECT COUNT(*)::int AS cantidad, COALESCE(SUM(total), 0)::text AS monto FROM ventas WHERE turno_id = $1 AND tipo_documento = 'E34'`,
+      `SELECT COUNT(*)::int AS cantidad, COALESCE(SUM(total), 0)::text AS monto FROM ventas WHERE turno_id = $1 AND tipo_documento IN ('E34','ANU')`,
       [turnoId],
     ),
     // Retiros, gastos, sencillo, abonos y liquidaciones de delivery del turno
@@ -162,8 +162,8 @@ export async function rutasCierre(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT t.id, u.nombre AS cajero, t.estado, t.abierto_en AS "abiertoEn", t.cerrado_en AS "cerradoEn",
               t.diferencia::text AS diferencia, t.declarado, t.esperado,
-              COALESCE((SELECT SUM(CASE WHEN v.tipo_documento = 'E34' THEN -v.total ELSE v.total END) FROM ventas v WHERE v.turno_id = t.id), 0)::text AS ventas,
-              (SELECT COUNT(*) FROM ventas v WHERE v.turno_id = t.id AND v.tipo_documento <> 'E34')::int AS facturas
+              COALESCE((SELECT SUM(CASE WHEN v.tipo_documento IN ('E34','ANU') THEN -v.total ELSE v.total END) FROM ventas v WHERE v.turno_id = t.id), 0)::text AS ventas,
+              (SELECT COUNT(*) FROM ventas v WHERE v.turno_id = t.id AND v.tipo_documento NOT IN ('E34','ANU'))::int AS facturas
          FROM turnos t JOIN usuarios u ON u.id = t.usuario_id
         WHERE t.caja_id = $1
           AND (t.abierto_en AT TIME ZONE 'America/Santo_Domingo')::date = COALESCE($2::date, (now() AT TIME ZONE 'America/Santo_Domingo')::date)

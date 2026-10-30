@@ -60,7 +60,7 @@ export async function rutasFacturas(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT v.id, v.numero_interno AS numero, v.tipo_documento AS tipo, v.total, v.creado_en AS fecha,
               d.encf, cl.nombre AS cliente,
-              (SELECT n.id FROM ventas n WHERE n.venta_origen_id = v.id AND n.tipo_documento = 'E34' LIMIT 1) IS NOT NULL AS anulada
+              (SELECT n.id FROM ventas n WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU') LIMIT 1) IS NOT NULL AS anulada
          FROM ventas v
          JOIN turnos t ON t.id = v.turno_id AND t.estado = 'ABIERTO'
          LEFT JOIN ecf_documentos d ON d.venta_id = v.id
@@ -97,11 +97,11 @@ export async function rutasFacturas(app: FastifyInstance) {
       if (!turno.rowCount) throw new ErrorNegocio("La caja no tiene un turno abierto", 409);
 
       const o = (await c.query(
-        "SELECT * FROM ventas WHERE id = $1 AND sucursal_id = $2 AND tipo_documento IN ('E31','E32') FOR UPDATE",
+        "SELECT * FROM ventas WHERE id = $1 AND sucursal_id = $2 AND tipo_documento IN ('E31','E32','B01','B02','SIN') FOR UPDATE",
         [ventaId, ctx.sucursalId],
       )).rows[0];
       if (!o) throw new ErrorNegocio("Factura no encontrada en esta sucursal", 404);
-      const ya = await c.query("SELECT 1 FROM ventas WHERE venta_origen_id = $1 AND tipo_documento = 'E34'", [ventaId]);
+      const ya = await c.query("SELECT 1 FROM ventas WHERE venta_origen_id = $1 AND tipo_documento IN ('E34','ANU')", [ventaId]);
       if (ya.rowCount) throw new ErrorNegocio("Esta factura ya fue anulada", 409);
       if (o.condicion === "CREDITO") {
         // Si el cliente ya abonó, el saldo no alcanza para revertir: se avisa
@@ -115,7 +115,7 @@ export async function rutasFacturas(app: FastifyInstance) {
                              venta_origen_id, condicion, subtotal, descuento, itbis, isc, total, motivo, autorizado_por)
          SELECT $1, sucursal_id, $2, $3, $4, cliente_id,
                 (SELECT COALESCE(MAX(numero_interno), 0) + 1 FROM ventas WHERE caja_id = $2),
-                'E34', id, condicion, subtotal, descuento, itbis, isc, total, $5, $6
+                CASE WHEN tipo_documento IN ('E31','E32') THEN 'E34' ELSE 'ANU' END, id, condicion, subtotal, descuento, itbis, isc, total, $5, $6
            FROM ventas WHERE id = $7
          RETURNING numero_interno AS numero`,
         [ncId, cajaId, turno.rows[0].id, b.usuarioId, b.motivo, aprob.supervisorId, ventaId],
@@ -158,13 +158,13 @@ export async function rutasFacturas(app: FastifyInstance) {
         [ncId, ventaId, turno.rows[0].id, b.usuarioId],
       );
 
-      const fiscal = await emitirEcfVenta(c, ncId);
+      const fiscal = o.tipo_documento === "E31" || o.tipo_documento === "E32" ? await emitirEcfVenta(c, ncId) : null;
 
       await c.query(
         `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
          VALUES ($1,$2,$3,$4,$5,'venta',$6,$7)`,
         [uuidv7(), ctx.sucursalId, b.usuarioId, aprob.supervisorId, b.corregir ? "venta.corregir" : "venta.anular", ventaId,
-         JSON.stringify({ motivo: b.motivo, notaCredito: fiscal.encf })],
+         JSON.stringify({ motivo: b.motivo, notaCredito: fiscal?.encf ?? null, anulacionInterna: fiscal === null })],
       );
       await c.query(
         `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
