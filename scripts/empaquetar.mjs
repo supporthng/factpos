@@ -70,22 +70,8 @@ const podar = (d) => {
 };
 podar(join(dir, "node_modules"));
 
-// ZIP creado por tar/bsdtar de forma incremental: evita acumular en RAM
-// miles de archivos y el ejecutable Electron durante el empaquetado.
-const zip = join(salida, `FactPOS-Instalador-${version}.zip`);
-console.log("Comprimiendo paquete en ZIP (modo incremental)...");
-try {
-  execSync('tar -a -cf "' + zip + '" FactPOS', {
-    cwd: salida,
-    stdio: "inherit",
-    timeout: 15 * 60 * 1000,
-  });
-} catch (error) {
-  throw new Error(`No se pudo generar el ZIP incremental: ${error.message}`);
-}
-if (!existsSync(zip) || statSync(zip).size === 0) throw new Error("El ZIP del instalador quedó vacío.");
-console.log(`Listo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB) · Portal: ${adminUrl}`);
-
+// El instalador gráfico incorpora directamente los archivos de FactPOS.
+// No generar un ZIP duplicado: evita una compresión extra de cientos de MB.
 // Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
 let makensis = null;
 try { execSync("makensis -VERSION", { stdio: "ignore" }); makensis = "makensis"; } catch { /* sin NSIS */ }

@@ -112,7 +112,7 @@ function BuscarPsql {
     }
   }
   $rutas += @(Get-ChildItem "$env:ProgramFiles\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
-  foreach ($servicio in @(ServiciosPostgres)) {
+  foreach ($servicio in @(ServiciosPostgres | Where-Object { $_.PathName -match '(?i)[\\/]PostgreSQL[\\/](?:1[6-9]|2[0-9])[\\/]bin[\\/]' })) {
     $rutaServicio = [string]$servicio.PathName
     # Ejemplos: "C:\PostgreSQL\16\bin\pg_ctl.exe" runservice ...
     #           "C:\Program Files\PostgreSQL\16\bin\postgres.exe" -D ...
@@ -122,7 +122,7 @@ function BuscarPsql {
     }
   }
   $c = Get-Command psql -ErrorAction SilentlyContinue
-  if ($c) { $rutas += $c.Source }
+  if ($c -and $c.Source -match '(?i)[\\/]PostgreSQL[\\/](?:1[6-9]|2[0-9])[\\/]bin[\\/]psql\.exe$') { $rutas += $c.Source }
   foreach ($r in $rutas) { if ($r -and (Test-Path -LiteralPath $r -PathType Leaf)) { return Get-Item -LiteralPath $r } }
   return $null
 }
@@ -169,7 +169,7 @@ if ($PuertoPostgres -eq 0 -and (Test-Path "$Carpeta\.env")) {
   if ($m) { $PuertoPostgres = [int]$m.Matches[0].Groups[1].Value }
 }
 $pgBin = BuscarPsql
-$serviciosExistentes = @(ServiciosPostgres)
+$serviciosExistentes = @(ServiciosPostgres | Where-Object { $_.PathName -match '(?i)[\\/]PostgreSQL[\\/](?:1[6-9]|2[0-9])[\\/]bin[\\/]' })
 if (-not $pgBin -and $serviciosExistentes.Count -gt 0) {
   $nombres = ($serviciosExistentes | ForEach-Object { "$($_.Name) ($($_.State))" }) -join ', '
   throw "PostgreSQL ya tiene un servicio instalado: $nombres. No se instalará otra copia ni se tocarán sus datos. No se encontró psql.exe; revise la ruta del ejecutable del servicio en services.msc o instale las herramientas cliente de esa misma versión."
@@ -315,7 +315,7 @@ Remove-Item Env:\PGPASSWORD
 
 Push-Location $Carpeta
 & node apps\servidor\dist\migrar.js
-if ($LASTEXITCODE -ne 0) { throw "Fallaron las migraciones" }
+if ($LASTEXITCODE -ne 0) { throw "Fallaron las migraciones (código $LASTEXITCODE). Revise el mensaje de la migración en los detalles del instalador; no se borró la base de datos." }
 if ($Demo -and -not $CentralUrl -and -not $Master) { & node apps\servidor\dist\semilla.js; Listo "Datos de demostración cargados" }
 if ($CentralUrl) { Listo "Productos, precios, usuarios y existencias se descargan de la central al arrancar" }
 Pop-Location
