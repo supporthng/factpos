@@ -3,8 +3,9 @@
 // "/" y en "/<cliente>/" también en Vercel, donde la función no ve otras carpetas.
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const raiz = new URL("..", import.meta.url).pathname;
+const raiz = fileURLToPath(new URL("..", import.meta.url));
 const origen = join(raiz, "apps/admin/dist");
 // --src (solo en Vercel, que compila desde src): se escribe también el .ts
 const destino = join(raiz, "apps/servidor/dist/admin-embebido.js");

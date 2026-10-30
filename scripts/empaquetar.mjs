@@ -7,9 +7,10 @@
 import { execSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { zipSync } from "fflate";
 
-const raiz = new URL("..", import.meta.url).pathname;
+const raiz = fileURLToPath(new URL("..", import.meta.url));
 const { version } = JSON.parse(readFileSync(join(raiz, "package.json"), "utf8"));
 const salida = join(raiz, "paquete");
 const dir = join(salida, "FactPOS");
