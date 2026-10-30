@@ -55,7 +55,7 @@ VIAddVersionKey "LegalCopyright" "FactPOS"
 !define MUI_ABORTWARNING
 !define MUI_ABORTWARNING_TEXT "¿Cancelar la instalación de FactPOS?"
 
-Var Tipo          ; master | sucursal | caja | admin
+Var Tipo          ; master (completa) | servidor | caja | admin
 Var Empresa
 Var Licencia
 Var Codigo
@@ -134,25 +134,25 @@ Function PaginaTipo
     Abort
   ${EndIf}
 
-  ${NSD_CreateRadioButton} 0 0 100% 12u "Servidor principal del negocio (master)"
+  ${NSD_CreateRadioButton} 0 0 100% 12u "Instalación completa (Caja + Administración + Servidor)"
   Pop $hR1
   ${NSD_AddStyle} $hR1 ${WS_GROUP}
-  ${NSD_CreateLabel} 12u 13u -12u 18u "Uno por negocio, en la oficina o la tienda principal. Administra sucursales, terminales, usuarios y reportes, guarda todos los datos y también vende."
+  ${NSD_CreateLabel} 12u 13u -12u 18u "Instala el servidor local y los accesos de Caja y Administración en esta PC."
   Pop $0
-  ${NSD_CreateRadioButton} 0 36u 100% 12u "Servidor de una sucursal"
+  ${NSD_CreateRadioButton} 0 36u 100% 12u "Solo Servidor"
   Pop $hR2
-  ${NSD_CreateLabel} 12u 49u -12u 18u "Uno por cada tienda adicional. Vende aunque no haya internet y se sincroniza con el servidor principal."
+  ${NSD_CreateLabel} 12u 49u -12u 18u "Instala el servidor local sin Caja. Las terminales se conectan desde otros equipos."
   Pop $0
-  ${NSD_CreateRadioButton} 0 72u 100% 12u "Caja (terminal de venta)"
+  ${NSD_CreateRadioButton} 0 72u 100% 12u "Solo Caja (terminal de venta)"
   Pop $hR3
   ${NSD_CreateLabel} 12u 85u -12u 18u "Encuentra sola el servidor de la tienda en la red y deja el acceso «FactPOS Caja» en pantalla completa."
   Pop $0
-  ${NSD_CreateRadioButton} 0 108u 100% 12u "Administración"
+  ${NSD_CreateRadioButton} 0 108u 100% 12u "Solo Administración"
   Pop $hR4
   ${NSD_CreateLabel} 12u 121u -12u 18u "Para la oficina o el dueño: abre la administración de su empresa en su propia ventana. No necesita servidor."
   Pop $0
 
-  ${If} $Tipo == "sucursal"
+  ${If} $Tipo == "servidor"
     ${NSD_Check} $hR2
   ${ElseIf} $Tipo == "caja"
     ${NSD_Check} $hR3
@@ -169,7 +169,7 @@ Function PaginaTipoSalir
   ${NSD_GetState} $hR3 $1
   ${NSD_GetState} $hR4 $2
   ${If} $0 == ${BST_CHECKED}
-    StrCpy $Tipo "sucursal"
+    StrCpy $Tipo "servidor"
   ${ElseIf} $1 == ${BST_CHECKED}
     StrCpy $Tipo "caja"
   ${ElseIf} $2 == ${BST_CHECKED}
@@ -184,7 +184,8 @@ Function PaginaDatos
   nsDialogs::Create 1018
   Pop $0
   ${If} $Tipo == "master"
-    !insertmacro MUI_HEADER_TEXT "Servidor principal" "Su empresa y su licencia de FactPOS."
+  ${OrIf} $Tipo == "servidor"
+    !insertmacro MUI_HEADER_TEXT "Servidor FactPOS" "Su empresa y su licencia de FactPOS."
     ${NSD_CreateLabel} 0 0 100% 10u "Nombre corto de su empresa (se lo da su proveedor, ej. royalliquorstore):"
     Pop $0
     ${NSD_CreateText} 0 11u 60% 12u "$Empresa"
@@ -228,8 +229,10 @@ Function PaginaDatos
   ${EndIf}
 
   ${If} $Tipo == "master"
-  ${OrIf} $Tipo == "sucursal"
-    ${If} $Vende == "1"
+  ${OrIf} $Tipo == "servidor"
+    ${If} $Tipo == "servidor"
+      EnableWindow $hVende 0
+    ${ElseIf} $Vende == "1"
       ${NSD_Check} $hVende
     ${EndIf}
     ${If} $PgInstalado == "1"
@@ -244,7 +247,7 @@ FunctionEnd
 
 Function PaginaDatosSalir
   ${If} $Tipo == "master"
-  ${OrIf} $Tipo == "sucursal"
+  ${OrIf} $Tipo == "servidor"
     ${NSD_GetText} $hEmpresa $Empresa
     StrLen $0 $Empresa
     ${If} $0 < 3
@@ -252,7 +255,9 @@ Function PaginaDatosSalir
       Abort
     ${EndIf}
     ${NSD_GetState} $hVende $0
-    ${If} $0 == ${BST_CHECKED}
+    ${If} $Tipo == "servidor"
+      StrCpy $Vende "0"
+    ${ElseIf} $0 == ${BST_CHECKED}
       StrCpy $Vende "1"
     ${Else}
       StrCpy $Vende "0"
@@ -266,6 +271,7 @@ Function PaginaDatosSalir
     ${EndIf}
   ${EndIf}
   ${If} $Tipo == "master"
+  ${OrIf} $Tipo == "servidor"
     ${NSD_GetText} $hLicencia $Licencia
   ${ElseIf} $Tipo == "sucursal"
     ${NSD_GetText} $hCodigo $Codigo
@@ -306,7 +312,7 @@ Section "FactPOS" SecPrincipal
   StrCpy $Fallo "0"
 
   ${If} $Tipo == "master"
-  ${OrIf} $Tipo == "sucursal"
+  ${OrIf} $Tipo == "servidor"
     CreateDirectory "$INSTDIR\logs"
     StrCpy $Registro "$INSTDIR\logs\instalacion.log"
   ${Else}
@@ -314,7 +320,7 @@ Section "FactPOS" SecPrincipal
     StrCpy $Registro "$LOCALAPPDATA\FactPOS\instalacion.log"
   ${EndIf}
   ${If} $Tipo == "master"
-  ${OrIf} $Tipo == "sucursal"
+  ${OrIf} $Tipo == "servidor"
     DetailPrint "Preparando los archivos de FactPOS…"
     SetDetailsPrint textonly
     SetOutPath "$PLUGINSDIR\paquete"
@@ -323,6 +329,7 @@ Section "FactPOS" SecPrincipal
     DetailPrint "Archivos listos."
     StrCpy $1 "-Carpeta '$INSTDIR' -NoInteractivo -Empresa '$Empresa'"
     ${If} $Tipo == "master"
+    ${OrIf} $Tipo == "servidor"
       StrCpy $1 "$1 -Master"
       ${If} $Licencia != ""
         StrCpy $1 "$1 -Licencia '$Licencia'"
@@ -341,6 +348,11 @@ Section "FactPOS" SecPrincipal
       StrCpy $2 "-Servidor 'http://localhost:3000' -NoInteractivo"
       DetailPrint "Instalando la caja en esta computadora…"
       !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-caja.ps1" "$2"
+    ${EndIf}
+    ${If} $Fallo == "0"
+    ${AndIf} $Tipo == "master"
+      DetailPrint "Creando acceso de Administración como aplicación de escritorio…"
+      !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-administracion.ps1" "-Url 'http://localhost:3000/admin/' -NoInteractivo"
     ${EndIf}
     WriteUninstaller "$INSTDIR\Desinstalar FactPOS.exe"
     StrCpy $3 "$INSTDIR"
@@ -391,8 +403,11 @@ Function PrepararFinal
     Return
   ${EndIf}
   ${If} $Tipo == "master"
-    StrCpy $TextoFinal "El servidor principal quedó instalado y arranca solo con Windows.$\r$\n$\r$\nAl terminar se abre su configuración inicial: registre la empresa y su usuario. Luego use este mismo instalador en cada sucursal y cada caja."
-    StrCpy $Abrir "http://localhost:3000/admin/"
+    StrCpy $TextoFinal "FactPOS completo instalado: servidor, Caja y Administración. Use los accesos del escritorio."
+    StrCpy $Abrir "$DESKTOP\FactPOS Caja.lnk"
+  ${ElseIf} $Tipo == "servidor"
+    StrCpy $TextoFinal "Servidor FactPOS instalado. Conecte las cajas desde otros equipos. La administración local está disponible en http://localhost:3000/admin/."
+    StrCpy $Abrir ""
   ${ElseIf} $Tipo == "sucursal"
     ReadEnvStr $4 COMPUTERNAME
     ${If} $Codigo != ""
