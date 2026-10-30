@@ -9,7 +9,8 @@
 ;   makensis -DVERSION=0.1.0 -DPAQUETE=../../paquete/FactPOS -DSALIDA=../../paquete/FactPOS-Setup-0.1.0.exe FactPOS.nsi
 ; (scripts/empaquetar.mjs lo hace solo si encuentra makensis)
 ; =====================================================================
-Target amd64-unicode  ; Windows 10/11 de 64 bits
+; Se usa el stub Unicode estandar de NSIS (x86), compatible con Windows x64.
+; La aplicacion Electron incluida sigue siendo x64.
 ManifestDPIAware true
 SetCompressor /SOLID lzma
 RequestExecutionLevel admin
