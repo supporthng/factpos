@@ -8,7 +8,6 @@ import { execSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { zipSync } from "fflate";
 
 const raiz = fileURLToPath(new URL("..", import.meta.url));
 const { version } = JSON.parse(readFileSync(join(raiz, "package.json"), "utf8"));
@@ -65,19 +64,21 @@ const podar = (d) => {
 };
 podar(join(dir, "node_modules"));
 
-// ZIP
-const archivos = {};
-const agregar = (ruta) => {
-  for (const n of readdirSync(ruta)) {
-    const p = join(ruta, n);
-    if (statSync(p).isDirectory()) agregar(p);
-    else archivos[`FactPOS/${relative(dir, p).replaceAll("\\", "/")}`] = readFileSync(p);
-  }
-};
-agregar(dir);
+// ZIP creado por tar/bsdtar de forma incremental: evita acumular en RAM
+// miles de archivos y el ejecutable Electron durante el empaquetado.
 const zip = join(salida, `FactPOS-Instalador-${version}.zip`);
-writeFileSync(zip, zipSync(archivos, { level: 6 }));
-console.log(`\nListo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB, ${Object.keys(archivos).length} archivos) · Portal: ${adminUrl}`);
+console.log("Comprimiendo paquete en ZIP (modo incremental)...");
+try {
+  execSync('tar -a -cf "' + zip + '" FactPOS', {
+    cwd: salida,
+    stdio: "inherit",
+    timeout: 15 * 60 * 1000,
+  });
+} catch (error) {
+  throw new Error(`No se pudo generar el ZIP incremental: ${error.message}`);
+}
+if (!existsSync(zip) || statSync(zip).size === 0) throw new Error("El ZIP del instalador quedó vacío.");
+console.log(`Listo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB) · Portal: ${adminUrl}`);
 
 // Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
 let makensis = null;
