@@ -684,7 +684,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <Facturas
           ajustes={ajustes} usuario={usuario}
           onReimprimir={reimprimirUltima}
-          onAnulada={(nc) => { setTicketVista({ venta: nc, copia: false }); setModal("ticket"); avisar(`Factura anulada con ${nc.fiscal.encf}`, "ok"); }}
+          onAnulada={(nc) => { setTicketVista({ venta: nc, copia: false }); setModal("ticket"); avisar(`Factura anulada${nc.fiscal?.encf ? ` con ${nc.fiscal.encf}` : ""}`, "ok"); }}
           onCorregir={async (nc, rec) => {
             if (lineas.length) pausar();
             const nuevas = rec.items.map((it) => ({ prod: idx!.porId.get(it.presentacionId)!, cantidad: String(Number(it.cantidad)) })).filter((l) => l.prod);
