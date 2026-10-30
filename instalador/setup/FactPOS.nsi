@@ -1,4 +1,4 @@
-; =====================================================================
+﻿; =====================================================================
 ; FactPOS · Instalador de Windows (FactPOS-Setup.exe)
 ;
 ; Asistente con ventanas: tipo de instalación, datos, impresora, carpeta,

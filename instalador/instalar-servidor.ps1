@@ -116,7 +116,7 @@ function BuscarPsql {
     $rutaServicio = [string]$servicio.PathName
     # Ejemplos: "C:\PostgreSQL\16\bin\pg_ctl.exe" runservice ...
     #           "C:\Program Files\PostgreSQL\16\bin\postgres.exe" -D ...
-    if ($rutaServicio -match '(?i)([A-Z]:\[^"\r\n]*?\bin\(?:pg_ctl|postgres)\.exe)') {
+    if ($rutaServicio -match '(?i)([A-Z]:\\.*?\\bin\\(?:pg_ctl|postgres)\.exe)') {
       $directorioBin = Split-Path -Parent $Matches[1]
       $rutas += (Join-Path $directorioBin 'psql.exe')
     }
