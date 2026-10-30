@@ -246,8 +246,8 @@ function PrimerUso({ servidor, pideClave, onListo }: { servidor: string; pideCla
         <div className="dos-col">
           <label className="campo"><span>Su nombre</span><input value={d.nombre} onChange={(e) => set("nombre", e.target.value)} /></label>
           <label className="campo"><span>Usuario</span><input value={d.usuario} autoCapitalize="none" onChange={(e) => set("usuario", e.target.value.toLowerCase())} /></label>
-          <label className="campo"><span>Contraseña (mínimo 4 caracteres)</span><input type="password" minLength={4} value={d.clave} onChange={(e) => set("clave", e.target.value)} autoComplete="new-password" /></label>
-          <label className="campo"><span>Repita la contraseña</span><input type="password" value={d.repetir} onChange={(e) => set("repetir", e.target.value)} autoComplete="new-password" /></label>
+          <label className="campo"><span>Contraseña (4 o más)</span><input type="password" minLength={4} maxLength={200} value={d.clave} onChange={(e) => set("clave", e.target.value)} autoComplete="new-password" /></label>
+          <label className="campo"><span>Repita la contraseña</span><input type="password" minLength={4} maxLength={200} value={d.repetir} onChange={(e) => set("repetir", e.target.value)} autoComplete="new-password" /></label>
         </div>
         <label className="campo"><span>PIN para la caja (opcional, 4 a 6 números)</span><input value={d.pin} inputMode="numeric" maxLength={6} onChange={(e) => set("pin", e.target.value.replace(/\D/g, ""))} /></label>
         <button className="boton primario ancho" disabled={trabajando || !d.rnc || !d.razonSocial || !d.nombreComercial || !d.nombre || !d.usuario || !d.clave}>
