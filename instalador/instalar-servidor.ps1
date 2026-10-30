@@ -193,6 +193,28 @@ $psql = $pgBin.FullName
 if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
 Listo "Usando $psql"
 
+# Antes de actualizar archivos compilados, detener SOLO el servidor de esta instalación.
+# No tocar otros procesos Node.js ni eliminar configuración o base de datos.
+if (Test-Path (Join-Path $Carpeta 'apps\servidor\dist\index.js')) {
+  Paso "Deteniendo servidor anterior para actualizar"
+  Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue
+  $limite = (Get-Date).AddSeconds(15)
+  do {
+    $procesos = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {
+      $_.CommandLine -match 'apps[\\/]servidor[\\/]dist[\\/]index\.js' -and
+      $_.ExecutablePath -and
+      (($_.CommandLine -match [regex]::Escape($Carpeta)) -or
+       ($_.CommandLine -notmatch '[A-Za-z]:[\\/]' -and (Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | Where-Object OwningProcess -eq $_.ProcessId)))
+    })
+    if ($procesos.Count -eq 0) { break }
+    foreach ($proc in $procesos) { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $limite)
+  if (Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue) {
+    throw "El puerto $Puerto sigue ocupado. Cierre el servidor anterior antes de actualizar."
+  }
+}
+
 # ------------------------------------------------------------- Archivos
 Paso "Copiando FactPOS a $Carpeta"
 New-Item -ItemType Directory -Force -Path $Carpeta, "$Carpeta\logs" | Out-Null
