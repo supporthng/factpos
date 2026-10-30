@@ -70,7 +70,6 @@ jobs:
           name: FactPOS-Instalador-Windows
           path: |
             paquete/FactPOS-Setup-*.exe
-            instalador/escritorio/out/FactPOS-Escritorio-*.exe
           if-no-files-found: error
       - name: Publicar versión última
         if: github.ref == 'refs/heads/main'
