@@ -51,6 +51,52 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Rangos NCF serie B, independientes de las secuencias electrónicas.
+  app.get("/central/fiscal/ncf/rangos", async (req) => {
+    const empresaId = empresaDe(req);
+    const r = await pool.query(`SELECT r.id, r.sucursal_id AS "sucursalId", s.nombre AS sucursal,
+      r.tipo, r.desde, r.hasta, r.siguiente, r.vence_en AS "venceEn", r.activo,
+      GREATEST(0, r.hasta-r.siguiente+1) AS restantes,
+      (r.activo AND r.vence_en >= CURRENT_DATE AND r.siguiente <= r.hasta) AS vigente
+      FROM facturacion_rangos_ncf r JOIN sucursales s ON s.id=r.sucursal_id
+      WHERE s.empresa_id=$1 ORDER BY r.tipo, r.vence_en, r.desde`, [empresaId]);
+    return r.rows;
+  });
+
+  app.post("/central/fiscal/ncf/rangos", async (req, rep) => {
+    const b = z.object({ sucursalId: uuid, tipo: z.enum(["B01", "B02"]),
+      desde: z.number().int().min(1).max(99999999), hasta: z.number().int().min(1).max(99999999),
+      venceEn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).refine(x => x.hasta >= x.desde, "Rango inválido").parse(req.body);
+    if (!Number.isFinite(Date.parse(b.venceEn)) || b.venceEn < new Date().toISOString().slice(0,10))
+      throw new ErrorNegocio("La fecha de vencimiento debe ser válida y no estar vencida", 400);
+    const empresaId = empresaDe(req);
+    return enTransaccion(async c => {
+      const suc = await c.query("SELECT id FROM sucursales WHERE id=$1 AND empresa_id=$2", [b.sucursalId, empresaId]);
+      if (!suc.rowCount) throw new ErrorNegocio("Sucursal no pertenece a la empresa", 403);
+      // Serializar altas de rangos por sucursal y tipo, incluso cuando no existe un rango previo.
+      await c.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [b.sucursalId, b.tipo]);
+      const solape = await c.query(`SELECT id FROM facturacion_rangos_ncf
+        WHERE sucursal_id=$1 AND tipo=$2 AND desde <= $4 AND hasta >= $3 LIMIT 1`,
+        [b.sucursalId,b.tipo,b.desde,b.hasta]);
+      if (solape.rowCount) throw new ErrorNegocio("El rango se superpone con otro existente", 409);
+      const id = uuidv7();
+      await c.query(`INSERT INTO facturacion_rangos_ncf(id,sucursal_id,tipo,desde,hasta,siguiente,vence_en)
+        VALUES ($1,$2,$3,$4,$5,$4,$6)`, [id,b.sucursalId,b.tipo,b.desde,b.hasta,b.venceEn]);
+      rep.code(201);
+      return { id, ok: true };
+    });
+  });
+
+  app.patch("/central/fiscal/ncf/rangos/:id", async (req) => {
+    const id = uuid.parse((req.params as {id:string}).id);
+    const b = z.object({ activo: z.boolean() }).parse(req.body);
+    const r = await pool.query(`UPDATE facturacion_rangos_ncf r SET activo=$3
+      FROM sucursales s WHERE r.id=$1 AND r.sucursal_id=s.id AND s.empresa_id=$2
+      RETURNING r.id`, [id,empresaDe(req),b.activo]);
+    if (!r.rowCount) throw new ErrorNegocio("Rango no encontrado",404);
+    return {ok:true};
+  });
+
   // ---- Rangos autorizados por la DGII ----
   app.get("/central/fiscal/autorizaciones", async (req) => {
     const r = await pool.query(
@@ -106,6 +152,66 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       [empresaDe(req), sucursalesDe(req)],
     );
     return r.rows;
+  });
+
+  // ---- NCF serie B: rangos autorizados (no altera e-CF) ----
+  app.get("/central/fiscal/ncf/rangos", async (req) => {
+    const r = await pool.query(
+      `SELECT r.id, r.sucursal_id AS "sucursalId", s.nombre AS sucursal, r.tipo,
+              r.desde::text, r.hasta::text, r.siguiente::text,
+              to_char(r.vence_en, 'YYYY-MM-DD') AS "venceEn", r.activo,
+              GREATEST(0, r.hasta - r.siguiente + 1)::text AS disponibles
+         FROM facturacion_rangos_ncf r
+         JOIN sucursales s ON s.id = r.sucursal_id
+        WHERE s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2))
+        ORDER BY s.nombre, r.tipo, r.desde`,
+      [empresaDe(req), sucursalesDe(req)],
+    );
+    return r.rows;
+  });
+
+  app.post("/central/fiscal/ncf/rangos", async (req, rep) => {
+    const b = z.object({
+      sucursalId: uuid, tipo: z.enum(["B01", "B02"]),
+      desde: z.number().int().min(1).max(99999999),
+      hasta: z.number().int().min(1).max(99999999),
+      venceEn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).refine(x => x.hasta >= x.desde, "Rango inválido").parse(req.body);
+    const permitidas = sucursalesDe(req);
+    if (permitidas && !permitidas.includes(b.sucursalId)) throw new ErrorNegocio("Sucursal no autorizada", 403);
+    const resultado = await enTransaccion(async c => {
+      // Serializa altas por empresa/tipo para impedir rangos superpuestos.
+      await c.query("SELECT id FROM empresas WHERE id=$1 FOR UPDATE", [empresaDe(req)]);
+      const suc = await c.query("SELECT id FROM sucursales WHERE id=$1 AND empresa_id=$2", [b.sucursalId, empresaDe(req)]);
+      if (!suc.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+      const fecha = await c.query("SELECT ($1::date = to_date($1, 'YYYY-MM-DD')) AS valida, ($1::date >= CURRENT_DATE) AS vigente", [b.venceEn]);
+      if (!fecha.rows[0]?.valida || !fecha.rows[0]?.vigente) throw new ErrorNegocio("Fecha de vencimiento inválida o vencida", 400);
+      const choque = await c.query(
+        `SELECT r.id FROM facturacion_rangos_ncf r JOIN sucursales s ON s.id=r.sucursal_id
+          WHERE s.empresa_id=$1 AND r.tipo=$2 AND r.desde <= $4 AND r.hasta >= $3 LIMIT 1`,
+        [empresaDe(req), b.tipo, b.desde, b.hasta],
+      );
+      if (choque.rowCount) throw new ErrorNegocio("El rango se superpone con uno ya registrado", 409);
+      const id = uuidv7();
+      await c.query(`INSERT INTO facturacion_rangos_ncf(id,sucursal_id,tipo,desde,hasta,siguiente,vence_en)
+                     VALUES($1,$2,$3,$4,$5,$4,$6)`, [id,b.sucursalId,b.tipo,b.desde,b.hasta,b.venceEn]);
+      return { id };
+    });
+    rep.code(201);
+    return resultado;
+  });
+
+  app.patch("/central/fiscal/ncf/rangos/:id/estado", async (req) => {
+    const id = uuid.parse((req.params as { id: string }).id);
+    const b = z.object({ activo: z.boolean() }).parse(req.body);
+    const r = await pool.query(
+      `UPDATE facturacion_rangos_ncf r SET activo=$3
+        FROM sucursales s WHERE r.id=$1 AND r.sucursal_id=s.id AND s.empresa_id=$2
+          AND ($4::uuid[] IS NULL OR s.id=ANY($4)) RETURNING r.id`,
+      [id, empresaDe(req), b.activo, sucursalesDe(req)],
+    );
+    if (!r.rowCount) throw new ErrorNegocio("Rango no encontrado", 404);
+    return { ok: true };
   });
 
   // ---- Documentos y envíos ----
