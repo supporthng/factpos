@@ -93,3 +93,24 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" paquete/*.zip paquete/*.exe --title "FactPOS $GITHUB_REF_NAME" --generate-notes
           fi
+
+  escritorio-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Instalar dependencias de Electron
+        run: npm install --prefix instalador/escritorio --no-audit --no-fund
+      - name: Compilar aplicación de escritorio
+        run: npm run dist:win --prefix instalador/escritorio
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FactPOS-Escritorio-Windows
+          path: paquete/escritorio/*.exe
+          if-no-files-found: error
