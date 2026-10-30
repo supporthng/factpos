@@ -28,89 +28,69 @@ concurrency:
 
 jobs:
   instaladores:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       PORTAL_URL: ${{ vars.PORTAL_URL }}
+      FACTPOS_REQUIERE_ESCRITORIO: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: NSIS (para armar FactPOS-Setup.exe)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
-      - name: Número de versión = etiqueta (v1.2.3 → 1.2.3)
+      - name: Preparar NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+      - name: Número de versión
         if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         run: npm pkg set version="${GITHUB_REF_NAME#v}"
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npm run empaquetar
-
-      - name: Nombres fijos
+      - name: Compilar Electron
+        shell: pwsh
         run: |
-          mkdir -p fijos
-          cp paquete/FactPOS-Instalador-*.zip fijos/FactPOS-Instalador.zip
-          cp paquete/FactPOS-Setup-*.exe fijos/FactPOS-Setup.exe
-          ls -la paquete fijos
-
-      - uses: actions/upload-artifact@v4
+          npm install --prefix instalador/escritorio --no-audit --no-fund
+          npm run dist:win --prefix instalador/escritorio
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Construir instalador integrado
+        shell: pwsh
+        run: |
+          $env:PATH += ";${env:ProgramFiles(x86)}\NSIS"
+          npm run empaquetar
+      - name: Publicar artefactos de Windows
+        uses: actions/upload-artifact@v4
         with:
-          name: FactPOS-Instalador
-          path: fijos/*
-
-      - name: Publicar en «Última»
+          name: FactPOS-Instalador-Windows
+          path: |
+            paquete/FactPOS-Setup-*.exe
+            paquete/FactPOS-Instalador-*.zip
+            instalador/escritorio/out/FactPOS-Escritorio-*.exe
+          if-no-files-found: error
+      - name: Publicar versión última
         if: github.ref == 'refs/heads/main'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git tag -f ultima "$GITHUB_SHA"
           git push -f origin refs/tags/ultima
-          NOTAS="Instalador de FactPOS armado del último cambio (${GITHUB_SHA::7}, $(date -u +'%Y-%m-%d %H:%M') UTC).
-
-          Descargue **FactPOS-Setup.exe** y ábralo. Elija:
-          1. Servidor principal del negocio (master)
-          2. Servidor de una sucursal
-          3. Caja (encuentra sola el servidor en la red local)
-          4. Administración
-          (FactPOS-Instalador.zip trae lo mismo para instalar a mano.)"
           if gh release view ultima >/dev/null 2>&1; then
-            gh release edit ultima --title "FactPOS · Última versión" --notes "$NOTAS" --latest
+            gh release edit ultima --title "FactPOS · Última versión" --notes "Instalador Windows con Electron integrado ($GITHUB_SHA)"
           else
-            gh release create ultima --title "FactPOS · Última versión" --notes "$NOTAS" --latest
+            gh release create ultima --title "FactPOS · Última versión" --notes "Instalador Windows con Electron integrado ($GITHUB_SHA)"
           fi
-          gh release upload ultima fijos/* --clobber
-
-      - name: Publicar versión con número
+          gh release upload ultima paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
+      - name: Publicar versión numerada
         if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        # Los servidores de los clientes se actualizan desde estas versiones (el portal las ofrece)
-        # Si la versión ya se creó a mano en GitHub › Releases, solo se le suben los archivos
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" paquete/*.zip paquete/*.exe --clobber
+            gh release upload "$GITHUB_REF_NAME" paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
           else
-            gh release create "$GITHUB_REF_NAME" paquete/*.zip paquete/*.exe --title "FactPOS $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --title "FactPOS $GITHUB_REF_NAME" --generate-notes
           fi
-
-  escritorio-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Instalar dependencias de Electron
-        run: npm install --prefix instalador/escritorio --no-audit --no-fund
-      - name: Compilar aplicación de escritorio
-        run: npm run dist:win --prefix instalador/escritorio
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: FactPOS-Escritorio-Windows
-          path: paquete/escritorio/*.exe
-          if-no-files-found: error
