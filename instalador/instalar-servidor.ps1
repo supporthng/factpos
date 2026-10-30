@@ -184,6 +184,33 @@ function PostgresFactPOS {
   $bin = if ($ruta -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { '' }
   [pscustomobject]@{ Conf = $conf; Puerto = $puerto; Bin = $bin }
 }
+# La clave guardada de "postgres" puede no coincidir con la real (p. ej. winget alteró la clave al instalar).
+# Solo para el PostgreSQL PROPIO de FactPOS: acceso local sin clave por un momento, se fija la clave
+# guardada y pg_hba.conf vuelve a quedar exactamente como estaba (también si algo falla).
+function RestablecerClavePostgres($pg, [string]$clave, [string]$psqlExe) {
+  $hba = Join-Path (Split-Path -Parent $pg.Conf) 'pg_hba.conf'
+  if (-not (Test-Path -LiteralPath $hba -PathType Leaf)) { throw "No se encontró $hba" }
+  $original = [IO.File]::ReadAllBytes($hba)
+  [IO.File]::WriteAllBytes("$hba.factpos-respaldo", $original)
+  try {
+    $texto = [Text.Encoding]::UTF8.GetString($original).TrimStart([char]0xFEFF)
+    $temporal = "host all postgres 127.0.0.1/32 trust`r`nhost all postgres ::1/128 trust`r`n" + $texto
+    [IO.File]::WriteAllText($hba, $temporal, (New-Object Text.UTF8Encoding $false))
+    Restart-Service -Name 'postgresql-16' -Force
+    $hasta = (Get-Date).AddSeconds(60)
+    while (-not (ProgramaEnPuerto $pg.Puerto) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
+    Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+    $claveSql = $clave.Replace("'", "''")
+    $r = & $psqlExe -U postgres -h localhost -p $pg.Puerto -d postgres -w -c "ALTER USER postgres WITH PASSWORD '$claveSql'" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo restablecer la clave de postgres: $($r -join ' ')" }
+  } finally {
+    [IO.File]::WriteAllBytes($hba, $original)
+    Restart-Service -Name 'postgresql-16' -Force -ErrorAction SilentlyContinue
+    $hasta = (Get-Date).AddSeconds(60)
+    while (-not (ProgramaEnPuerto $pg.Puerto) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
+    Remove-Item "$hba.factpos-respaldo" -ErrorAction SilentlyContinue
+  }
+}
 # Ruta del programa que escucha en un puerto (o $null si está libre)
 function ProgramaEnPuerto([int]$p) {
   $c = Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -438,13 +465,24 @@ if ($esReparacion) {
       $salida = & $psqlRep --dbname=$urlBD -tAc "SELECT 1" 2>&1
       if ($LASTEXITCODE -ne 0) {
         Write-Host "   El usuario factpos no entra con la clave del .env: $($salida -join ' ')" -ForegroundColor Yellow
-        if (-not $ClavePostgres) { throw "No hay clave del superusuario postgres en $archivoClave para corregirlo. No se ejecutaran migraciones." }
+        if (-not $ClavePostgres) {
+          $ClavePostgres = Clave 20
+          Set-Content -Path $archivoClave -Value "Usuario: postgres`r`nClave: $ClavePostgres"
+          icacls $archivoClave /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
+        }
         $u = [uri]$urlBD
         $claveEnv = [uri]::UnescapeDataString($u.UserInfo.Split(':', 2)[1])
         $puertoBD = if ($u.Port -gt 0) { $u.Port } else { 5432 }
         $env:PGPASSWORD = $ClavePostgres
         $hayRol = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'" 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "El superusuario postgres tampoco entra a $($u.Host):$($puertoBD): $($hayRol -join ' '). Puede haber dos PostgreSQL en el mismo puerto (por ejemplo HikCentral)." }
+        if ($LASTEXITCODE -ne 0 -and $pgPropio -and $puertoBD -eq $pgPropio.Puerto) {
+          Write-Host "   La clave guardada de postgres no coincide con el PostgreSQL de FactPOS; se restablece..." -ForegroundColor Yellow
+          RestablecerClavePostgres $pgPropio $ClavePostgres $psqlRep
+          $env:PGPASSWORD = $ClavePostgres
+          $hayRol = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'" 2>&1
+          if ($LASTEXITCODE -eq 0) { Listo "Clave del superusuario postgres restablecida (guardada en $archivoClave)" }
+        }
+        if ($LASTEXITCODE -ne 0) { throw "El superusuario postgres no entra a $($u.Host):$($puertoBD): $($hayRol -join ' ')" }
         $sql = if ("$hayRol".Trim() -eq '1') { "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveEnv'" } else { "CREATE ROLE factpos LOGIN PASSWORD '$claveEnv'" }
         $r = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -c $sql 2>&1
         if ($LASTEXITCODE -ne 0) { throw "No se pudo corregir el usuario factpos: $($r -join ' ')" }
