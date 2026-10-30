@@ -1,4 +1,4 @@
-﻿<#
+<#
   FactPOS · Instalador de una CAJA (Windows 10/11)
 
   Qué hace:
@@ -104,52 +104,62 @@ if ($Servidor -notmatch ':\d+$') { $Servidor = "$($Servidor):3000" }
 try { $info = Invoke-RestMethod "$Servidor/descubrir" -TimeoutSec 5 } catch { throw "No responde un servidor FactPOS en $Servidor" }
 Listo "Servidor: $Servidor  ($($info.empresa) · $($info.sucursales -join ', '))"
 
-# --------------------------------------------------------- Navegador
-Paso "Navegador"
-$candidatos = @(
-  "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-  "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-  "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-  "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-  "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
-)
-$navegador = $candidatos | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $navegador) { throw "No se encontró Microsoft Edge ni Google Chrome" }
-Listo $navegador
+# --------------------------------------------------------- Acceso de Caja
+# En el instalador NSIS integrado, Electron crea los accesos. No crear
+# un acceso de Edge/Chrome que pueda reemplazar el de escritorio.
+if ($env:FACTPOS_INSTALADOR -eq '1') {
+  Paso "Caja de escritorio"
+  Listo "El instalador principal creara el acceso FactPOS Caja con Electron."
+} else {
+  # --------------------------------------------------------- Navegador
+  Paso "Navegador"
+  $candidatos = @(
+    "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+    "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+    "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+  )
+  $navegador = $candidatos | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if (-not $navegador) { throw "No se encontró Microsoft Edge ni Google Chrome" }
+  Listo $navegador
 
-# Perfil propio de la caja: así el modo kiosco y la impresión directa no chocan con el navegador personal
-$perfil = "$env:LOCALAPPDATA\FactPOS\Caja"
-New-Item -ItemType Directory -Force -Path $perfil | Out-Null
-$url = "$Servidor/terminal/"
-$esEdge = $navegador -like "*msedge.exe"
-# --unsafely-treat-insecure-origin-as-secure: el servidor está en la red local (http). Con esto el
-# navegador guarda la pantalla de la caja y la abre aunque el servidor se caiga (contingencia).
-$origenServidor = ([Uri]$Servidor).GetLeftPart([UriPartial]::Authority)
-$opcionesNav = @("--user-data-dir=`"$perfil`"", "--no-first-run", "--kiosk-printing", "--disable-features=Translate", "--disable-pinch",
-                 "--unsafely-treat-insecure-origin-as-secure=$origenServidor")
-if ($Ventana) { $opcionesNav += "--app=$url" }
-else {
-  $opcionesNav += "--kiosk", $url
-  if ($esEdge) { $opcionesNav += "--edge-kiosk-type=fullscreen" }
-}
-$argumentos = $opcionesNav -join " "
+  # Perfil propio de la caja: así el modo kiosco y la impresión directa no chocan con el navegador personal
+  $perfil = "$env:LOCALAPPDATA\FactPOS\Caja"
+  New-Item -ItemType Directory -Force -Path $perfil | Out-Null
+  $url = "$Servidor/terminal/"
+  $esEdge = $navegador -like "*msedge.exe"
+  # --unsafely-treat-insecure-origin-as-secure: el servidor está en la red local (http). Con esto el
+  # navegador guarda la pantalla de la caja y la abre aunque el servidor se caiga (contingencia).
+  $origenServidor = ([Uri]$Servidor).GetLeftPart([UriPartial]::Authority)
+  $opcionesNav = @("--user-data-dir=`"$perfil`"", "--no-first-run", "--kiosk-printing", "--disable-features=Translate", "--disable-pinch",
+                   "--unsafely-treat-insecure-origin-as-secure=$origenServidor")
+  if ($Ventana) { $opcionesNav += "--app=$url" }
+  else {
+    $opcionesNav += "--kiosk", $url
+    if ($esEdge) { $opcionesNav += "--edge-kiosk-type=fullscreen" }
+  }
+  $argumentos = $opcionesNav -join " "
 
-# ---------------------------------------------------------- Accesos
-Paso "Accesos directos"
-$wsh = New-Object -ComObject WScript.Shell
-function Acceso($ruta) {
-  $a = $wsh.CreateShortcut($ruta)
-  $a.TargetPath = $navegador
-  $a.Arguments = $argumentos
-  $a.WorkingDirectory = Split-Path $navegador
-  $a.Description = "FactPOS Caja ($Servidor)"
-  $a.Save()
-}
-Acceso "$([Environment]::GetFolderPath('Desktop'))\FactPOS Caja.lnk"
-Listo "Escritorio: FactPOS Caja"
-if (-not $SinInicioAutomatico) {
-  Acceso "$([Environment]::GetFolderPath('Startup'))\FactPOS Caja.lnk"
-  Listo "Se abrirá sola al encender el equipo"
+  # ---------------------------------------------------------- Accesos
+  Paso "Accesos directos"
+  $wsh = New-Object -ComObject WScript.Shell
+  function Acceso($ruta) {
+    $a = $wsh.CreateShortcut($ruta)
+    $a.TargetPath = $navegador
+    $a.Arguments = $argumentos
+    $a.WorkingDirectory = Split-Path $navegador
+    $a.Description = "FactPOS Caja ($Servidor)"
+    $a.Save()
+  }
+  Acceso "$([Environment]::GetFolderPath('Desktop'))\FactPOS Caja.lnk"
+  Listo "Escritorio: FactPOS Caja"
+  if (-not $SinInicioAutomatico) {
+    Acceso "$([Environment]::GetFolderPath('Startup'))\FactPOS Caja.lnk"
+    Listo "Se abrirá sola al encender el equipo"
+  }
+
+
 }
 
 # ---------------------------------------------------------- Impresora

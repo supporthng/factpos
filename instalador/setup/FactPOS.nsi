@@ -354,14 +354,20 @@ Section "FactPOS" SecPrincipal
       DetailPrint "Creando acceso de Administración como aplicación de escritorio…"
       !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-administracion.ps1" "-Url 'http://localhost:3000/admin/' -NoInteractivo"
     ${EndIf}
+    ; Los accesos Electron deben quedar en el escritorio del usuario actual.
+    ; Eliminar accesos globales anteriores que pudieran apuntar a Edge.
+    SetShellVarContext all
+    Delete "$DESKTOP\FactPOS Caja.lnk"
+    Delete "$SMPROGRAMS\FactPOS Caja.lnk"
+    SetShellVarContext current
     ; Sustituir los accesos creados por los scripts antiguos por Electron.
     ${If} $Fallo == "0"
       ${If} ${FileExists} "$PLUGINSDIR\paquete\escritorio\FactPOS-Escritorio.exe"
         CreateDirectory "$INSTDIR\escritorio"
         CopyFiles /SILENT "$PLUGINSDIR\paquete\escritorio\FactPOS-Escritorio.exe" "$INSTDIR\escritorio\FactPOS-Escritorio.exe"
-        CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
-        CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
         ${If} $Tipo == "master"
+          CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
           CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
           Delete "$SMSTARTUP\FactPOS Caja.lnk"
         ${EndIf}
