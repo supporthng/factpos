@@ -15,14 +15,14 @@ import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
  *   POR_VENCER   faltan 15 días o menos: aviso
  *   GRACIA       venció hace 7 días o menos: aviso fuerte, sigue vendiendo
  *   VENCIDA      pasó la gracia: solo consulta y reportes (no vende). No se borra nada.
- *   PRUEBA       sin licencia todavía: 30 días desde la instalación
+ *   PRUEBA       sin licencia todavía: 15 días desde la primera instalación
  *   PRUEBA_VENCIDA
  */
 export const LLAVE_PUBLICA_PROVEEDOR = "MCowBQYDK2VwAyEAwAfPaN+TJM/6Wql8kYMwb7SZ8FSf59z4zdG8sy3q8Ok=";
 
 export const DIAS_AVISO = 15;
 export const DIAS_GRACIA = 7;
-export const DIAS_PRUEBA = 30;
+export const DIAS_PRUEBA = 15;
 
 export interface DatosLicencia {
   v: 1;
