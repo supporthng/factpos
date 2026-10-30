@@ -70,8 +70,7 @@ const podar = (d) => {
 };
 podar(join(dir, "node_modules"));
 
-// El instalador gráfico incorpora directamente los archivos de FactPOS.
-// No generar un ZIP duplicado: evita una compresión extra de cientos de MB.
+// El EXE es el unico artefacto publico. NSIS comprime el contenido directamente.
 // Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
 let makensis = null;
 try { execSync("makensis -VERSION", { stdio: "ignore" }); makensis = "makensis"; } catch { /* sin NSIS */ }

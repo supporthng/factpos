@@ -1,4 +1,4 @@
-﻿<#
+<#
   FactPOS · Instalador del SERVIDOR de la sucursal (Windows 10/11)
 
   Qué hace:
@@ -83,6 +83,15 @@ if (-not (Test-Path "$origen\apps\servidor\dist\index.js")) {
   throw "No encuentro FactPOS en $origen. Ejecute el instalador desde la carpeta descomprimida del paquete."
 }
 
+# Una reparacion reutiliza siempre la configuracion y la base existentes.
+$envExistente = Join-Path $Carpeta '.env'
+$esReparacion = Test-Path -LiteralPath $envExistente
+if ($esReparacion) {
+  $dbLine = Get-Content -LiteralPath $envExistente | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Object -First 1
+  if (-not $dbLine) { throw 'La instalacion existente no tiene DATABASE_URL. No se modificara la base de datos.' }
+  Listo 'Instalacion existente: se conservaran la base de datos, credenciales y configuracion.'
+}
+
 # ---------------------------------------------------------------- Node.js
 Paso "Node.js"
 RefrescarPath
@@ -112,7 +121,7 @@ function BuscarPsql {
     }
   }
   $rutas += @(Get-ChildItem "$env:ProgramFiles\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
-  foreach ($servicio in @(ServiciosPostgres | Where-Object { $_.PathName -match '(?i)[\\/]PostgreSQL[\\/](?:1[6-9]|2[0-9])[\\/]bin[\\/]' })) {
+  foreach ($servicio in @(ServiciosPostgres)) {
     $rutaServicio = [string]$servicio.PathName
     # Ejemplos: "C:\PostgreSQL\16\bin\pg_ctl.exe" runservice ...
     #           "C:\Program Files\PostgreSQL\16\bin\postgres.exe" -D ...
@@ -122,7 +131,7 @@ function BuscarPsql {
     }
   }
   $c = Get-Command psql -ErrorAction SilentlyContinue
-  if ($c -and $c.Source -match '(?i)[\\/]PostgreSQL[\\/](?:1[6-9]|2[0-9])[\\/]bin[\\/]psql\.exe$') { $rutas += $c.Source }
+  if ($c) { $rutas += $c.Source }
   foreach ($r in $rutas) { if ($r -and (Test-Path -LiteralPath $r -PathType Leaf)) { return Get-Item -LiteralPath $r } }
   return $null
 }
@@ -168,8 +177,11 @@ if ($PuertoPostgres -eq 0 -and (Test-Path "$Carpeta\.env")) {
   $m = Select-String -Path "$Carpeta\.env" -Pattern '^DATABASE_URL=.*@[^:/]+:(\d+)/' | Select-Object -First 1
   if ($m) { $PuertoPostgres = [int]$m.Matches[0].Groups[1].Value }
 }
+if ($esReparacion) {
+  Listo 'Reparacion: no se instalara ni modificara PostgreSQL.'
+} else {
 $pgBin = BuscarPsql
-$serviciosExistentes = @(ServiciosPostgres | Where-Object { $_.PathName -match '(?i)[\\/]PostgreSQL[\\/](?:1[6-9]|2[0-9])[\\/]bin[\\/]' })
+$serviciosExistentes = @(ServiciosPostgres)
 if (-not $pgBin -and $serviciosExistentes.Count -gt 0) {
   $nombres = ($serviciosExistentes | ForEach-Object { "$($_.Name) ($($_.State))" }) -join ', '
   throw "PostgreSQL ya tiene un servicio instalado: $nombres. No se instalará otra copia ni se tocarán sus datos. No se encontró psql.exe; revise la ruta del ejecutable del servicio en services.msc o instale las herramientas cliente de esa misma versión."
@@ -204,11 +216,11 @@ if (-not $pgBin) {
     if ($codigo -ne 0) { Write-Host "   El instalador de PostgreSQL terminó con código $codigo" -ForegroundColor Yellow }
     $pgBin = EsperarPsql 300
   }
-  if (-not $pgBin) { throw "PostgreSQL no quedó instalado. Instálelo a mano desde https://www.postgresql.org/download/windows/ (versión 16) y vuelva a ejecutar el instalador escribiendo la clave del usuario postgres." }
+  if (-not $pgBin) { throw "PostgreSQL no quedó instalado. Revise el registro de instalación y la disponibilidad de PostgreSQL 16 antes de reintentar." }
   Listo "PostgreSQL instalado. La clave del superusuario quedó en $claveArchivo"
 } elseif (-not $ClavePostgres) {
   if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
-  if ($NoInteractivo) { throw "PostgreSQL ya estaba instalado en este equipo: escriba la clave del usuario postgres en el instalador" }
+  if ($NoInteractivo) { throw "Se detectó PostgreSQL existente, pero FactPOS no tiene credenciales guardadas. Por seguridad no se cambiará ninguna contraseña ni base de datos. Para instalar sin intervención, utilice una instancia dedicada a FactPOS o configure el acceso de PostgreSQL mediante un procedimiento administrativo seguro." }
   $seg = Read-Host "PostgreSQL ya está instalado. Escriba la clave del usuario postgres" -AsSecureString
   $ClavePostgres = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
 }
@@ -216,6 +228,7 @@ $psql = $pgBin.FullName
 if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
 Listo "Usando $psql"
 
+ }
 # Antes de actualizar archivos compilados, detener SOLO el servidor de esta instalación.
 # No tocar otros procesos Node.js ni eliminar configuración o base de datos.
 if (Test-Path (Join-Path $Carpeta 'apps\servidor\dist\index.js')) {
@@ -247,6 +260,10 @@ Listo "Archivos copiados"
 
 # ---------------------------------------------------------- Base de datos
 Paso "Base de datos"
+if ($esReparacion) {
+  if (-not (Test-Path -LiteralPath $envExistente)) { throw 'Falta .env de la instalacion existente.' }
+  Listo 'Se conserva .env y la base de datos existente.'
+} else {
 $env:PGPASSWORD = $ClavePostgres
 $existe = & $psql -U postgres -h localhost -p $PuertoPostgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'"
 $envArchivo = "$Carpeta\.env"
@@ -313,12 +330,38 @@ CERT_P12_CLAVE=
 }
 Remove-Item Env:\PGPASSWORD
 
+}
+# Antes de una reparacion, guardar una copia consistente de la base de datos.
+if ($esReparacion) {
+  Paso 'Respaldo de seguridad'
+  $dump = Get-Command pg_dump.exe -ErrorAction SilentlyContinue
+  if (-not $dump) {
+    foreach ($r in @("$env:ProgramFiles\PostgreSQL\*\bin\pg_dump.exe", "${env:ProgramFiles(x86)}\PostgreSQL\*\bin\pg_dump.exe")) {
+      $dump = Get-ChildItem $r -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+      if ($dump) { break }
+    }
+  }
+  if (-not $dump) { throw 'No se encontro pg_dump para respaldar la base existente. Reparacion detenida sin ejecutar migraciones.' }
+  $urlBD = ($dbLine -replace '^DATABASE_URL=', '').Trim().Trim('"')
+  $carpetaBackup = Join-Path $Carpeta 'respaldos'
+  New-Item -ItemType Directory -Force -Path $carpetaBackup | Out-Null
+  $backup = Join-Path $carpetaBackup ("factpos-antes-reparacion-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.dump')
+  & $dump.FullName --dbname=$urlBD --format=custom --file=$backup 2>&1 | ForEach-Object { Write-Host $_ }
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $backup) -or (Get-Item $backup).Length -eq 0) {
+    Remove-Item $backup -ErrorAction SilentlyContinue
+    throw 'No se pudo completar el respaldo. No se ejecutaran migraciones.'
+  }
+  Listo "Respaldo creado: $backup"
+}
+Paso 'Migraciones'
 Push-Location $Carpeta
-& node apps\servidor\dist\migrar.js
-if ($LASTEXITCODE -ne 0) { throw "Fallaron las migraciones (código $LASTEXITCODE). Revise el mensaje de la migración en los detalles del instalador; no se borró la base de datos." }
-if ($Demo -and -not $CentralUrl -and -not $Master) { & node apps\servidor\dist\semilla.js; Listo "Datos de demostración cargados" }
-if ($CentralUrl) { Listo "Productos, precios, usuarios y existencias se descargan de la central al arrancar" }
-Pop-Location
+try {
+  & node apps\servidor\dist\migrar.js 2>&1 | ForEach-Object { Write-Host $_ }
+  $codigoMigracion = $LASTEXITCODE
+  if ($codigoMigracion -ne 0) { throw "Fallaron las migraciones (codigo $codigoMigracion). Revise el error SQL anterior en instalacion.log." }
+  if ($Demo -and -not $CentralUrl -and -not $Master -and -not $esReparacion) { & node apps\servidor\dist\semilla.js; if ($LASTEXITCODE -ne 0) { throw 'Error al cargar datos de demostracion' }; Listo 'Datos de demostracion cargados' }
+  if ($CentralUrl) { Listo 'La sincronizacion con la central se realizara al arrancar' }
+} finally { Pop-Location }
 
 # ------------------------------------------------- Túnel (servidor principal)
 if ($Master) {

@@ -1,4 +1,4 @@
-﻿; =====================================================================
+; =====================================================================
 ; FactPOS · Instalador de Windows (FactPOS-Setup.exe)
 ;
 ; Asistente con ventanas: tipo de instalación, datos, impresora, carpeta,
@@ -113,17 +113,9 @@ Function .onInit
   StrCpy $Tipo "master"
   StrCpy $Vende "1"
   StrCpy $Fallo "0"
-  ; ¿Ya hay PostgreSQL? (entonces hace falta su clave)
+  ; La clave de PostgreSQL se gestiona en el script del servidor.
+  ; No solicitar credenciales en el asistente gráfico.
   StrCpy $PgInstalado "0"
-  FindFirst $0 $1 "$PROGRAMFILES64\PostgreSQL\*"
-  ${If} $1 != ""
-    StrCpy $PgInstalado "1"
-  ${EndIf}
-  FindClose $0
-  ; Reinstalación de FactPOS: la clave quedó guardada, no se pide
-  ${If} ${FileExists} "$INSTDIR\postgres-superusuario.txt"
-    StrCpy $PgInstalado "0"
-  ${EndIf}
 FunctionEnd
 
 ; ------------------------------------------------------------------ 1. tipo
@@ -236,12 +228,7 @@ Function PaginaDatos
     ${ElseIf} $Vende == "1"
       ${NSD_Check} $hVende
     ${EndIf}
-    ${If} $PgInstalado == "1"
-      ${NSD_CreateLabel} 0 98u 100% 10u "Este equipo ya tiene PostgreSQL. Escriba la clave de su usuario «postgres»:"
-      Pop $0
-      ${NSD_CreatePassword} 0 109u 40% 12u "$ClavePg"
-      Pop $hClavePg
-    ${EndIf}
+
   ${EndIf}
   nsDialogs::Show
 FunctionEnd
@@ -263,13 +250,7 @@ Function PaginaDatosSalir
     ${Else}
       StrCpy $Vende "0"
     ${EndIf}
-    ${If} $PgInstalado == "1"
-      ${NSD_GetText} $hClavePg $ClavePg
-      ${If} $ClavePg == ""
-        MessageBox MB_ICONEXCLAMATION "Escriba la clave del usuario postgres de este equipo."
-        Abort
-      ${EndIf}
-    ${EndIf}
+
   ${EndIf}
   ${If} $Tipo == "master"
   ${OrIf} $Tipo == "servidor"
@@ -338,9 +319,7 @@ Section "FactPOS" SecPrincipal
     ${ElseIf} $Codigo != ""
       StrCpy $1 "$1 -CodigoInstalacion '$Codigo'"
     ${EndIf}
-    ${If} $ClavePg != ""
-      StrCpy $1 "$1 -ClavePostgres '$ClavePg'"
-    ${EndIf}
+
     DetailPrint "Instalando el servidor y preparando la base de datos. Puede tardar de 5 a 15 minutos; por favor espere…"
     SetDetailsPrint both
     !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-servidor.ps1" "$1"
