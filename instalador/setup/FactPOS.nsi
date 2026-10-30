@@ -69,6 +69,7 @@ Var TextoFinal
 Var Abrir
 Var Fallo
 Var Registro    ; archivo con todo lo que mostró la instalación
+Var PowerShell  ; powershell.exe de 64 bits si Windows es x64 (el stub NSIS es x86)
 
 ; controles
 Var hR1
@@ -279,9 +280,20 @@ Function SaltarCarpeta
 FunctionEnd
 
 ; ------------------------------------------------------------------ instalación
+; El stub NSIS es de 32 bits: "powershell" a secas abriría el PowerShell de 32 bits,
+; donde $env:ProgramFiles = "C:\Program Files (x86)" y no se ve PostgreSQL de 64 bits
+; (ni pg_dump, ni su registro). Desde un proceso x86, Sysnative da el de 64 bits.
+!macro ElegirPowerShell
+  StrCpy $PowerShell "powershell.exe"
+  ${If} ${FileExists} "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    StrCpy $PowerShell "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  ${EndIf}
+!macroend
+
 !macro Ejecutar SCRIPT ARGS
   DetailPrint ""
-  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[Text.Encoding]::Default; try { Start-Transcript -Path '$Registro' -Append | Out-Null } catch {}; try { & '${SCRIPT}' ${ARGS}; $$c = 0 } catch { Write-Host ('ERROR: ' + $$_.Exception.Message); $$c = 1 }; try { Stop-Transcript | Out-Null } catch {}; exit $$c"`
+  !insertmacro ElegirPowerShell
+  nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[Text.Encoding]::Default; try { Start-Transcript -Path '$Registro' -Append | Out-Null } catch {}; try { & '${SCRIPT}' ${ARGS}; $$c = 0 } catch { Write-Host ('ERROR: ' + $$_.Exception.Message); $$c = 1 }; try { Stop-Transcript | Out-Null } catch {}; exit $$c"`
   Pop $0
   ${If} $0 != "0"
     StrCpy $Fallo "1"
@@ -457,7 +469,8 @@ FunctionEnd
 ; ------------------------------------------------------------------ desinstalar
 Section "Uninstall"
   DetailPrint "Deteniendo FactPOS…"
-  nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -Command "Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Servidor' -Confirm:$$false -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" | Where-Object { $$_.CommandLine -like '*apps\servidor\dist\index.js*' -or $$_.CommandLine -like '*tunnel*--url*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }; Get-NetFirewallRule -DisplayName 'FactPOS*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"`
+  !insertmacro ElegirPowerShell
+  nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Servidor' -Confirm:$$false -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" | Where-Object { $$_.CommandLine -like '*apps\servidor\dist\index.js*' -or $$_.CommandLine -like '*tunnel*--url*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }; Get-NetFirewallRule -DisplayName 'FactPOS*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"`
   Pop $0
   Delete "$DESKTOP\FactPOS Caja.lnk"
   Delete "$SMSTARTUP\FactPOS Caja.lnk"

@@ -120,7 +120,10 @@ function BuscarPsql {
       if ($_.'Base Directory') { $rutas += (Join-Path $_.'Base Directory' 'bin\psql.exe') }
     }
   }
-  $rutas += @(Get-ChildItem "$env:ProgramFiles\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
+  # $env:ProgramW6432 = "C:\Program Files" real aunque este PowerShell sea de 32 bits
+  foreach ($pf in @($env:ProgramW6432, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | Select-Object -Unique) {
+    $rutas += @(Get-ChildItem "$pf\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
+  }
   foreach ($servicio in @(ServiciosPostgres)) {
     $rutaServicio = [string]$servicio.PathName
     # Ejemplos: "C:\PostgreSQL\16\bin\pg_ctl.exe" runservice ...
@@ -334,13 +337,24 @@ Remove-Item Env:\PGPASSWORD
 # Antes de una reparacion, guardar una copia consistente de la base de datos.
 if ($esReparacion) {
   Paso 'Respaldo de seguridad'
-  $dump = Get-Command pg_dump.exe -ErrorAction SilentlyContinue
+  # pg_dump va en la misma carpeta bin que psql.exe (registro, servicio, Program Files o PATH)
+  $dump = $null
+  $psqlEncontrado = BuscarPsql
+  if ($psqlEncontrado) {
+    $junto = Join-Path $psqlEncontrado.DirectoryName 'pg_dump.exe'
+    if (Test-Path -LiteralPath $junto -PathType Leaf) { $dump = Get-Item -LiteralPath $junto }
+  }
   if (-not $dump) {
-    foreach ($r in @("$env:ProgramFiles\PostgreSQL\*\bin\pg_dump.exe", "${env:ProgramFiles(x86)}\PostgreSQL\*\bin\pg_dump.exe")) {
-      $dump = Get-ChildItem $r -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+    $c = Get-Command pg_dump.exe -ErrorAction SilentlyContinue
+    if ($c) { $dump = Get-Item -LiteralPath $c.Source }
+  }
+  if (-not $dump) {
+    foreach ($pf in @($env:ProgramW6432, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | Select-Object -Unique) {
+      $dump = Get-ChildItem "$pf\PostgreSQL\*\bin\pg_dump.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
       if ($dump) { break }
     }
   }
+  if ($dump) { Listo "Usando $($dump.FullName)" }
   if (-not $dump) { throw 'No se encontro pg_dump para respaldar la base existente. Reparacion detenida sin ejecutar migraciones.' }
   $urlBD = ($dbLine -replace '^DATABASE_URL=', '').Trim().Trim('"')
   $carpetaBackup = Join-Path $Carpeta 'respaldos'
