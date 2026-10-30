@@ -13,7 +13,8 @@ const selected = allowed.has(mode) ? mode : 'admin';
 const configPath = path.join(app.getPath('userData'), 'conexion.json');
 let config = {};
 try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch {}
-const rawUrl = process.env.FACTPOS_SERVIDOR || config.servidor || 'http://127.0.0.1:3000';
+const urlArg = args.find(x => x.startsWith('--servidor='));
+const rawUrl = (urlArg ? urlArg.slice('--servidor='.length) : '') || process.env.FACTPOS_SERVIDOR || config.servidor || 'http://127.0.0.1:3000';
 let server;
 try {
   server = new URL(rawUrl);
@@ -22,7 +23,8 @@ try {
 
 function available(url) {
   return new Promise(resolve => {
-    const request = http.get(url, { timeout: 3500 }, response => { response.resume(); resolve(response.statusCode < 500); });
+    const transport = url.protocol === 'https:' ? require('node:https') : http;
+    const request = transport.get(url, { timeout: 3500 }, response => { response.resume(); resolve(response.statusCode < 500); });
     request.on('error', () => resolve(false));
     request.on('timeout', () => { request.destroy(); resolve(false); });
   });
@@ -50,7 +52,7 @@ async function checkWithRetry(endpoint, attempts = 12) {
 async function start() {
   if (!server) return;
   const endpoint = new URL(selected === 'admin' ? '/admin/' : '/terminal/', server);
-  let ok = server.protocol === 'http:' ? await available(endpoint) : true;
+  let ok = await available(endpoint);
   if (!ok && localServer()) {
     const started = await startInstalledServer();
     if (started) ok = await checkWithRetry(endpoint);

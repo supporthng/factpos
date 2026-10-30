@@ -354,6 +354,22 @@ Section "FactPOS" SecPrincipal
       DetailPrint "Creando acceso de Administración como aplicación de escritorio…"
       !insertmacro Ejecutar "$PLUGINSDIR\paquete\instalador\instalar-administracion.ps1" "-Url 'http://localhost:3000/admin/' -NoInteractivo"
     ${EndIf}
+    ; Sustituir los accesos creados por los scripts antiguos por Electron.
+    ${If} $Fallo == "0"
+      ${If} ${FileExists} "$PLUGINSDIR\paquete\escritorio\FactPOS-Escritorio.exe"
+        CreateDirectory "$INSTDIR\escritorio"
+        CopyFiles /SILENT "$PLUGINSDIR\paquete\escritorio\FactPOS-Escritorio.exe" "$INSTDIR\escritorio\FactPOS-Escritorio.exe"
+        CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+        CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+        ${If} $Tipo == "master"
+          CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          Delete "$SMSTARTUP\FactPOS Caja.lnk"
+        ${EndIf}
+      ${Else}
+        StrCpy $Fallo "1"
+        DetailPrint "ERROR: Falta Electron en el paquete de instalación."
+      ${EndIf}
+    ${EndIf}
     WriteUninstaller "$INSTDIR\Desinstalar FactPOS.exe"
     StrCpy $3 "$INSTDIR"
   ${Else}
@@ -361,6 +377,7 @@ Section "FactPOS" SecPrincipal
     File "${PAQUETE}\instalador\instalar-caja.ps1"
     File "${PAQUETE}\instalador\instalar-administracion.ps1"
     File "${PAQUETE}\instalador\factpos.ico"
+    File /oname=FactPOS-Escritorio.exe "${PAQUETE}\escritorio\FactPOS-Escritorio.exe"
     ${If} $Tipo == "caja"
       StrCpy $2 "-NoInteractivo"
       ${If} $Servidor != ""
@@ -371,6 +388,26 @@ Section "FactPOS" SecPrincipal
     ${Else}
       DetailPrint "Instalando la aplicación de Administración…"
       !insertmacro Ejecutar "$PLUGINSDIR\instalador\instalar-administracion.ps1" "-Url '$Destino' -NoInteractivo"
+    ${EndIf}
+    ${If} $Fallo == "0"
+      ${If} ${FileExists} "$PLUGINSDIR\instalador\FactPOS-Escritorio.exe"
+        CreateDirectory "$LOCALAPPDATA\FactPOS\escritorio"
+        CopyFiles /SILENT "$PLUGINSDIR\instalador\FactPOS-Escritorio.exe" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe"
+        ${If} $Tipo == "caja"
+          ${If} $Servidor != ""
+            CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=$Servidor"
+          ${Else}
+            CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja"
+          ${EndIf}
+          Delete "$SMSTARTUP\FactPOS Caja.lnk"
+        ${Else}
+          CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=$Destino"
+          CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=$Destino"
+        ${EndIf}
+      ${Else}
+        StrCpy $Fallo "1"
+        DetailPrint "ERROR: Falta Electron en el paquete."
+      ${EndIf}
     ${EndIf}
     CreateDirectory "$LOCALAPPDATA\FactPOS"
     WriteUninstaller "$LOCALAPPDATA\FactPOS\Desinstalar FactPOS.exe"
@@ -404,7 +441,7 @@ Function PrepararFinal
   ${EndIf}
   ${If} $Tipo == "master"
     StrCpy $TextoFinal "FactPOS completo instalado: servidor, Caja y Administración. Use los accesos del escritorio."
-    StrCpy $Abrir "$DESKTOP\FactPOS Caja.lnk"
+    StrCpy $Abrir "$DESKTOP\FactPOS Administración.lnk"
   ${ElseIf} $Tipo == "servidor"
     StrCpy $TextoFinal "Servidor FactPOS instalado. Conecte las cajas desde otros equipos. La administración local está disponible en http://localhost:3000/admin/."
     StrCpy $Abrir ""
@@ -450,6 +487,7 @@ Section "Uninstall"
   RMDir /r "$INSTDIR\packages"
   RMDir /r "$INSTDIR\node_modules"
   RMDir /r "$INSTDIR\db"
+  RMDir /r "$INSTDIR\escritorio"
   RMDir /r "$INSTDIR\instalador"
   RMDir /r "$INSTDIR\anterior"
   RMDir /r "$INSTDIR\bin"

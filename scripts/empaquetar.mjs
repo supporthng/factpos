@@ -26,6 +26,17 @@ const copiar = (de, a = de) => cpSync(join(raiz, de), join(dir, a), { recursive:
 for (const f of ["package.json", "package-lock.json", ".env.example", "README.md"]) if (existsSync(join(raiz, f))) copiar(f); // .env.example puede faltar (GitHub web no sube archivos que empiezan con punto)
 copiar("db/migrations");
 copiar("instalador");
+// El ejecutable Electron se compila antes de empaquetar, en una carpeta fuera de paquete/.
+const escritorioDir = join(raiz, "instalador/escritorio/out");
+const ejecutables = existsSync(escritorioDir) ? readdirSync(escritorioDir).filter(n => /^FactPOS-Escritorio-.*\.exe$/i.test(n)) : [];
+if (process.env.FACTPOS_REQUIERE_ESCRITORIO === "1" && ejecutables.length !== 1) {
+  throw new Error("Falta el ejecutable Electron para el instalador. Compílelo primero.");
+}
+if (ejecutables.length === 1) {
+  mkdirSync(join(dir, "escritorio"), { recursive: true });
+  cpSync(join(escritorioDir, ejecutables[0]), join(dir, "escritorio/FactPOS-Escritorio.exe"));
+}
+
 rmSync(join(dir, "instalador/setup"), { recursive: true, force: true }); // fuentes del setup.exe (no van en el paquete)
 // Doble clic en la raíz del paquete: menú para elegir qué se instala
 copiar("instalador/INSTALAR FactPOS.bat", "INSTALAR FactPOS.bat");

@@ -17,7 +17,7 @@
     "productName": "FactPOS Escritorio",
     "asar": true,
     "files": ["main.cjs", "package.json"],
-    "directories": { "output": "../../paquete/escritorio" },
+    "directories": { "output": "out" },
     "win": { "target": ["portable"], "artifactName": "FactPOS-Escritorio-${version}.exe" }
   }
 }
