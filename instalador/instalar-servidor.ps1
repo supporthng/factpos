@@ -298,10 +298,21 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   }
 } else {
   $claveBD = Clave 24
+  # Antes los errores de psql se ignoraban y el .env quedaba con una clave que nunca se aplicó
   if ($existe -eq "1") { & $psql -U postgres -h localhost -p $PuertoPostgres -c "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveBD'" | Out-Null }
   else { & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE ROLE factpos LOGIN PASSWORD '$claveBD'" | Out-Null }
+  if ($LASTEXITCODE -ne 0) { throw "No se pudo crear/actualizar el usuario factpos en PostgreSQL ($psql, puerto $PuertoPostgres). Revise la clave del usuario postgres. No se escribió el .env." }
   $hayBase = & $psql -U postgres -h localhost -p $PuertoPostgres -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'"
-  if ($hayBase -ne "1") { & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE DATABASE factpos OWNER factpos" | Out-Null }
+  if ($hayBase -ne "1") {
+    & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE DATABASE factpos OWNER factpos" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo crear la base factpos ($psql, puerto $PuertoPostgres). No se escribió el .env." }
+  }
+  # Comprobar que factpos entra con la clave que se va a guardar
+  $env:PGPASSWORD = $claveBD
+  & $psql -U factpos -h localhost -p $PuertoPostgres -d factpos -tAc "SELECT 1" | Out-Null
+  $codigoPrueba = $LASTEXITCODE
+  $env:PGPASSWORD = $ClavePostgres
+  if ($codigoPrueba -ne 0) { throw "El usuario factpos no puede entrar a localhost:$PuertoPostgres. Puede haber dos PostgreSQL en el mismo puerto (por ejemplo HikCentral). No se escribió el .env." }
   if (-not $PinSecreto -and ($Alta -or $Master)) { $PinSecreto = Clave 32 }   # sucursal: lo reemplaza el del principal al darse de alta
   if (-not $PinSecreto) { $PinSecreto = Clave 32; Write-Host "   OJO: se generó un PIN_SECRETO nuevo. Si ya tiene central u otras sucursales, cópielo de allá al archivo .env" -ForegroundColor Yellow }
   @"
@@ -357,6 +368,40 @@ if ($esReparacion) {
   if ($dump) { Listo "Usando $($dump.FullName)" }
   if (-not $dump) { throw 'No se encontro pg_dump para respaldar la base existente. Reparacion detenida sin ejecutar migraciones.' }
   $urlBD = ($dbLine -replace '^DATABASE_URL=', '').Trim().Trim('"')
+  # Comprobar que el usuario factpos del .env puede entrar. Si no (instalaciones anteriores
+  # que ignoraron errores de psql), se le pone la clave del .env usando el superusuario guardado.
+  $psqlRep = Join-Path $dump.DirectoryName 'psql.exe'
+  if (Test-Path -LiteralPath $psqlRep -PathType Leaf) {
+    $eapAnterior = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+      $salida = & $psqlRep --dbname=$urlBD -tAc "SELECT 1" 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "   El usuario factpos no entra con la clave del .env: $($salida -join ' ')" -ForegroundColor Yellow
+        if (-not $ClavePostgres) { throw "No hay clave del superusuario postgres en $archivoClave para corregirlo. No se ejecutaran migraciones." }
+        $u = [uri]$urlBD
+        $claveEnv = [uri]::UnescapeDataString($u.UserInfo.Split(':', 2)[1])
+        $puertoBD = if ($u.Port -gt 0) { $u.Port } else { 5432 }
+        $env:PGPASSWORD = $ClavePostgres
+        $hayRol = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "El superusuario postgres tampoco entra a $($u.Host):$($puertoBD): $($hayRol -join ' '). Puede haber dos PostgreSQL en el mismo puerto (por ejemplo HikCentral)." }
+        $sql = if ("$hayRol".Trim() -eq '1') { "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveEnv'" } else { "CREATE ROLE factpos LOGIN PASSWORD '$claveEnv'" }
+        $r = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -c $sql 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo corregir el usuario factpos: $($r -join ' ')" }
+        $hayBase = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'" 2>&1
+        if ("$hayBase".Trim() -ne '1') {
+          $r = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -c "CREATE DATABASE factpos OWNER factpos" 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo crear la base factpos: $($r -join ' ')" }
+        }
+        Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        $salida = & $psqlRep --dbname=$urlBD -tAc "SELECT 1" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "El usuario factpos sigue sin poder entrar: $($salida -join ' ')" }
+        Listo 'Clave del usuario factpos corregida (coincide con el .env)'
+      }
+    } finally {
+      Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+      $ErrorActionPreference = $eapAnterior
+    }
+  }
   $carpetaBackup = Join-Path $Carpeta 'respaldos'
   New-Item -ItemType Directory -Force -Path $carpetaBackup | Out-Null
   $backup = Join-Path $carpetaBackup ("factpos-antes-reparacion-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.dump')
