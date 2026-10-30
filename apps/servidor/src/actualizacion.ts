@@ -54,6 +54,8 @@ async function tokenLicencia() {
 /** Descarga, descomprime y deja corriendo la actualización (Windows). */
 export async function instalarVersion(version: string, log: (m: string) => void = () => {}) {
   if (process.platform !== "win32") throw new ErrorNegocio("La instalación automática es para servidores Windows", 409);
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new ErrorNegocio("Versión de actualización no válida", 400);
+  if (compararVersion(version, versionActual()) <= 0) throw new ErrorNegocio("La versión solicitada no es más reciente", 409);
   if (proceso && proceso.estado !== "ERROR") throw new ErrorNegocio("Ya se está instalando una actualización", 409);
   const token = await tokenLicencia();
   if (!token) throw new ErrorNegocio("Active la licencia para recibir actualizaciones", 402);
@@ -63,19 +65,39 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     const d = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
     if (!r.ok || !d.url) throw new Error(d.error ?? `El portal respondió ${r.status}`);
     log(`Actualización ${version}: descargando…`);
-    const z = await fetch(d.url, { signal: AbortSignal.timeout(10 * 60_000) });
+    const urlDescarga = new URL(d.url);
+    if (urlDescarga.protocol !== "https:") throw new Error("La descarga debe utilizar HTTPS");
+    const z = await fetch(urlDescarga, { signal: AbortSignal.timeout(10 * 60_000) });
     if (!z.ok) throw new Error(`No se pudo descargar (${z.status})`);
-    const archivos = unzipSync(new Uint8Array(await z.arrayBuffer()));
+    const paquete = new Uint8Array(await z.arrayBuffer());
+    if (paquete.byteLength > 250 * 1024 * 1024) throw new Error("El paquete supera el tamaño máximo permitido (250 MB)");
+    const archivos = unzipSync(paquete);
+    const totalDescomprimido = Object.values(archivos).reduce((total, archivo) => total + archivo.byteLength, 0);
+    if (totalDescomprimido > 600 * 1024 * 1024) throw new Error("El paquete descomprimido supera 600 MB");
     const destino = path.join(tmpdir(), `factpos-${version}-${Date.now()}`);
     for (const [nombre, datos] of Object.entries(archivos)) {
       if (nombre.endsWith("/")) continue;
-      const p = path.join(destino, nombre);
+      // Rechazar rutas absolutas o que salgan del directorio temporal.
+      const relativo = nombre.replace(/\\/g, "/");
+      if (relativo.startsWith("/") || /^[A-Za-z]:/.test(relativo) ||
+          relativo.split("/").some((segmento) => segmento === "..")) {
+        throw new Error("El paquete de actualización contiene una ruta no permitida");
+      }
+      const p = path.resolve(destino, relativo);
+      if (!p.startsWith(path.resolve(destino) + path.sep)) {
+        throw new Error("Ruta fuera del directorio de actualización");
+      }
       mkdirSync(path.dirname(p), { recursive: true });
       writeFileSync(p, datos);
     }
     const origen = existsSync(path.join(destino, "FactPOS")) ? path.join(destino, "FactPOS") : destino;
     const script = path.join(origen, "instalador", "actualizar.ps1");
     if (!existsSync(script)) throw new Error("El paquete descargado no trae instalador\\actualizar.ps1");
+    const manifiesto = path.join(origen, "package.json");
+    if (!existsSync(manifiesto)) throw new Error("El paquete no incluye package.json");
+    const versionPaquete = (JSON.parse(readFileSync(manifiesto, "utf8")) as { version?: string }).version;
+    if (versionPaquete !== version) throw new Error(`La versión del paquete (${versionPaquete ?? "desconocida"}) no coincide con la solicitada (${version})`);
+    if (!existsSync(path.join(origen, "apps", "servidor", "dist", "index.js"))) throw new Error("El paquete no contiene el servidor compilado");
     proceso = { ...proceso, estado: "INSTALANDO" };
     log(`Actualización ${version}: instalando (el servidor se reinicia en un momento)…`);
     // Tarea de Windows de una sola vez: sobrevive a que se detenga este servidor
