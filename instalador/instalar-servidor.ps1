@@ -170,6 +170,28 @@ function PuertoRegistrado {
   }
   return 5432
 }
+# PostgreSQL propio de FactPOS (servicio postgresql-16): carpeta de datos, postgresql.conf y puerto configurado
+function PostgresFactPOS {
+  $svc = Get-CimInstance Win32_Service -Filter "Name='postgresql-16'" -ErrorAction SilentlyContinue
+  if (-not $svc) { return $null }
+  $ruta = [string]$svc.PathName
+  if ($ruta -notmatch '-D\s+"([^"]+)"') { return $null }
+  $conf = Join-Path $Matches[1] 'postgresql.conf'
+  if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { return $null }
+  $puerto = 5432
+  $m = Select-String -LiteralPath $conf -Pattern '^\s*port\s*=\s*(\d+)' | Select-Object -Last 1
+  if ($m) { $puerto = [int]$m.Matches[0].Groups[1].Value }
+  $bin = if ($ruta -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { '' }
+  [pscustomobject]@{ Conf = $conf; Puerto = $puerto; Bin = $bin }
+}
+# Ruta del programa que escucha en un puerto (o $null si está libre)
+function ProgramaEnPuerto([int]$p) {
+  $c = Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $c) { return $null }
+  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($c.OwningProcess)" -ErrorAction SilentlyContinue
+  if ($proc -and $proc.ExecutablePath) { return [string]$proc.ExecutablePath }
+  return "proceso $($c.OwningProcess)"
+}
 # Reinstalación: la clave de postgres y el puerto ya quedaron guardados la primera vez
 $archivoClave = "$Carpeta\postgres-superusuario.txt"
 if (-not $ClavePostgres -and (Test-Path $archivoClave)) {
@@ -191,6 +213,11 @@ if (-not $pgBin -and $serviciosExistentes.Count -gt 0) {
 }
 if (-not $pgBin) {
   # Otro programa (u otro PostgreSQL) puede estar usando el 5432: se elige el primero libre
+  # El puerto puede venir de un .env viejo que apuntaba a OTRO PostgreSQL (p. ej. HikCentral): si está ocupado, se busca otro
+  if ($PuertoPostgres -ne 0 -and (PuertoOcupado $PuertoPostgres)) {
+    Write-Host "   El puerto $PuertoPostgres guardado está ocupado por otro programa; se elige uno libre" -ForegroundColor Yellow
+    $PuertoPostgres = 0
+  }
   if ($PuertoPostgres -eq 0) {
     $PuertoPostgres = 5432
     while ((PuertoOcupado $PuertoPostgres) -and $PuertoPostgres -lt 5450) { $PuertoPostgres++ }
@@ -347,6 +374,40 @@ Remove-Item Env:\PGPASSWORD
 }
 # Antes de una reparacion, guardar una copia consistente de la base de datos.
 if ($esReparacion) {
+  # Si otro PostgreSQL (HikCentral, WilPOS...) ocupa el puerto de postgresql-16, FactPOS terminaría
+  # hablando con la base de OTRO programa. Se mueve postgresql-16 a un puerto libre y se corrige el .env.
+  $pgPropio = PostgresFactPOS
+  if ($pgPropio) {
+    Paso 'Puerto de PostgreSQL de FactPOS'
+    $ocupante = ProgramaEnPuerto $pgPropio.Puerto
+    $esPropio = $ocupante -and $pgPropio.Bin -and $ocupante.StartsWith($pgPropio.Bin, [StringComparison]::OrdinalIgnoreCase)
+    if ($ocupante -and -not $esPropio) {
+      $nuevo = 5433
+      while ((PuertoOcupado $nuevo) -and $nuevo -lt 5460) { $nuevo++ }
+      Write-Host "   El puerto $($pgPropio.Puerto) lo usa otro programa: $ocupante" -ForegroundColor Yellow
+      Write-Host "   PostgreSQL de FactPOS (postgresql-16) pasa al puerto $nuevo" -ForegroundColor Yellow
+      $lineasConf = @(Get-Content -LiteralPath $pgPropio.Conf | Where-Object { $_ -notmatch '^\s*port\s*=' })
+      $lineasConf += "port = $nuevo"
+      [IO.File]::WriteAllLines($pgPropio.Conf, [string[]]$lineasConf)   # UTF-8 sin BOM (PostgreSQL no acepta BOM)
+      Restart-Service -Name 'postgresql-16' -Force -ErrorAction SilentlyContinue
+      if ((Get-Service -Name 'postgresql-16').Status -ne 'Running') { Start-Service -Name 'postgresql-16' }
+      $pgPropio.Puerto = $nuevo
+    } elseif (-not $ocupante) {
+      if ((Get-Service -Name 'postgresql-16').Status -ne 'Running') { Start-Service -Name 'postgresql-16' } else { Restart-Service -Name 'postgresql-16' -Force }
+    }
+    $hasta = (Get-Date).AddSeconds(60)
+    while (-not (ProgramaEnPuerto $pgPropio.Puerto) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
+    if (-not (ProgramaEnPuerto $pgPropio.Puerto)) { throw "PostgreSQL de FactPOS (postgresql-16) no quedó escuchando en el puerto $($pgPropio.Puerto). Revise $(Split-Path -Parent $pgPropio.Conf)\log" }
+    $puertoEnv = if ($dbLine -match '@[^:/]+:(\d+)/') { [int]$Matches[1] } else { 5432 }
+    if ($puertoEnv -ne $pgPropio.Puerto) {
+      $dbLine = $dbLine -replace '(@[^:/]+:)\d+/', "`${1}$($pgPropio.Puerto)/"
+      $lineasEnv = @(Get-Content -LiteralPath $envExistente | ForEach-Object { if ($_ -match '^DATABASE_URL=') { $dbLine } else { $_ } })
+      $lineasEnv | Set-Content -LiteralPath $envExistente -Encoding UTF8
+      Listo ".env corregido: la base de datos ahora es localhost:$($pgPropio.Puerto) (antes $puertoEnv, otro programa)"
+    } else {
+      Listo "PostgreSQL de FactPOS en el puerto $($pgPropio.Puerto)"
+    }
+  }
   Paso 'Respaldo de seguridad'
   # pg_dump va en la misma carpeta bin que psql.exe (registro, servicio, Program Files o PATH)
   $dump = $null
