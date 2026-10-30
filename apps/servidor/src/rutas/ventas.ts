@@ -10,6 +10,7 @@ import { enTransaccion, ErrorNegocio, pool } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type ContextoCaja, type PresentacionVenta } from "../contexto.js";
 import { ofertasPara, validarCupon, bloquearOfertasConTope } from "../promociones.js";
 import { emitirEcfVenta } from "../fiscal/emitir.js";
+import { asignarNumeroNoElectronico } from "../fiscal/numeracion-modalidades.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { datosTicket } from "./facturas.js";
 
@@ -34,7 +35,7 @@ const VentaSchema = CarritoSchema.extend({
   motivoDescuento: z.string().trim().max(200).optional(),
   /** Observaciones de la venta (salen en el ticket) */
   notas: z.string().trim().max(300).optional(),
-  tipoDocumento: z.enum(["E32", "E31"]).default("E32"),
+  tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "SIN"]).default("E32"),
   pagos: z
     .array(
       z.object({
@@ -56,7 +57,7 @@ export interface VentaInput extends Carrito {
   autorizacionDescuento?: string;
   motivoDescuento?: string;
   notas?: string;
-  tipoDocumento: "E32" | "E31";
+  tipoDocumento: "E32" | "E31" | "B01" | "B02" | "SIN";
   pagos: { formaPago: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "DELIVERY" | "OTRO"; monto: string; recibido?: string; referencia?: string }[];
 }
 
@@ -223,7 +224,7 @@ export async function registrarVenta(
   const aprobacion = descManual.gt(0) ? verificarAutorizacion(body.autorizacionDescuento, "venta.descuento", cajaId) : null;
 
   const q = await cotizar(c, ctx, body, true, !!cont);
-  if (body.tipoDocumento === "E31" && !(q.cliente && ["RNC", "CEDULA"].includes(q.cliente.tipo_documento))) {
+  if (["E31", "B01"].includes(body.tipoDocumento) && !(q.cliente && ["RNC", "CEDULA"].includes(q.cliente.tipo_documento))) {
     throw new ErrorNegocio("La factura de crédito fiscal requiere un cliente con RNC o cédula");
   }
 
@@ -352,9 +353,16 @@ export async function registrarVenta(
     );
   }
 
+  // Asignación transaccional independiente por modalidad.
+  const numeroDocumento = ["B01", "B02", "SIN"].includes(body.tipoDocumento)
+    ? await asignarNumeroNoElectronico(c, ctx.sucursalId, body.tipoDocumento as "B01" | "B02" | "SIN") : null;
+  if (numeroDocumento) await c.query("UPDATE ventas SET numero_documento=$2 WHERE id=$1", [ventaId, numeroDocumento]);
+
   // Facturación electrónica: e-NCF, XML firmado, código de seguridad y QR para el ticket.
   // El envío a la DGII lo hace la cola en segundo plano (funciona sin internet).
-  const fiscal = await emitirEcfVenta(c, ventaId, cont ? { encf: cont.encf, rangoId: cont.rangoId, fecha: cont.creadoEn } : undefined);
+  const fiscal = body.tipoDocumento === "E31" || body.tipoDocumento === "E32"
+    ? await emitirEcfVenta(c, ventaId, cont ? { encf: cont.encf, rangoId: cont.rangoId, fecha: cont.creadoEn } : undefined)
+    : null;
 
   // Documento completo para la nube
   await c.query(
@@ -375,6 +383,7 @@ export async function registrarVenta(
   return {
     id: ventaId,
     numero,
+    numeroDocumento: numeroDocumento ?? (fiscal as { encf?: string } | null)?.encf ?? null,
     tipoDocumento: body.tipoDocumento,
     ...resumen(q),
     pagos,

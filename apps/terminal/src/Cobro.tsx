@@ -47,7 +47,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const [credito, setCredito] = useState("");
   const [recibido, setRecibido] = useState("");
   // Cliente creado en caja para pedir comprobante: la factura sale de crédito fiscal (E31)
-  const [fiscal, setFiscal] = useState(!!cliente?.nuevoParaFiscal);
+  const [tipoFactura, setTipoFactura] = useState<"E32" | "E31" | "B01" | "B02" | "SIN">(cliente?.nuevoParaFiscal ? "E31" : "E32");
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState("");
   // Mismo id si se reintenta: el servidor no duplica la venta
@@ -64,7 +64,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const motivoNoContingencia = cupon ? "Sin servidor no se aplican cupones: quite el cupón" :
     local?.hayDescuentos ? "Sin servidor no se aplican descuentos: quítelos" :
     n(credito).gt(0) ? "Sin servidor no se vende a crédito" :
-    fiscal ? "Sin servidor no se emiten facturas de crédito fiscal (E31): solo de consumo" : "";
+    tipoFactura !== "E32" ? "Sin servidor solo se permite factura electrónica de consumo E32" : "";
   const error = useMemo(() => {
     if (sinServidor && motivoNoContingencia) return motivoNoContingencia;
     if (otros.gt(total)) return "Los pagos superan el total";
@@ -72,9 +72,9 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
     if (efectivo.gt(0) && recibido && cambio.lt(0)) return "El efectivo recibido no alcanza";
     if (n(credito).gt(0) && !cliente) return "Para vender a crédito seleccione un cliente (F4)";
     if (n(credito).gt(disponibleCredito)) return `Crédito disponible: ${rd(disponibleCredito.toFixed(2))}`;
-    if (fiscal && !(cliente && ["RNC", "CEDULA"].includes(cliente.tipoDocumento))) return "Crédito fiscal requiere cliente con RNC o cédula";
+    if (["E31", "B01"].includes(tipoFactura) && !(cliente && ["RNC", "CEDULA"].includes(cliente.tipoDocumento))) return "Crédito fiscal requiere cliente con RNC o cédula";
     return "";
-  }, [otros, efectivo, recibido, cambio, credito, cliente, fiscal, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
+  }, [otros, efectivo, recibido, cambio, credito, cliente, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
 
   const cobrar = async () => {
     if (error || enviando) return;
@@ -107,7 +107,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
       const r = await api<ResultadoVenta>(ajustes.servidor, `/cajas/${ajustes.cajaId}/ventas`, {
         cuerpo: {
           ventaId, usuarioId: usuario.id, clienteId: cliente?.id, cuponCodigo: cupon?.codigo,
-          tipoDocumento: fiscal ? "E31" : "E32", items, pagos,
+          tipoDocumento: tipoFactura, items, pagos,
           autorizacionDescuento: aprobacionDescuento, motivoDescuento, notas: notas || undefined,
         },
       });
@@ -174,9 +174,16 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         {cliente && Number(cliente.limiteCredito) > 0 && campo(`Crédito (disp. ${rd(disponibleCredito.toFixed(2))})`, credito, setCredito)}
       </details>
 
-      <label className="check">
-        <input type="checkbox" checked={fiscal} onChange={(e) => setFiscal(e.target.checked)} />
-        Factura de crédito fiscal (E31){cliente ? ` · ${cliente.nombre}` : ""}
+      <label className="campo">
+        <span>Tipo de factura</span>
+        <select value={tipoFactura} onChange={(e) => setTipoFactura(e.target.value as typeof tipoFactura)}>
+          <option value="E32">Electrónica de consumo (E32)</option>
+          <option value="E31">Electrónica de crédito fiscal (E31)</option>
+          <option value="B02">NCF de consumo (B02)</option>
+          <option value="B01">NCF de crédito fiscal (B01)</option>
+          <option value="SIN">Factura interna sin comprobante</option>
+        </select>
+        <small>La numeración se asigna al confirmar. Los NCF B requieren rangos autorizados vigentes.</small>
       </label>
 
       {(error || msg) && <p className="error">{error || msg}</p>}

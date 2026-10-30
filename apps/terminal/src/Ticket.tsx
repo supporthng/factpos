@@ -4,13 +4,13 @@ import { rd } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
 
 export interface VentaRegistrada {
-  id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34"; fecha: string;
+  id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "B01" | "B02" | "SIN"; numeroDocumento?: string | null; fecha: string;
   encfModificado?: string | null; motivo?: string | null;
   subtotal: string; descuento: string; itbis: string; total: string; cambio: string;
   cupon: { codigo: string; total: string } | null;
   lineas: { descripcion: string; cantidad: string; precio: string; total: string; oferta: string | null; descuentoOferta: string; descuentoCupon: string }[];
   pagos: { formaPago: string; monto: string; recibido?: string; cambio?: string; referencia?: string }[];
-  fiscal: { encf: string; codigoSeguridad: string; fechaFirma: string; urlQr: string; modo: "ECF" | "RFCE"; venceSecuencia: string };
+  fiscal: { encf: string; codigoSeguridad: string; fechaFirma: string; urlQr: string; modo: "ECF" | "RFCE"; venceSecuencia: string } | null;
   cliente?: { nombre: string; documento: string | null } | null;
   /** Observaciones de la venta */
   notas?: string | null;
@@ -22,6 +22,9 @@ const NOMBRE_TIPO: Record<string, string> = {
   E31: "Factura de Crédito Fiscal Electrónica",
   E32: "Factura de Consumo Electrónica",
   E34: "Nota de Crédito Electrónica",
+  B01: "Factura con NCF de Crédito Fiscal",
+  B02: "Factura con NCF de Consumo",
+  SIN: "Factura interna sin comprobante fiscal",
 };
 const PAGO: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", TRANSFERENCIA: "Transferencia", CREDITO: "Crédito", DELIVERY: "Delivery" };
 
@@ -37,7 +40,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
 }) {
   const [qr, setQr] = useState("");
   useEffect(() => {
-    if (!venta.fiscal.urlQr) return setQr("");
+    if (!venta.fiscal?.urlQr) return setQr("");
     QRCode.toDataURL(venta.fiscal.urlQr, { margin: 0, width: 220, errorCorrectionLevel: "M" }).then(setQr);
   }, [venta]);
   useEffect(() => {
@@ -64,8 +67,8 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
           <div className="t-linea" />
           {copia && <div className="t-centro t-copia">*** COPIA ***</div>}
           <div className="t-centro"><b>{NOMBRE_TIPO[venta.tipoDocumento] ?? venta.tipoDocumento}</b></div>
-          <div className="t-fila"><span>e-NCF</span><b>{venta.fiscal.encf}</b></div>
-          {venta.tipoDocumento === "E31" && <div className="t-fila"><span>Válida hasta</span><span>{venta.fiscal.venceSecuencia.split("-").reverse().join("-")}</span></div>}
+          <div className="t-fila"><span>{venta.fiscal ? "e-NCF" : venta.tipoDocumento === "SIN" ? "Número interno" : "NCF"}</span><b>{venta.fiscal?.encf ?? venta.numeroDocumento ?? "Pendiente"}</b></div>
+          {venta.tipoDocumento === "E31" && venta.fiscal && <div className="t-fila"><span>Válida hasta</span><span>{venta.fiscal.venceSecuencia.split("-").reverse().join("-")}</span></div>}
           {venta.encfModificado && <div className="t-fila"><span>Modifica e-NCF</span><span>{venta.encfModificado}</span></div>}
           {venta.tipoDocumento === "E34" && venta.motivo && <div className="t-fila"><span>Motivo</span><span>{venta.motivo}</span></div>}
           <div className="t-fila"><span>Fecha</span><span>{fechaRD(venta.fecha)}</span></div>
@@ -97,18 +100,18 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
           {venta.notas && <div className="t-nota">Nota: {venta.notas}</div>}
           <div className="t-linea" />
           <div className="t-centro">
-            {venta.contingencia || !venta.fiscal.codigoSeguridad ? (
+            {venta.fiscal && (venta.contingencia || !venta.fiscal.codigoSeguridad) ? (
               <div className="t-contingencia">
                 <b>EMITIDA EN CONTINGENCIA</b>
                 <div>Firma electrónica pendiente: se completa y se envía a la DGII al restablecerse el sistema.</div>
               </div>
-            ) : (
+            ) : venta.fiscal ? (
               <>
                 {qr && <img src={qr} alt="Código QR del comprobante" className="t-qr" />}
                 <div>Código de seguridad: <b>{venta.fiscal.codigoSeguridad}</b></div>
                 <div>Fecha de firma: {fechaRD(venta.fiscal.fechaFirma)}</div>
               </>
-            )}
+            ) : null}
             {venta.tipoDocumento !== "E34" && <div className="t-pie">¡Gracias por su compra!</div>}
           </div>
         </div>
