@@ -97,15 +97,33 @@ Listo ("Node.js " + (& node -v))
 # ------------------------------------------------------------- PostgreSQL
 Paso "PostgreSQL"
 # Dónde está psql.exe: registro de PostgreSQL, carpeta normal o PATH
+# Reconocer también instalaciones registradas como servicio "PostgreSQL" sin versión.
+# El servicio puede apuntar a una carpeta distinta de Program Files.
+function ServiciosPostgres {
+  @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match '(?i)postgres' -or $_.DisplayName -match '(?i)postgres'
+  })
+}
 function BuscarPsql {
   $rutas = @()
   foreach ($k in "HKLM:\SOFTWARE\PostgreSQL\Installations\*", "HKLM:\SOFTWARE\WOW6432Node\PostgreSQL\Installations\*") {
-    Get-ItemProperty $k -ErrorAction SilentlyContinue | ForEach-Object { if ($_."Base Directory") { $rutas += (Join-Path $_."Base Directory" "bin\psql.exe") } }
+    Get-ItemProperty $k -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.'Base Directory') { $rutas += (Join-Path $_.'Base Directory' 'bin\psql.exe') }
+    }
   }
-  $rutas += (Get-ChildItem "$env:ProgramFiles\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
+  $rutas += @(Get-ChildItem "$env:ProgramFiles\PostgreSQL\*\bin\psql.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object FullName)
+  foreach ($servicio in @(ServiciosPostgres)) {
+    $rutaServicio = [string]$servicio.PathName
+    # Ejemplos: "C:\PostgreSQL\16\bin\pg_ctl.exe" runservice ...
+    #           "C:\Program Files\PostgreSQL\16\bin\postgres.exe" -D ...
+    if ($rutaServicio -match '(?i)([A-Z]:\[^"\r\n]*?\bin\(?:pg_ctl|postgres)\.exe)') {
+      $directorioBin = Split-Path -Parent $Matches[1]
+      $rutas += (Join-Path $directorioBin 'psql.exe')
+    }
+  }
   $c = Get-Command psql -ErrorAction SilentlyContinue
   if ($c) { $rutas += $c.Source }
-  foreach ($r in $rutas) { if ($r -and (Test-Path $r)) { return Get-Item $r } }
+  foreach ($r in $rutas) { if ($r -and (Test-Path -LiteralPath $r -PathType Leaf)) { return Get-Item -LiteralPath $r } }
   return $null
 }
 # El instalador de PostgreSQL puede seguir trabajando después de que winget termina: se espera
@@ -151,6 +169,11 @@ if ($PuertoPostgres -eq 0 -and (Test-Path "$Carpeta\.env")) {
   if ($m) { $PuertoPostgres = [int]$m.Matches[0].Groups[1].Value }
 }
 $pgBin = BuscarPsql
+$serviciosExistentes = @(ServiciosPostgres)
+if (-not $pgBin -and $serviciosExistentes.Count -gt 0) {
+  $nombres = ($serviciosExistentes | ForEach-Object { "$($_.Name) ($($_.State))" }) -join ', '
+  throw "PostgreSQL ya tiene un servicio instalado: $nombres. No se instalará otra copia ni se tocarán sus datos. No se encontró psql.exe; revise la ruta del ejecutable del servicio en services.msc o instale las herramientas cliente de esa misma versión."
+}
 if (-not $pgBin) {
   # Otro programa (u otro PostgreSQL) puede estar usando el 5432: se elige el primero libre
   if ($PuertoPostgres -eq 0) {
