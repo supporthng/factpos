@@ -253,12 +253,22 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setModal("buscar");
   };
 
-  // Pantalla híbrida: la lista de la venta siempre a la vista; el catálogo con fotos
-  // se muestra u oculta (F1). Cada terminal recuerda su preferencia.
+  // La modalidad es una preferencia de esta caja, no de todo el navegador.
+  // Se conserva F1 para alternar sin interrumpir una venta.
+  const claveModo = `factpos.caja.${ajustes.cajaId}.modalidad`;
   const [modo, setModo] = useState<"escaner" | "catalogo">(() => {
-    try { return (localStorage.getItem("factpos.modo") as "escaner" | "catalogo") || "escaner"; } catch { return "escaner"; }
+    try {
+      const guardado = localStorage.getItem(claveModo) ?? localStorage.getItem("factpos.modo");
+      return guardado === "catalogo" ? "catalogo" : "escaner";
+    } catch { return "escaner"; }
   });
-  useEffect(() => { try { localStorage.setItem("factpos.modo", modo); } catch { /* sin almacenamiento */ } }, [modo]);
+  useEffect(() => {
+    try {
+      const guardado = localStorage.getItem(claveModo) ?? localStorage.getItem("factpos.modo");
+      setModo(guardado === "catalogo" ? "catalogo" : "escaner");
+    } catch { setModo("escaner"); }
+  }, [claveModo]);
+  useEffect(() => { try { localStorage.setItem(claveModo, modo); } catch { /* sin almacenamiento */ } }, [claveModo, modo]);
   const verCatalogo = modo === "catalogo";
   const enCarrito = useMemo(() => {
     const m = new Map<string, number>();
@@ -416,8 +426,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         </dl>
         <EstadoServidor />
         <nav className="pv-barra-acciones" aria-label="Opciones de la caja">
-          <button className={"pv-icono" + (verCatalogo ? " activo" : "")} aria-pressed={verCatalogo} onClick={() => setModo(verCatalogo ? "escaner" : "catalogo")} title="Mostrar u ocultar el catálogo con fotos (F1)">
-            <Icono n="catalogo" /><span>Catálogo</span><kbd>F1</kbd>
+          <button className={"pv-icono" + (verCatalogo ? " activo" : "")} aria-pressed={verCatalogo} onClick={() => setModo(verCatalogo ? "escaner" : "catalogo")} title="Cambiar entre Caja clásica y Caja táctil (F1)">
+            <Icono n="catalogo" /><span>{verCatalogo ? "Caja táctil" : "Caja clásica"}</span><kbd>F1</kbd>
           </button>
           <button className="pv-icono" onClick={() => setModal("ajustes")} title="Tamaño de letra, colores y atajos"><Icono n="ajustes" /><span>Ajustes</span></button>
           <button className="pv-icono" onClick={bloquear} title="La venta queda en pausa y se pide el PIN"><Icono n="candado" /><span>Bloquear</span></button>
@@ -445,7 +455,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
           <Icono n="persona" />
           <span className="pv-cliente-texto">
-            <small>Cliente{cliente?.lista ? ` · ${cliente.lista}` : ""}</small>
+            <small>Cliente · Precio {nivelCliente}</small>
             <b>{cliente ? cliente.nombre : "Consumidor final"}</b>
             {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
           </span>
@@ -480,7 +490,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <div className="pv-vacio">
                 <Icono n="codigo" />
                 <b>Escanee el primer producto</b>
-                <span>o escriba su nombre arriba{verCatalogo ? ", o tóquelo en el catálogo" : " · F1 muestra el catálogo con fotos"}</span>
+                <span>o escriba su nombre arriba{verCatalogo ? ", o tóquelo en el catálogo" : " · F1 cambia a Caja táctil"}</span>
               </div>
             )}
             {lineas.map((l, i) => {
