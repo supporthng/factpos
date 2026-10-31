@@ -91,6 +91,7 @@ function startUiServer() {
           return res.end(JSON.stringify({ servidor: localUrl }));
         }
         if (u.pathname === '/principal') return principalApi(req, res, u);
+        if (u.pathname === '/respaldo') return respaldoApi(req, res, u);
         if (u.pathname === '/sw.js') { res.writeHead(404); return res.end(); } // sin service worker: la aplicación ya funciona sin conexión
         const root = uiRoot();
         let rel = decodeURIComponent(u.pathname);
@@ -192,6 +193,36 @@ function principalApi(req, res, u) {
       if (config.principal) startBuzon(); else stopBuzon();
       json({ activo: !!config.principal, url: lanUrl() });
     } catch { res.writeHead(400); res.end(); }
+  });
+}
+// ------------------------------------------------------------------ Respaldo en archivo
+// Copia en disco de las ventas guardadas sin servidor y de los e-NCF de reserva de cada caja (además de la base de la
+// pantalla). Si se borra el perfil de la aplicación o se daña, las ventas se recuperan de este archivo.
+const RESPALDO = path.join(app.getPath('userData'), 'respaldo');
+function respaldoApi(req, res, u) {
+  const origin = req.headers.origin;
+  if (req.headers.host !== `127.0.0.1:${UI_PORT}` || (origin && origin !== `http://127.0.0.1:${UI_PORT}`)) { res.writeHead(403); return res.end(); }
+  const json = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  const idOk = v => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v);
+  if (req.method === 'GET') {
+    const id = u.searchParams.get('caja');
+    if (!idOk(id)) return json(400, {});
+    const b = readOr(path.join(RESPALDO, id + '.json'));
+    try { return json(200, b ? JSON.parse(b.toString()) : {}); } catch { return json(200, {}); }
+  }
+  const partes = []; let size = 0;
+  req.on('data', c => { size += c.length; if (size > 20 * 1024 * 1024) req.destroy(); else partes.push(c); });
+  req.on('end', () => {
+    try {
+      const m = JSON.parse(Buffer.concat(partes).toString());
+      if (!idOk(m.cajaId) || !Array.isArray(m.pendientes) || !Array.isArray(m.reserva)) return json(400, {});
+      fs.mkdirSync(RESPALDO, { recursive: true });
+      const destino = path.join(RESPALDO, m.cajaId + '.json');
+      const tmp = destino + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ cajaId: m.cajaId, guardado: new Date().toISOString(), pendientes: m.pendientes, reserva: m.reserva }));
+      fs.renameSync(tmp, destino);
+      json(200, { ok: true });
+    } catch { json(500, {}); }
   });
 }
 let syncing = false;
