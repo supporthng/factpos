@@ -62,7 +62,13 @@ const avance = (version: string, paso: string, porcentaje: number) => {
 /** Lo que ven las pantallas: ¿se está actualizando?, paso y porcentaje, y cómo terminó la última. */
 export function estadoPublico() {
   vigilarProceso();
-  const f = leerEstado();
+  let f = leerEstado();
+  // Si el servidor ya corre la versión de destino, la actualización terminó aunque el script no alcanzó a marcarlo
+  // (el reinicio lo interrumpe): se cierra el estado para que las pantallas no queden «Reiniciando…».
+  if (f && f.estado === "EN_CURSO" && !proceso && compararVersion(versionActual(), f.version) >= 0) {
+    f = { ...f, estado: "OK", paso: "Listo", porcentaje: 100, mensaje: null, en: new Date().toISOString() };
+    escribirEstado({ estado: "OK", version: f.version, paso: "Listo", porcentaje: 100, mensaje: null });
+  }
   const fresco = !!f && Date.now() - new Date(f.en).getTime() < 20 * 60_000;
   const enMemoria = proceso && proceso.estado !== "ERROR" ? proceso : null;
   const archivoEnCurso = fresco && f!.estado === "EN_CURSO" ? f : null;
