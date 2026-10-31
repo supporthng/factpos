@@ -270,8 +270,9 @@ export async function rutasLicenciaSucursal(app: FastifyInstance) {
   // Administración local: la licencia se ve, pero se activa y renueva en la nube
   app.get("/central/licencia", async () => {
     const f = await filaLicencia();
+    const e = await estadoLicencia();
     return {
-      ...publico(await estadoLicencia()), local: true,
+      ...publico(e), local: true,
       instalacionId: f.instalacion_id, licenciaId: e.datos?.id ?? null, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: null,
       portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(),
     };
@@ -287,7 +288,7 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     const e = await estadoLicencia();
     return {
       ...publico(e),
-      instalacionId: f.instalacion_id, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
+      instalacionId: f.instalacion_id, licenciaId: e.datos?.id ?? null, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
       portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(), solicitud: estadoSolicitud(), solicitudEnviada: await solicitudEnviada(),
       empresa: (await pool.query("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas ORDER BY actualizado_en LIMIT 1").catch(() => ({ rows: [] }))).rows[0] ?? null,
       // Servidor master: dirección pública y acceso web por el portal
