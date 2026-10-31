@@ -18,9 +18,50 @@ interface Envio { tipo: Tipo; activo: boolean; destinatarios: string[]; sucursal
 interface Enviado { id: string; tipo: Tipo; asunto: string | null; destinatarios: string[] | null; estado: "ENVIANDO" | "ENVIADO" | "ERROR"; intentos: number; error: string | null; creadoEn: string; enviadoEn: string | null; proximoIntento: string | null }
 
 /** Ajustes conocidos: el usuario solo elige su proveedor y escribe correo y contraseña. */
+const PASOS_CLAVE: Record<string, string[]> = {
+  gmail: [
+    "Entre a myaccount.google.com con la cuenta que enviará los correos.",
+    "Abra «Seguridad» (menú izquierdo).",
+    "En «Cómo inicia sesión en Google», active la «Verificación en 2 pasos» si no la tiene (pide su teléfono).",
+    "Vuelva a «Seguridad», busque «Contraseñas de aplicaciones» (o escríbalo en el buscador de la cuenta).",
+    "Ponga un nombre, por ejemplo «FactPOS», y pulse «Crear».",
+    "Google muestra una clave de 16 letras. Cópiela y péguela en el campo «Contraseña» de aquí.",
+    "Pulse «Guardar cuenta» y luego «Enviar prueba».",
+  ],
+  zoho: [
+    "Entre a accounts.zoho.com › Seguridad › Contraseñas específicas de aplicación.",
+    "Pulse «Generar nueva contraseña», nómbrela «FactPOS» y créela.",
+    "Copie la clave y péguela en el campo «Contraseña» de aquí.",
+    "Pulse «Guardar cuenta» y luego «Enviar prueba».",
+  ],
+  outlook: [
+    "Entre a admin.microsoft.com con un administrador de la cuenta.",
+    "Vaya a Usuarios › Usuarios activos, abra el usuario que enviará y pulse la pestaña «Correo».",
+    "En «Administrar aplicaciones de correo electrónico», marque «SMTP autenticado» y guarde (puede tardar unos minutos).",
+    "Si el usuario tiene verificación en 2 pasos: en mysignins.microsoft.com › Información de seguridad › Agregar método › «Contraseña de aplicación», créela y úsela como contraseña. Si no, use su contraseña normal.",
+    "Servidor smtp.office365.com, puerto 587, seguridad STARTTLS (ya viene lleno al elegir Outlook).",
+    "Pulse «Guardar cuenta» y luego «Enviar prueba».",
+  ],
+  otro: [
+    "Entre al panel de su hosting (cPanel) › «Cuentas de correo».",
+    "Junto a la cuenta que enviará, pulse «Conectar dispositivos» (o «Configurar cliente de correo»).",
+    "Copie el servidor de salida (SMTP), el puerto y la seguridad (SSL o STARTTLS) a los campos de abajo. Suelen ser mail.sudominio.com, puerto 465 con SSL.",
+    "Como usuario ponga el correo completo; como contraseña, la contraseña de esa cuenta de correo (si la olvidó, restablézcala en la misma pantalla).",
+    "Pulse «Guardar cuenta» y luego «Enviar prueba».",
+  ],
+  resend: [
+    "Cree una cuenta en resend.com y entre.",
+    "En «Domains» pulse «Add Domain», escriba su dominio y agregue en su DNS los registros que Resend muestra (SPF y DKIM). Espere a que diga «Verified».",
+    "En «API Keys» pulse «Create API Key», nombre «FactPOS», permiso «Sending access».",
+    "Copie la clave (empieza con re_) y péguela en el campo «Clave de Resend (API key)». Se muestra una sola vez.",
+    "El «Correo que envía» debe ser de su dominio verificado, por ejemplo reportes@sudominio.com.",
+    "Pulse «Guardar cuenta» y luego «Enviar prueba».",
+  ],
+};
+
 const PROVEEDORES: { id: string; nombre: string; servidor?: string; puerto?: number; seguridad?: Seguridad; ayuda: string }[] = [
   { id: "gmail", nombre: "Gmail / Google Workspace", servidor: "smtp.gmail.com", puerto: 465, seguridad: "SSL",
-    ayuda: "Use una contraseña de aplicación, no la suya: Cuenta de Google › Seguridad › Verificación en 2 pasos › Contraseñas de aplicaciones." },
+    ayuda: "Escriba la contraseña de su correo. Si Google la rechaza (la mayoría de las cuentas lo hacen por seguridad), cree una contraseña de aplicación: Cuenta de Google › Seguridad › Verificación en 2 pasos › Contraseñas de aplicaciones." },
   { id: "outlook", nombre: "Outlook / Microsoft 365", servidor: "smtp.office365.com", puerto: 587, seguridad: "STARTTLS",
     ayuda: "La cuenta debe tener activado «SMTP autenticado» (Centro de administración de Microsoft 365 › Usuarios › Correo)." },
   { id: "zoho", nombre: "Zoho Mail", servidor: "smtp.zoho.com", puerto: 465, seguridad: "SSL", ayuda: "Si tiene verificación en 2 pasos, cree una contraseña específica de aplicación." },
@@ -120,6 +161,13 @@ function Conexion({ config, onGuardado }: { config: Config | null; onGuardado: (
         ))}
       </div>
       <p className="suave pequeno ayuda-proveedor">{p.ayuda}</p>
+      {PASOS_CLAVE[prov] && (
+        <details className="pasos-clave">
+          <summary>{prov === "resend" ? "Cómo obtener la clave API" : prov === "otro" ? "Cómo obtener los datos de su correo" : prov === "outlook" ? "Cómo habilitar el envío en Microsoft 365" : "Cómo crear la contraseña de aplicación"}</summary>
+          <ol>{PASOS_CLAVE[prov].map((t, i) => <li key={i}>{t}</li>)}</ol>
+          {prov === "gmail" && <p className="suave pequeno">Copie las 16 letras (con o sin espacios) y péguelas en «Contraseña». Se muestra una sola vez; si la pierde, cree otra.</p>}
+        </details>
+      )}
 
       <div className="dos-col">
         <label className="campo"><span>Correo que envía</span><input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="reportes@susupermercado.com" autoComplete="off" /></label>
@@ -128,7 +176,7 @@ function Conexion({ config, onGuardado }: { config: Config | null; onGuardado: (
       <div className="dos-col">
         <label className="campo">
           <span>{resend ? "Clave de Resend (API key)" : "Contraseña"}{config?.tieneClave ? " · vacía = no cambia" : ""}</span>
-          <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="new-password" placeholder={config?.tieneClave ? "••••••••  (guardada)" : resend ? "re_…" : prov === "gmail" ? "Contraseña de aplicación (16 letras)" : ""} />
+          <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="new-password" placeholder={config?.tieneClave ? "••••••••  (guardada)" : resend ? "re_…" : prov === "gmail" ? "Contraseña del correo (o de aplicación)" : ""} />
         </label>
         <label className="campo"><span>Respuestas a (opcional)</span><input type="email" value={responder} onChange={(e) => setResponder(e.target.value)} placeholder="administracion@susupermercado.com" /></label>
       </div>

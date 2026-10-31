@@ -934,3 +934,7 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .imp-tabla table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .imp-tabla td, .imp-tabla th { padding: 6px 10px; border-bottom: 1px solid var(--borde); text-align: left; white-space: nowrap; }
 .imp-tabla tr.mala td { background: var(--alerta-suave); }
+
+.pasos-clave { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel); max-width: 75ch; font-size: 14px; }
+.pasos-clave summary { cursor: pointer; font-weight: 600; color: var(--primario); }
+.pasos-clave ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
