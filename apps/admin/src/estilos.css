@@ -1016,3 +1016,18 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
   table.apilada td[colspan] { padding: 10px 14px; }
   table.apilada .detalle-cliente { overflow-x: hidden; }
 }
+
+/* Celular: nada debe ser más ancho que la pantalla (paneles de detalle, formularios, barra superior) */
+@media (max-width: 900px) {
+  .dos-col, .tres-col, .cuatro-col, .detalle-grid { grid-template-columns: minmax(0, 1fr); }
+  .contenido, .contenido main, .barra-superior > *, .panel, .detalle-grid > *, .campo { min-width: 0; }
+  .contenido { overflow-x: hidden; }
+  .campo input, .campo select, .campo textarea, .en-linea input { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .fila-acciones { flex-wrap: wrap; }
+  .en-linea { flex-wrap: wrap; }
+  .en-linea input { flex: 1 1 160px; }
+  .migas-superior { flex: 1 1 0; overflow: hidden; }
+  .migas-superior > :last-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .chips-filtro { flex-wrap: wrap; }
+  .detalle-cliente { padding: 10px 8px; }
+}
