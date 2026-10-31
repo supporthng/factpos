@@ -24,6 +24,8 @@ import { syncActiva } from "../sync/sucursal.js";
  * Al portal solo viajan: id de licencia, id de esta instalación, versión y
  * cuántas sucursales hay activas. Ningún dato del negocio.
  */
+/** Dirección pública para entrar a la administración web (la que se le da al cliente). */
+export const WEB_URL = () => (process.env.FACTPOS_WEB_URL || "https://factpos.app").replace(/\/+$/, "");
 export const PORTAL_URL = () => (process.env.FACTPOS_PORTAL_URL || "https://factpos.vercel.app").replace(/\/+$/, "");
 const PRUEBA_SUCURSALES = 2;
 const RENOVAR_CADA_MS = 12 * 3600_000;
@@ -293,7 +295,7 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
       empresa: (await pool.query("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas ORDER BY actualizado_en LIMIT 1").catch(() => ({ rows: [] }))).rows[0] ?? null,
       // Servidor master: dirección pública y acceso web por el portal
       tunel: tunelActivo() ? estadoTunel() : null,
-      web: e.datos ? `${PORTAL_URL()}/${e.datos.cliente.slug}/` : null,
+      web: e.datos ? `${WEB_URL()}/${e.datos.cliente.slug}/` : null,
     };
   });
   app.post("/central/licencia/activar", async (req) => {

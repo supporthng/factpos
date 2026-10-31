@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, puede } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
+import { useFuncionSeguridad } from "../seguridad";
 
 /**
  * Licencia de FactPOS de esta empresa: estado, sucursales permitidas y
@@ -164,6 +165,7 @@ export function Licencia() {
         <div className="panel">
           <h3 style={{ marginTop: 0 }}>Acceso desde internet</h3>
           {d.web && <p>Administración web de su empresa: <a href={d.web} target="_blank" rel="noreferrer"><b>{d.web}</b></a></p>}
+          <AccesoWeb admin={admin} onCambio={(t, tipo) => setMsg({ t, tipo })} />
           <p className="suave pequeno">
             Túnel: {d.tunel.activo ? <span className="texto-ok">abierto</span> : <span className="texto-alerta">cerrado</span>}
             {d.tunel.url && <> · <span className="mono">{d.tunel.url}</span></>}
@@ -321,5 +323,27 @@ function MiLicencia({ d, onError }: { d: EstadoLicencia; onError: (t: string) =>
       </ul>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>El archivo está firmado por FactPOS y solo sirve en esta instalación. Guárdelo como respaldo.</p>
     </div>
+  );
+}
+
+/** Casilla para activar o desactivar el acceso desde internet (solo administradores). */
+function AccesoWeb({ admin, onCambio }: { admin: boolean; onCambio: (t: string, tipo: "ok" | "error") => void }) {
+  const { habilitada, cargando, recargar } = useFuncionSeguridad("acceso_web");
+  const [guardando, setGuardando] = useState(false);
+  const cambiar = async (v: boolean) => {
+    if (!v && !confirm("Al desactivar el acceso web nadie podrá entrar desde internet hasta que lo active de nuevo desde un equipo de la red local. ¿Desactivar?")) return;
+    setGuardando(true);
+    try {
+      await api("/central/seguridad/acceso_web", { metodo: "PUT", cuerpo: { habilitada: v } });
+      await recargar();
+      onCambio(v ? "Acceso web activado." : "Acceso web desactivado.", "ok");
+    } catch (e) { onCambio((e as Error).message, "error"); }
+    finally { setGuardando(false); }
+  };
+  return (
+    <label className="pr-check" style={{ margin: "4px 0 10px" }} title={admin ? "" : "Solo un administrador"}>
+      <input type="checkbox" checked={habilitada} disabled={!admin || cargando || guardando} onChange={(e) => cambiar(e.target.checked)} />
+      <span><b>Activar acceso web</b> <span className="suave">· permite entrar a la administración desde internet</span></span>
+    </label>
   );
 }
