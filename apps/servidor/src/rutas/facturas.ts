@@ -97,7 +97,7 @@ export async function rutasFacturas(app: FastifyInstance) {
       if (!turno.rowCount) throw new ErrorNegocio("La caja no tiene un turno abierto", 409);
 
       const o = (await c.query(
-        "SELECT * FROM ventas WHERE id = $1 AND sucursal_id = $2 AND tipo_documento IN ('E31','E32','B01','B02','SIN') FOR UPDATE",
+        "SELECT * FROM ventas WHERE id = $1 AND sucursal_id = $2 AND tipo_documento IN ('E31','E32','B01','B02','B14','B15','B16','SIN') FOR UPDATE",
         [ventaId, ctx.sucursalId],
       )).rows[0];
       if (!o) throw new ErrorNegocio("Factura no encontrada en esta sucursal", 404);

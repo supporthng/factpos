@@ -39,7 +39,7 @@ export async function reporteTurno(c: Q, turnoId: string) {
   const [ventas, pagos, anuladas, movs] = await Promise.all([
     c.query(
       `SELECT COUNT(*) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS facturas,
-              COUNT(*) FILTER (WHERE tipo_documento = 'E31') AS "creditoFiscal",
+              COUNT(*) FILTER (WHERE tipo_documento IN ('E31','B01','B14','B15')) AS "creditoFiscal",
               COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -total ELSE total END), 0)::text AS total,
               COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -itbis ELSE itbis END), 0)::text AS itbis,
               COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -descuento ELSE descuento END), 0)::text AS descuentos,

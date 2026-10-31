@@ -2,7 +2,7 @@ import type { PoolClient } from 'pg';
 import { ErrorNegocio } from '../db.js';
 
 /** Debe ejecutarse dentro de la transacción de venta, con la caja bloqueada. */
-export async function asignarNumeroNoElectronico(c: PoolClient, sucursalId: string, tipo: 'B01' | 'B02' | 'SIN'): Promise<string> {
+export async function asignarNumeroNoElectronico(c: PoolClient, sucursalId: string, tipo: 'B01' | 'B02' | 'B14' | 'B15' | 'B16' | 'SIN'): Promise<string> {
   if (tipo === 'SIN') {
     const r = await c.query<{ ultimo: string }>(
       `INSERT INTO facturacion_contadores(sucursal_id, modalidad, ultimo) VALUES ($1,'SIN',1)

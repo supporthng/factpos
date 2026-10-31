@@ -5,7 +5,7 @@ import { rd } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
 
 export interface VentaRegistrada {
-  id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "B01" | "B02" | "SIN"; numeroDocumento?: string | null; fecha: string;
+  id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN"; numeroDocumento?: string | null; fecha: string;
   encfModificado?: string | null; motivo?: string | null;
   subtotal: string; descuento: string; itbis: string; total: string; cambio: string;
   cupon: { codigo: string; total: string } | null;
@@ -42,6 +42,9 @@ const NOMBRE_TIPO: Record<string, string> = {
   E34: "Nota de Crédito Electrónica",
   B01: "Factura con NCF de Crédito Fiscal",
   B02: "Factura con NCF de Consumo",
+  B14: "Factura con NCF de Régimen Especial",
+  B15: "Factura con NCF Gubernamental",
+  B16: "Factura con NCF de Exportación",
   SIN: "Factura interna sin comprobante fiscal",
 };
 const PAGO: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", TRANSFERENCIA: "Transferencia", CREDITO: "Crédito", DELIVERY: "Delivery" };

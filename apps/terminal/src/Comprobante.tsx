@@ -5,36 +5,59 @@ import type { Usuario } from "./App";
 import type { Cliente } from "./Venta";
 
 /** Tipos de comprobante que se pueden elegir en la caja. */
-export type TipoComprobante = "E32" | "E31" | "SIN" | "B02" | "B01";
+export type TipoComprobante = "E32" | "E31" | "B02" | "B01" | "B14" | "B15" | "B16" | "SIN";
+export type FamiliaComprobante = "ECF" | "NCF" | "SIN";
 
-const PRINCIPALES: { id: TipoComprobante; titulo: string; detalle: string }[] = [
-  { id: "E32", titulo: "Consumo", detalle: "Consumidor final · e-CF E32" },
-  { id: "E31", titulo: "Crédito fiscal", detalle: "Con RNC o cédula · e-CF E31" },
-  { id: "SIN", titulo: "Sin comprobante", detalle: "Factura interna" },
-];
-const OTROS: { id: TipoComprobante; titulo: string; detalle: string }[] = [
-  { id: "B02", titulo: "NCF de consumo", detalle: "Serie B02" },
-  { id: "B01", titulo: "NCF de crédito fiscal", detalle: "Serie B01" },
+/** Tres familias, cada una con su prefijo para los reportes: E (electrónico), B (NCF serie B) y FI- (sin comprobante). */
+export const FAMILIAS: { id: FamiliaComprobante; titulo: string; prefijo: string; detalle: string; tipos: { id: TipoComprobante; titulo: string; detalle: string }[] }[] = [
+  { id: "ECF", titulo: "e-CF electrónico", prefijo: "E", detalle: "Comprobante fiscal electrónico (DGII)", tipos: [
+    { id: "E32", titulo: "Consumo", detalle: "E32 · consumidor final" },
+    { id: "E31", titulo: "Crédito fiscal", detalle: "E31 · con RNC o cédula" },
+  ] },
+  { id: "NCF", titulo: "NCF serie B", prefijo: "B", detalle: "Comprobante fiscal tradicional", tipos: [
+    { id: "B02", titulo: "Consumo", detalle: "B02 · consumidor final" },
+    { id: "B01", titulo: "Crédito fiscal", detalle: "B01 · con RNC o cédula" },
+    { id: "B14", titulo: "Régimen especial", detalle: "B14 · con RNC" },
+    { id: "B15", titulo: "Gubernamental", detalle: "B15 · con RNC" },
+    { id: "B16", titulo: "Exportación", detalle: "B16 · cliente del exterior" },
+  ] },
+  { id: "SIN", titulo: "Sin comprobante", prefijo: "FI-", detalle: "Factura interna, sin valor fiscal", tipos: [] },
 ];
 
-export const requiereDocumento = (t: TipoComprobante) => t === "E31" || t === "B01";
+export const familiaDe = (t: TipoComprobante): FamiliaComprobante => (t.startsWith("E") ? "ECF" : t.startsWith("B") ? "NCF" : "SIN");
+export const requiereDocumento = (t: TipoComprobante) => ["E31", "B01", "B14", "B15"].includes(t);
 export const tieneDocumentoFiscal = (c: Cliente | null) => !!c && ["RNC", "CEDULA"].includes(c.tipoDocumento) && !!c.documento;
 
-/** Tres botones grandes (Consumo · Crédito fiscal · Sin comprobante) y, aparte, los NCF de serie B. */
+/** Primero la familia (e-CF · NCF · Sin comprobante) y, debajo, el tipo dentro de ella. */
 export function SelectorComprobante({ tipo, onTipo, soloConsumo = false, compacto = false }: {
   tipo: TipoComprobante; onTipo: (t: TipoComprobante) => void; soloConsumo?: boolean; compacto?: boolean;
 }) {
-  const [otros, setOtros] = useState(tipo === "B01" || tipo === "B02");
-  const lista = otros ? [...PRINCIPALES, ...OTROS] : PRINCIPALES;
+  const fam = familiaDe(tipo);
+  const actual = FAMILIAS.find((f) => f.id === fam)!;
+  const elegirFamilia = (f: (typeof FAMILIAS)[number]) => {
+    if (f.id === fam) return;
+    onTipo(f.id === "SIN" ? "SIN" : f.tipos[0].id);
+  };
   return (
-    <div className={"comprobantes" + (compacto ? " compacto" : "")} role="radiogroup" aria-label="Tipo de comprobante">
-      {lista.map((t) => (
-        <button key={t.id} role="radio" aria-checked={tipo === t.id} className={"comprobante" + (tipo === t.id ? " activo" : "")}
-          disabled={soloConsumo && t.id !== "E32"} onClick={() => onTipo(t.id)} title={t.detalle}>
-          <b>{t.titulo}</b>{!compacto && <small>{t.detalle}</small>}
-        </button>
-      ))}
-      <button className="enlace comprobante-otros" onClick={() => setOtros(!otros)}>{otros ? "Menos tipos" : "Otros (NCF serie B)"}</button>
+    <div className={"comprobantes-grupo" + (compacto ? " compacto" : "")}>
+      <div className={"comprobantes" + (compacto ? " compacto" : "")} role="radiogroup" aria-label="Familia de comprobante">
+        {FAMILIAS.map((f) => (
+          <button key={f.id} role="radio" aria-checked={fam === f.id} className={"comprobante" + (fam === f.id ? " activo" : "")}
+            disabled={soloConsumo && f.id !== "ECF"} onClick={() => elegirFamilia(f)} title={f.detalle}>
+            <b>{f.titulo} <span className="prefijo">{f.prefijo}</span></b>{!compacto && <small>{f.detalle}</small>}
+          </button>
+        ))}
+      </div>
+      {actual.tipos.length > 0 && (
+        <div className={"comprobantes subtipos" + (compacto ? " compacto" : "")} role="radiogroup" aria-label="Tipo de comprobante">
+          {actual.tipos.map((t) => (
+            <button key={t.id} role="radio" aria-checked={tipo === t.id} className={"comprobante" + (tipo === t.id ? " activo" : "")}
+              disabled={soloConsumo && t.id !== "E32"} onClick={() => onTipo(t.id)} title={t.detalle}>
+              <b>{t.titulo}</b>{!compacto && <small>{t.detalle}</small>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
