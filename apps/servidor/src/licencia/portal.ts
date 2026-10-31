@@ -76,6 +76,15 @@ function frenar(ip: string) {
   if (++x.n > 15) throw new ErrorNegocio("Demasiados intentos con claves equivocadas. Espere 15 minutos.", 429);
 }
 
+// Altas de solicitudes: máximo 20 instalaciones nuevas por hora desde una misma dirección
+const altas = new Map<string, { n: number; desde: number }>();
+function limitarAltas(ip: string) {
+  const ahora = Date.now();
+  const x = altas.get(ip);
+  if (!x || ahora - x.desde > 3_600_000) { altas.set(ip, { n: 1, desde: ahora }); return; }
+  if (++x.n > 20) throw new ErrorNegocio("Demasiadas solicitudes desde esta dirección. Intente más tarde.", 429);
+}
+
 const contacto = z.object({
   instalacionId: uuid,
   version: z.string().max(40).optional(),
@@ -103,6 +112,11 @@ export async function rutasPortal(app: FastifyInstance) {
         [l.id, b.instalacionId, huella(secreto), b.version ?? null, b.sucursalesEnUso ?? null]);
       if (b.apiUrl) await c.query("UPDATE portal_clientes SET api_url = COALESCE(api_url, $2) WHERE id = $1", [l.cliente_id, b.apiUrl]);
       await evento(c, { licenciaId: l.id, clienteId: l.cliente_id, tipo: "ACTIVADA", detalle: { instalacion: b.instalacionId, version: b.version } });
+      await c.query(
+        `INSERT INTO portal_instalaciones (id, estado, secreto_hash, version_app, sucursales_en_uso, api_url, licencia_id, resuelta_en)
+         VALUES ($1,'ASIGNADA',$2,$3,$4,$5,$6,now())
+         ON CONFLICT (id) DO UPDATE SET estado = 'ASIGNADA', secreto_hash = $2, version_app = $3, sucursales_en_uso = $4, licencia_id = $6, resuelta_en = now(), ultimo_contacto = now()`,
+        [b.instalacionId, huella(secreto), b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null, l.id]);
       return { licencia: emitir(l, b.instalacionId), secreto, cliente: { nombre: l.nombre, slug: l.slug } };
     });
   });
@@ -116,8 +130,50 @@ export async function rutasPortal(app: FastifyInstance) {
     }
     await pool.query("UPDATE portal_licencias SET ultimo_contacto = now(), version_app = $2, sucursales_en_uso = $3 WHERE id = $1",
       [l.id, b.version ?? null, b.sucursalesEnUso ?? null]);
+    await pool.query("UPDATE portal_instalaciones SET ultimo_contacto = now(), version_app = $2, sucursales_en_uso = $3 WHERE id = $1",
+      [b.instalacionId, b.version ?? null, b.sucursalesEnUso ?? null]);
     if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
     return { licencia: emitir(l, b.instalacionId) };
+  });
+
+  /**
+   * Una instalación SIN licencia avisa que existe y queda como solicitud de activación.
+   * Se vuelve a llamar cada pocos minutos: cuando el proveedor la aprueba, la respuesta trae la licencia.
+   * La primera vez entrega un secreto que solo esa instalación conoce.
+   */
+  app.post("/licencias/registrar", async (req) => {
+    const b = contacto.extend({
+      secreto: z.string().min(20).max(80).optional(),
+      empresa: z.string().trim().max(120).nullable().optional(), rnc: z.string().trim().max(11).nullable().optional(), equipo: z.string().trim().max(80).nullable().optional(),
+    }).parse(req.body);
+    const ex = (await pool.query<{ estado: string; secreto_hash: string; licencia_id: string | null }>(
+      "SELECT estado, secreto_hash, licencia_id FROM portal_instalaciones WHERE id = $1", [b.instalacionId])).rows[0];
+    if (!ex) {
+      limitarAltas(req.ip ?? "?");
+      const secreto = randomBytes(24).toString("base64url");
+      await pool.query(
+        `INSERT INTO portal_instalaciones (id, secreto_hash, empresa, rnc, equipo, version_app, sucursales_en_uso, api_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [b.instalacionId, huella(secreto), b.empresa || null, b.rnc || null, b.equipo || null, b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null]);
+      await evento(pool, { tipo: "SOLICITUD", detalle: { instalacion: b.instalacionId, empresa: b.empresa, equipo: b.equipo } });
+      return { estado: "PENDIENTE", secreto };
+    }
+    if (!b.secreto || !igual(ex.secreto_hash, huella(b.secreto))) {
+      frenar(req.ip ?? "?");
+      throw new ErrorNegocio("Esta instalación ya está registrada en el portal y no se pudo comprobar. Pida a su proveedor que la revise o use una clave de activación.", 409);
+    }
+    await pool.query(
+      `UPDATE portal_instalaciones SET empresa = COALESCE($2, empresa), rnc = COALESCE($3, rnc), equipo = COALESCE($4, equipo), version_app = $5,
+              sucursales_en_uso = $6, api_url = COALESCE($7, api_url), ultimo_contacto = now() WHERE id = $1`,
+      [b.instalacionId, b.empresa || null, b.rnc || null, b.equipo || null, b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null]);
+    if (ex.estado === "ASIGNADA" && ex.licencia_id) {
+      const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [ex.licencia_id])).rows[0];
+      if (!l || l.instalacion_id !== b.instalacionId) return { estado: "LIBERADA" };
+      if (l.estado !== "ACTIVA" || !l.cliente_activo) return { estado: "SUSPENDIDA" };
+      await pool.query("UPDATE portal_licencias SET ultimo_contacto = now(), version_app = $2, sucursales_en_uso = $3 WHERE id = $1", [l.id, b.version ?? null, b.sucursalesEnUso ?? null]);
+      return { estado: "ASIGNADA", licencia: emitir(l, b.instalacionId) };
+    }
+    return { estado: ex.estado };
   });
 
   /** El servidor MASTER de un cliente informa la dirección actual de su túnel. */
@@ -389,6 +445,74 @@ export async function rutasPortal(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // ---- Instalaciones detectadas y solicitudes de activación
+  app.get("/central/portal/instalaciones", async (req) => {
+    const { estado } = z.object({ estado: z.enum(["PENDIENTE", "ASIGNADA", "RECHAZADA", "LIBERADA"]).optional() }).parse(req.query);
+    return (await pool.query(
+      `SELECT i.id, i.estado, i.empresa, i.rnc, i.equipo, i.version_app AS "versionApp", i.sucursales_en_uso AS "sucursalesEnUso", i.api_url AS "apiUrl",
+              i.solicitada_en AS "solicitadaEn", i.ultimo_contacto AS "ultimoContacto", i.nota, c.id AS "clienteId", c.nombre AS cliente, c.slug
+         FROM portal_instalaciones i LEFT JOIN portal_licencias l ON l.id = i.licencia_id LEFT JOIN portal_clientes c ON c.id = l.cliente_id
+        WHERE ($1::text IS NULL OR i.estado = $1)
+        ORDER BY (i.estado = 'PENDIENTE') DESC, i.solicitada_en DESC LIMIT 300`, [estado ?? null])).rows;
+  });
+
+  /** Aprobar: asigna la instalación a un cliente que ya existe, o crea uno con los datos de la solicitud. */
+  app.post("/central/portal/instalaciones/:id/aprobar", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({
+      clienteId: uuid.optional(),
+      cliente: esquemaCliente.optional(),
+      licencia: esquemaLicencia.partial({ estado: true, modulos: true }),
+    }).refine((x) => !!x.clienteId !== !!x.cliente, "Elija un cliente existente o cree uno nuevo").parse(req.body);
+    const u = usuarioDe(req);
+    return enTransaccion(async (c) => {
+      const inst = (await c.query<{ estado: string; secreto_hash: string; version_app: string | null; sucursales_en_uso: number | null; api_url: string | null }>(
+        "SELECT estado, secreto_hash, version_app, sucursales_en_uso, api_url FROM portal_instalaciones WHERE id = $1 FOR UPDATE", [id])).rows[0];
+      if (!inst) throw new ErrorNegocio("Solicitud no encontrada", 404);
+      if (inst.estado === "ASIGNADA") throw new ErrorNegocio("Esta instalación ya tiene licencia asignada", 409);
+      let clienteId = b.clienteId, licId: string;
+      if (clienteId) {
+        const l = (await c.query<{ id: string; instalacion_id: string | null }>("SELECT id, instalacion_id FROM portal_licencias WHERE cliente_id = $1 FOR UPDATE", [clienteId])).rows[0];
+        if (!l) throw new ErrorNegocio("Ese cliente no tiene licencia", 404);
+        if (l.instalacion_id && l.instalacion_id !== id) throw new ErrorNegocio("Ese cliente ya tiene otra instalación activada. Libérela primero (en su ficha).", 409);
+        licId = l.id;
+        await c.query(
+          `UPDATE portal_licencias SET sucursales = $2, vence = $3, plan_id = $4, precio_sucursal = COALESCE($5, precio_sucursal), modulos = $6 WHERE id = $1`,
+          [licId, b.licencia.sucursales, b.licencia.vence, b.licencia.planId ?? null, b.licencia.precioSucursal ?? null, b.licencia.modulos ?? []]);
+      } else {
+        clienteId = uuidv7(); licId = uuidv7();
+        const k = b.cliente!;
+        try {
+          await c.query(`INSERT INTO portal_clientes (id, slug, nombre, rnc, contacto, correo, telefono, api_url, notas) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [clienteId, k.slug, k.nombre, k.rnc ?? null, k.contacto ?? null, k.correo ?? null, k.telefono ?? null, k.apiUrl ?? null, k.notas ?? null]);
+        } catch (e) {
+          if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un cliente con el nombre corto «${k.slug}»`, 409);
+          throw e;
+        }
+        await c.query(`INSERT INTO portal_licencias (id, cliente_id, sucursales, modulos, vence, estado, plan_id, precio_sucursal) VALUES ($1,$2,$3,$4,$5,'ACTIVA',$6,$7)`,
+          [licId, clienteId, b.licencia.sucursales, b.licencia.modulos ?? [], b.licencia.vence, b.licencia.planId ?? null, b.licencia.precioSucursal ?? null]);
+        await evento(c, { licenciaId: licId, clienteId, tipo: "CREADA", detalle: { via: "solicitud", ...b.licencia }, usuarioId: u });
+      }
+      await c.query(
+        `UPDATE portal_licencias SET instalacion_id = $2, secreto_hash = $3, activada_en = COALESCE(activada_en, now()), ultimo_contacto = now(),
+                version_app = $4, sucursales_en_uso = $5, estado = 'ACTIVA', actualizado_en = now() WHERE id = $1`,
+        [licId, id, inst.secreto_hash, inst.version_app, inst.sucursales_en_uso]);
+      if (inst.api_url) await c.query("UPDATE portal_clientes SET api_url = COALESCE(api_url, $2) WHERE id = $1", [clienteId, inst.api_url]);
+      await c.query("UPDATE portal_instalaciones SET estado = 'ASIGNADA', licencia_id = $2, resuelta_en = now() WHERE id = $1", [id, licId]);
+      await evento(c, { licenciaId: licId, clienteId, tipo: "ACTIVADA", detalle: { via: "solicitud", instalacion: id }, usuarioId: u });
+      return { clienteId };
+    });
+  });
+
+  app.post("/central/portal/instalaciones/:id/rechazar", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ nota: z.string().trim().max(300).nullable().optional() }).parse(req.body ?? {});
+    const r = await pool.query("UPDATE portal_instalaciones SET estado = 'RECHAZADA', nota = $2, resuelta_en = now() WHERE id = $1 AND estado <> 'ASIGNADA' RETURNING id", [id, b.nota ?? null]);
+    if (!r.rowCount) throw new ErrorNegocio("Solicitud no encontrada o ya asignada", 404);
+    await evento(pool, { tipo: "SOLICITUD_RECHAZADA", detalle: { instalacion: id, nota: b.nota ?? null }, usuarioId: usuarioDe(req) });
+    return { ok: true };
+  });
+
   /** Clave de activación nueva (la anterior deja de servir). Se muestra UNA vez. */
   app.post("/central/portal/clientes/:id/clave", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
@@ -406,6 +530,7 @@ export async function rutasPortal(app: FastifyInstance) {
     const r = await pool.query(
       "UPDATE portal_licencias SET instalacion_id = NULL, secreto_hash = NULL, actualizado_en = now() WHERE cliente_id = $1 RETURNING id", [id]);
     if (!r.rowCount) throw new ErrorNegocio("El cliente no tiene licencia", 404);
+    await pool.query("UPDATE portal_instalaciones SET estado = 'LIBERADA', licencia_id = NULL, resuelta_en = now() WHERE licencia_id = $1", [r.rows[0].id]);
     await evento(pool, { licenciaId: r.rows[0].id, clienteId: id, tipo: "LIBERADA", usuarioId: usuarioDe(req) });
     return { ok: true };
   });

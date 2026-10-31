@@ -19,6 +19,10 @@ interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
   sucursalesIncluidas: number; modulos: string[]; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
 }
+interface Instalacion {
+  id: string; estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA"; empresa: string | null; rnc: string | null; equipo: string | null; versionApp: string | null;
+  sucursalesEnUso: number | null; apiUrl: string | null; solicitadaEn: string; ultimoContacto: string; nota: string | null; clienteId: string | null; cliente: string | null; slug: string | null;
+}
 interface Reglas { pruebaActualiza: boolean; contactoNombre: string | null; contactoTelefono: string | null; contactoWhatsapp: string | null; contactoCorreo: string | null }
 const rd = (n: number) => `RD$ ${n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Fecha de vencimiento tras sumar meses (desde hoy o desde el vencimiento si aún no pasa). */
@@ -40,22 +44,33 @@ const hace = (iso: string | null) => {
   return m < 60 ? `hace ${Math.max(m, 1)} min` : m < 2880 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
 };
 
-type Vista = "clientes" | "planes" | "reglas";
+type Vista = "clientes" | "instalaciones" | "planes" | "reglas";
 type Filtro = "todos" | "atencion" | "vigentes" | "sin_activar" | "suspendidos";
 
 export function Portal() {
   const [vista, setVista] = useState<Vista>("clientes");
   const planes = useDatos<Plan[]>("/central/portal/planes");
+  const pendientes = useDatos<Instalacion[]>("/central/portal/instalaciones?estado=PENDIENTE");
+  const nPend = pendientes.datos?.length ?? 0;
   return (
     <>
       <Encabezado titulo="Clientes y licencias"
         descripcion="Cada cliente instala su propio FactPOS con su propia nube. Aquí se manejan sus planes, licencias y cobros; sus datos nunca pasan por el portal." />
       <div className="pestanas">
-        {([["clientes", "Clientes"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
-          <button key={v} className={vista === v ? "activa" : ""} onClick={() => setVista(v)}>{t}</button>
+        {([["clientes", "Clientes"], ["instalaciones", "Instalaciones"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
+          <button key={v} className={vista === v ? "activa" : ""} onClick={() => { setVista(v); pendientes.recargar(); }}>
+            {t}{v === "instalaciones" && nPend > 0 && <span className="insignia">{nPend}</span>}
+          </button>
         ))}
       </div>
+      {nPend > 0 && vista !== "instalaciones" && (
+        <div className="aviso-licencia">
+          <span><b>{nPend}</b> instalación(es) esperan activación: {pendientes.datos!.slice(0, 3).map((i) => i.empresa || i.equipo || "Sin nombre").join(", ")}{nPend > 3 ? "…" : ""}</span>
+          <button className="enlace" onClick={() => setVista("instalaciones")}>Revisar solicitudes</button>
+        </div>
+      )}
       {vista === "clientes" && <Clientes planes={planes.datos ?? []} />}
+      {vista === "instalaciones" && <Instalaciones planes={planes.datos ?? []} onCambio={pendientes.recargar} />}
       {vista === "planes" && <Planes planes={planes.datos ?? []} recargar={planes.recargar} />}
       {vista === "reglas" && <ReglasPortal />}
     </>
@@ -241,7 +256,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
 
 const EVENTOS: Record<string, string> = {
   CREADA: "Licencia creada", RENOVADA: "Renovada", ACTIVADA: "Activada por el cliente", LIBERADA: "Instalación liberada", SUSPENDIDA: "Suspendida",
-  CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas",
+  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas",
 };
 
 function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: Plan[]; onCambio: () => void; onClave: (k: string) => void }) {
@@ -448,5 +463,125 @@ function ReglasPortal() {
       <div className="fila-acciones"><span className="flex" /><button className="boton primario" disabled={!r} onClick={guardar}>Guardar reglas</button></div>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
     </>
+  );
+}
+
+/* ---------------- Instalaciones detectadas / solicitudes de activación ---------------- */
+const ESTADO_INST: Record<string, { t: string; c: string }> = {
+  PENDIENTE: { t: "Espera activación", c: "aviso" }, ASIGNADA: { t: "Activada", c: "ok" }, RECHAZADA: { t: "Rechazada", c: "alerta" }, LIBERADA: { t: "Liberada", c: "alerta" },
+};
+
+function Instalaciones({ planes, onCambio }: { planes: Plan[]; onCambio: () => void }) {
+  const [filtro, setFiltro] = useState<"PENDIENTE" | "ASIGNADA" | "">("PENDIENTE");
+  const { datos, recargar, error } = useDatos<Instalacion[]>(`/central/portal/instalaciones${filtro ? `?estado=${filtro}` : ""}`, [filtro]);
+  const clientes = useDatos<Cliente[]>("/central/portal/clientes");
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const hecho = (t: string) => { setMsg({ t, tipo: "ok" }); setAbierta(null); recargar(); clientes.recargar(); onCambio(); };
+  const rechazar = async (i: Instalacion) => {
+    if (!confirm(`¿Rechazar la solicitud de ${i.empresa || i.equipo || "esta instalación"}? Seguirá en prueba y podrá activarse con una clave.`)) return;
+    try { await api(`/central/portal/instalaciones/${i.id}/rechazar`, { cuerpo: {} }); hecho("Solicitud rechazada"); } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  return (
+    <>
+      <p className="suave pequeno" style={{ marginTop: 0, maxWidth: 720 }}>
+        Cada FactPOS que se instala sin licencia le avisa al portal y aparece aquí como solicitud. Al aprobarla se asigna a un cliente
+        y la instalación recibe su licencia sola (en minutos), sin teclear ninguna clave.
+      </p>
+      <div className="chips-filtro">
+        {([["PENDIENTE", "Esperan activación"], ["ASIGNADA", "Activadas"], ["", "Todas"]] as const).map(([f, t]) => (
+          <button key={f} className={filtro === f ? "activo" : ""} onClick={() => setFiltro(f)}>{t}</button>
+        ))}
+        <span className="flex" /><button className="boton" onClick={() => recargar()}>Actualizar</button>
+      </div>
+      <Aviso texto={error} />
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="tabla-contenedor">
+        <table className="tabla">
+          <thead><tr><th>Instalación</th><th>Versión</th><th className="der">Sucursales</th><th>Recibida</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            {(datos ?? []).map((i) => (
+              <Fragment key={i.id}>
+                <tr>
+                  <td><b>{i.empresa || "Empresa sin nombre"}</b>
+                    <div className="suave pequeno">{[i.rnc && `RNC ${i.rnc}`, i.equipo && `Equipo ${i.equipo}`].filter(Boolean).join(" · ")}</div>
+                    {i.cliente && <div className="pequeno">Cliente: <a href={`/${i.slug}/`} target="_blank" rel="noreferrer">{i.cliente}</a></div>}</td>
+                  <td>{i.versionApp ? `v${i.versionApp}` : "—"}</td>
+                  <td className="der">{i.sucursalesEnUso ?? "—"}</td>
+                  <td>{hace(i.solicitadaEn)}<div className="suave pequeno">Último contacto {hace(i.ultimoContacto)}</div></td>
+                  <td><span className={`pastilla ${ESTADO_INST[i.estado].c}`}>{ESTADO_INST[i.estado].t}</span>{i.nota && <div className="suave pequeno">{i.nota}</div>}</td>
+                  <td className="der">
+                    {i.estado !== "ASIGNADA" && <button className="boton primario" onClick={() => setAbierta(abierta === i.id ? null : i.id)}>{abierta === i.id ? "Cerrar" : "Aprobar…"}</button>}
+                    {i.estado === "PENDIENTE" && <> <button className="enlace" onClick={() => rechazar(i)}>Rechazar</button></>}
+                  </td>
+                </tr>
+                {abierta === i.id && <tr><td colSpan={6} className="detalle-cliente"><Aprobar i={i} planes={planes} clientes={clientes.datos ?? []} onListo={hecho} /></td></tr>}
+              </Fragment>
+            ))}
+            {datos && !datos.length && <tr><td colSpan={6} className="suave">{filtro === "PENDIENTE" ? "No hay solicitudes pendientes. Cuando alguien instale FactPOS sin licencia, aparecerá aquí." : "Sin instalaciones."}</td></tr>}
+            {!datos && <tr><td colSpan={6} className="suave">Cargando…</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function Aprobar({ i, planes, clientes, onListo }: { i: Instalacion; planes: Plan[]; clientes: Cliente[]; onListo: (t: string) => void }) {
+  const activos = planes.filter((p) => p.activo);
+  const libres = clientes.filter((c) => c.licenciaId && !c.activada);
+  const [modo, setModo] = useState<"existente" | "nuevo">(libres.length ? "existente" : "nuevo");
+  const [clienteId, setClienteId] = useState(libres[0]?.id ?? "");
+  const [c, setC] = useState({ nombre: i.empresa ?? "", slug: aSlug(i.empresa ?? ""), rnc: i.rnc ?? "" });
+  const [planId, setPlanId] = useState(activos[0]?.id ?? "");
+  const [l, setL] = useState({ sucursales: Math.max(1, activos[0]?.sucursalesIncluidas ?? i.sucursalesEnUso ?? 1), vence: masMeses(mesesDe(activos[0]?.periodo)) });
+  const [msg, setMsg] = useState("");
+  const [trabajando, setTrabajando] = useState(false);
+  const plan = activos.find((p) => p.id === planId);
+  const elegirPlan = (id: string) => {
+    setPlanId(id);
+    const p = activos.find((x) => x.id === id);
+    if (p) setL({ sucursales: Math.max(p.sucursalesIncluidas, i.sucursalesEnUso ?? 1), vence: masMeses(mesesDe(p.periodo)) });
+  };
+  const aprobar = async () => {
+    setTrabajando(true); setMsg("");
+    try {
+      await api(`/central/portal/instalaciones/${i.id}/aprobar`, { cuerpo: {
+        ...(modo === "existente" ? { clienteId } : { cliente: { nombre: c.nombre.trim(), slug: c.slug, rnc: c.rnc || null, apiUrl: i.apiUrl || null } }),
+        licencia: { sucursales: l.sucursales, vence: l.vence, planId: planId || null, modulos: plan?.modulos ?? [] },
+      } });
+      onListo("Instalación activada. Recibirá su licencia en pocos minutos (o al pulsar «Comprobar ahora» en su pantalla Licencia).");
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setTrabajando(false); }
+  };
+  return (
+    <div className="panel renovar">
+      <h4 style={{ marginTop: 0 }}>Activar {i.empresa || i.equipo || "esta instalación"}</h4>
+      <div className="en-linea" style={{ marginBottom: 10 }}>
+        <label className="regla"><input type="radio" checked={modo === "existente"} disabled={!libres.length} onChange={() => setModo("existente")} /><span><b>Asignar a un cliente existente</b><small>{libres.length ? "Que todavía no tenga instalación activada." : "No hay clientes sin activar."}</small></span></label>
+        <label className="regla"><input type="radio" checked={modo === "nuevo"} onChange={() => setModo("nuevo")} /><span><b>Crear un cliente nuevo</b><small>Con los datos de la solicitud.</small></span></label>
+      </div>
+      {modo === "existente" ? (
+        <label className="campo" style={{ maxWidth: 420 }}><span>Cliente</span>
+          <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>{libres.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></label>
+      ) : (
+        <div className="tres-col">
+          <label className="campo"><span>Nombre de la empresa</span><input value={c.nombre} onChange={(e) => setC({ ...c, nombre: e.target.value, slug: aSlug(e.target.value) })} /></label>
+          <label className="campo"><span>Nombre corto (su dirección)</span><input className="mono" value={c.slug} onChange={(e) => setC({ ...c, slug: aSlug(e.target.value) })} /></label>
+          <label className="campo"><span>RNC</span><input value={c.rnc} inputMode="numeric" onChange={(e) => setC({ ...c, rnc: e.target.value.replace(/\D/g, "") })} /></label>
+        </div>
+      )}
+      <div className="tres-col">
+        <label className="campo"><span>Plan</span>
+          <select value={planId} onChange={(e) => elegirPlan(e.target.value)}><option value="">Sin plan (a medida)</option>{activos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select></label>
+        <label className="campo"><span>Sucursales permitidas</span><input type="number" min={1} value={l.sucursales} onChange={(e) => setL({ ...l, sucursales: Math.max(1, Number(e.target.value) || 1) })} /></label>
+        <label className="campo"><span>Vence</span><input type="date" value={l.vence} onChange={(e) => setL({ ...l, vence: e.target.value })} /></label>
+      </div>
+      {plan && plan.precioSucursal > 0 && <p className="suave pequeno">Cobro: {l.sucursales} × {rd(plan.precioSucursal)} = <b>{rd(l.sucursales * plan.precioSucursal)}</b> por {plan.periodo === "MENSUAL" ? "mes" : "año"}.</p>}
+      <div className="fila-acciones"><span className="flex" />
+        <button className="boton primario" disabled={trabajando || (modo === "existente" ? !clienteId : c.nombre.trim().length < 2 || c.slug.length < 3)} onClick={aprobar}>{trabajando ? "Activando…" : "Aprobar y activar"}</button>
+      </div>
+      <Aviso texto={msg} />
+    </div>
   );
 }

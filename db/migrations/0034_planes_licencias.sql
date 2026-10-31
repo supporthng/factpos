@@ -6,7 +6,7 @@
 --   * portal_licencias: plan contratado y, si hay, un precio especial por sucursal.
 -- Los precios sembrados están en 0: el proveedor los define en Portal › Planes.
 -- =====================================================================
-CREATE TABLE portal_planes (
+CREATE TABLE IF NOT EXISTS portal_planes (
     id                      UUID PRIMARY KEY,
     codigo                  TEXT NOT NULL UNIQUE CHECK (codigo ~ '^[a-z0-9-]{2,30}$'),
     nombre                  TEXT NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE portal_planes (
     creado_en               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE portal_config (
+CREATE TABLE IF NOT EXISTS portal_config (
     id                  SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     prueba_actualiza    BOOLEAN NOT NULL DEFAULT FALSE,   -- ¿una instalación en prueba puede descargar actualizaciones?
     contacto_nombre     TEXT,
@@ -33,13 +33,16 @@ CREATE TABLE portal_config (
 INSERT INTO portal_config (id) VALUES (1) ON CONFLICT DO NOTHING;
 
 ALTER TABLE portal_licencias
-    ADD COLUMN plan_id UUID REFERENCES portal_planes(id),
-    ADD COLUMN precio_sucursal NUMERIC(12,2) CHECK (precio_sucursal IS NULL OR precio_sucursal >= 0);   -- precio especial (null = el del plan)
+    ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES portal_planes(id),
+    ADD COLUMN IF NOT EXISTS precio_sucursal NUMERIC(12,2) CHECK (precio_sucursal IS NULL OR precio_sucursal >= 0);   -- precio especial (null = el del plan)
 
-INSERT INTO portal_planes (id, codigo, nombre, descripcion, sucursales_incluidas, orden) VALUES
+INSERT INTO portal_planes (id, codigo, nombre, descripcion, sucursales_incluidas, orden)
+SELECT * FROM (VALUES
     (gen_random_uuid(), 'basico',        'Básico',        'Una tienda: caja, inventario y facturación electrónica.', 1, 1),
     (gen_random_uuid(), 'profesional',   'Profesional',   'Hasta 3 tiendas con administración central.', 3, 2),
-    (gen_random_uuid(), 'multisucursal', 'Multisucursal', 'Cadenas: más de 3 tiendas y soporte prioritario.', 10, 3);
+    (gen_random_uuid(), 'multisucursal', 'Multisucursal', 'Cadenas: más de 3 tiendas y soporte prioritario.', 10, 3)
+) AS v(id, codigo, nombre, descripcion, sucursales_incluidas, orden)
+WHERE NOT EXISTS (SELECT 1 FROM portal_planes);
 
 REVOKE ALL ON portal_planes, portal_config FROM PUBLIC;
 DO $$ BEGIN

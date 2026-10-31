@@ -82,5 +82,7 @@ if (!enVercel && config.modo !== "portal") {
   // Servidor MASTER (central instalado en el negocio): túnel, licencia y aviso al portal
   if (config.modo === "central") await iniciarMaster((m) => app.log.info(m));
   // Tienda que trabaja sola (sin nube): renueva su licencia con el portal cada hora si toca
+  // Sin licencia, la instalación se anuncia al portal (solicitud de activación) poco después de arrancar
+  if (config.modo === "central" || (config.modo === "sucursal" && !syncActiva())) setTimeout(() => renovarSiToca((m) => app.log.info(m)).catch(() => {}), 30_000).unref();
   if (config.modo === "sucursal" && !syncActiva()) setInterval(() => renovarSiToca((m) => app.log.info(m)).catch(() => {}), 3600_000).unref();
 }

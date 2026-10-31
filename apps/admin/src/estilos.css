@@ -962,3 +962,6 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .lic-lista li:last-child { border-bottom: none; padding-bottom: 0; }
 .lic-contacto a { display: inline-block; margin: 4px 14px 0 0; font-weight: 600; }
 @media (max-width: 800px) { .lic-resumen { grid-template-columns: 1fr; } }
+
+.insignia { display: inline-block; margin-left: 8px; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--alerta); color: #fff; font-size: 12px; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.panel.solicitud { border-left: 4px solid var(--primario); }

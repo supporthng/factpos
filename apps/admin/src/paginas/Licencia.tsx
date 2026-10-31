@@ -11,6 +11,7 @@ interface EstadoLicencia {
   permiteVender: boolean; dias: number; mensaje: string | null; error: string | null;
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
   instalacionId: string; activada: boolean; local?: boolean;
+  solicitud?: { estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA" | "SUSPENDIDA"; revisada: string } | null;
   plan?: string | null; politica?: { pruebaActualiza: boolean; contacto: { nombre: string | null; telefono: string | null; whatsapp: string | null; correo: string | null } } | null;
   tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null } | null; web?: string | null; ultimoContacto: string | null; ultimoError: string | null; portal: string; sucursalesEnUso: number;
 }
@@ -74,6 +75,25 @@ export function Licencia() {
           <Contacto c={d.politica?.contacto ?? null} />
         </div>
       </div>
+
+      {!d.activada && !d.local && (
+        <div className="panel solicitud">
+          <div className="encabezado-sub">
+            <h3>Solicitud de activación</h3>
+            <button className="boton" disabled={trabajando} onClick={async () => {
+              setTrabajando(true); setMsg(null);
+              try { await api("/central/licencia/solicitar", { cuerpo: {} }); await recargar(); window.dispatchEvent(new Event("factpos:licencia")); }
+              catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+              finally { setTrabajando(false); }
+            }}>Comprobar ahora</button>
+          </div>
+          {d.solicitud?.estado === "RECHAZADA"
+            ? <p className="texto-alerta" style={{ margin: 0 }}>Su proveedor no aprobó la solicitud. Comuníquese con él o actívela con una clave.</p>
+            : d.solicitud
+              ? <p style={{ margin: 0 }}>Este sistema ya le avisó a su proveedor. <b>En cuanto la apruebe, la licencia se activa sola</b>; no tiene que hacer nada. Última consulta: {new Date(d.solicitud.revisada).toLocaleTimeString("es-DO")}.</p>
+              : <p className="suave" style={{ margin: 0 }}>Aún no se ha enviado la solicitud (se envía sola al arrancar el sistema, si hay internet). Pulse «Comprobar ahora» o use una clave de activación.</p>}
+        </div>
+      )}
 
       {d.local ? (
         <div className="panel"><p className="suave" style={{ margin: 0 }}>
