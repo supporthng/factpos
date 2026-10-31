@@ -8,6 +8,11 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 
 const ICON = path.join(__dirname, 'factpos.ico');
+// La Caja guarda sus datos aparte de la Administración: así cada una puede tener una sola ventana abierta
+if (process.argv.some(x => x === '--modo=caja')) app.setPath('userData', path.join(app.getPath('userData'), 'caja'));
+const unica = app.requestSingleInstanceLock();
+if (!unica) app.quit();
+app.on('second-instance', () => { if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
 if (process.platform === 'win32') app.setAppUserModelId('com.factpos.escritorio');
 const args = process.argv.slice(1);
 const modeArg = args.find(x => x.startsWith('--modo='));
@@ -273,9 +278,6 @@ async function syncUi() {
   finally { syncing = false; }
 }
 async function startCaja() {
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) { app.quit(); return; }
-  app.on('second-instance', () => { if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
   try { server = new URL(localUrl); } catch { server = null; }
   if (!await startUiServer()) {
     dialog.showErrorBox('FactPOS Caja', `No se pudo iniciar la caja: el puerto ${UI_PORT} de este equipo está ocupado por otro programa.`);
@@ -348,6 +350,8 @@ async function start() {
 }
 
 function openMain(onShown) {
+  // Nunca dos ventanas principales: si ya hay una, esa es la que se usa
+  if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); if (onShown) onShown(); return; }
   const win = new BrowserWindow({ show: false, icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   mainOpened = true;
   mainWindow = win;
@@ -452,6 +456,6 @@ function watchUpdates() {
   }, 2500);
   timer.unref();
 }
-app.whenReady().then(start);
+if (unica) app.whenReady().then(start);
 let mainOpened = false;
 app.on('window-all-closed', () => { if (mainOpened && process.platform !== 'darwin') app.quit(); });
