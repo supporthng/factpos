@@ -301,6 +301,14 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     const apiUrl = host ? `https://${String(host).split(",")[0]}` : undefined;
     return publico(await activarLicencia(b.clave, apiUrl?.includes("localhost") ? undefined : apiUrl));
   });
+  /** Archivo de la licencia aplicada (para guardarla o respaldarla). */
+  app.get("/central/licencia/archivo", async () => {
+    const f = await filaLicencia();
+    if (!f.token) throw new ErrorNegocio("Esta instalación todavía no tiene licencia", 404);
+    const e = evaluarLicencia(f.token, { instalacion: f.instalacion_id });
+    const slug = (e.datos?.cliente.slug ?? "licencia").replace(/[^a-z0-9-]/gi, "");
+    return { nombre: `licencia-factpos-${slug}.fpslic`, contenido: f.token.trim() + "\n" };
+  });
   app.post("/central/licencia/renovar", async () => publico(await renovarLicencia()));
   /** «Comprobar ahora»: consulta al portal si ya aprobaron la solicitud de activación. */
   app.post("/central/licencia/comprobar", async () => {

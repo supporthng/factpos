@@ -50,6 +50,7 @@ export function Licencia() {
       <Encabezado titulo="Licencia de FactPOS"
         descripcion="La licencia se cobra por sucursal. Se renueva sola con su proveedor; aquí ve su estado y la activa con la clave que le dieron." />
       {d.mensaje && <Aviso texto={d.mensaje} tipo={d.permiteVender ? "info" : "error"} />}
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
 
       <div className="lic-resumen">
         <div className="panel lic-plan">
@@ -99,7 +100,13 @@ export function Licencia() {
             <h3>{d.solicitud?.estado === "RECHAZADA" ? "Solicitud no aprobada" : "Su licencia está en proceso de activación"}</h3>
             <button className="boton" disabled={trabajando} onClick={async () => {
               setTrabajando(true); setMsg(null);
-              try { await api("/central/licencia/comprobar", { cuerpo: {} }); await recargar(); window.dispatchEvent(new Event("factpos:licencia")); }
+              try {
+                const r = await api<{ activada?: boolean; solicitud?: { estado: string } | null; estado: string }>("/central/licencia/comprobar", { cuerpo: {} });
+                await recargar(); window.dispatchEvent(new Event("factpos:licencia"));
+                if (r.solicitud?.estado === "ASIGNADA") setMsg({ t: "¡Su licencia fue aprobada y ya está aplicada! Abajo puede verla y descargarla.", tipo: "ok" });
+                else if (r.solicitud?.estado === "SUSPENDIDA") setMsg({ t: "Su licencia está suspendida. Comuníquese con su proveedor.", tipo: "error" });
+                else setMsg({ t: "Todavía no la han aprobado. Se aplica sola cuando la activen.", tipo: "ok" });
+              }
               catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
               finally { setTrabajando(false); }
             }}>Comprobar ahora</button>
@@ -117,6 +124,8 @@ export function Licencia() {
         </div>
       )}
 
+      {d.activada && !d.local && <MiLicencia d={d} onError={(t) => setMsg({ t, tipo: "error" })} />}
+
       {d.local ? (
         <div className="panel"><p className="suave" style={{ margin: 0 }}>
           Este es el servidor de la sucursal: usa la licencia que le manda la nube de su empresa y la verifica solo, sin internet.
@@ -132,7 +141,6 @@ export function Licencia() {
             onClick={() => accion("/central/licencia/activar", { clave }, "Licencia activada")}>Activar</button>
         </div>
         {!admin && <p className="suave pequeno">Solo un administrador puede activar la licencia.</p>}
-        {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       </div>
       )}
 
@@ -274,6 +282,43 @@ export function AvisoLicencia({ irA }: { irA: () => void }) {
     <div className={"aviso-licencia" + (e.permiteVender ? "" : " grave")}>
       <span>{e.mensaje}</span>
       <button className="enlace" onClick={irA}>Ver licencia</button>
+    </div>
+  );
+}
+
+/** La licencia aplicada: sus datos a la vista y un botón para descargar el archivo. */
+function MiLicencia({ d, onError }: { d: EstadoLicencia; onError: (t: string) => void }) {
+  const [copiado, setCopiado] = useState(false);
+  const traer = () => api<{ nombre: string; contenido: string }>("/central/licencia/archivo");
+  const descargar = async () => {
+    try {
+      const a = await traer();
+      const url = URL.createObjectURL(new Blob([a.contenido], { type: "text/plain;charset=utf-8" }));
+      const enlace = Object.assign(document.createElement("a"), { href: url, download: a.nombre });
+      document.body.appendChild(enlace); enlace.click(); enlace.remove(); URL.revokeObjectURL(url);
+    } catch (e) { onError((e as Error).message); }
+  };
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText((await traer()).contenido); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }
+    catch (e) { onError((e as Error).message); }
+  };
+  return (
+    <div className="panel">
+      <div className="encabezado-sub">
+        <h3>Su licencia</h3>
+        <span className="en-linea">
+          <button className="boton" onClick={copiar}>{copiado ? "Copiada" : "Copiar"}</button>
+          <button className="boton primario" onClick={descargar}>Descargar licencia</button>
+        </span>
+      </div>
+      <ul className="lic-lista">
+        <li><span className="suave">Licenciado a</span><b>{d.cliente}</b></li>
+        <li><span className="suave">Plan</span><b>{d.plan ?? "—"}</b></li>
+        <li><span className="suave">Sucursales permitidas</span><b>{d.sucursales}</b></li>
+        <li><span className="suave">Vence</span><b>{d.vence ? fecha(d.vence) : "—"}</b></li>
+        <li><span className="suave">Instalación</span><b className="mono">{d.instalacionId}</b></li>
+      </ul>
+      <p className="suave pequeno" style={{ marginBottom: 0 }}>El archivo está firmado por FactPOS y solo sirve en esta instalación. Guárdelo como respaldo.</p>
     </div>
   );
 }

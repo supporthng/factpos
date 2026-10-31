@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createPrivateKey, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,7 +42,11 @@ export const slugValido = (s: string) => /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.tes
 function llavePrivada() {
   const k = process.env.LICENCIAS_CLAVE_PRIVADA;
   if (!k) throw new ErrorNegocio("El portal no tiene LICENCIAS_CLAVE_PRIVADA configurada (Vercel › Environment Variables)", 503);
-  return k;
+  // Tolera comillas, saltos de línea, espacios o formato PEM al pegarla en Vercel
+  const limpia = k.replace(/-----(BEGIN|END)[^-]*-----/g, "").replace(/["'\s]/g, "");
+  try { createPrivateKey({ key: Buffer.from(limpia, "base64"), format: "der", type: "pkcs8" }); }
+  catch { throw new ErrorNegocio("LICENCIAS_CLAVE_PRIVADA del portal no es válida (debe ser la llave privada Ed25519 PKCS#8 en base64). Corríjala en Vercel › Environment Variables.", 503); }
+  return limpia;
 }
 
 interface FilaLicencia {
