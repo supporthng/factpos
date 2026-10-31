@@ -4,7 +4,9 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.js";
-import { usarCertificado } from "../fiscal/firma.js";
+import { usarCertificado, certificado } from "../fiscal/firma.js";
+import { dgii } from "../fiscal/transmisor.js";
+import { rncValido } from "@factpos/compartido";
 
 /**
  * Administración de la facturación electrónica (central):
@@ -172,6 +174,113 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
   });
 
   // ---- Documentos y envíos ----
+
+  /**
+   * ¿Puede esta empresa emitir comprobantes electrónicos con la DGII? Revisa cada requisito y, si falta algo, dice qué.
+   * Lo que solo la DGII puede dar (autorización de emisor, e-NCF) se comprueba por sus efectos:
+   * una autenticación exitosa con su certificado y un rango vigente.
+   */
+  app.get("/central/fiscal/verificacion", async (req) => {
+    const e = empresaDe(req);
+    type Estado = "ok" | "falta" | "aviso" | "info";
+    const items: { id: string; titulo: string; estado: Estado; detalle: string; accion?: string }[] = [];
+    const poner = (id: string, titulo: string, estado: Estado, detalle: string, accion?: string) => items.push({ id, titulo, estado, detalle, accion });
+
+    const emp = (await pool.query(
+      `SELECT e.rnc, e.razon_social, COALESCE(cf.direccion_emisor, '') AS direccion, COALESCE(cf.ambiente, 'SIMULADO') AS ambiente,
+              COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url, COALESCE(cf.alerta_restantes, 500) AS alerta
+         FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`, [e])).rows[0];
+
+    // 1. Datos del emisor
+    const rnc = String(emp.rnc ?? "").replace(/\D/g, "");
+    if (!rnc || !rncValido(rnc)) poner("rnc", "RNC del emisor", "falta", rnc ? `El RNC «${emp.rnc}» no es válido.` : "La empresa no tiene RNC.", "Corrija el RNC de la empresa (Configuración › Marca / datos de la empresa).");
+    else poner("rnc", "RNC del emisor", "ok", `RNC ${rnc} · ${emp.razon_social}`);
+    if (String(emp.direccion).trim().length < 5) poner("direccion", "Dirección del emisor", "falta", "Falta la dirección fiscal que sale en el comprobante.", "Escríbala en Fiscal › Configuración.");
+    else poner("direccion", "Dirección del emisor", "ok", String(emp.direccion));
+
+    // 2. Ambiente y forma de envío
+    const real = emp.transmisor !== "SIMULADO" && emp.ambiente !== "SIMULADO";
+    if (!real) poner("ambiente", "Envío a la DGII", "falta", "Está en modo SIMULADO: los comprobantes NO se envían a la DGII y no tienen validez fiscal.", "En Fiscal › Configuración elija el ambiente (TesteCF / CerteCF / producción) y el envío «DGII» cuando ya esté autorizado.");
+    else if (emp.ambiente !== "ECF") poner("ambiente", "Envío a la DGII", "aviso", `Ambiente de ${emp.ambiente === "TESTECF" ? "pruebas (TesteCF)" : "certificación (CerteCF)"}: sirve para las pruebas, no para facturar de verdad.`, "Cuando la DGII le autorice como emisor, cambie el ambiente a producción (ECF).");
+    else poner("ambiente", "Envío a la DGII", "ok", emp.transmisor === "PSE" ? "Producción, a través de un proveedor (PSE)." : "Producción, envío directo a la DGII.");
+    if (emp.transmisor === "PSE" && !emp.pse_url) poner("pse", "Proveedor de servicios (PSE)", "falta", "Eligió enviar por un PSE pero no indicó su dirección.", "Escríbala en Fiscal › Configuración.");
+
+    // 3. Certificado digital
+    const cert = (await pool.query("SELECT titular, vence, huella FROM certificados_digitales WHERE empresa_id = $1 AND activo", [e])).rows[0];
+    if (!cert) poner("certificado", "Certificado digital", "falta", "No hay un certificado digital cargado: sin él no se pueden firmar los comprobantes.", "Cargue el archivo .p12 en Fiscal › Certificado digital.");
+    else {
+      const dias = Math.floor((new Date(cert.vence).getTime() - Date.now()) / 86400000);
+      if (dias < 0) poner("certificado", "Certificado digital", "falta", `El certificado de ${cert.titular} venció hace ${-dias} día(s).`, "Renueve el certificado con la prestadora y cárguelo de nuevo.");
+      else if (dias <= 30) poner("certificado", "Certificado digital", "aviso", `Vigente, pero vence en ${dias} día(s) (${cert.titular}).`, "Renuévelo antes de que venza para no dejar de facturar.");
+      else poner("certificado", "Certificado digital", "ok", `Vigente hasta el ${new Date(cert.vence).toLocaleDateString("es-DO")} · ${cert.titular}`);
+      const suc = (await pool.query(
+        `SELECT s.nombre, s.certificado_habilitado AS hab, x.certificado_huella AS huella, x.certificado_error AS error, x.ultima_bajada AS ultima
+           FROM sucursales s LEFT JOIN sync_sucursales x ON x.sucursal_id = s.id WHERE s.empresa_id = $1 AND s.activo`, [e])).rows;
+      const sinCert = suc.filter((s) => s.hab && (s.error || (s.ultima && s.huella !== cert.huella)));
+      if (suc.some((s) => !s.hab)) poner("cert-sucursales", "Certificado en las sucursales", "aviso", `El certificado no está habilitado en: ${suc.filter((s) => !s.hab).map((s) => s.nombre).join(", ")}.`, "Habilítelo en Fiscal › Certificado digital.");
+      else if (sinCert.length) poner("cert-sucursales", "Certificado en las sucursales", "aviso", `Aún no llega o falló en: ${sinCert.map((s) => s.nombre).join(", ")}.`, "Espere a que la sucursal se conecte y sincronice, o revise su error en Certificado digital.");
+      else poner("cert-sucursales", "Certificado en las sucursales", "ok", "Todas las sucursales activas lo tienen habilitado.");
+    }
+
+    // 4. Secuencias e-NCF (por sucursal y tipo)
+    const sucs = (await pool.query("SELECT id, nombre FROM sucursales WHERE empresa_id = $1 AND activo ORDER BY nombre", [e])).rows;
+    const disp = (await pool.query(
+      `SELECT sucursal_id, tipo_ecf, SUM(hasta - siguiente + 1)::bigint AS disponibles
+         FROM ecf_rangos WHERE activo AND siguiente <= hasta AND vence_en >= CURRENT_DATE AND sucursal_id = ANY($1::uuid[])
+        GROUP BY 1, 2`, [sucs.map((s) => s.id)])).rows;
+    for (const tipo of ["E32", "E31"]) {
+      const faltan: string[] = [], pocas: string[] = [];
+      for (const s of sucs) {
+        const d = Number(disp.find((x) => x.sucursal_id === s.id && x.tipo_ecf === tipo)?.disponibles ?? 0);
+        if (d <= 0) faltan.push(s.nombre); else if (d < Number(emp.alerta)) pocas.push(`${s.nombre} (${d})`);
+      }
+      const nombre = tipo === "E32" ? "e-NCF de consumo (E32)" : "e-NCF de crédito fiscal (E31)";
+      if (faltan.length) poner("sec-" + tipo, nombre, "falta", `Sin números vigentes en: ${faltan.join(", ")}.`, "Solicite los e-NCF en la Oficina Virtual de la DGII y regístrelos en Fiscal › Secuencias e-NCF.");
+      else if (pocas.length) poner("sec-" + tipo, nombre, "aviso", `Quedan pocos en: ${pocas.join(", ")}.`, "Solicite un rango nuevo a la DGII.");
+      else poner("sec-" + tipo, nombre, "ok", "Hay números vigentes en todas las sucursales.");
+    }
+
+    // 5. Conexión y autenticación con la DGII (la prueba real de que está autorizado)
+    if (real && emp.transmisor === "DGII") {
+      let certCargado = true;
+      try { certificado(); } catch { certCargado = false; }
+      if (!certCargado) poner("dgii", "Conexión con la DGII", "aviso", "Este servidor no tiene el certificado en memoria, por eso no se pudo probar la autenticación con la DGII.", "Pruebe desde el servidor de la sucursal, o cargue el certificado de nuevo.");
+      else {
+        try {
+          await dgii(emp.ambiente).probar!();
+          poner("dgii", "Conexión con la DGII", "ok", `La DGII aceptó la autenticación con su certificado (${emp.ambiente}).`);
+        } catch (err) {
+          poner("dgii", "Conexión con la DGII", "falta", `No se pudo autenticar: ${(err as Error).message}`,
+            "Si es un error de conexión, revise el internet. Si la DGII rechazó el certificado, confirme en la Oficina Virtual que su solicitud de emisor electrónico fue aprobada y que el certificado es el mismo.");
+        }
+      }
+    } else if (real) {
+      poner("dgii", "Conexión con la DGII", "info", "Se envía por un proveedor (PSE): su autorización se confirma con el proveedor.");
+    } else {
+      poner("dgii", "Conexión con la DGII", "falta", "No se puede probar mientras esté en modo simulado.", "Primero pase la configuración a TesteCF/CerteCF o producción.");
+    }
+
+    // 6. Estado de los envíos recientes
+    const env = (await pool.query(
+      `SELECT d.estado, COUNT(*)::int AS n FROM ecf_documentos d JOIN sucursales s ON s.id = d.sucursal_id AND s.empresa_id = $1
+        WHERE d.creado_en > now() - interval '7 days' GROUP BY d.estado`, [e])).rows;
+    const n = (st: string[]) => env.filter((x) => st.includes(x.estado)).reduce((a, x) => a + x.n, 0);
+    if (n(["RECHAZADO"]) > 0) poner("envios", "Comprobantes de los últimos 7 días", "aviso", `${n(["RECHAZADO"])} rechazado(s) por la DGII.`, "Revíselos en Fiscal › Envíos a la DGII.");
+    else if (n(["CONTINGENCIA", "SIN_FIRMA"]) > 0) poner("envios", "Comprobantes de los últimos 7 días", "aviso", `${n(["CONTINGENCIA", "SIN_FIRMA"])} sin enviar (contingencia o sin firma).`, "Revíselos en Fiscal › Envíos a la DGII y reintente.");
+    else poner("envios", "Comprobantes de los últimos 7 días", "ok", n(["ACEPTADO", "ACEPTADO_COND"]) ? `${n(["ACEPTADO", "ACEPTADO_COND"])} aceptado(s), sin rechazos.` : "Sin envíos recientes.");
+
+    poner("tipos", "Tipos de e-CF que emite FactPOS", "info", "E31 (crédito fiscal), E32 (consumo) y E34 (nota de crédito). Otros tipos (E41, E43, E44, E45, E46, E47) todavía no se emiten.");
+
+    const faltas = items.filter((i) => i.estado === "falta");
+    const avisos = items.filter((i) => i.estado === "aviso");
+    return {
+      puedeFacturar: faltas.length === 0,
+      resultado: faltas.length ? "NO_LISTO" : avisos.length ? "LISTO_CON_AVISOS" : "LISTO",
+      resumen: faltas.length ? `Falta ${faltas.length} requisito(s) para facturar con la DGII.` : avisos.length ? "Puede facturar, pero hay avisos que revisar." : "Todo en orden para facturar con la DGII.",
+      items, revisadoEn: new Date().toISOString(),
+    };
+  });
+
   app.get("/central/fiscal/documentos", async (req) => {
     const f = z.object({ estado: z.string().optional(), sucursalId: uuid.optional(), encf: z.string().optional() }).parse(req.query);
     const r = await pool.query(
