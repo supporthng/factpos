@@ -4,7 +4,7 @@ import {
   type Catalogo, type ProductoCatalogo, type Cupon, type Cotizacion,
 } from "@factpos/compartido";
 import { Decimal } from "decimal.js";
-import { api, rd, type Ajustes } from "./api";
+import { api, rd, leerAjustes, type Ajustes } from "./api";
 import type { ConfigCaja, Turno, Usuario } from "./App";
 import { Cobro, type ResultadoVenta } from "./Cobro";
 import { PanelDelivery } from "./Delivery";
@@ -12,7 +12,7 @@ import { Ticket, type VentaRegistrada } from "./Ticket";
 import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
 import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
-import { guardarCache, leerCache, useConexion, disponibleCupo, pedirExistencia } from "./contingencia";
+import { guardarCache, leerCache, useConexion, disponibleCupo, pedirExistencia, exportarPendientes } from "./contingencia";
 
 /** Tamaño de letra y tema de esta terminal (además del ajuste automático a la pantalla). */
 export function TamanoPantalla() {
@@ -829,6 +829,13 @@ function AvisoOfertaAgotada({ ofertas, onCerrar }: { ofertas: { id: string; nomb
   );
 }
 
+/** Descarga las ventas guardadas en esta caja (hoja de cálculo) para tener una copia a mano. */
+function GuardarCopia() {
+  const a = leerAjustes();
+  if (!a) return null;
+  return <button className="enlace" onClick={() => void exportarPendientes(a)}>Guardar una copia de las ventas guardadas (Excel)</button>;
+}
+
 /** Barra fija y bien visible cuando la caja trabaja sin servidor (y al volver). */
 function AvisoConexion() {
   const c = useConexion();
@@ -839,12 +846,15 @@ function AvisoConexion() {
         <b>SIN CONEXIÓN CON EL SERVIDOR{c.desde ? ` desde las ${hora(c.desde)}` : ""}</b>
         <span>Siga vendiendo: las ventas se guardan en esta caja{c.pendientes ? ` (${c.pendientes} guardada${c.pendientes === 1 ? "" : "s"})` : ""}.
           Solo factura de consumo, al contado. Avise al encargado.</span>
-        {c.reserva <= 5 && <span className="poca-reserva">Quedan {c.reserva} números de factura de reserva</span>}
+        {c.reserva === 0
+          ? <span className="poca-reserva"><b>Sin números de factura de reserva: no se puede facturar hasta que vuelva el servidor.</b></span>
+          : c.reserva < 10 && <span className="poca-reserva">Quedan solo {c.reserva} números de factura de reserva. Avise al encargado.</span>}
+        {c.pendientes > 0 && <GuardarCopia />}
       </div>
     );
   }
   if (c.enviando && c.pendientes) return <div className="aviso-conexion enviando" role="status"><b>Servidor de nuevo en línea</b><span>Enviando {c.pendientes} venta(s) guardadas en esta caja…</span></div>;
-  if (c.pendientes && c.errores) return <div className="aviso-conexion sin" role="alert"><b>{c.errores} venta(s) guardadas no se pudieron enviar</b><span>Llame al servicio técnico. Siguen guardadas en esta caja.</span></div>;
+  if (c.pendientes && c.errores) return <div className="aviso-conexion sin" role="alert"><b>{c.errores} venta(s) guardadas no se pudieron enviar</b><span>Llame al servicio técnico. Siguen guardadas en esta caja.</span><GuardarCopia /></div>;
   if (c.pendientes) return <div className="aviso-conexion enviando" role="status"><b>Hay {c.pendientes} venta(s) guardadas por enviar</b><span>Entre con su PIN para enviarlas.</span></div>;
   if (c.aviso) return <div className="aviso-conexion ok" role="status"><b>✓ {c.aviso}</b></div>;
   return null;

@@ -96,6 +96,52 @@ export async function refrescarCupos(ajustes: Ajustes) {
     }
   } catch { /* se intenta luego; mientras tanto vale el último reparto */ }
 }
+// ---- Respaldo en archivo (aplicación de escritorio)
+let escritorio: boolean | null = null;
+const hayEscritorio = async () => (escritorio ??= await esDeEscritorio());
+/** Copia en un archivo del equipo las ventas guardadas y los e-NCF de reserva. Si falla, la base de la caja sigue siendo la principal. */
+async function respaldar(ajustes: Ajustes) {
+  if (!(await hayEscritorio())) return;
+  try {
+    const pendientes = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
+    const reserva = (await leer<unknown[]>(k(ajustes.cajaId, "reserva"))) ?? [];
+    await fetch("/respaldo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cajaId: ajustes.cajaId, pendientes, reserva }) });
+  } catch { /* se respalda en la próxima venta */ }
+}
+/** Al abrir: si la base de la caja no tiene datos pero el archivo sí, se recuperan. */
+async function recuperarRespaldo(ajustes: Ajustes) {
+  if (!(await hayEscritorio())) return;
+  try {
+    if ((await leer(k(ajustes.cajaId, "pendientes"))) !== undefined) return;
+    const b = await (await fetch(`/respaldo?caja=${ajustes.cajaId}`, { cache: "no-store" })).json();
+    if (Array.isArray(b?.pendientes) && b.pendientes.length) {
+      await guardar(k(ajustes.cajaId, "pendientes"), b.pendientes);
+      if ((await leer(k(ajustes.cajaId, "reserva"))) === undefined && Array.isArray(b.reserva)) await guardar(k(ajustes.cajaId, "reserva"), b.reserva);
+    }
+  } catch { /* sin respaldo */ }
+}
+
+/** Descarga las ventas guardadas en esta caja como hoja de cálculo (CSV), por si hace falta cargarlas a mano. */
+export async function exportarPendientes(ajustes: Ajustes) {
+  const pend = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
+  const celda = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const filas = [["Fecha", "e-NCF", "Total", "Pagos", "Productos", "Error"].map(celda).join(",")];
+  for (const p of pend) {
+    filas.push([
+      p.creadoEn, p.encf, p.total,
+      p.pagos.map((x) => `${x.formaPago} ${x.monto}`).join(" + "),
+      p.ticket.lineas.map((l) => `${l.cantidad} x ${l.descripcion}`).join("; "),
+      p.error ?? "",
+    ].map(celda).join(","));
+  }
+  const url = URL.createObjectURL(new Blob(["\ufeff" + filas.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ventas-guardadas-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 // ---- Caja principal: las cajas se pasan existencia por la red local cuando no hay servidor
 const esDeEscritorio = () => fetch("/escritorio.json", { cache: "no-store" }).then((r) => r.ok).catch(() => false);
 /** Estado de esta caja como principal (solo existe en la aplicación de escritorio). */
@@ -225,6 +271,7 @@ export async function iniciarVigilancia(ajustes: Ajustes) {
   const corte = await leer<Corte>(k(ajustes.cajaId, "corte"));
   const reserva = (await leer<unknown[]>(k(ajustes.cajaId, "reserva")))?.length ?? 0;
   await cargarCupos(ajustes);
+  await recuperarRespaldo(ajustes);
   cambiar({ pendientes: pend.length, reserva, errores: pend.filter((p) => p.error).length, ...(corte ? { enLinea: false, desde: corte.desde } : {}) });
   alPerderConexion(() => { void sinServidor(); });
   const vuelta = async () => {
@@ -298,6 +345,7 @@ export async function refrescarReserva(ajustes: Ajustes) {
     const lista = r.numeros.filter((n) => !usados.has(n.encf));
     await guardar(k(ajustes.cajaId, "reserva"), lista);
     cambiar({ reserva: lista.length });
+    void respaldar(ajustes);
   } catch { /* se intenta luego */ }
 }
 
@@ -323,6 +371,7 @@ export async function venderSinServidor(ajustes: Ajustes, v: Omit<VentaPendiente
     for (const [id, u] of Object.entries(gasto)) usado[id] = (usado[id] ?? 0) + u;
     await guardar(k(ajustes.cajaId, "cupo-usado"), usado).catch(() => {});
   }
+  void respaldar(ajustes);
   cambiar({ pendientes: pend.length + 1, reserva: reserva.length, enLinea: false, desde: estado.desde ?? corte.desde });
   return ticket;
 }
@@ -351,6 +400,7 @@ export async function enviarPendientes(ajustes: Ajustes) {
       await guardar(k(ajustes.cajaId, "pendientes"), pend);
     }
     cambiar({ pendientes: pend.length, errores: pend.filter((p) => p.error).length });
+    if (enviados) void respaldar(ajustes);
   } finally {
     enviando = false;
     cambiar({ enviando: false });
