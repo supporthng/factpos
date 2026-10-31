@@ -680,7 +680,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .comprobantes.compacto { gap: 6px; margin-bottom: 10px; }
 .comprobantes.compacto .comprobante { padding: 8px 6px; align-items: center; text-align: center; }
 .comprobantes.compacto .comprobante b { font-size: 12.5px; }
-.comprobante-otros { grid-column: 1 / -1; justify-self: start; font-size: 12px; }
+.comprobantes-grupo { display: grid; gap: 8px; }
+.comprobantes.subtipos { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.comprobante .prefijo { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 700; background: rgba(127,127,127,.2); }
 .cobro-seccion { margin: 14px 0; }
 .cobro-etiqueta { display: block; font-size: 13px; font-weight: 700; color: var(--suave); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
 .cobro-cliente { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--borde); border-radius: var(--radio); background: var(--panel-2); }

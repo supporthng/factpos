@@ -36,7 +36,7 @@ const VentaSchema = CarritoSchema.extend({
   motivoDescuento: z.string().trim().max(200).optional(),
   /** Observaciones de la venta (salen en el ticket) */
   notas: z.string().trim().max(300).optional(),
-  tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "SIN"]).default("E32"),
+  tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]).default("E32"),
   pagos: z
     .array(
       z.object({
@@ -58,7 +58,7 @@ export interface VentaInput extends Carrito {
   autorizacionDescuento?: string;
   motivoDescuento?: string;
   notas?: string;
-  tipoDocumento: "E32" | "E31" | "B01" | "B02" | "SIN";
+  tipoDocumento: "E32" | "E31" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN";
   pagos: { formaPago: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "DELIVERY" | "OTRO"; monto: string; recibido?: string; referencia?: string }[];
 }
 
@@ -225,7 +225,7 @@ export async function registrarVenta(
   const aprobacion = descManual.gt(0) ? verificarAutorizacion(body.autorizacionDescuento, "venta.descuento", cajaId) : null;
 
   const q = await cotizar(c, ctx, body, true, !!cont);
-  if (["E31", "B01"].includes(body.tipoDocumento) && !(q.cliente && ["RNC", "CEDULA"].includes(q.cliente.tipo_documento))) {
+  if (["E31", "B01", "B14", "B15"].includes(body.tipoDocumento) && !(q.cliente && ["RNC", "CEDULA"].includes(q.cliente.tipo_documento))) {
     throw new ErrorNegocio("La factura de crédito fiscal requiere un cliente con RNC o cédula");
   }
 
@@ -252,8 +252,8 @@ export async function registrarVenta(
   const ventaId = body.ventaId ?? uuidv7();
   // NCF serie B (B01/B02) o número interno (factura sin comprobante): se asigna ANTES de guardar la
   // venta, en esta misma transacción (las ventas no se modifican después de registradas).
-  const numeroDocumento = ["B01", "B02", "SIN"].includes(body.tipoDocumento)
-    ? await asignarNumeroNoElectronico(c, ctx.sucursalId, body.tipoDocumento as "B01" | "B02" | "SIN") : null;
+  const numeroDocumento = ["B01", "B02", "B14", "B15", "B16", "SIN"].includes(body.tipoDocumento)
+    ? await asignarNumeroNoElectronico(c, ctx.sucursalId, body.tipoDocumento as "B01" | "B02" | "B14" | "B15" | "B16" | "SIN") : null;
   const v = await c.query<{ numero: string }>(
     `INSERT INTO ventas (id, sucursal_id, caja_id, turno_id, usuario_id, cliente_id, numero_interno,
                          tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia, notas, numero_documento)

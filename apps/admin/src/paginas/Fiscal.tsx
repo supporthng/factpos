@@ -20,8 +20,8 @@ export function Fiscal() {
       <div className="pestanas">
         <button className={vista === "envios" ? "activa" : ""} onClick={() => setVista("envios")}>Envíos a la DGII</button>
         <button className={vista === "secuencias" ? "activa" : ""} onClick={() => setVista("secuencias")}>Secuencias e-NCF</button>
-        <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF B01/B02</button>
-        <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF B01/B02</button>
+        <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF (serie B)</button>
+        <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF (serie B)</button>
         <button className={vista === "certificado" ? "activa" : ""} onClick={() => setVista("certificado")}>Certificado digital</button>
         <button className={vista === "config" ? "activa" : ""} onClick={() => setVista("config")}>Configuración</button>
       </div>
@@ -387,7 +387,7 @@ function RangosNCF() {
     catch (e) { setMensaje((e as Error).message); }
   };
   return <>
-    <h3>NCF tradicionales B01 / B02</h3>
+    <h3>NCF tradicionales (serie B)</h3>
     <p className="suave pequeno">Registre únicamente rangos autorizados por la DGII. Los rangos e-CF permanecen separados. No se permite reiniciar ni editar números consumidos.</p>
     {mensaje && <p role="status">{mensaje}</p>}
     {rangos.error && <p role="alert">{rangos.error}</p>}
@@ -395,7 +395,7 @@ function RangosNCF() {
       <label className="campo"><span>Sucursal</span><select value={form.sucursalId} onChange={e => setForm({...form,sucursalId:e.target.value})}>
         <option value="">Seleccione sucursal</option>{sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
       </select></label>
-      <label className="campo"><span>Tipo</span><select value={form.tipo} onChange={e => setForm({...form,tipo:e.target.value})}><option value="B01">B01</option><option value="B02">B02</option></select></label>
+      <label className="campo"><span>Tipo</span><select value={form.tipo} onChange={e => setForm({...form,tipo:e.target.value})}><option value="B01">B01 - Crédito fiscal</option><option value="B02">B02 - Consumo</option><option value="B14">B14 - Régimen especial</option><option value="B15">B15 - Gubernamental</option><option value="B16">B16 - Exportación</option></select></label>
       <label className="campo"><span>Desde (8 dígitos)</span><input inputMode="numeric" value={form.desde} onChange={e=>setForm({...form,desde:e.target.value.replace(/\D/g,"").slice(0,8)})}/></label>
       <label className="campo"><span>Hasta (8 dígitos)</span><input inputMode="numeric" value={form.hasta} onChange={e=>setForm({...form,hasta:e.target.value.replace(/\D/g,"").slice(0,8)})}/></label>
       <label className="campo"><span>Vence</span><input type="date" value={form.venceEn} onChange={e=>setForm({...form,venceEn:e.target.value})}/></label>
@@ -436,7 +436,7 @@ function RangosNcf() {
     } catch (e) { setMensaje({ texto: (e as Error).message, tipo: "error" }); }
   };
   return <>
-    <h3>Secuencias fiscales B01 / B02</h3>
+    <h3>Secuencias fiscales (serie B)</h3>
     <p className="suave">Registre únicamente rangos autorizados por la DGII. El sistema asigna los números al confirmar ventas; no modifique manualmente el siguiente consecutivo.</p>
     {mensaje && <Aviso texto={mensaje.texto} tipo={mensaje.tipo} />}
     <div className="filtros">
@@ -445,7 +445,7 @@ function RangosNcf() {
         {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
       </select>
       <select value={nuevo.tipo} onChange={e => setNuevo({ ...nuevo, tipo: e.target.value })}>
-        <option value="B01">B01 - Crédito fiscal</option><option value="B02">B02 - Consumo</option>
+        <option value="B01">B01 - Crédito fiscal</option><option value="B02">B02 - Consumo</option><option value="B14">B14 - Régimen especial</option><option value="B15">B15 - Gubernamental</option><option value="B16">B16 - Exportación</option>
       </select>
       <input aria-label="Desde" placeholder="Desde (8 dígitos)" inputMode="numeric" value={nuevo.desde} onChange={e => setNuevo({ ...nuevo, desde: e.target.value })} />
       <input aria-label="Hasta" placeholder="Hasta (8 dígitos)" inputMode="numeric" value={nuevo.hasta} onChange={e => setNuevo({ ...nuevo, hasta: e.target.value })} />

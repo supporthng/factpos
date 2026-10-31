@@ -126,7 +126,7 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
 
   app.post("/central/fiscal/ncf/rangos", async (req, rep) => {
     const b = z.object({
-      sucursalId: uuid, tipo: z.enum(["B01", "B02"]),
+      sucursalId: uuid, tipo: z.enum(["B01", "B02", "B14", "B15", "B16"]),
       desde: z.number().int().min(1).max(99999999),
       hasta: z.number().int().min(1).max(99999999),
       venceEn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

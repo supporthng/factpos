@@ -78,7 +78,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
     if (efectivo.gt(0) && recibido && cambio.lt(0)) return "El efectivo recibido no alcanza";
     if (n(credito).gt(0) && !cliente) return "Para vender a crédito seleccione un cliente (F4)";
     if (n(credito).gt(disponibleCredito)) return `Crédito disponible: ${rd(disponibleCredito.toFixed(2))}`;
-    if (["E31", "B01"].includes(tipoFactura) && !(cliente && ["RNC", "CEDULA"].includes(cliente.tipoDocumento))) return "Crédito fiscal requiere cliente con RNC o cédula";
+    if (["E31", "B01", "B14", "B15"].includes(tipoFactura) && !(cliente && ["RNC", "CEDULA"].includes(cliente.tipoDocumento))) return "Crédito fiscal requiere cliente con RNC o cédula";
     return "";
   }, [otros, efectivo, recibido, cambio, credito, cliente, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
 
