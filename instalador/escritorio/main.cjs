@@ -358,7 +358,19 @@ function openMain(onShown) {
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
-  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); win.focus(); win.webContents.focus(); if (onShown) onShown(); };
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (kiosko) win.setKiosk(true); win.focus(); win.webContents.focus(); if (onShown) onShown(); };
+  // La Caja abre en modo kiosko (pantalla completa, sin barra de ventana). F11 alterna con ventana normal;
+  // Ctrl+Mayús+Q cierra la caja (pide confirmación). Para abrirla siempre en ventana: --ventana en el acceso directo.
+  const kiosko = selected === 'caja' && !args.includes('--ventana') && config.kiosko !== false;
+  win.webContents.on('before-input-event', (event, input) => {
+    if (selected !== 'caja' || input.type !== 'keyDown') return;
+    if (input.key === 'F11') { event.preventDefault(); win.setKiosk(!win.isKiosk()); }
+    else if (input.control && input.shift && input.key.toLowerCase() === 'q') {
+      event.preventDefault();
+      const r = dialog.showMessageBoxSync(win, { type: 'question', buttons: ['Cerrar la caja', 'Seguir vendiendo'], defaultId: 1, cancelId: 1, title: 'FactPOS Caja', message: '¿Cerrar FactPOS Caja?', detail: 'Las ventas guardadas se conservan en esta caja.', noLink: true });
+      if (r === 0) app.quit();
+    }
+  });
   const tope = setTimeout(mostrar, 12000);
   win.webContents.on('did-start-loading', () => clearTimeout(calma));
   win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 1500); });
