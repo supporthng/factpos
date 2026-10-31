@@ -27,45 +27,90 @@ import { MovimientosCaja } from "./paginas/MovimientosCaja";
 import { Incidentes } from "./paginas/Incidentes";
 import { aplicarTemaAdmin } from "./tema";
 import { SimboloFactPOS } from "./Logo";
+import { Icono, type NombreIcono } from "./Iconos";
 
 const SECCIONES = [
-  { id: "resumen", titulo: "Resumen", grupo: "General", C: Resumen, p: ["admin.reportes"] },
-  { id: "productos", titulo: "Productos", grupo: "Inventario", C: Productos, p: ["admin.productos"] },
-  { id: "compras", titulo: "Compras", grupo: "Inventario", C: Compras, p: ["admin.compras"] },
-  { id: "inventario", titulo: "Existencias", grupo: "Inventario", C: Inventario, p: ["admin.inventario", "admin.reportes"] },
-  { id: "ajustes", titulo: "Ajustes", grupo: "Inventario", C: Ajustes, p: ["admin.inventario"] },
-  { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario", C: Conteos, p: ["admin.inventario"] },
-  { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", C: Traspasos, p: ["admin.traspasos", "admin.recibir"] },
-  { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, p: ["admin.inventario"] },
-  { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, p: ["admin.precios"] },
-  { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, p: ["admin.precios"] },
-  { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, p: ["admin.config"] },
-  { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, p: ["admin.cxc", "admin.reportes"] },
-  { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, p: ["admin.reportes"] },
-  { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, p: ["admin.fiscal"] },
-  { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, p: ["admin.fiscal"] },
-  { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, p: ["admin.reportes"] },
-  { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Configuración", C: Sucursales, p: ["admin.config"] },
-  { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Configuración", C: Incidentes, p: ["admin.config"] },
-  { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, p: ["admin.usuarios"] },
-  { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, p: ["admin.config"] },
-  { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, p: ["admin.config"] },
-  { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, p: ["admin.config"] },
-  { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, p: ["admin.config"] },
+  { id: "resumen", titulo: "Resumen", grupo: "General", C: Resumen, i: "resumen", p: ["admin.reportes"] },
+  { id: "productos", titulo: "Productos", grupo: "Inventario", C: Productos, i: "productos", p: ["admin.productos"] },
+  { id: "compras", titulo: "Compras", grupo: "Inventario", C: Compras, i: "compras", p: ["admin.compras"] },
+  { id: "inventario", titulo: "Existencias", grupo: "Inventario", C: Inventario, i: "inventario", p: ["admin.inventario", "admin.reportes"] },
+  { id: "ajustes", titulo: "Ajustes", grupo: "Inventario", C: Ajustes, i: "ajustes", p: ["admin.inventario"] },
+  { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario", C: Conteos, i: "conteos", p: ["admin.inventario"] },
+  { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", C: Traspasos, i: "traspasos", p: ["admin.traspasos", "admin.recibir"] },
+  { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, i: "kardex", p: ["admin.inventario"] },
+  { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, i: "precios", p: ["admin.precios"] },
+  { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
+  { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, i: "delivery", p: ["admin.config"] },
+  { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
+  { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
+  { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, i: "fiscal", p: ["admin.fiscal"] },
+  { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
+  { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, i: "reportes", p: ["admin.reportes"] },
+  { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Configuración", C: Sucursales, i: "sucursales", p: ["admin.config"] },
+  { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Configuración", C: Incidentes, i: "incidentes", p: ["admin.config"] },
+  { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
+  { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
+  { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, i: "licencia", p: ["admin.config"] },
+  { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
 /** En el portal del proveedor solo hay clientes/licencias y su propio equipo. */
 const SECCIONES_PORTAL = [
-  { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, p: ["*"] },
-  { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, p: ["admin.usuarios"] },
+  { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, i: "clientes", p: ["*"] },
+  { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];
+type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: NombreIcono; p: readonly string[] };
+
+/** Qué hace cada opción (se ve en su recuadro). */
+const DESCRIPCION: Record<string, string> = {
+  resumen: "Ventas del día, alertas y existencias por reponer",
+  productos: "Ficha, códigos de barra, precios y combos",
+  compras: "Entrada de mercancía de los proveedores",
+  inventario: "Existencia de cada producto por sucursal",
+  ajustes: "Corregir existencias: mermas, daños, sobrantes",
+  conteos: "Inventario físico y sus diferencias",
+  traspasos: "Mover mercancía entre sucursales y almacenes",
+  kardex: "Historial de entradas y salidas de un producto",
+  precios: "Cambiar precios por nivel y por sucursal",
+  ofertas: "Promociones, combos y descuentos con tope",
+  delivery: "Pedidos a domicilio y repartidores",
+  cxc: "Clientes a crédito, abonos y estados de cuenta",
+  caja: "Retiros, gastos y movimientos de caja",
+  fiscal: "e-CF, certificado digital y secuencias de NCF",
+  padron: "Consulta de RNC y cédulas de la DGII",
+  reportes: "Ventas, cierres, inventario, impuestos y más",
+  sucursales: "Tiendas, cajas y servidores de cada local",
+  incidentes: "Fallas, caídas de conexión y soporte",
+  usuarios: "Cuentas, roles y permisos del personal",
+  correo: "Envío de reportes y facturas por correo",
+  marca: "Logo y colores de la caja y la administración",
+  licencia: "Plan, vigencia y activación de FactPOS",
+  actualizaciones: "Nuevas versiones del sistema",
+  clientes: "Empresas, licencias y sus instalaciones",
+};
+/** Las funciones principales del inicio, en este orden. */
+const GRUPOS: Record<string, { slug: string; i: NombreIcono; color: string; d: string }> = {
+  "General": { slug: "general", i: "resumen", color: "#0f766e", d: "Cómo va el día en todas las sucursales" },
+  "Inventario": { slug: "inventario", i: "productos", color: "#2563eb", d: "Productos, compras, existencias y traspasos" },
+  "Comercial": { slug: "comercial", i: "precios", color: "#d97706", d: "Precios, ofertas y delivery" },
+  "Finanzas": { slug: "finanzas", i: "cxc", color: "#16a34a", d: "Cuentas por cobrar, retiros y gastos" },
+  "Fiscal": { slug: "fiscal", i: "fiscal", color: "#7c3aed", d: "Facturación electrónica y padrón de la DGII" },
+  "Reportes": { slug: "reportes", i: "reportes", color: "#0891b2", d: "Todos los informes del negocio" },
+  "Configuración": { slug: "configuracion", i: "ajustes", color: "#475569", d: "Sucursales, usuarios, marca y licencia" },
+  "Portal FactPOS": { slug: "portal", i: "clientes", color: "#0f766e", d: "Clientes, licencias y equipo del portal" },
+};
+const datosGrupo = (g: string) => GRUPOS[g] ?? { slug: g.toLowerCase(), i: "resumen" as NombreIcono, color: "#475569", d: "" };
+
 const CATALOGO_VACIO: CatalogoAdmin = { sucursales: [], productos: [], categorias: [], usuarios: [] };
 
 export function App() {
   const [sesion, setSesion] = useState<Sesion | null>(leerSesion());
   const [catalogo, setCatalogo] = useState<CatalogoAdmin | null>(null);
-  const [seccion, setSeccion] = useState<Seccion>(() => (location.hash.slice(1) as Seccion) || (enPortal ? "clientes" : "resumen"));
+  const [seccion, setSeccion] = useState<string>(() => location.hash.slice(1) || "inicio");
   const [menu, setMenu] = useState(false);
+  const [forma, setForma] = useState<Forma>(leerForma);
+  const cambiarForma = (f: Forma) => { setForma(f); guardarForma(f); };
   const [error, setError] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
   const [cambiarClave, setCambiarClave] = useState(false);
@@ -90,10 +135,10 @@ export function App() {
       .then((m) => { aplicarTemaAdmin(m); setLogo(m.logo); })
       .catch(() => {});
   }, [sesion]);
-  useEffect(() => { if (location.hash.slice(1) !== seccion) location.hash = seccion; }, [seccion]);
+  useEffect(() => { if (location.hash.slice(1).split("?")[0] !== seccion) location.hash = seccion; window.scrollTo(0, 0); document.querySelector(".contenido")?.scrollTo(0, 0); }, [seccion]);
   // Enlaces internos (#seccion) desde cualquier pantalla, y atrás/adelante del navegador
   useEffect(() => {
-    const f = () => { const h = location.hash.slice(1).split("?")[0] as Seccion; if (h) setSeccion(h); };
+    const f = () => { const h = location.hash.slice(1).split("?")[0]; setSeccion(h || "inicio"); };
     addEventListener("hashchange", f);
     return () => removeEventListener("hashchange", f);
   }, []);
@@ -103,51 +148,157 @@ export function App() {
   }
   if (!catalogo) return <div className="cargando">Cargando…</div>;
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly { id: Seccion; titulo: string; grupo: string; C: ComponentType; p: readonly string[] }[])
-    .filter((s) => s.p.some(puede));
-  const Actual = (visibles.find((s) => s.id === seccion) ?? visibles[0])?.C ?? SinPermisos;
-  const actualId = (visibles.find((s) => s.id === seccion) ?? visibles[0])?.id;
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
+  const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
+  // Ruta: "inicio", "g-<grupo>" o el id de una opción
+  const actual = visibles.find((s) => s.id === seccion);
+  const grupoAbierto = seccion.startsWith("g-") ? grupos.find((g) => "g-" + datosGrupo(g).slug === seccion) : undefined;
+  const vista: "inicio" | "grupo" | "seccion" = actual ? "seccion" : grupoAbierto ? "grupo" : "inicio";
+  const grupoActual = actual?.grupo ?? grupoAbierto;
+  const Actual = actual?.C ?? SinPermisos;
+  const actualId = actual?.id;
+  const iniciales = sesion.nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join("") || "?";
+  /** Un grupo con una sola opción abre directo esa opción. */
+  const abrirGrupo = (g: string) => { const items = enGrupo(g); setSeccion(items.length === 1 ? items[0]!.id : "g-" + datosGrupo(g).slug); };
 
   return (
     <CatalogoCtx.Provider value={catalogo}>
-      <div className="app">
-        <aside className={"lateral" + (menu ? " abierto" : "")}>
-          {logo
-            ? <div className="marca-logo"><img src={logo} alt="Logo" /><small>FactPOS · Administración</small></div>
-            : <div className="marca con-icono"><SimboloFactPOS tamano={40} /><span className="texto"><span className="nombre">Fact<b>POS</b></span><small>{enPortal ? "Portal de licencias" : CONFIG.cliente ?? "Administración"}</small></span></div>}
-          <nav>
-            {grupos.map((g) => (
-              <div key={g} className="grupo">
-                <span className="grupo-titulo">{g}</span>
-                {visibles.filter((s) => s.grupo === g).map((s) => (
-                  <button key={s.id} className={actualId === s.id ? "activo" : ""} onClick={() => { setSeccion(s.id); setMenu(false); }}>
-                    {s.titulo}
-                  </button>
-                ))}
+      <div className={"app " + (forma === "lateral" ? "app-lateral" : "app-cuadricula")}>
+        {forma === "lateral" && (
+          <aside className={"lateral" + (menu ? " abierto" : "")}>
+            {logo
+              ? <div className="marca-logo"><img src={logo} alt="Logo" /><small>FactPOS · Administración</small></div>
+              : <div className="marca con-icono"><SimboloFactPOS tamano={36} fondo /><span className="texto"><span className="nombre">Fact<b>POS</b></span><small>{enPortal ? "Portal de licencias" : CONFIG.cliente ?? "Administración"}</small></span></div>}
+            <nav>
+              <div className="grupo">
+                <button className={vista === "inicio" ? "activo" : ""} onClick={() => { setSeccion("inicio"); setMenu(false); }}><Icono n="inicio" /><span>Inicio</span></button>
               </div>
-            ))}
-          </nav>
-          <div className="lateral-pie">
-            <button className="enlace nombre-usuario" title="Cambiar mi contraseña" onClick={() => setCambiarClave(true)}>{sesion.nombre}</button>
-            <button className="enlace" onClick={salir}>Salir</button>
-          </div>
-        </aside>
+              {grupos.map((g) => (
+                <div key={g} className="grupo">
+                  <span className="grupo-titulo">{g}</span>
+                  {enGrupo(g).map((x) => (
+                    <button key={x.id} className={actualId === x.id ? "activo" : ""} aria-current={actualId === x.id ? "page" : undefined}
+                      onClick={() => { setSeccion(x.id); setMenu(false); }}>
+                      <Icono n={x.i} /><span>{x.titulo}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </nav>
+          </aside>
+        )}
+        {forma === "lateral" && menu && <div className="velo-menu" onClick={() => setMenu(false)} />}
         <div className="contenido">
-          <header className="barra-movil">
-            <button className="boton fantasma" onClick={() => setMenu(!menu)}>☰</button>
-            <span className="marca chica">Fact<span>POS</span></span>
+          <header className="barra-superior">
+            {forma === "lateral" && <button className="boton-icono solo-movil" aria-label="Menú" onClick={() => setMenu(!menu)}><Icono n="menu" /></button>}
+            {forma === "cuadricula" && <button className="marca-superior" onClick={() => setSeccion("inicio")} title="Inicio">
+              {logo ? <img src={logo} alt="Logo" /> : <SimboloFactPOS tamano={34} fondo />}
+              {!logo && <span className="nombre">Fact<b>POS</b></span>}
+            </button>}
+            <nav className="migas-superior" aria-label="Ubicación">
+              <button className={vista === "inicio" ? "actual" : ""} onClick={() => setSeccion("inicio")}><Icono n="inicio" tamano={16} /><span>Inicio</span></button>
+              {grupoActual && enGrupo(grupoActual).length > 1 && (<>
+                <span className="separador" aria-hidden="true">›</span>
+                <button className={vista === "grupo" ? "actual" : ""} onClick={() => abrirGrupo(grupoActual)}>{grupoActual}</button>
+              </>)}
+              {actual && (<><span className="separador" aria-hidden="true">›</span><b className="actual">{actual.titulo}</b></>)}
+            </nav>
+            <span className="flex" />
+            <div className="selector-forma" role="group" aria-label="Forma del menú">
+              <button className={forma === "cuadricula" ? "activo" : ""} aria-pressed={forma === "cuadricula"} title="Menú en cuadrícula" onClick={() => cambiarForma("cuadricula")}><Icono n="resumen" tamano={17} /></button>
+              <button className={forma === "lateral" ? "activo" : ""} aria-pressed={forma === "lateral"} title="Menú lateral" onClick={() => cambiarForma("lateral")}><Icono n="menu-lateral" tamano={17} /></button>
+            </div>
+            <span className="empresa-superior">{sesion.empresa}</span>
+            <button className="chip-usuario" title="Cambiar mi contraseña" onClick={() => setCambiarClave(true)}>
+              <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>
+            </button>
+            <button className="boton-icono" title="Salir" aria-label="Salir" onClick={salir}><Icono n="salir" /></button>
           </header>
-          <main key={actualId}>
+
+          {forma === "cuadricula" && vista === "seccion" && grupoActual && enGrupo(grupoActual).length > 1 && (
+            <nav className="subnav" aria-label={grupoActual}>
+              {enGrupo(grupoActual).map((s) => (
+                <button key={s.id} className={s.id === actualId ? "activo" : ""} aria-current={s.id === actualId ? "page" : undefined} onClick={() => setSeccion(s.id)}>
+                  <Icono n={s.i} tamano={17} /><span>{s.titulo}</span>
+                </button>
+              ))}
+            </nav>
+          )}
+
+          <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
             {esLocal() && <AvisoLocal />}
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
-            <Actual />
+
+            {vista === "inicio" && (
+              <>
+                <div className="saludo">
+                  <h1>{saludo()}, {sesion.nombre.split(" ")[0]}</h1>
+                  <p className="suave">¿Qué desea hacer hoy? Elija una función.</p>
+                </div>
+                <div className="cuadricula cuadricula-grupos">
+                  {grupos.map((g) => {
+                    const dg = datosGrupo(g), items = enGrupo(g);
+                    return (
+                      <button key={g} className="mosaico mosaico-grupo" style={{ "--c": dg.color } as React.CSSProperties} onClick={() => abrirGrupo(g)}>
+                        <span className="mosaico-icono"><Icono n={dg.i} tamano={28} /></span>
+                        <span className="mosaico-texto">
+                          <b>{items.length === 1 ? items[0]!.titulo : g}</b>
+                          <small>{items.length === 1 ? DESCRIPCION[items[0]!.id] ?? dg.d : dg.d}</small>
+                        </span>
+                        {items.length > 1 && (
+                          <span className="mosaico-pie">
+                            {items.slice(0, 3).map((s) => <i key={s.id}>{s.titulo}</i>)}
+                            {items.length > 3 && <i className="mas">+{items.length - 3}</i>}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {vista === "grupo" && grupoAbierto && (
+              <>
+                <div className="saludo con-icono" style={{ "--c": datosGrupo(grupoAbierto).color } as React.CSSProperties}>
+                  <button className="boton-icono volver" aria-label="Volver al inicio" title="Volver al inicio" onClick={() => setSeccion("inicio")}>‹</button>
+                  <span className="mosaico-icono"><Icono n={datosGrupo(grupoAbierto).i} tamano={26} /></span>
+                  <div><h1>{grupoAbierto}</h1><p className="suave">{datosGrupo(grupoAbierto).d}</p></div>
+                </div>
+                <div className="cuadricula cuadricula-opciones" style={{ "--c": datosGrupo(grupoAbierto).color } as React.CSSProperties}>
+                  {enGrupo(grupoAbierto).map((s) => (
+                    <button key={s.id} className="mosaico mosaico-opcion" onClick={() => setSeccion(s.id)}>
+                      <span className="mosaico-icono"><Icono n={s.i} tamano={24} /></span>
+                      <span className="mosaico-texto"><b>{s.titulo}</b><small>{DESCRIPCION[s.id] ?? ""}</small></span>
+                      <span className="mosaico-flecha" aria-hidden="true">›</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {vista === "seccion" && <Actual />}
           </main>
           {cambiarClave && <CambiarClave onCerrar={() => setCambiarClave(false)} />}
         </div>
       </div>
     </CatalogoCtx.Provider>
   );
+}
+
+type Forma = "cuadricula" | "lateral";
+/** Forma del menú elegida en este equipo (Apariencia). */
+function leerForma(): Forma {
+  try { return localStorage.getItem("factpos.admin.forma") === "lateral" ? "lateral" : "cuadricula"; } catch { return "cuadricula"; }
+}
+function guardarForma(f: Forma) {
+  try { localStorage.setItem("factpos.admin.forma", f); } catch { /* sin almacenamiento */ }
+}
+
+function saludo() {
+  const h = new Date().getHours();
+  return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
 }
 
 /**
