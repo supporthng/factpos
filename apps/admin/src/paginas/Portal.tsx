@@ -130,7 +130,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
       </div>
 
       <div className="tabla-contenedor">
-        <table className="tabla">
+        <table className="tabla apilada">
           <thead><tr><th>Cliente</th><th>Plan</th><th>Licencia</th><th>Sucursales</th><th>Instalación</th><th></th></tr></thead>
           <tbody>
             {lista.map((c) => (
@@ -405,7 +405,7 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
         </div>
       )}
       <div className="tabla-contenedor">
-        <table className="tabla">
+        <table className="tabla apilada">
           <thead><tr><th>Plan</th><th className="der">Precio por sucursal</th><th>Incluye</th><th className="der">Clientes</th><th></th></tr></thead>
           <tbody>
             {planes.map((p) => (
@@ -504,7 +504,7 @@ function Instalaciones({ planes, onCambio }: { planes: Plan[]; onCambio: () => v
       <Aviso texto={error} />
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <div className="tabla-contenedor">
-        <table className="tabla">
+        <table className="tabla apilada">
           <thead><tr><th>Solicitud</th><th>Contacto</th><th>Plan pedido</th><th>Recibida</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             {(datos ?? []).map((i) => (
@@ -657,7 +657,7 @@ function Invitaciones() {
       </div>
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Invitaciones enviadas</h3>
-        <table className="tabla">
+        <table className="tabla apilada">
           <thead><tr><th>Invitado</th><th>WhatsApp</th><th>Estado</th><th className="der">Visitas</th><th className="der">Descargas</th><th>Enviada</th><th /></tr></thead>
           <tbody>
             {(datos?.lista ?? []).map((i) => { const [t, c] = estado(i); return (
