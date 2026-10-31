@@ -94,6 +94,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "admin.traspasos", grupo: "Administración", nombre: "Pedidos y despacho de traspasos" },
   { id: "admin.recibir", grupo: "Administración", nombre: "Recibir traspasos en su tienda" },
   { id: "admin.cxc", grupo: "Administración", nombre: "Cuentas por cobrar" },
+  { id: "admin.pedidos", grupo: "Administración", nombre: "Pedidos de clientes" },
   { id: "admin.reportes", grupo: "Administración", nombre: "Ver reportes y resumen" },
   { id: "admin.fiscal", grupo: "Administración", nombre: "Facturación electrónica y padrón" },
   { id: "admin.config", grupo: "Administración", nombre: "Sucursales, terminales y marca" },
@@ -118,6 +119,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
     [/^\/central\/(inventario|ajustes|conteos|productos-existencia)/, "admin.inventario"],
     [/^\/central\/(traspasos|pedidos-sucursal)/, "admin.traspasos"],
     [/^\/central\/cxc/, "admin.cxc"],
+    [/^\/central\/pedidos(\/|$)/, "admin.pedidos"],
     [/^\/central\/(fiscal|padron)/, "admin.fiscal"],
     [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo|alta)/, "admin.config"],
   ];
