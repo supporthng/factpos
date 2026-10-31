@@ -4,6 +4,7 @@ const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
+const crypto = require('node:crypto');
 
 const ICON = path.join(__dirname, 'factpos.ico');
 if (process.platform === 'win32') app.setAppUserModelId('com.factpos.escritorio');
@@ -59,6 +60,127 @@ e.addEventListener('keydown',ev=>{if(ev.key==='Enter')go()});
   });
 }
 
+// ------------------------------------------------------------------ Caja como aplicación
+// La pantalla de la caja viaja DENTRO de la aplicación y se sirve solo en este equipo (127.0.0.1), así abre
+// aunque el servidor de la sucursal esté apagado. Cuando el servidor sí responde y tiene una versión distinta
+// de la pantalla, se descarga la nueva (queda lista para la próxima vez que se abra la caja).
+const UI_PORT = 47831; // fijo: el almacenamiento de la caja (ventas guardadas, PIN) depende de la dirección
+const UI_BUNDLED = app.isPackaged ? path.join(process.resourcesPath, 'terminal-ui') : path.join(__dirname, '..', '..', 'apps', 'terminal', 'dist');
+const UI_CACHE = path.join(app.getPath('userData'), 'terminal-ui');
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webmanifest': 'application/manifest+json' };
+const sha = buf => crypto.createHash('sha256').update(buf).digest('hex');
+function readOr(file) { try { return fs.readFileSync(file); } catch { return null; } }
+function uiRoot() {
+  const meta = readOr(path.join(UI_CACHE, 'meta.json'));
+  const bundled = readOr(path.join(UI_BUNDLED, 'index.html'));
+  try {
+    const m = meta && JSON.parse(meta.toString());
+    // La caché solo vale si se hizo sobre la misma pantalla que trae esta aplicación
+    if (m && bundled && m.base === sha(bundled) && fs.existsSync(path.join(UI_CACHE, 'index.html'))) return UI_CACHE;
+  } catch {}
+  return UI_BUNDLED;
+}
+function startUiServer() {
+  return new Promise(resolve => {
+    const srv = http.createServer((req, res) => {
+      try {
+        const u = new URL(req.url, 'http://127.0.0.1');
+        if (u.pathname === '/escritorio.json') {
+          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+          return res.end(JSON.stringify({ servidor: localUrl }));
+        }
+        if (u.pathname === '/sw.js') { res.writeHead(404); return res.end(); } // sin service worker: la aplicación ya funciona sin conexión
+        const root = uiRoot();
+        let rel = decodeURIComponent(u.pathname);
+        if (rel === '/' || rel === '') rel = '/index.html';
+        const file = path.normalize(path.join(root, rel));
+        if (!file.startsWith(root + path.sep)) { res.writeHead(403); return res.end(); }
+        const data = readOr(file);
+        if (!data) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-cache' });
+        res.end(data);
+      } catch { res.writeHead(400); res.end(); }
+    });
+    srv.on('error', () => resolve(false));
+    srv.listen(UI_PORT, '127.0.0.1', () => resolve(true));
+  });
+}
+function fetchBuf(url) {
+  return new Promise((resolve, reject) => {
+    const transport = url.protocol === 'https:' ? require('node:https') : http;
+    const req = transport.get(url, { timeout: 8000 }, r => {
+      if (r.statusCode !== 200) { r.resume(); return reject(new Error('HTTP ' + r.statusCode)); }
+      const parts = []; r.on('data', c => parts.push(c)); r.on('end', () => resolve(Buffer.concat(parts)));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('tiempo agotado')); });
+  });
+}
+let syncing = false;
+// Descarga la pantalla de la caja que tiene el servidor si es distinta de la que se está usando. Todo o nada.
+async function syncUi() {
+  if (syncing || !server) return;
+  syncing = true;
+  try {
+    const base = new URL('/terminal/', server);
+    const indexBuf = await fetchBuf(new URL('index.html', base));
+    const actual = readOr(path.join(uiRoot(), 'index.html'));
+    if (actual && sha(actual) === sha(indexBuf)) return;
+    const tmp = UI_CACHE + '.nuevo';
+    fs.rmSync(tmp, { recursive: true, force: true });
+    const hechos = new Set(['index.html']);
+    const cola = [];
+    const refs = (texto, desde, regex) => {
+      for (const m of texto.matchAll(regex)) {
+        const r = m[1].trim().replace(/^['"]|['"]$/g, '');
+        if (!r || /^(data:|https?:|\/\/|#)/.test(r)) continue;
+        const abs = new URL(r.split(/[?#]/)[0], desde);
+        if (abs.origin !== base.origin || !abs.pathname.startsWith('/terminal/')) continue;
+        const rel = decodeURIComponent(abs.pathname.slice('/terminal/'.length));
+        if (rel && !hechos.has(rel)) { hechos.add(rel); cola.push(rel); }
+      }
+    };
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'index.html'), indexBuf);
+    refs(indexBuf.toString('utf8'), new URL('index.html', base), /(?:src|href)=["']([^"']+)["']/g);
+    while (cola.length) {
+      const rel = cola.shift();
+      const buf = await fetchBuf(new URL(rel, base));
+      const dest = path.normalize(path.join(tmp, rel));
+      if (!dest.startsWith(tmp + path.sep)) throw new Error('ruta no válida');
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, buf);
+      if (rel.endsWith('.css')) refs(buf.toString('utf8'), new URL(rel, base), /url\(([^)]+)\)/g);
+    }
+    const bundled = readOr(path.join(UI_BUNDLED, 'index.html'));
+    if (!bundled) throw new Error('sin pantalla base');
+    fs.writeFileSync(path.join(tmp, 'meta.json'), JSON.stringify({ base: sha(bundled), hash: sha(indexBuf), en: new Date().toISOString() }));
+    const viejo = UI_CACHE + '.viejo';
+    fs.rmSync(viejo, { recursive: true, force: true });
+    if (fs.existsSync(UI_CACHE)) fs.renameSync(UI_CACHE, viejo);
+    fs.renameSync(tmp, UI_CACHE);
+    fs.rmSync(viejo, { recursive: true, force: true });
+  } catch { /* sin servidor o a medias: se queda la pantalla actual */ }
+  finally { syncing = false; }
+}
+async function startCaja() {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) { app.quit(); return; }
+  app.on('second-instance', () => { if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
+  try { server = new URL(localUrl); } catch { server = null; }
+  if (!await startUiServer()) {
+    dialog.showErrorBox('FactPOS Caja', `No se pudo iniciar la caja: el puerto ${UI_PORT} de este equipo está ocupado por otro programa.`);
+    app.quit(); return;
+  }
+  endpoint = new URL(`http://127.0.0.1:${UI_PORT}/`);
+  // Si el servidor está en este mismo equipo y no corre, se intenta encender sin hacer esperar a la caja
+  if (server && localServer()) { available(server).then(ok => { if (!ok) startInstalledServer(); }); }
+  openMain();
+  syncUi();
+  setInterval(syncUi, 5 * 60 * 1000).unref();
+  watchUpdates();
+}
+
 function available(url) {
   return new Promise(resolve => {
     const transport = url.protocol === 'https:' ? require('node:https') : http;
@@ -88,6 +210,7 @@ async function checkWithRetry(endpoint, attempts = 12) {
   return false;
 }
 async function start() {
+  if (selected === 'caja') return startCaja();
   if (!resolveTarget()) { app.quit(); return; }
   let ok = await available(endpoint);
   if (!ok && localServer() && !(selected === 'admin' && config.empresa)) {
@@ -120,11 +243,11 @@ function openMain() {
   mainWindow = win;
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
-    try { if (new URL(url).origin !== server.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
+    try { if (new URL(url).origin !== endpoint.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event, url) => {
-    try { if (new URL(url).origin !== server.origin) event.preventDefault(); } catch { event.preventDefault(); }
+    try { if (new URL(url).origin !== endpoint.origin) event.preventDefault(); } catch { event.preventDefault(); }
   });
   win.loadURL(endpoint.toString());
 }
@@ -180,11 +303,12 @@ function finishUpdate(ok, text) {
   setTimeout(() => {
     if (miniWindow && !miniWindow.isDestroyed()) { miniWindow.setClosable(true); miniWindow.destroy(); }
     miniWindow = null; updating = false;
-    openMain();
+    if (selected === 'caja') syncUi().finally(openMain); else openMain();
   }, ok ? 2000 : 4500);
 }
 function watchUpdates() {
   if (selected === 'admin' && config.empresa) return; // administración en la nube: la actualiza el portal
+  if (!server) return;
   let busy = false;
   const timer = setInterval(async () => {
     if (busy) return; busy = true;

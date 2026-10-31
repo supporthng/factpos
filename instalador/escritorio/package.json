@@ -18,6 +18,7 @@
     "asar": true,
     "files": ["main.cjs", "preload.cjs", "actualizando.html", "factpos.ico", "package.json"],
     "directories": { "output": "out" },
+    "extraResources": [{ "from": "../../apps/terminal/dist", "to": "terminal-ui" }],
     "win": { "target": ["portable"], "icon": "factpos.ico", "artifactName": "FactPOS-Escritorio-${version}.exe" }
   }
 }
