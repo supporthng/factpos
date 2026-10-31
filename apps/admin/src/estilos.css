@@ -872,3 +872,25 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .estado-sistema .aviso-texto { color: var(--alerta); }
 @media (max-width: 720px) { .estado-sistema { min-height: 0; } .cifra > b { font-size: 22px; } }
 .estado-sistema:hover { transform: none; box-shadow: none; border-color: var(--borde); }
+
+/* Menú lateral contraíble: ancho completo o solo íconos (en celular siempre es el panel completo) */
+.lateral-colapsar { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; margin-top: 8px; padding: 9px 12px; border: 0; border-top: 1px solid var(--borde);
+  border-radius: 0 0 10px 10px; background: none; color: var(--suave); font: inherit; font-size: 13.5px; font-weight: 500; text-align: left; cursor: pointer; }
+.lateral-colapsar:hover { color: var(--texto); background: var(--fondo); }
+.lateral-colapsar:focus-visible { outline: 3px solid color-mix(in srgb, var(--primario) 55%, transparent); outline-offset: -2px; }
+.app.app-lateral { transition: grid-template-columns .2s ease; }
+@media (prefers-reduced-motion: reduce) { .app.app-lateral { transition: none; } }
+@media (max-width: 900px) { .lateral-colapsar { display: none; } }
+@media (min-width: 901px) {
+  .app.app-colapsado { --ancho-lateral: 68px; }
+  .app-colapsado .lateral { padding: 18px 8px 12px; overflow-x: hidden; }
+  .app-colapsado .lateral .marca.con-icono { justify-content: center; padding: 2px 0; }
+  .app-colapsado .lateral .marca.con-icono .texto, .app-colapsado .lateral .marca-logo small, .app-colapsado .lateral .grupo-titulo { display: none; }
+  .app-colapsado .lateral .marca-logo img { max-width: 44px; }
+  .app-colapsado .lateral .grupo + .grupo { border-top: 1px solid var(--borde); padding-top: 10px; }
+  .app-colapsado .lateral nav button { justify-content: center; padding: 10px 0; }
+  .app-colapsado .lateral nav button.activo::before { left: -8px; }
+  .app-colapsado .lateral nav button span, .app-colapsado .lateral-colapsar span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .app-colapsado .lateral-colapsar { justify-content: center; padding: 10px 0; }
+}

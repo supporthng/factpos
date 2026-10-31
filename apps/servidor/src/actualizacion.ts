@@ -134,6 +134,8 @@ export async function rutasActualizacion(app: FastifyInstance) {
     return {
       actual, disponible: d?.version ?? null, notas: d?.notas ?? null, publicada: d?.publicada ?? null,
       hayNueva: !!d && compararVersion(d.version, actual) > 0, proceso, puedeInstalar: process.platform === "win32" && !process.env.VERCEL,
+      // Descargar actualizaciones exige una licencia activa (en la prueba no hay): la pantalla lo explica antes de pulsar «Instalar»
+      licenciaActiva: !!(await tokenLicencia()),
       modo: config.modo,
     };
   });

@@ -4,7 +4,7 @@ import { Aviso, Encabezado, Kpi, useDatos } from "../ui";
 
 /** Versión instalada de FactPOS y actualización con un clic (servidor principal o de sucursal). */
 interface Estado {
-  actual: string; disponible: string | null; notas: string | null; publicada: string | null; hayNueva: boolean; puedeInstalar: boolean; modo: string;
+  actual: string; disponible: string | null; notas: string | null; publicada: string | null; hayNueva: boolean; puedeInstalar: boolean; modo: string; licenciaActiva?: boolean;
   proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string } | null;
 }
 
@@ -46,9 +46,12 @@ export function Actualizaciones() {
               <h3 style={{ marginTop: 0 }}>Hay una versión nueva: {d.disponible}</h3>
               {d.notas && <pre className="notas-version">{d.notas}</pre>}
               {d.puedeInstalar
-                ? <button className="boton primario" disabled={trabajando || !puede("*")} onClick={instalar}>{trabajando ? "Preparando…" : `Instalar ${d.disponible}`}</button>
+                ? <button className="boton primario" disabled={trabajando || !puede("*") || d.licenciaActiva === false} onClick={instalar}>{trabajando ? "Preparando…" : `Instalar ${d.disponible}`}</button>
                 : <p className="suave">Esta instalación se actualiza desde su proveedor.</p>}
               {!puede("*") && <p className="suave pequeno">Solo un administrador puede instalarla.</p>}
+              {d.puedeInstalar && d.licenciaActiva === false && (
+                <p className="suave pequeno">Las actualizaciones desde aquí requieren la licencia activa (durante la versión de prueba no están disponibles). <a href="#licencia">Activar licencia</a></p>
+              )}
               {d.modo === "central" && <p className="suave pequeno">Después, cada sucursal se actualiza sola en un momento sin ventas.</p>}
             </div>
           ) : d.disponible ? (

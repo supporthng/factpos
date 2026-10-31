@@ -112,6 +112,8 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const [forma, setForma] = useState<Forma>(leerForma);
   const cambiarForma = (f: Forma) => { setForma(f); guardarForma(f); };
+  const [colapsado, setColapsado] = useState<boolean>(leerColapsado);
+  const alternarColapso = () => { const v = !colapsado; setColapsado(v); guardarColapsado(v); };
   const [error, setError] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
   const [cambiarClave, setCambiarClave] = useState(false);
@@ -165,7 +167,7 @@ export function App() {
 
   return (
     <CatalogoCtx.Provider value={catalogo}>
-      <div className={"app " + (forma === "lateral" ? "app-lateral" : "app-cuadricula")}>
+      <div className={"app " + (forma === "lateral" ? "app-lateral" + (colapsado ? " app-colapsado" : "") : "app-cuadricula")}>
         {forma === "lateral" && (
           <aside className={"lateral" + (menu ? " abierto" : "")}>
             {logo
@@ -173,13 +175,13 @@ export function App() {
               : <div className="marca con-icono"><SimboloFactPOS tamano={36} fondo /><span className="texto"><span className="nombre">Fact<b>POS</b></span><small>{enPortal ? "Portal de licencias" : CONFIG.cliente ?? "Administración"}</small></span></div>}
             <nav>
               <div className="grupo">
-                <button className={vista === "inicio" ? "activo" : ""} onClick={() => { setSeccion("inicio"); setMenu(false); }}><Icono n="inicio" /><span>Inicio</span></button>
+                <button className={vista === "inicio" ? "activo" : ""} title="Inicio" onClick={() => { setSeccion("inicio"); setMenu(false); }}><Icono n="inicio" /><span>Inicio</span></button>
               </div>
               {grupos.map((g) => (
                 <div key={g} className="grupo">
                   <span className="grupo-titulo">{g}</span>
                   {enGrupo(g).map((x) => (
-                    <button key={x.id} className={actualId === x.id ? "activo" : ""} aria-current={actualId === x.id ? "page" : undefined}
+                    <button key={x.id} className={actualId === x.id ? "activo" : ""} aria-current={actualId === x.id ? "page" : undefined} title={x.titulo}
                       onClick={() => { setSeccion(x.id); setMenu(false); }}>
                       <Icono n={x.i} /><span>{x.titulo}</span>
                     </button>
@@ -187,6 +189,13 @@ export function App() {
                 </div>
               ))}
             </nav>
+            <button type="button" className="lateral-colapsar" onClick={alternarColapso} aria-expanded={!colapsado}
+              aria-label={colapsado ? "Expandir menú" : "Contraer menú"} title={colapsado ? "Expandir menú" : "Contraer menú"}>
+              <svg className="icono" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d={colapsado ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} />
+              </svg>
+              <span>Contraer menú</span>
+            </button>
           </aside>
         )}
         {forma === "lateral" && menu && <div className="velo-menu" onClick={() => setMenu(false)} />}
@@ -295,6 +304,13 @@ type Forma = "cuadricula" | "lateral";
 /** Forma del menú elegida en este equipo (Apariencia). */
 function leerForma(): Forma {
   try { return localStorage.getItem("factpos.admin.forma") === "lateral" ? "lateral" : "cuadricula"; } catch { return "cuadricula"; }
+}
+/** Menú lateral contraído (solo íconos) en este equipo. */
+function leerColapsado(): boolean {
+  try { return localStorage.getItem("factpos.admin.colapsado") === "1"; } catch { return false; }
+}
+function guardarColapsado(v: boolean) {
+  try { localStorage.setItem("factpos.admin.colapsado", v ? "1" : "0"); } catch { /* sin almacenamiento */ }
 }
 function guardarForma(f: Forma) {
   try { localStorage.setItem("factpos.admin.forma", f); } catch { /* sin almacenamiento */ }

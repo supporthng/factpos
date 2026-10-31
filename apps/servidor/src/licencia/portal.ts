@@ -331,7 +331,7 @@ async function ultimaVersion(): Promise<Publicada | null> {
     const r = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, { headers: encabezadosGitHub(), signal: AbortSignal.timeout(15_000) });
     if (!r.ok) throw new Error(`GitHub ${r.status}`);
     const lista = (await r.json()) as { tag_name: string; draft: boolean; body: string | null; published_at: string | null;
-      assets: { name: string; url: string; browser_download_url: string }[] }[];
+      assets: { name: string; url: string; browser_download_url: string; updated_at?: string }[] }[];
     // La rama main publica bajo la etiqueta «ultima», no «vX.Y.Z».
     // La versión efectiva se obtiene del nombre del ZIP publicado.
     const candidatas = lista.filter((x) => !x.draft && (x.tag_name === "ultima" || /^v\d+\.\d+\.\d+$/.test(x.tag_name)));
@@ -343,7 +343,7 @@ async function ultimaVersion(): Promise<Publicada | null> {
       return (bb[0] - aa[0]) || (bb[1] - aa[1]) || (bb[2] - aa[2]);
     });
     const encontrada = publicadas[0];
-    const v = encontrada ? { version: encontrada.version, notas: encontrada.rel.body, publicada: encontrada.rel.published_at,
+    const v = encontrada ? { version: encontrada.version, notas: encontrada.rel.body, publicada: encontrada.asset.updated_at ?? encontrada.rel.published_at, // la etiqueta «ultima» se reutiliza: su fecha propia no cambia, la del archivo sí
       asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url } } : null;
     cacheVersion = { v, t: Date.now() };
     return v;
