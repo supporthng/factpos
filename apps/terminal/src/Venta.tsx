@@ -12,7 +12,7 @@ import { Ticket, type VentaRegistrada } from "./Ticket";
 import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
 import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
-import { guardarCache, leerCache, useConexion } from "./contingencia";
+import { guardarCache, leerCache, useConexion, disponibleCupo } from "./contingencia";
 
 /** Tamaño de letra y tema de esta terminal (además del ajuste automático a la pantalla). */
 export function TamanoPantalla() {
@@ -194,7 +194,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const hayExistencia = (ls: Linea[], prod: ProductoCatalogo, extra: number) => {
     if (!prod.controlaStock || prod.existencia === undefined) return true;
     const pide = demanda(ls, prod, extra);
-    const hay = Number(prod.existencia);
+    const cupo = prod.tipo === "COMBO" ? null : disponibleCupo(prod.productoId); // sin servidor: solo su parte
+    const hay = cupo ?? Number(prod.existencia);
     if (pide <= hay) return true;
     if (prod.permiteSinExistencia === false) {
       avisar(hay > 0 ? `${prod.nombre}: solo quedan ${hay} en existencia` : `${prod.nombre} está agotado y no se vende sin existencia`);

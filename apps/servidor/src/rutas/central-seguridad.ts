@@ -16,6 +16,12 @@ export const FUNCIONES = [
     porDefecto: false,
   },
   {
+    clave: "cupos_contingencia",
+    titulo: "Cupos de existencia por caja sin servidor",
+    descripcion: "Mientras hay servidor, cada caja recibe su parte de la existencia de cada producto (10 unidades y 2 cajas abiertas: 5 y 5). Si se cae el servidor, cada caja vende solo su parte y no se vende de más. Los combos no entran en el reparto. Desactivado: sin servidor las cajas venden con la existencia que conocían, sin límite entre ellas.",
+    porDefecto: false,
+  },
+  {
     clave: "acceso_web",
     titulo: "Acceso web desde internet",
     descripcion: "Permite entrar a la administración desde internet con el enlace de «Conexión web». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",

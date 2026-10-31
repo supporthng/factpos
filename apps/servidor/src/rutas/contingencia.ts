@@ -6,6 +6,7 @@ import { contextoCaja } from "../contexto.js";
 import { registrarVenta } from "./ventas.js";
 import { avisarPendientes, registrarIncidente } from "../incidentes.js";
 import { config } from "../config.js";
+import { funcionHabilitada } from "./central-seguridad.js";
 import type { SesionCaja } from "../sesion.js";
 
 /**
@@ -70,6 +71,27 @@ export async function rutasContingencia(app: FastifyInstance) {
       }
       return { numeros: lista.map((x) => ({ encf: x.encf, rangoId: x.rango_id })), turno: (await c.query("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO'", [cajaId])).rows[0]?.id ?? null };
     });
+  });
+
+  /**
+   * Cupo de existencia de esta caja por producto (unidades base), para vender sin servidor sin pasarse:
+   * la existencia del almacén se reparte entre las cajas con turno abierto (esta incluida).
+   * Solo si el administrador lo activó en Configuración › Seguridad.
+   */
+  app.get("/cajas/:cajaId/contingencia/cupos", async (req) => {
+    const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
+    const ctx = await contextoCaja(cajaId);
+    if (!(await funcionHabilitada(ctx.empresaId, "cupos_contingencia"))) return { habilitado: false, cajas: 0, cupos: {} };
+    const otras = (await pool.query<{ n: number }>(
+      `SELECT COUNT(DISTINCT t.caja_id)::int AS n FROM turnos t JOIN cajas c ON c.id = t.caja_id
+        WHERE t.estado = 'ABIERTO' AND c.activo AND c.almacen_id = $1 AND t.caja_id <> $2`, [ctx.almacenId, cajaId])).rows[0].n;
+    const cajas = otras + 1;
+    const r = await pool.query<{ id: string; cantidad: string }>(
+      `SELECT p.id, ex.cantidad::text AS cantidad FROM productos p JOIN existencias ex ON ex.producto_id = p.id AND ex.almacen_id = $1
+        WHERE p.empresa_id = $2 AND p.activo AND p.controla_stock AND p.tipo <> 'COMBO' AND ex.cantidad > 0`, [ctx.almacenId, ctx.empresaId]);
+    const cupos: Record<string, number> = {};
+    for (const x of r.rows) cupos[x.id] = Math.floor((Number(x.cantidad) / cajas) * 1000) / 1000; // lo que sobra del reparto no se asigna
+    return { habilitado: true, cajas, en: new Date().toISOString(), cupos };
   });
 
   /** Ventas que la caja hizo sin servidor. Idempotente: reenviar la misma venta no la duplica. */
