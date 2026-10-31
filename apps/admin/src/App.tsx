@@ -1,4 +1,5 @@
 import { Seguridad } from "./paginas/Seguridad";
+import { Pedidos } from "./paginas/Pedidos";
 import { DosPasos } from "./paginas/DosPasos";
 import { ConfigMovil } from "./paginas/ConfigMovil";
 import { ConexionWeb } from "./paginas/ConexionWeb";
@@ -46,6 +47,7 @@ const SECCIONES = [
   { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, i: "kardex", p: ["admin.inventario"] },
   { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, i: "precios", p: ["admin.precios"] },
   { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
+  { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Comercial", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, i: "delivery", p: ["admin.config"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
@@ -93,6 +95,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: No
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
+  pedidos: "Pedidos al por mayor: se envían a una caja, se alistan y se facturan",
   resumen: "Ventas del día, alertas y existencias por reponer",
   productos: "Ficha, códigos de barra, precios y combos",
   conexionweb: "Enlace de acceso desde internet y su activación",

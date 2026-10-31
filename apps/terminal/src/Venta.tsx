@@ -43,6 +43,7 @@ import { TurnoCaja } from "./Turno";
 import { Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
+import { PanelPedidos, type PedidoDetalle } from "./Pedidos";
 
 export interface Cliente {
   id: string; nombre: string; tipoDocumento: string; documento: string | null; telefono: string | null;
@@ -57,7 +58,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "pausadas"
-  | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes";
+  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -71,6 +72,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [sel, setSel] = useState(-1);
   const [cliente, setCliente] = useState<Cliente | null>(null);
+  /** Pedido de cliente cargado en la venta: al cobrar, queda facturado */
+  const [pedidoActivo, setPedidoActivo] = useState<{ id: string; numero: string } | null>(null);
   const [cupon, setCupon] = useState<Cupon | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [aviso, setAviso] = useState<{ texto: string; tipo: "error" | "ok" } | null>(null);
@@ -312,6 +315,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setSel((s) => Math.min(s, lineas.length - 2));
   };
   const nuevaVenta = () => {
+    setPedidoActivo(null);
     setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); setNotas(""); setMetodo("EFECTIVO"); avisadas.current = new Set();
   };
 
@@ -335,6 +339,23 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     }]);
     nuevaVenta();
     avisar("Venta en pausa. F5 para retomarla.", "ok");
+  };
+  /** Pasa un pedido completo (alistado) a la venta: los precios son los de hoy y el nivel de su cliente. */
+  const facturarPedido = async (p: PedidoDetalle) => {
+    if (lineas.length) return avisar("Termine o ponga en pausa la venta actual antes de facturar el pedido.");
+    const nuevas: Linea[] = [];
+    const faltan: string[] = [];
+    for (const it of p.items) {
+      const prod = idx?.porId.get(it.presentacionId);
+      if (!prod) faltan.push(it.producto); else nuevas.push({ prod, cantidad: String(Number(it.cantidad)) });
+    }
+    if (faltan.length) return avisar(`No están en el catálogo de esta caja: ${faltan.join(", ")}. Actualice el catálogo.`);
+    let c: Cliente | null = null;
+    if (p.clienteId) { try { c = await api<Cliente>(ajustes.servidor, `/cajas/${ajustes.cajaId}/clientes/${p.clienteId}`); } catch { /* se factura sin cliente registrado */ } }
+    setLineas(nuevas); setSel(nuevas.length - 1); setCliente(c); setNotas(`Pedido ${p.numero} · ${p.clienteNombre}`);
+    setPedidoActivo({ id: p.id, numero: p.numero });
+    setModal(null);
+    avisar(`Pedido ${p.numero} cargado. Revise y cobre para cerrarlo.`, "ok");
   };
   const retomar = (p: VentaPausada<Linea>) => {
     if (lineas.length) pausar(); // la actual pasa a pausa
@@ -373,6 +394,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         q: () => lineas.length && setModal("cotizacion"),
         e: () => catalogo && setModal("existencias"),
         g: () => setModal("gaveta"),
+        o: () => setModal("pedidos"),
       };
       if (e.altKey && conAlt[e.key.toLowerCase()]) { e.preventDefault(); conAlt[e.key.toLowerCase()](); return; }
       const mapa: Record<string, () => void> = {
@@ -586,6 +608,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <BotonFuncion tono="azul" icono="lupa" texto="Buscar producto" tecla="F2" onClick={() => { setBusqueda(""); setModal("buscar"); }} />
         <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
         <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturas")} />
+        <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
         <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
@@ -629,9 +652,17 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             turnoId: turno.id,
             hayDescuentos: lineas.some((l) => l.descuentoManual),
           }}
-          onVendido={(r) => { setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta(); setModal("ticket"); cargarCatalogo().catch(() => {}); }}
+          onVendido={(r) => {
+            const ped = pedidoActivo;
+            if (ped) { // el pedido queda facturado; si falla el aviso se reintenta unas veces
+              const avisarFacturado = (n: number) => api(ajustes.servidor, `/cajas/${ajustes.cajaId}/pedidos/${ped.id}/facturado`, { cuerpo: { ventaId: r.id } })
+                .catch(() => { if (n > 0) setTimeout(() => avisarFacturado(n - 1), 5000); });
+              avisarFacturado(5);
+            }
+            setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta(); setModal("ticket"); cargarCatalogo().catch(() => {}); }}
         />
       )}
+      {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}
       {modal === "delivery" && (
         <PanelDelivery
           ajustes={ajustes} usuario={usuario} cliente={cliente} cupon={cupon}
