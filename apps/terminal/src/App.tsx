@@ -116,6 +116,16 @@ async function probar(url: string, ms = 1200): Promise<Encontrado | null> {
 async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e: Encontrado) => void) {
   const vistos = new Set<string>();
   const anotar = (e: Encontrado | null) => { if (e && !vistos.has(e.url)) { vistos.add(e.url); alEncontrar(e); } };
+  // Aplicación de escritorio: ella indica el servidor con el que se instaló esta caja
+  try {
+    const r = await fetch("/escritorio.json", { signal: AbortSignal.timeout(1500), cache: "no-store" });
+    const d = r.ok ? await r.json() : null;
+    if (d?.servidor) {
+      avance("Conectando con el servidor…");
+      const e = await probar(String(d.servidor).replace(/\/$/, ""), 3000);
+      if (e) return anotar(e);
+    }
+  } catch { /* no es la aplicación de escritorio */ }
   if (location.pathname.startsWith("/terminal")) {
     avance("Conectando con el servidor…");
     const e = await probar(location.origin, 3000);
