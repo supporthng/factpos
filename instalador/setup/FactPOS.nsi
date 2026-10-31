@@ -502,6 +502,11 @@ Section "FactPOS" SecPrincipal
   System::Call 'Kernel32::SetEnvironmentVariable(t "FACTPOS_INSTALADOR", t "1")'
   StrCpy $Fallo "0"
 
+  ; Las ventanas de FactPOS abiertas bloquean sus archivos y dejan la copia esperando: se cierran antes
+  DetailPrint "Cerrando las ventanas de FactPOS que estén abiertas…"
+  nsExec::ExecToLog '"$WINDIR\System32\taskkill.exe" /F /T /IM FactPOS-Escritorio.exe'
+  Pop $0
+
   ${If} $Tipo == "master"
   ${OrIf} $Tipo == "servidor"
     CreateDirectory "$INSTDIR\logs"

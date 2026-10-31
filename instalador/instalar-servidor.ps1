@@ -387,12 +387,30 @@ if (Test-Path (Join-Path $Carpeta 'apps\servidor\dist\index.js')) {
     throw "El puerto $Puerto sigue ocupado. Cierre el servidor anterior antes de actualizar."
   }
 }
+# Las ventanas de FactPOS (Caja / Administración) y el túnel de esta carpeta bloquean sus archivos:
+# si siguen abiertos, la copia se queda esperando para siempre. Se cierran antes de copiar.
+if (Test-Path $Carpeta) {
+  $prefijo = ($Carpeta.TrimEnd('\') + '\').ToLower()
+  $abiertos = @(Get-CimInstance Win32_Process -Filter "Name='FactPOS-Escritorio.exe' OR Name='cloudflared.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLower().StartsWith($prefijo) })
+  if ($abiertos.Count) {
+    Write-Host "   Cerrando FactPOS Caja/Administración abiertas para poder actualizar sus archivos..."
+    foreach ($proc in $abiertos) { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+  }
+}
 
 # ------------------------------------------------------------- Archivos
 Paso "Copiando FactPOS a $Carpeta"
 New-Item -ItemType Directory -Force -Path $Carpeta, "$Carpeta\logs" | Out-Null
-robocopy $origen $Carpeta /E /NFL /NDL /NJH /NJS /NP /XF .env postgres-superusuario.txt /XD logs postgresql respaldos | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "No se pudieron copiar los archivos (robocopy $LASTEXITCODE)" }
+# /R:2 /W:2: un archivo bloqueado falla en segundos con un mensaje claro (por defecto robocopy
+# reintenta un millón de veces cada 30 s y la instalación parece colgada). /MT acelera la copia.
+$salidaCopia = robocopy $origen $Carpeta /E /MT:16 /R:2 /W:2 /NFL /NDL /NJH /NJS /NP /XF .env postgres-superusuario.txt /XD logs postgresql respaldos 2>&1
+$codigoCopia = $LASTEXITCODE
+if ($codigoCopia -ge 8) {
+  $errores = @($salidaCopia | Where-Object { "$_" -match 'ERROR|Acceso denegado|Access is denied|being used|usa otro proceso' } | Select-Object -First 5 | ForEach-Object { "$_".Trim() })
+  throw ("No se pudieron copiar los archivos (robocopy $codigoCopia). Cierre FactPOS (Caja/Administración) y los antivirus que bloqueen " + $Carpeta + " y vuelva a ejecutar el instalador. " + ($errores -join ' | '))
+}
 Listo "Archivos copiados"
 
 # ---------------------------------------------------------- Base de datos
