@@ -15,12 +15,27 @@ export const FUNCIONES = [
     descripcion: "Muestra «Existencia actual» al crear un producto y el botón «Agregar existencia» en su ficha, y permite cargarla al importar desde Excel. Cada carga queda en el kardex como un ajuste de entrada con el nombre de quien la hizo. Desactivada: la existencia solo cambia con compras, traspasos, ajustes y conteos.",
     porDefecto: false,
   },
+  {
+    clave: "acceso_web",
+    titulo: "Acceso web desde internet",
+    descripcion: "Permite entrar a la administración desde internet con el enlace de «Conexión web». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",
+    porDefecto: true,
+  },
 ] as const;
 export type ClaveFuncion = (typeof FUNCIONES)[number]["clave"];
 
 export async function funcionHabilitada(empresaId: string, clave: ClaveFuncion) {
   const r = await pool.query<{ habilitada: boolean }>("SELECT habilitada FROM seguridad_funciones WHERE empresa_id = $1 AND clave = $2", [empresaId, clave]);
   return r.rows[0]?.habilitada ?? FUNCIONES.find((f) => f.clave === clave)!.porDefecto;
+}
+/** ¿Se permite entrar desde internet? (consulta corta con caché de 5 s; la usa el filtro del túnel) */
+let cacheWeb: { v: boolean; t: number } | null = null;
+export async function accesoWebPermitido() {
+  if (cacheWeb && Date.now() - cacheWeb.t < 5_000) return cacheWeb.v;
+  const r = await pool.query<{ habilitada: boolean }>("SELECT habilitada FROM seguridad_funciones WHERE clave = 'acceso_web' ORDER BY actualizado_en DESC LIMIT 1").catch(() => ({ rows: [] as { habilitada: boolean }[] }));
+  const v = r.rows[0]?.habilitada ?? true;
+  cacheWeb = { v, t: Date.now() };
+  return v;
 }
 export async function exigirFuncion(empresaId: string, clave: ClaveFuncion) {
   if (!(await funcionHabilitada(empresaId, clave))) {
@@ -51,6 +66,7 @@ export async function rutasCentralSeguridad(app: FastifyInstance) {
       `INSERT INTO seguridad_funciones (empresa_id, clave, habilitada, usuario_id) VALUES ($1,$2,$3,$4)
        ON CONFLICT (empresa_id, clave) DO UPDATE SET habilitada = $3, usuario_id = $4, actualizado_en = now()`,
       [empresaDe(req), clave, b.habilitada, z.string().uuid().safeParse(req.headers["x-usuario-id"]).data ?? null]);
+    cacheWeb = null;
     return { ok: true };
   });
 }

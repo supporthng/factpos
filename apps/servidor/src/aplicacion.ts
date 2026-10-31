@@ -23,7 +23,7 @@ import { rutasCierre } from "./rutas/cierre.js";
 import { rutasPadronCaja, rutasPadronCentral } from "./rutas/padron.js";
 import { rutasCentral } from "./rutas/central.js";
 import { rutasCentralInventario } from "./rutas/central-inventario.js";
-import { rutasCentralSeguridad } from "./rutas/central-seguridad.js";
+import { rutasCentralSeguridad, accesoWebPermitido } from "./rutas/central-seguridad.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
 import { rutasCentralProductos } from "./rutas/central-productos.js";
@@ -75,6 +75,7 @@ export async function crearApp() {
       if (!vieneDelTunel(req.headers)) return;
       const ruta = req.url.split("?")[0];
       if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
+      if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Configuración › Conexión web, desde la red local." });
     });
   }
 
