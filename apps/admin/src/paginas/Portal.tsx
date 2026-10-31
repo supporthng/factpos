@@ -22,8 +22,9 @@ interface Plan {
 interface Instalacion {
   id: string; estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA"; empresa: string | null; rnc: string | null; equipo: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; apiUrl: string | null; solicitadaEn: string; ultimoContacto: string; nota: string | null; clienteId: string | null; cliente: string | null; slug: string | null;
+  correo: string | null; telefono: string | null; contacto: string | null; planId: string | null; plan: string | null; sucursalesSolicitadas: number | null; mensaje: string | null;
 }
-interface Reglas { pruebaActualiza: boolean; contactoNombre: string | null; contactoTelefono: string | null; contactoWhatsapp: string | null; contactoCorreo: string | null }
+interface Reglas { pruebaActualiza: boolean; plazoHoras: number; contactoNombre: string | null; contactoTelefono: string | null; contactoWhatsapp: string | null; contactoCorreo: string | null }
 const rd = (n: number) => `RD$ ${n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Fecha de vencimiento tras sumar meses (desde hoy o desde el vencimiento si aún no pasa). */
 const masMeses = (meses: number, desde?: string | null) => {
@@ -57,7 +58,7 @@ export function Portal() {
       <Encabezado titulo="Clientes y licencias"
         descripcion="Cada cliente instala su propio FactPOS con su propia nube. Aquí se manejan sus planes, licencias y cobros; sus datos nunca pasan por el portal." />
       <div className="pestanas">
-        {([["clientes", "Clientes"], ["instalaciones", "Instalaciones"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
+        {([["clientes", "Clientes"], ["instalaciones", "Solicitudes"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
           <button key={v} className={vista === v ? "activa" : ""} onClick={() => { setVista(v); pendientes.recargar(); }}>
             {t}{v === "instalaciones" && nPend > 0 && <span className="insignia">{nPend}</span>}
           </button>
@@ -65,7 +66,7 @@ export function Portal() {
       </div>
       {nPend > 0 && vista !== "instalaciones" && (
         <div className="aviso-licencia">
-          <span><b>{nPend}</b> instalación(es) esperan activación: {pendientes.datos!.slice(0, 3).map((i) => i.empresa || i.equipo || "Sin nombre").join(", ")}{nPend > 3 ? "…" : ""}</span>
+          <span><b>{nPend}</b> solicitud(es) de activación: {pendientes.datos!.slice(0, 3).map((i) => i.empresa || i.equipo || "Sin nombre").join(", ")}{nPend > 3 ? "…" : ""}</span>
           <button className="enlace" onClick={() => setVista("instalaciones")}>Revisar solicitudes</button>
         </div>
       )}
@@ -451,7 +452,11 @@ function ReglasPortal() {
         </p>
       </div>
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Contacto que ven sus clientes</h3>
+        <h3 style={{ marginTop: 0 }}>Solicitudes de activación</h3>
+        <label className="campo" style={{ maxWidth: 360 }}><span>Plazo con que se compromete a contactar al cliente (horas)</span>
+          <input type="number" min={1} max={720} value={v.plazoHoras} onChange={(e) => set({ plazoHoras: Math.max(1, Number(e.target.value) || 24) })} /></label>
+        <p className="suave pequeno">El cliente lo lee al enviar su solicitud: «en un plazo de {v.plazoHoras} horas se estarán comunicando con usted para confirmar el pago y activar su licencia».</p>
+        <h3>Contacto que ven sus clientes</h3>
         <p className="suave pequeno">Aparece en la pantalla Licencia de cada cliente, para que sepan a quién llamar para renovar o ampliar.</p>
         <div className="dos-col">
           <label className="campo"><span>Nombre o empresa</span><input value={v.contactoNombre ?? ""} onChange={(e) => set({ contactoNombre: e.target.value })} placeholder="Soporte FactPOS" /></label>
@@ -485,11 +490,12 @@ function Instalaciones({ planes, onCambio }: { planes: Plan[]; onCambio: () => v
   return (
     <>
       <p className="suave pequeno" style={{ marginTop: 0, maxWidth: 720 }}>
-        Cada FactPOS que se instala sin licencia le avisa al portal y aparece aquí como solicitud. Al aprobarla se asigna a un cliente
-        y la instalación recibe su licencia sola (en minutos), sin teclear ninguna clave.
+        El cliente instala FactPOS, usa sus 15 días de prueba y, si le interesa, pulsa «Solicitar activación» en su pantalla Licencia: elige plan y manda sus datos.
+        Llega aquí. Usted lo contacta, confirma el pago y pulsa «Aprobar»: la instalación recibe su licencia sola, sin teclear ninguna clave.
+        Las instalaciones que no piden nada no aparecen aquí.
       </p>
       <div className="chips-filtro">
-        {([["PENDIENTE", "Esperan activación"], ["ASIGNADA", "Activadas"], ["", "Todas"]] as const).map(([f, t]) => (
+        {([["PENDIENTE", "Por atender"], ["ASIGNADA", "Activadas"], ["", "Todas"]] as const).map(([f, t]) => (
           <button key={f} className={filtro === f ? "activo" : ""} onClick={() => setFiltro(f)}>{t}</button>
         ))}
         <span className="flex" /><button className="boton" onClick={() => recargar()}>Actualizar</button>
@@ -498,17 +504,22 @@ function Instalaciones({ planes, onCambio }: { planes: Plan[]; onCambio: () => v
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <div className="tabla-contenedor">
         <table className="tabla">
-          <thead><tr><th>Instalación</th><th>Versión</th><th className="der">Sucursales</th><th>Recibida</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Solicitud</th><th>Contacto</th><th>Plan pedido</th><th>Recibida</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             {(datos ?? []).map((i) => (
               <Fragment key={i.id}>
                 <tr>
                   <td><b>{i.empresa || "Empresa sin nombre"}</b>
                     <div className="suave pequeno">{[i.rnc && `RNC ${i.rnc}`, i.equipo && `Equipo ${i.equipo}`].filter(Boolean).join(" · ")}</div>
-                    {i.cliente && <div className="pequeno">Cliente: <a href={`/${i.slug}/`} target="_blank" rel="noreferrer">{i.cliente}</a></div>}</td>
-                  <td>{i.versionApp ? `v${i.versionApp}` : "—"}</td>
-                  <td className="der">{i.sucursalesEnUso ?? "—"}</td>
-                  <td>{hace(i.solicitadaEn)}<div className="suave pequeno">Último contacto {hace(i.ultimoContacto)}</div></td>
+                    {i.cliente && <div className="pequeno">Cliente: <a href={`/${i.slug}/`} target="_blank" rel="noreferrer">{i.cliente}</a></div>}
+                    <div className="suave pequeno">{i.versionApp ? `v${i.versionApp}` : ""}</div></td>
+                  <td>{i.contacto && <div>{i.contacto}</div>}
+                    {i.telefono && <div><a href={`tel:${i.telefono}`}>{i.telefono}</a></div>}
+                    {i.correo && <div className="pequeno"><a href={`mailto:${i.correo}`}>{i.correo}</a></div>}
+                    {!i.telefono && !i.correo && <span className="suave">—</span>}</td>
+                  <td>{i.plan ?? <span className="suave">Sin elegir</span>}{i.sucursalesSolicitadas ? <div className="suave pequeno">{i.sucursalesSolicitadas} sucursal(es)</div> : null}
+                    {i.mensaje && <div className="suave pequeno" title={i.mensaje}>“{i.mensaje.length > 60 ? i.mensaje.slice(0, 60) + "…" : i.mensaje}”</div>}</td>
+                  <td>{hace(i.solicitadaEn)}<div className="suave pequeno">Visto {hace(i.ultimoContacto)}</div></td>
                   <td><span className={`pastilla ${ESTADO_INST[i.estado].c}`}>{ESTADO_INST[i.estado].t}</span>{i.nota && <div className="suave pequeno">{i.nota}</div>}</td>
                   <td className="der">
                     {i.estado !== "ASIGNADA" && <button className="boton primario" onClick={() => setAbierta(abierta === i.id ? null : i.id)}>{abierta === i.id ? "Cerrar" : "Aprobar…"}</button>}
@@ -518,7 +529,7 @@ function Instalaciones({ planes, onCambio }: { planes: Plan[]; onCambio: () => v
                 {abierta === i.id && <tr><td colSpan={6} className="detalle-cliente"><Aprobar i={i} planes={planes} clientes={clientes.datos ?? []} onListo={hecho} /></td></tr>}
               </Fragment>
             ))}
-            {datos && !datos.length && <tr><td colSpan={6} className="suave">{filtro === "PENDIENTE" ? "No hay solicitudes pendientes. Cuando alguien instale FactPOS sin licencia, aparecerá aquí." : "Sin instalaciones."}</td></tr>}
+            {datos && !datos.length && <tr><td colSpan={6} className="suave">{filtro === "PENDIENTE" ? "No hay solicitudes por atender. Cuando un cliente en prueba pida su activación, aparecerá aquí." : "Sin instalaciones."}</td></tr>}
             {!datos && <tr><td colSpan={6} className="suave">Cargando…</td></tr>}
           </tbody>
         </table>
@@ -533,24 +544,25 @@ function Aprobar({ i, planes, clientes, onListo }: { i: Instalacion; planes: Pla
   const [modo, setModo] = useState<"existente" | "nuevo">(libres.length ? "existente" : "nuevo");
   const [clienteId, setClienteId] = useState(libres[0]?.id ?? "");
   const [c, setC] = useState({ nombre: i.empresa ?? "", slug: aSlug(i.empresa ?? ""), rnc: i.rnc ?? "" });
-  const [planId, setPlanId] = useState(activos[0]?.id ?? "");
-  const [l, setL] = useState({ sucursales: Math.max(1, activos[0]?.sucursalesIncluidas ?? i.sucursalesEnUso ?? 1), vence: masMeses(mesesDe(activos[0]?.periodo)) });
+  const pedido = activos.find((p) => p.id === i.planId) ?? activos[0];
+  const [planId, setPlanId] = useState(pedido?.id ?? "");
+  const [l, setL] = useState({ sucursales: Math.max(1, i.sucursalesSolicitadas ?? pedido?.sucursalesIncluidas ?? i.sucursalesEnUso ?? 1), vence: masMeses(mesesDe(pedido?.periodo)) });
   const [msg, setMsg] = useState("");
   const [trabajando, setTrabajando] = useState(false);
   const plan = activos.find((p) => p.id === planId);
   const elegirPlan = (id: string) => {
     setPlanId(id);
     const p = activos.find((x) => x.id === id);
-    if (p) setL({ sucursales: Math.max(p.sucursalesIncluidas, i.sucursalesEnUso ?? 1), vence: masMeses(mesesDe(p.periodo)) });
+    if (p) setL({ sucursales: Math.max(p.sucursalesIncluidas, i.sucursalesSolicitadas ?? 1), vence: masMeses(mesesDe(p.periodo)) });
   };
   const aprobar = async () => {
     setTrabajando(true); setMsg("");
     try {
       await api(`/central/portal/instalaciones/${i.id}/aprobar`, { cuerpo: {
-        ...(modo === "existente" ? { clienteId } : { cliente: { nombre: c.nombre.trim(), slug: c.slug, rnc: c.rnc || null, apiUrl: i.apiUrl || null } }),
+        ...(modo === "existente" ? { clienteId } : { cliente: { nombre: c.nombre.trim(), slug: c.slug, rnc: c.rnc || null, apiUrl: i.apiUrl || null, correo: i.correo, telefono: i.telefono, contacto: i.contacto } }),
         licencia: { sucursales: l.sucursales, vence: l.vence, planId: planId || null, modulos: plan?.modulos ?? [] },
       } });
-      onListo("Instalación activada. Recibirá su licencia en pocos minutos (o al pulsar «Comprobar ahora» en su pantalla Licencia).");
+      onListo("Licencia activada. El cliente la recibe sola en unos minutos (o al pulsar «Comprobar ahora» en su pantalla Licencia). Confirme el pago con él si aún no lo hizo.");
     } catch (e) { setMsg((e as Error).message); }
     finally { setTrabajando(false); }
   };

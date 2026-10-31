@@ -12,7 +12,9 @@ interface EstadoLicencia {
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
   instalacionId: string; activada: boolean; local?: boolean;
   solicitud?: { estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA" | "SUSPENDIDA"; revisada: string } | null;
-  plan?: string | null; politica?: { pruebaActualiza: boolean; contacto: { nombre: string | null; telefono: string | null; whatsapp: string | null; correo: string | null } } | null;
+  solicitudEnviada?: { enviadaEn: string; datos: { planId?: string | null; sucursales?: number; empresa?: string } | null } | null;
+  empresa?: { nombre: string; rnc: string } | null;
+  plan?: string | null; politica?: { pruebaActualiza: boolean; plazoHoras?: number; contacto: { nombre: string | null; telefono: string | null; whatsapp: string | null; correo: string | null } } | null;
   tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null } | null; web?: string | null; ultimoContacto: string | null; ultimoError: string | null; portal: string; sucursalesEnUso: number;
 }
 const NOMBRES: Record<EstadoLicencia["estado"], string> = {
@@ -27,6 +29,7 @@ export function Licencia() {
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const [trabajando, setTrabajando] = useState(false);
   const admin = puede("*");
+  const [solicitando, setSolicitando] = useState(false);
 
   const accion = async (ruta: string, cuerpo: unknown, ok: string) => {
     setTrabajando(true); setMsg(null);
@@ -43,6 +46,7 @@ export function Licencia() {
   const d = datos;
   return (
     <>
+      {solicitando && <SolicitarActivacion d={d} onCerrar={() => setSolicitando(false)} onEnviada={async () => { setSolicitando(false); await recargar(); window.dispatchEvent(new Event("factpos:licencia")); }} />}
       <Encabezado titulo="Licencia de FactPOS"
         descripcion="La licencia se cobra por sucursal. Se renueva sola con su proveedor; aquí ve su estado y la activa con la clave que le dieron." />
       {d.mensaje && <Aviso texto={d.mensaje} tipo={d.permiteVender ? "info" : "error"} />}
@@ -66,32 +70,50 @@ export function Licencia() {
           )}
         </div>
         <div className="panel lic-contacto">
-          <h3 style={{ marginTop: 0 }}>{d.activada ? "Renovar o ampliar" : "Comprar o activar"}</h3>
-          <p className="suave pequeno">
-            {d.activada
-              ? "La renovación la registra su proveedor y llega sola a su sistema (hasta 12 horas) o al pulsar «Actualizar ahora»."
-              : "Pida su clave de activación a su proveedor y escríbala abajo. Hasta entonces el sistema funciona en prueba."}
-          </p>
-          <Contacto c={d.politica?.contacto ?? null} />
+          {d.activada ? (
+            <>
+              <h3 style={{ marginTop: 0 }}>Renovar o ampliar</h3>
+              <p className="suave pequeno">La renovación la registra su proveedor y llega sola a su sistema (hasta 12 horas) o al pulsar «Actualizar ahora».</p>
+              <Contacto c={d.politica?.contacto ?? null} />
+            </>
+          ) : d.solicitudEnviada ? (
+            <>
+              <h3 style={{ marginTop: 0 }}>Solicitud enviada</h3>
+              <p className="suave pequeno">Su solicitud llegó a su proveedor el {new Date(d.solicitudEnviada.enviadaEn).toLocaleString("es-DO")}.</p>
+              <Contacto c={d.politica?.contacto ?? null} />
+            </>
+          ) : (
+            <>
+              <h3 style={{ marginTop: 0 }}>¿Le gusta FactPOS?</h3>
+              <p className="suave pequeno">Solicite su licencia: elija el plan, déjenos sus datos y nos comunicamos con usted para confirmar el pago y activarla. No pierde nada de lo que ya cargó.</p>
+              <button className="boton primario" disabled={!admin} onClick={() => setSolicitando(true)}>Solicitar activación</button>
+              {!admin && <p className="suave pequeno">Solo un administrador puede solicitarla.</p>}
+            </>
+          )}
         </div>
       </div>
 
-      {!d.activada && !d.local && (
+      {!d.activada && !d.local && d.solicitudEnviada && (
         <div className="panel solicitud">
           <div className="encabezado-sub">
-            <h3>Solicitud de activación</h3>
+            <h3>{d.solicitud?.estado === "RECHAZADA" ? "Solicitud no aprobada" : "Su licencia está en proceso de activación"}</h3>
             <button className="boton" disabled={trabajando} onClick={async () => {
               setTrabajando(true); setMsg(null);
-              try { await api("/central/licencia/solicitar", { cuerpo: {} }); await recargar(); window.dispatchEvent(new Event("factpos:licencia")); }
+              try { await api("/central/licencia/comprobar", { cuerpo: {} }); await recargar(); window.dispatchEvent(new Event("factpos:licencia")); }
               catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
               finally { setTrabajando(false); }
             }}>Comprobar ahora</button>
           </div>
           {d.solicitud?.estado === "RECHAZADA"
-            ? <p className="texto-alerta" style={{ margin: 0 }}>Su proveedor no aprobó la solicitud. Comuníquese con él o actívela con una clave.</p>
-            : d.solicitud
-              ? <p style={{ margin: 0 }}>Este sistema ya le avisó a su proveedor. <b>En cuanto la apruebe, la licencia se activa sola</b>; no tiene que hacer nada. Última consulta: {new Date(d.solicitud.revisada).toLocaleTimeString("es-DO")}.</p>
-              : <p className="suave" style={{ margin: 0 }}>Aún no se ha enviado la solicitud (se envía sola al arrancar el sistema, si hay internet). Pulse «Comprobar ahora» o use una clave de activación.</p>}
+            ? <p className="texto-alerta" style={{ margin: 0 }}>Su proveedor no aprobó la solicitud. Comuníquese con él o, si ya tiene una clave, actívela abajo.</p>
+            : <p style={{ margin: 0 }}>En un plazo de <b>{d.politica?.plazoHoras ?? 24} horas</b> se estarán comunicando con usted para confirmar el pago y activar su licencia.
+                Mientras tanto puede seguir usando la versión de prueba; cuando la activen, este sistema la recibe solo y no tiene que hacer nada.</p>}
+          {d.solicitudEnviada.datos && (
+            <p className="suave pequeno" style={{ marginBottom: 0 }}>
+              Pidió: {d.solicitudEnviada.datos.sucursales ?? 1} sucursal(es){d.solicitudEnviada.datos.empresa ? ` para ${d.solicitudEnviada.datos.empresa}` : ""}.
+              {d.solicitud && <> Última consulta: {new Date(d.solicitud.revisada).toLocaleTimeString("es-DO")}.</>}
+            </p>
+          )}
         </div>
       )}
 
@@ -102,7 +124,7 @@ export function Licencia() {
         </p></div>
       ) : (
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>{d.activada ? "Cambiar o volver a activar la licencia" : "Activar la licencia"}</h3>
+        <h3 style={{ marginTop: 0 }}>{d.activada ? "Cambiar o volver a activar la licencia" : "¿Ya tiene una clave de activación?"}</h3>
         <p className="suave">Escriba la clave de activación que le entregó su proveedor (empieza con FPS-). Solo se usa una vez por instalación.</p>
         <div className="en-linea">
           <input className="mono" value={clave} onChange={(e) => setClave(e.target.value.toUpperCase())} placeholder="FPS-XXXX-XXXX-XXXX-XXXX" maxLength={24} disabled={!admin} />
@@ -145,6 +167,68 @@ export function Licencia() {
       )}
       <p className="suave pequeno">Instalación: <span className="mono">{d.instalacionId}</span> · Portal: {d.portal}</p>
     </>
+  );
+}
+
+interface PlanOferta { id: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL"; sucursalesIncluidas: number; permiteActualizaciones: boolean }
+
+/** Formulario «Solicitar activación»: plan, sucursales y datos de la empresa. Llega al portal del proveedor. */
+function SolicitarActivacion({ d, onCerrar, onEnviada }: { d: EstadoLicencia; onCerrar: () => void; onEnviada: () => void }) {
+  const planes = useDatos<PlanOferta[]>("/central/licencia/planes");
+  const [f, setF] = useState({ empresa: d.empresa?.nombre ?? "", rnc: d.empresa?.rnc ?? "", correo: "", telefono: "", contacto: "", mensaje: "", planId: "", sucursales: Math.max(1, d.sucursalesEnUso) });
+  const [msg, setMsg] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const lista = planes.datos ?? [];
+  const plan = lista.find((p) => p.id === f.planId);
+  useEffect(() => { if (!f.planId && lista[0]) setF((x) => ({ ...x, planId: lista[0].id, sucursales: Math.max(x.sucursales, lista[0].sucursalesIncluidas) })); }, [lista.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }));
+  const valido = f.empresa.trim().length >= 2 && /^\d{9}(\d{2})?$/.test(f.rnc) && /^\S+@\S+\.\S+$/.test(f.correo) && f.telefono.replace(/\D/g, "").length >= 7;
+  const enviar = async () => {
+    setEnviando(true); setMsg("");
+    try {
+      await api("/central/licencia/solicitar", { cuerpo: { empresa: f.empresa.trim(), rnc: f.rnc, correo: f.correo.trim(), telefono: f.telefono.trim(), contacto: f.contacto.trim() || null,
+        planId: f.planId || null, sucursales: f.sucursales, mensaje: f.mensaje.trim() || null } });
+      onEnviada();
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setEnviando(false); }
+  };
+  return (
+    <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && !enviando && onCerrar()}>
+      <div className="modal ancho" role="dialog" aria-modal="true" aria-label="Solicitar activación">
+        <div className="pr-cabecera">
+          <div><h2>Solicitar activación</h2><p className="suave">Elija su plan y déjenos sus datos. Su proveedor se comunicará con usted para confirmar el pago y activar la licencia.</p></div>
+          <button className="boton fantasma" onClick={onCerrar} aria-label="Cerrar">✕</button>
+        </div>
+        {lista.length > 0 && (
+          <div className="planes-elegir" role="radiogroup" aria-label="Tipo de licencia">
+            {lista.map((p) => (
+              <button key={p.id} type="button" role="radio" aria-checked={f.planId === p.id} className={f.planId === p.id ? "activo" : ""}
+                onClick={() => set({ planId: p.id, sucursales: Math.max(f.sucursales, p.sucursalesIncluidas) })}>
+                <b>{p.nombre}</b>
+                <small>{p.descripcion}</small>
+                <span>{p.precioSucursal > 0 ? `RD$ ${p.precioSucursal.toLocaleString("es-DO")} por sucursal / ${p.periodo === "MENSUAL" ? "mes" : "año"}` : "Precio a convenir"}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {planes.datos && !lista.length && <p className="suave pequeno">No se pudieron cargar los planes (revise el internet). Puede enviar la solicitud y su proveedor le propondrá uno.</p>}
+        <div className="dos-col">
+          <label className="campo"><span>Empresa</span><input value={f.empresa} onChange={(e) => set({ empresa: e.target.value })} /></label>
+          <label className="campo"><span>RNC</span><input value={f.rnc} inputMode="numeric" maxLength={11} onChange={(e) => set({ rnc: e.target.value.replace(/\D/g, "") })} /></label>
+          <label className="campo"><span>Correo</span><input type="email" value={f.correo} onChange={(e) => set({ correo: e.target.value })} placeholder="nombre@empresa.com" /></label>
+          <label className="campo"><span>Teléfono / WhatsApp</span><input value={f.telefono} inputMode="tel" onChange={(e) => set({ telefono: e.target.value })} placeholder="809-555-1234" /></label>
+          <label className="campo"><span>Persona de contacto <em className="suave">(opcional)</em></span><input value={f.contacto} onChange={(e) => set({ contacto: e.target.value })} /></label>
+          <label className="campo"><span>Sucursales (tiendas) que necesita</span><input type="number" min={1} max={999} value={f.sucursales} onChange={(e) => set({ sucursales: Math.max(1, Number(e.target.value) || 1) })} /></label>
+        </div>
+        <label className="campo"><span>Comentario <em className="suave">(opcional)</em></span><input value={f.mensaje} maxLength={500} onChange={(e) => set({ mensaje: e.target.value })} placeholder="Horario para llamarle, dudas, etc." /></label>
+        {plan && plan.precioSucursal > 0 && <p className="suave pequeno">Estimado: {f.sucursales} × RD$ {plan.precioSucursal.toLocaleString("es-DO")} = <b>RD$ {(f.sucursales * plan.precioSucursal).toLocaleString("es-DO")}</b> por {plan.periodo === "MENSUAL" ? "mes" : "año"} (ITBIS aparte, si aplica). El monto final lo confirma su proveedor.</p>}
+        <Aviso texto={msg} />
+        <div className="acciones-modal">
+          <button className="boton fantasma" onClick={onCerrar} disabled={enviando}>Cancelar</button>
+          <button className="boton primario" disabled={!valido || enviando} onClick={enviar}>{enviando ? "Enviando…" : "Enviar solicitud"}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

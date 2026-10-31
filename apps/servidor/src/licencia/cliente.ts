@@ -139,27 +139,29 @@ export async function renovarLicencia() {
 
 // ----------------------------------------------------------------- solicitud de activación
 /**
- * Una instalación sin licencia le avisa al portal que existe: queda como «solicitud de activación».
- * Cuando el proveedor la aprueba, la respuesta trae la licencia y se activa sola (sin teclear clave).
- * Solo viajan: id de la instalación, nombre y RNC de la empresa, nombre del equipo, versión y sucursales activas.
- * Se puede desactivar con FACTPOS_SIN_REGISTRO=1 (entonces solo se activa con clave).
+ * El cliente prueba FactPOS 15 días. Si le interesa, pulsa «Solicitar activación», elige el plan y manda sus datos
+ * (empresa, RNC, correo, teléfono). La solicitud llega al portal; el proveedor lo contacta (en el plazo que él defina),
+ * confirma el pago y la aprueba. Entonces la licencia llega sola a esta instalación.
+ * Hasta que el cliente pida la activación, esta instalación NO le dice nada al portal.
  */
 export type EstadoSolicitud = { estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA" | "SUSPENDIDA"; revisada: string } | null;
 let solicitud: EstadoSolicitud = null;
 let ultimaSolicitud = 0;
 export const estadoSolicitud = () => solicitud;
 
-export async function sincronizarSolicitud(forzar = false): Promise<EstadoSolicitud> {
-  if (process.env.FACTPOS_SIN_REGISTRO === "1") return null;
-  if (!forzar && Date.now() - ultimaSolicitud < 5 * 60_000) return solicitud;
-  ultimaSolicitud = Date.now();
-  const f = await filaLicencia();
-  if (f.token) return solicitud;
-  const emp = (await pool.query<{ nombre: string; rnc: string | null }>("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas ORDER BY actualizado_en LIMIT 1").catch(() => ({ rows: [] as { nombre: string; rnc: string | null }[] }))).rows[0];
-  const r = await llamarPortal<{ estado: NonNullable<EstadoSolicitud>["estado"]; secreto?: string; licencia?: string }>("/licencias/registrar", {
-    instalacionId: f.instalacion_id, secreto: f.secreto ?? undefined, version: versionApp(), sucursalesEnUso: await sucursalesEnUso(),
-    empresa: emp?.nombre ?? null, rnc: emp?.rnc ?? null, equipo: hostname().slice(0, 80), apiUrl: estadoTunel().url ?? undefined,
-  });
+export const DatosSolicitud = z.object({
+  empresa: z.string().trim().min(2, "Escriba el nombre de la empresa").max(120),
+  rnc: z.string().trim().regex(/^\d{9}(\d{2})?$/, "El RNC debe tener 9 u 11 dígitos"),
+  correo: z.string().trim().email("Correo inválido").max(120),
+  telefono: z.string().trim().min(7, "Teléfono inválido").max(30),
+  contacto: z.string().trim().max(120).nullable().optional(),
+  planId: z.string().uuid().nullable().optional(),
+  sucursales: z.number().int().min(1).max(999),
+  mensaje: z.string().trim().max(500).nullable().optional(),
+});
+
+/** Aplica lo que respondió el portal: si ya la aprobaron, guarda la licencia. */
+async function aplicarRespuesta(f: FilaLicencia, r: { estado: NonNullable<EstadoSolicitud>["estado"]; secreto?: string; licencia?: string }) {
   if (r.secreto) await pool.query("UPDATE licencia SET secreto = $1, portal_url = $2, actualizado_en = now() WHERE id = 1", [r.secreto, PORTAL_URL()]);
   if (r.estado === "ASIGNADA" && r.licencia) {
     const e = evaluarLicencia(r.licencia, { instalacion: f.instalacion_id });
@@ -171,14 +173,56 @@ export async function sincronizarSolicitud(forzar = false): Promise<EstadoSolici
     pedirTunelFijo(PORTAL_URL(), guardarEnEnv).catch(() => false);
   }
   solicitud = { estado: r.estado, revisada: new Date().toISOString() };
+}
+
+export async function enviarSolicitudActivacion(datos: z.infer<typeof DatosSolicitud>) {
+  const f = await filaLicencia();
+  if (f.token) throw new ErrorNegocio("Esta instalación ya tiene licencia", 409);
+  const r = await llamarPortal<{ estado: NonNullable<EstadoSolicitud>["estado"]; secreto?: string; licencia?: string }>("/licencias/solicitar", {
+    instalacionId: f.instalacion_id, secreto: f.secreto ?? undefined, version: versionApp(), sucursalesEnUso: await sucursalesEnUso(),
+    apiUrl: estadoTunel().url ?? undefined, solicitud: { ...datos, equipo: hostname().slice(0, 80) },
+  });
+  await pool.query("UPDATE licencia SET solicitud_enviada_en = now(), solicitud_datos = $1 WHERE id = 1", [JSON.stringify(datos)]);
+  await aplicarRespuesta(f, r);
   return solicitud;
+}
+
+/** Consulta si ya aprobaron la solicitud (solo si el cliente la envió). */
+export async function sincronizarSolicitud(forzar = false): Promise<EstadoSolicitud> {
+  if (!forzar && Date.now() - ultimaSolicitud < 5 * 60_000) return solicitud;
+  ultimaSolicitud = Date.now();
+  const f = await filaLicencia();
+  if (f.token || !f.secreto || !(await solicitudEnviada())) return solicitud;
+  const r = await llamarPortal<{ estado: NonNullable<EstadoSolicitud>["estado"]; secreto?: string; licencia?: string }>("/licencias/solicitar", {
+    instalacionId: f.instalacion_id, secreto: f.secreto, version: versionApp(), sucursalesEnUso: await sucursalesEnUso(),
+  });
+  await aplicarRespuesta(f, r);
+  return solicitud;
+}
+
+async function solicitudEnviada() {
+  const r = (await pool.query<{ solicitud_enviada_en: string | null; solicitud_datos: Record<string, unknown> | null }>(
+    "SELECT solicitud_enviada_en, solicitud_datos FROM licencia WHERE id = 1").catch(() => ({ rows: [] as { solicitud_enviada_en: string | null; solicitud_datos: Record<string, unknown> | null }[] }))).rows[0];
+  return r?.solicitud_enviada_en ? { enviadaEn: r.solicitud_enviada_en, datos: r.solicitud_datos } : null;
+}
+
+/** Planes que ofrece el proveedor (para el formulario). Sin internet, lista vacía. */
+let cachePlanes: { p: unknown[]; t: number } | null = null;
+export async function planesPortal(): Promise<unknown[]> {
+  if (cachePlanes && Date.now() - cachePlanes.t < 30 * 60_000) return cachePlanes.p;
+  try {
+    const r = await fetch(`${PORTAL_URL()}/licencias/planes`, { signal: AbortSignal.timeout(8_000) });
+    const p = r.ok ? ((await r.json()) as unknown[]) : [];
+    cachePlanes = { p, t: Date.now() };
+    return p;
+  } catch { return cachePlanes?.p ?? []; }
 }
 
 /** Lo llama la vigilancia (cron): renueva si pasaron más de 12 h desde el último contacto. */
 export async function renovarSiToca(log?: (m: string) => void) {
   if (config.modo !== "central" && !(config.modo === "sucursal" && !syncActiva())) return;
   const f = await filaLicencia();
-  if (!f.token) { await sincronizarSolicitud().catch(() => {}); return; } // sin licencia: solicitud de activación
+  if (!f.token) { await sincronizarSolicitud().catch(() => {}); return; } // sin licencia: consulta si aprobaron su solicitud
   if (!f.secreto) return;
   if (f.ultimo_contacto && Date.now() - new Date(f.ultimo_contacto).getTime() < RENOVAR_CADA_MS) return;
   await renovarLicencia().then(() => log?.("Licencia: renovada con el portal")).catch((e) => log?.(`Licencia: no se pudo renovar (${(e as Error).message})`));
@@ -244,7 +288,8 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     return {
       ...publico(e),
       instalacionId: f.instalacion_id, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
-      portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(), solicitud: estadoSolicitud(),
+      portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(), solicitud: estadoSolicitud(), solicitudEnviada: await solicitudEnviada(),
+      empresa: (await pool.query("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas ORDER BY actualizado_en LIMIT 1").catch(() => ({ rows: [] }))).rows[0] ?? null,
       // Servidor master: dirección pública y acceso web por el portal
       tunel: tunelActivo() ? estadoTunel() : null,
       web: e.datos ? `${PORTAL_URL()}/${e.datos.cliente.slug}/` : null,
@@ -258,8 +303,15 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
   });
   app.post("/central/licencia/renovar", async () => publico(await renovarLicencia()));
   /** «Comprobar ahora»: consulta al portal si ya aprobaron la solicitud de activación. */
-  app.post("/central/licencia/solicitar", async () => {
+  app.post("/central/licencia/comprobar", async () => {
     const sol = await sincronizarSolicitud(true).catch((e) => { throw e instanceof ErrorNegocio ? e : new ErrorNegocio((e as Error).message, 502); });
     return { solicitud: sol, ...publico(await estadoLicencia()) };
   });
+  /** «Solicitar activación»: el cliente en prueba pide su licencia con sus datos y el plan que quiere. */
+  app.post("/central/licencia/solicitar", async (req) => {
+    const datos = DatosSolicitud.parse(req.body);
+    const sol = await enviarSolicitudActivacion(datos);
+    return { solicitud: sol, ...publico(await estadoLicencia()) };
+  });
+  app.get("/central/licencia/planes", async () => planesPortal());
 }

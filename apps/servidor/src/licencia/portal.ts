@@ -136,36 +136,61 @@ export async function rutasPortal(app: FastifyInstance) {
     return { licencia: emitir(l, b.instalacionId) };
   });
 
+  /** Planes que se pueden pedir (los ve el cliente en su formulario «Solicitar activación»). */
+  app.get("/licencias/planes", async () => (await pool.query(
+    `SELECT id, nombre, descripcion, precio_sucursal::float AS "precioSucursal", periodo, sucursales_incluidas AS "sucursalesIncluidas", permite_actualizaciones AS "permiteActualizaciones"
+       FROM portal_planes WHERE activo ORDER BY orden, nombre`)).rows);
+
   /**
-   * Una instalación SIN licencia avisa que existe y queda como solicitud de activación.
-   * Se vuelve a llamar cada pocos minutos: cuando el proveedor la aprueba, la respuesta trae la licencia.
-   * La primera vez entrega un secreto que solo esa instalación conoce.
+   * Solicitud de activación: el cliente (en su prueba) pide su licencia con sus datos y el plan que quiere.
+   * Llega al portal como solicitud PENDIENTE; el proveedor lo contacta, confirma el pago y la aprueba.
+   * Con la solicitud ya enviada, el mismo endpoint (sin datos) sirve para consultar si ya la aprobaron:
+   * entonces la respuesta trae la licencia. La primera vez entrega un secreto que solo esa instalación conoce.
    */
-  app.post("/licencias/registrar", async (req) => {
+  app.post("/licencias/solicitar", async (req) => {
     const b = contacto.extend({
       secreto: z.string().min(20).max(80).optional(),
-      empresa: z.string().trim().max(120).nullable().optional(), rnc: z.string().trim().max(11).nullable().optional(), equipo: z.string().trim().max(80).nullable().optional(),
+      solicitud: z.object({
+        empresa: z.string().trim().min(2).max(120),
+        rnc: z.string().trim().regex(/^\d{9}(\d{2})?$/, "RNC de 9 u 11 dígitos"),
+        correo: z.string().trim().email("Correo inválido").max(120),
+        telefono: z.string().trim().min(7, "Teléfono inválido").max(30),
+        contacto: z.string().trim().max(120).nullable().optional(),
+        planId: uuid.nullable().optional(),
+        sucursales: z.number().int().min(1).max(999),
+        mensaje: z.string().trim().max(500).nullable().optional(),
+        equipo: z.string().trim().max(80).nullable().optional(),
+      }).optional(),
     }).parse(req.body);
     const ex = (await pool.query<{ estado: string; secreto_hash: string; licencia_id: string | null }>(
       "SELECT estado, secreto_hash, licencia_id FROM portal_instalaciones WHERE id = $1", [b.instalacionId])).rows[0];
+    const sol = b.solicitud;
+    const campos = (x: NonNullable<typeof sol>) => [x.empresa, x.rnc, x.equipo ?? null, x.correo, x.telefono, x.contacto ?? null, x.planId ?? null, x.sucursales, x.mensaje ?? null];
+
     if (!ex) {
+      if (!sol) throw new ErrorNegocio("Primero envíe la solicitud de activación con sus datos", 404);
       limitarAltas(req.ip ?? "?");
       const secreto = randomBytes(24).toString("base64url");
       await pool.query(
-        `INSERT INTO portal_instalaciones (id, secreto_hash, empresa, rnc, equipo, version_app, sucursales_en_uso, api_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [b.instalacionId, huella(secreto), b.empresa || null, b.rnc || null, b.equipo || null, b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null]);
-      await evento(pool, { tipo: "SOLICITUD", detalle: { instalacion: b.instalacionId, empresa: b.empresa, equipo: b.equipo } });
+        `INSERT INTO portal_instalaciones (id, secreto_hash, version_app, sucursales_en_uso, api_url, empresa, rnc, equipo, correo, telefono, contacto, plan_id, sucursales_solicitadas, mensaje)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [b.instalacionId, huella(secreto), b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null, ...campos(sol)]);
+      await evento(pool, { tipo: "SOLICITUD", detalle: { instalacion: b.instalacionId, empresa: sol.empresa, plan: sol.planId ?? null, sucursales: sol.sucursales } });
       return { estado: "PENDIENTE", secreto };
     }
     if (!b.secreto || !igual(ex.secreto_hash, huella(b.secreto))) {
       frenar(req.ip ?? "?");
       throw new ErrorNegocio("Esta instalación ya está registrada en el portal y no se pudo comprobar. Pida a su proveedor que la revise o use una clave de activación.", 409);
     }
-    await pool.query(
-      `UPDATE portal_instalaciones SET empresa = COALESCE($2, empresa), rnc = COALESCE($3, rnc), equipo = COALESCE($4, equipo), version_app = $5,
-              sucursales_en_uso = $6, api_url = COALESCE($7, api_url), ultimo_contacto = now() WHERE id = $1`,
-      [b.instalacionId, b.empresa || null, b.rnc || null, b.equipo || null, b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null]);
+    await pool.query("UPDATE portal_instalaciones SET version_app = $2, sucursales_en_uso = $3, api_url = COALESCE($4, api_url), ultimo_contacto = now() WHERE id = $1",
+      [b.instalacionId, b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null]);
+    if (sol && ex.estado !== "ASIGNADA") {
+      // Corrige o reenvía la solicitud (también reabre una rechazada)
+      await pool.query(
+        `UPDATE portal_instalaciones SET empresa = $2, rnc = $3, equipo = $4, correo = $5, telefono = $6, contacto = $7, plan_id = $8, sucursales_solicitadas = $9, mensaje = $10,
+                estado = 'PENDIENTE', resuelta_en = NULL, solicitada_en = now() WHERE id = $1`, [b.instalacionId, ...campos(sol)]);
+      return { estado: "PENDIENTE" };
+    }
     if (ex.estado === "ASIGNADA" && ex.licencia_id) {
       const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [ex.licencia_id])).rows[0];
       if (!l || l.instalacion_id !== b.instalacionId) return { estado: "LIBERADA" };
@@ -226,9 +251,9 @@ export async function rutasPortal(app: FastifyInstance) {
   /** Reglas y contacto que ven las instalaciones (públicas: no llevan nada sensible). */
   app.get("/licencias/politica", async () => {
     const c = (await pool.query(
-      `SELECT prueba_actualiza AS "pruebaActualiza", contacto_nombre AS nombre, contacto_telefono AS telefono, contacto_whatsapp AS whatsapp, contacto_correo AS correo
+      `SELECT prueba_actualiza AS "pruebaActualiza", plazo_horas AS "plazoHoras", contacto_nombre AS nombre, contacto_telefono AS telefono, contacto_whatsapp AS whatsapp, contacto_correo AS correo
          FROM portal_config WHERE id = 1`)).rows[0];
-    return { pruebaActualiza: !!c?.pruebaActualiza, contacto: { nombre: c?.nombre ?? null, telefono: c?.telefono ?? null, whatsapp: c?.whatsapp ?? null, correo: c?.correo ?? null } };
+    return { pruebaActualiza: !!c?.pruebaActualiza, plazoHoras: c?.plazoHoras ?? 24, contacto: { nombre: c?.nombre ?? null, telefono: c?.telefono ?? null, whatsapp: c?.whatsapp ?? null, correo: c?.correo ?? null } };
   });
 
   /**
@@ -430,17 +455,17 @@ export async function rutasPortal(app: FastifyInstance) {
 
   // ---- Reglas y contacto
   app.get("/central/portal/reglas", async () => (await pool.query(
-    `SELECT prueba_actualiza AS "pruebaActualiza", contacto_nombre AS "contactoNombre", contacto_telefono AS "contactoTelefono",
+    `SELECT prueba_actualiza AS "pruebaActualiza", plazo_horas AS "plazoHoras", contacto_nombre AS "contactoNombre", contacto_telefono AS "contactoTelefono",
             contacto_whatsapp AS "contactoWhatsapp", contacto_correo AS "contactoCorreo" FROM portal_config WHERE id = 1`)).rows[0]);
   app.put("/central/portal/reglas", async (req) => {
     const b = z.object({
-      pruebaActualiza: z.boolean(),
+      pruebaActualiza: z.boolean(), plazoHoras: z.number().int().min(1).max(720),
       contactoNombre: z.string().trim().max(80).nullable(), contactoTelefono: z.string().trim().max(30).nullable(),
       contactoWhatsapp: z.string().trim().max(30).nullable(), contactoCorreo: z.string().trim().max(120).nullable(),
     }).parse(req.body);
     await pool.query(
-      `UPDATE portal_config SET prueba_actualiza = $1, contacto_nombre = $2, contacto_telefono = $3, contacto_whatsapp = $4, contacto_correo = $5, actualizado_en = now() WHERE id = 1`,
-      [b.pruebaActualiza, b.contactoNombre || null, b.contactoTelefono || null, b.contactoWhatsapp || null, b.contactoCorreo || null]);
+      `UPDATE portal_config SET prueba_actualiza = $1, contacto_nombre = $2, contacto_telefono = $3, contacto_whatsapp = $4, contacto_correo = $5, plazo_horas = $6, actualizado_en = now() WHERE id = 1`,
+      [b.pruebaActualiza, b.contactoNombre || null, b.contactoTelefono || null, b.contactoWhatsapp || null, b.contactoCorreo || null, b.plazoHoras]);
     await evento(pool, { tipo: "REGLAS", detalle: { pruebaActualiza: b.pruebaActualiza }, usuarioId: usuarioDe(req) });
     return { ok: true };
   });
@@ -450,8 +475,10 @@ export async function rutasPortal(app: FastifyInstance) {
     const { estado } = z.object({ estado: z.enum(["PENDIENTE", "ASIGNADA", "RECHAZADA", "LIBERADA"]).optional() }).parse(req.query);
     return (await pool.query(
       `SELECT i.id, i.estado, i.empresa, i.rnc, i.equipo, i.version_app AS "versionApp", i.sucursales_en_uso AS "sucursalesEnUso", i.api_url AS "apiUrl",
-              i.solicitada_en AS "solicitadaEn", i.ultimo_contacto AS "ultimoContacto", i.nota, c.id AS "clienteId", c.nombre AS cliente, c.slug
+              i.solicitada_en AS "solicitadaEn", i.ultimo_contacto AS "ultimoContacto", i.nota, c.id AS "clienteId", c.nombre AS cliente, c.slug,
+              i.correo, i.telefono, i.contacto, i.plan_id AS "planId", p.nombre AS plan, i.sucursales_solicitadas AS "sucursalesSolicitadas", i.mensaje
          FROM portal_instalaciones i LEFT JOIN portal_licencias l ON l.id = i.licencia_id LEFT JOIN portal_clientes c ON c.id = l.cliente_id
+         LEFT JOIN portal_planes p ON p.id = i.plan_id
         WHERE ($1::text IS NULL OR i.estado = $1)
         ORDER BY (i.estado = 'PENDIENTE') DESC, i.solicitada_en DESC LIMIT 300`, [estado ?? null])).rows;
   });
