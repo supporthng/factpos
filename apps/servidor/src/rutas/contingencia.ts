@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
@@ -22,6 +23,10 @@ import type { SesionCaja } from "../sesion.js";
  */
 const uuid = z.string().uuid();
 const RESERVA = Number(process.env.CONTINGENCIA_RESERVA ?? 30);
+/** Caja principal de cada almacén (dirección en la red local). La caja la vuelve a anunciar cada minuto. */
+const principales = new Map<string, { url: string; en: number }>();
+const claveRed = (almacenId: string) =>
+  createHmac("sha256", process.env.SESION_SECRETO ?? process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion").update(`buzon-cajas:${almacenId}`).digest("base64url");
 const sesionCaja = (req: FastifyRequest) => (req as FastifyRequest & { sesionCaja?: SesionCaja }).sesionCaja;
 
 /** e-NCF apartados de una caja que todavía no se han usado. */
@@ -91,7 +96,19 @@ export async function rutasContingencia(app: FastifyInstance) {
         WHERE p.empresa_id = $2 AND p.activo AND p.controla_stock AND p.tipo <> 'COMBO' AND ex.cantidad > 0`, [ctx.almacenId, ctx.empresaId]);
     const cupos: Record<string, number> = {};
     for (const x of r.rows) cupos[x.id] = Math.floor((Number(x.cantidad) / cajas) * 1000) / 1000; // lo que sobra del reparto no se asigna
-    return { habilitado: true, cajas, en: new Date().toISOString(), cupos };
+    const pr = principales.get(ctx.almacenId);
+    return { habilitado: true, cajas, en: new Date().toISOString(), cupos,
+             principal: pr && Date.now() - pr.en < 10 * 60_000 ? pr.url : null, claveRed: claveRed(ctx.almacenId) };
+  });
+
+  /** La caja principal anuncia su dirección para que las demás la encuentren si se cae el servidor. */
+  app.post("/cajas/:cajaId/principal", async (req) => {
+    const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
+    const b = z.object({ url: z.string().regex(/^http:\/\/(\d{1,3}\.){3}\d{1,3}:\d{2,5}$/).nullable() }).parse(req.body);
+    const ctx = await contextoCaja(cajaId);
+    if (b.url) principales.set(ctx.almacenId, { url: b.url, en: Date.now() });
+    else if (principales.get(ctx.almacenId)) principales.delete(ctx.almacenId);
+    return { ok: true };
   });
 
   /** Ventas que la caja hizo sin servidor. Idempotente: reenviar la misma venta no la duplica. */
