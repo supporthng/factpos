@@ -78,6 +78,54 @@ const podar = (d) => {
 };
 podar(join(dir, "node_modules"));
 
+// PostgreSQL 16 para Windows DENTRO del instalador (así el cliente no descarga nada de EnterpriseDB).
+// Los binarios salen del registro de npm (paquete @embedded-postgres/windows-x64: postgres, initdb, pg_ctl).
+// psql y pg_dump no hacen falta: instalador/bd.cjs hace esas tareas con la librería pg de FactPOS.
+const LICENCIA_POSTGRESQL = `PostgreSQL Database Management System
+(also known as Postgres, formerly known as Postgres95)
+
+Portions Copyright (c) 1996-2025, The PostgreSQL Global Development Group
+Portions Copyright (c) 1994, The Regents of the University of California
+
+Permission to use, copy, modify, and distribute this software and its
+documentation for any purpose, without fee, and without a written agreement
+is hereby granted, provided that the above copyright notice and this
+paragraph and the following two paragraphs appear in all copies.
+
+IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR
+DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING
+LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+DOCUMENTATION, EVEN IF THE UNIVERSITY OF CALIFORNIA HAS BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
+ON AN "AS IS" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATIONS TO
+PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+`;
+const VERSION_PG = process.env.FACTPOS_PG_VERSION || "16.15.0-beta.19";
+{
+  const tmp = join(salida, "pg-tmp");
+  rmSync(tmp, { recursive: true, force: true });
+  mkdirSync(tmp, { recursive: true });
+  console.log(`PostgreSQL ${VERSION_PG} para Windows…`);
+  const tgz = execSync(`npm pack @embedded-postgres/windows-x64@${VERSION_PG} --silent`, { cwd: tmp, encoding: "utf8" }).trim().split("\n").pop();
+  execSync(`tar -xzf "${tgz}"`, { cwd: tmp });
+  const nativo = join(tmp, "package", "native");
+  if (!existsSync(join(nativo, "bin", "postgres.exe")) || !existsSync(join(nativo, "bin", "initdb.exe")) || !existsSync(join(nativo, "bin", "pg_ctl.exe"))) {
+    throw new Error("El paquete de PostgreSQL no trae postgres.exe, initdb.exe y pg_ctl.exe");
+  }
+  const destino = join(dir, "postgresql");
+  cpSync(nativo, destino, { recursive: true });
+  // Fuera lo que el servidor no usa (librerías de interfaz gráfica y de prueba)
+  for (const n of readdirSync(join(destino, "bin"))) if (/^(wx.*\.dll|testplug\.dll)$/i.test(n)) rmSync(join(destino, "bin", n));
+  rmSync(join(destino, "pg-symlinks.json"), { force: true });
+  if (existsSync(join(tmp, "package", "LICENSE.md"))) cpSync(join(tmp, "package", "LICENSE.md"), join(destino, "LICENCIA-empaquetado.md"));
+  writeFileSync(join(destino, "LICENCIA-PostgreSQL.txt"), LICENCIA_POSTGRESQL);
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // El EXE es el unico artefacto publico. NSIS comprime el contenido directamente.
 // Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
 let makensis = null;

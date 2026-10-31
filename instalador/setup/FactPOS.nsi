@@ -470,7 +470,7 @@ FunctionEnd
 Section "Uninstall"
   DetailPrint "Deteniendo FactPOS…"
   !insertmacro ElegirPowerShell
-  nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Servidor' -Confirm:$$false -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" | Where-Object { $$_.CommandLine -like '*apps\servidor\dist\index.js*' -or $$_.CommandLine -like '*tunnel*--url*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }; Get-NetFirewallRule -DisplayName 'FactPOS*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"`
+  nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Servidor' -Confirm:$$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Respaldo' -Confirm:$$false -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" | Where-Object { $$_.CommandLine -like '*apps\servidor\dist\index.js*' -or $$_.CommandLine -like '*tunnel*--url*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }; Get-NetFirewallRule -DisplayName 'FactPOS*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"`
   Pop $0
   Delete "$DESKTOP\FactPOS Caja.lnk"
   Delete "$SMSTARTUP\FactPOS Caja.lnk"

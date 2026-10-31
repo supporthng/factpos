@@ -170,24 +170,48 @@ function PuertoRegistrado {
   }
   return 5432
 }
-# PostgreSQL propio de FactPOS (servicio postgresql-16): carpeta de datos, postgresql.conf y puerto configurado
+# PostgreSQL propio de FactPOS: el incluido en el instalador (servicio FactPOS-PostgreSQL) o,
+# en instalaciones anteriores, el que se instaló con winget (servicio postgresql-16).
+# Nunca se usa el PostgreSQL de otro programa (HikCentral, WilPOS...).
 function PostgresFactPOS {
-  $svc = Get-CimInstance Win32_Service -Filter "Name='postgresql-16'" -ErrorAction SilentlyContinue
-  if (-not $svc) { return $null }
-  $ruta = [string]$svc.PathName
-  if ($ruta -notmatch '-D\s+"([^"]+)"') { return $null }
-  $conf = Join-Path $Matches[1] 'postgresql.conf'
-  if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { return $null }
-  $puerto = 5432
-  $m = Select-String -LiteralPath $conf -Pattern '^\s*port\s*=\s*(\d+)' | Select-Object -Last 1
-  if ($m) { $puerto = [int]$m.Matches[0].Groups[1].Value }
-  $bin = if ($ruta -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { '' }
-  [pscustomobject]@{ Conf = $conf; Puerto = $puerto; Bin = $bin }
+  foreach ($nombre in @('FactPOS-PostgreSQL', 'postgresql-16')) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$nombre'" -ErrorAction SilentlyContinue
+    if (-not $svc) { continue }
+    $ruta = [string]$svc.PathName
+    if ($ruta -notmatch '-D\s+"([^"]+)"') { continue }
+    $conf = Join-Path $Matches[1] 'postgresql.conf'
+    if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { continue }
+    $puerto = 5432
+    $m = Select-String -LiteralPath $conf -Pattern '^\s*port\s*=\s*(\d+)' | Select-Object -Last 1
+    if ($m) { $puerto = [int]$m.Matches[0].Groups[1].Value }
+    $bin = if ($ruta -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { '' }
+    return [pscustomobject]@{ Servicio = $nombre; Conf = $conf; Puerto = $puerto; Bin = $bin }
+  }
+  return $null
+}
+# Herramientas de base de datos (instalador\bd.cjs con la librería pg de FactPOS; reemplaza a psql y pg_dump).
+# Devuelve lo que imprimió; el código de salida queda en $script:CodigoBd.
+function Bd {
+  $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    $salida = @(& node (Join-Path $Carpeta 'instalador\bd.cjs') @args 2>&1 | ForEach-Object { "$_" })
+    $script:CodigoBd = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $eap }
+  return ($salida -join ' ').Trim()
+}
+function UrlPg([string]$usuario, [string]$clave, [int]$puerto, [string]$base) {
+  $credencial = if ($clave) { "$([uri]::EscapeDataString($usuario)):$([uri]::EscapeDataString($clave))" } else { [uri]::EscapeDataString($usuario) }
+  return "postgres://$credencial@localhost:$puerto/$base"
+}
+function EsperarPuerto([int]$p, [int]$segundos = 60) {
+  $hasta = (Get-Date).AddSeconds($segundos)
+  while (-not (ProgramaEnPuerto $p) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
+  return [bool](ProgramaEnPuerto $p)
 }
 # La clave guardada de "postgres" puede no coincidir con la real (p. ej. winget alteró la clave al instalar).
 # Solo para el PostgreSQL PROPIO de FactPOS: acceso local sin clave por un momento, se fija la clave
 # guardada y pg_hba.conf vuelve a quedar exactamente como estaba (también si algo falla).
-function RestablecerClavePostgres($pg, [string]$clave, [string]$psqlExe) {
+function RestablecerClavePostgres($pg, [string]$clave) {
   $hba = Join-Path (Split-Path -Parent $pg.Conf) 'pg_hba.conf'
   if (-not (Test-Path -LiteralPath $hba -PathType Leaf)) { throw "No se encontró $hba" }
   $original = [IO.File]::ReadAllBytes($hba)
@@ -196,18 +220,15 @@ function RestablecerClavePostgres($pg, [string]$clave, [string]$psqlExe) {
     $texto = [Text.Encoding]::UTF8.GetString($original).TrimStart([char]0xFEFF)
     $temporal = "host all postgres 127.0.0.1/32 trust`r`nhost all postgres ::1/128 trust`r`n" + $texto
     [IO.File]::WriteAllText($hba, $temporal, (New-Object Text.UTF8Encoding $false))
-    Restart-Service -Name 'postgresql-16' -Force
-    $hasta = (Get-Date).AddSeconds(60)
-    while (-not (ProgramaEnPuerto $pg.Puerto) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
-    Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+    Restart-Service -Name $pg.Servicio -Force
+    EsperarPuerto $pg.Puerto | Out-Null
     $claveSql = $clave.Replace("'", "''")
-    $r = & $psqlExe -U postgres -h localhost -p $pg.Puerto -d postgres -w -c "ALTER USER postgres WITH PASSWORD '$claveSql'" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo restablecer la clave de postgres: $($r -join ' ')" }
+    $r = Bd sql (UrlPg 'postgres' '' $pg.Puerto 'postgres') "ALTER USER postgres WITH PASSWORD '$claveSql'"
+    if ($script:CodigoBd -ne 0) { throw "No se pudo restablecer la clave de postgres: $r" }
   } finally {
     [IO.File]::WriteAllBytes($hba, $original)
-    Restart-Service -Name 'postgresql-16' -Force -ErrorAction SilentlyContinue
-    $hasta = (Get-Date).AddSeconds(60)
-    while (-not (ProgramaEnPuerto $pg.Puerto) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
+    Restart-Service -Name $pg.Servicio -Force -ErrorAction SilentlyContinue
+    EsperarPuerto $pg.Puerto | Out-Null
     Remove-Item "$hba.factpos-respaldo" -ErrorAction SilentlyContinue
   }
 }
@@ -218,6 +239,104 @@ function ProgramaEnPuerto([int]$p) {
   $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($c.OwningProcess)" -ErrorAction SilentlyContinue
   if ($proc -and $proc.ExecutablePath) { return [string]$proc.ExecutablePath }
   return "proceso $($c.OwningProcess)"
+}
+# Si otro PostgreSQL (HikCentral, WilPOS...) ocupa el puerto del PostgreSQL de FactPOS, FactPOS
+# terminaría hablando con la base de OTRO programa: se mueve el de FactPOS a un puerto libre.
+# Deja el servicio en marcha y devuelve el objeto con el puerto final.
+function AsegurarPuertoPropio($pg) {
+  $ocupante = ProgramaEnPuerto $pg.Puerto
+  $esPropio = $ocupante -and $pg.Bin -and $ocupante.StartsWith($pg.Bin, [StringComparison]::OrdinalIgnoreCase)
+  if ($ocupante -and -not $esPropio) {
+    $nuevo = 5433
+    while ((PuertoOcupado $nuevo) -and $nuevo -lt 5460) { $nuevo++ }
+    Write-Host "   El puerto $($pg.Puerto) lo usa otro programa: $ocupante" -ForegroundColor Yellow
+    Write-Host "   PostgreSQL de FactPOS ($($pg.Servicio)) pasa al puerto $nuevo" -ForegroundColor Yellow
+    $lineasConf = @(Get-Content -LiteralPath $pg.Conf | Where-Object { $_ -notmatch '^\s*port\s*=' })
+    $lineasConf += "port = $nuevo"
+    [IO.File]::WriteAllLines($pg.Conf, [string[]]$lineasConf)   # UTF-8 sin BOM (PostgreSQL no acepta BOM)
+    Restart-Service -Name $pg.Servicio -Force -ErrorAction SilentlyContinue
+    if ((Get-Service -Name $pg.Servicio).Status -ne 'Running') { Start-Service -Name $pg.Servicio }
+    $pg.Puerto = $nuevo
+  } elseif (-not $ocupante) {
+    if ((Get-Service -Name $pg.Servicio).Status -ne 'Running') { Start-Service -Name $pg.Servicio } else { Restart-Service -Name $pg.Servicio -Force }
+  }
+  if (-not (EsperarPuerto $pg.Puerto)) { throw "PostgreSQL de FactPOS ($($pg.Servicio)) no quedó escuchando en el puerto $($pg.Puerto). Revise el visor de eventos de Windows (Aplicación) o $(Split-Path -Parent $pg.Conf)\log" }
+  return $pg
+}
+# PostgreSQL necesita Microsoft Visual C++ 2015-2022 (x64)
+function AsegurarVcRedist {
+  $sys = Join-Path $env:WINDIR 'System32'
+  $faltan = { @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') | Where-Object { -not (Test-Path -LiteralPath (Join-Path $sys $_)) } }
+  if (-not (& $faltan)) { return }
+  Write-Host "   Instalando Microsoft Visual C++ 2015-2022 (lo necesita PostgreSQL)..."
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    winget install -e --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Null
+  }
+  if (& $faltan) {
+    $exe = Join-Path $env:TEMP 'vc_redist.x64.exe'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $exe -UseBasicParsing
+    Start-Process -FilePath $exe -ArgumentList '/install', '/quiet', '/norestart' -Wait | Out-Null
+  }
+  if (& $faltan) { throw "Falta Microsoft Visual C++ 2015-2022 (x64): $((& $faltan) -join ', '). Instálelo desde https://aka.ms/vs/17/release/vc_redist.x64.exe y vuelva a ejecutar el instalador." }
+  Listo 'Microsoft Visual C++ instalado'
+}
+# Instala el PostgreSQL 16 que viene DENTRO del instalador (no se descarga nada):
+# C:\FactPOS\postgresql, datos en C:\FactPOS\postgresql\data, servicio FactPOS-PostgreSQL.
+function InstalarPostgresIncluido {
+  $fuente = Join-Path $origen 'postgresql'
+  if (-not (Test-Path -LiteralPath (Join-Path $fuente 'bin\postgres.exe'))) { throw "Este paquete no trae PostgreSQL (falta postgresql\bin\postgres.exe). Vuelva a generar el instalador con npm run empaquetar." }
+  AsegurarVcRedist
+  # Otro programa (u otro PostgreSQL) puede estar usando el 5432: se elige el primero libre.
+  # El puerto puede venir de un .env viejo que apuntaba a OTRO PostgreSQL (p. ej. HikCentral): si está ocupado, se busca otro.
+  if ($script:PuertoPostgres -ne 0 -and (PuertoOcupado $script:PuertoPostgres)) {
+    Write-Host "   El puerto $($script:PuertoPostgres) guardado está ocupado por otro programa; se elige uno libre" -ForegroundColor Yellow
+    $script:PuertoPostgres = 0
+  }
+  if ($script:PuertoPostgres -eq 0) {
+    $p = 5432
+    while ((PuertoOcupado $p) -and $p -lt 5460) { $p++ }
+    if ($p -ne 5432) { Write-Host "   El puerto 5432 está ocupado por otro programa: PostgreSQL de FactPOS usará el $p" -ForegroundColor Yellow }
+    $script:PuertoPostgres = $p
+  }
+  if (-not $script:ClavePostgres) { $script:ClavePostgres = Clave 20 }
+  # La clave se guarda ANTES de instalar (si algo falla a medias, no se pierde)
+  New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
+  Set-Content -Path $archivoClave -Value "Usuario: postgres`r`nClave: $($script:ClavePostgres)"
+  icacls $archivoClave /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
+
+  $dir = Join-Path $Carpeta 'postgresql'
+  $datos = Join-Path $dir 'data'
+  Write-Host "   Copiando PostgreSQL 16 (incluido en el instalador)..."
+  robocopy $fuente $dir /E /NFL /NDL /NJH /NJS /NP /XD data | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "No se pudo copiar PostgreSQL a $dir (robocopy $LASTEXITCODE)" }
+  if (-not (Test-Path -LiteralPath (Join-Path $datos 'PG_VERSION'))) {
+    Write-Host "   Creando la base de datos de FactPOS..."
+    $pw = Join-Path $env:TEMP ("fpg-" + [guid]::NewGuid().ToString('N') + ".txt")
+    [IO.File]::WriteAllText($pw, $script:ClavePostgres)
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+      & (Join-Path $dir 'bin\initdb.exe') -D $datos -U postgres -A scram-sha-256 "--pwfile=$pw" -E UTF8 --locale=C 2>&1 | ForEach-Object { Write-Host "   $_" }
+      $codigo = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $eap; Remove-Item -LiteralPath $pw -Force -ErrorAction SilentlyContinue }
+    if ($codigo -ne 0) { throw "No se pudo crear la base de datos (initdb terminó con código $codigo)" }
+    Add-Content -LiteralPath (Join-Path $datos 'postgresql.conf') -Encoding ascii -Value "`r`n# FactPOS`r`nport = $($script:PuertoPostgres)`r`nlisten_addresses = 'localhost'`r`n"
+  }
+  # El servicio corre como "Servicio de red": necesita control de la carpeta de datos
+  icacls $datos /grant "*S-1-5-20:(OI)(CI)F" /T /Q 2>$null | Out-Null
+  if (-not (Get-Service -Name 'FactPOS-PostgreSQL' -ErrorAction SilentlyContinue)) {
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+      & (Join-Path $dir 'bin\pg_ctl.exe') register -N 'FactPOS-PostgreSQL' -D $datos -S auto -U 'NT AUTHORITY\NetworkService' -w 2>&1 | ForEach-Object { Write-Host "   $_" }
+      $codigo = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $eap }
+    if ($codigo -ne 0) { throw "No se pudo registrar el servicio FactPOS-PostgreSQL (pg_ctl terminó con código $codigo)" }
+  }
+  $pg = PostgresFactPOS
+  if (-not $pg -or $pg.Servicio -ne 'FactPOS-PostgreSQL') { throw "El servicio FactPOS-PostgreSQL no quedó registrado" }
+  $pg = AsegurarPuertoPropio $pg
+  Listo "PostgreSQL 16 de FactPOS listo (servicio FactPOS-PostgreSQL, puerto $($pg.Puerto)). Clave del superusuario en $archivoClave"
+  return $pg
 }
 # Reinstalación: la clave de postgres y el puerto ya quedaron guardados la primera vez
 $archivoClave = "$Carpeta\postgres-superusuario.txt"
@@ -232,58 +351,19 @@ if ($PuertoPostgres -eq 0 -and (Test-Path "$Carpeta\.env")) {
 if ($esReparacion) {
   Listo 'Reparacion: no se instalara ni modificara PostgreSQL.'
 } else {
-$pgBin = BuscarPsql
-$serviciosExistentes = @(ServiciosPostgres)
-if (-not $pgBin -and $serviciosExistentes.Count -gt 0) {
-  $nombres = ($serviciosExistentes | ForEach-Object { "$($_.Name) ($($_.State))" }) -join ', '
-  throw "PostgreSQL ya tiene un servicio instalado: $nombres. No se instalará otra copia ni se tocarán sus datos. No se encontró psql.exe; revise la ruta del ejecutable del servicio en services.msc o instale las herramientas cliente de esa misma versión."
+# Siempre el PostgreSQL PROPIO de FactPOS: si ya existe (instalado antes por FactPOS) se reutiliza;
+# si no, se instala el que viene dentro del instalador. Nunca se usa el de otro programa.
+$pgPropio = PostgresFactPOS
+if ($pgPropio) {
+  if (-not $ClavePostgres) { throw "Ya hay un PostgreSQL de FactPOS ($($pgPropio.Servicio)) pero falta $archivoClave con su clave. Copie ese archivo de la instalación anterior a $Carpeta y vuelva a ejecutar el instalador." }
+  $pgPropio = AsegurarPuertoPropio $pgPropio
+  Listo "Se usa el PostgreSQL de FactPOS ya instalado ($($pgPropio.Servicio), puerto $($pgPropio.Puerto))"
+} else {
+  $otros = @(ServiciosPostgres | ForEach-Object { $_.Name })
+  if ($otros.Count) { Write-Host "   Este equipo ya tiene otro PostgreSQL ($($otros -join ', ')): no se toca; FactPOS instala el suyo aparte." -ForegroundColor Yellow }
+  $pgPropio = InstalarPostgresIncluido
 }
-if (-not $pgBin) {
-  # Otro programa (u otro PostgreSQL) puede estar usando el 5432: se elige el primero libre
-  # El puerto puede venir de un .env viejo que apuntaba a OTRO PostgreSQL (p. ej. HikCentral): si está ocupado, se busca otro
-  if ($PuertoPostgres -ne 0 -and (PuertoOcupado $PuertoPostgres)) {
-    Write-Host "   El puerto $PuertoPostgres guardado está ocupado por otro programa; se elige uno libre" -ForegroundColor Yellow
-    $PuertoPostgres = 0
-  }
-  if ($PuertoPostgres -eq 0) {
-    $PuertoPostgres = 5432
-    while ((PuertoOcupado $PuertoPostgres) -and $PuertoPostgres -lt 5450) { $PuertoPostgres++ }
-    if ($PuertoPostgres -ne 5432) { Write-Host "   El puerto 5432 está ocupado por otro programa: PostgreSQL de FactPOS usará el $PuertoPostgres" -ForegroundColor Yellow }
-  }
-  if (-not $ClavePostgres) { $ClavePostgres = Clave 20 }
-  # La clave se guarda ANTES de instalar (si algo falla a medias, no se pierde)
-  $claveArchivo = "$Carpeta\postgres-superusuario.txt"
-  New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
-  Set-Content -Path $claveArchivo -Value "Usuario: postgres`r`nClave: $ClavePostgres"
-  icacls $claveArchivo /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
-  $opciones = "--mode unattended --unattendedmodeui none --superpassword $ClavePostgres --serverport $PuertoPostgres --servicename postgresql-16"
-  # Sin comillas internas: PowerShell 5 las rompe al pasarlas a winget (queda en C:\Program Files\PostgreSQL\16, lo normal)
-  if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "   Preparando la base de datos (PostgreSQL 16). Puede tardar varios minutos; por favor espere..."
-    EjecutarConAviso "winget" @("install", "-e", "--id", "PostgreSQL.PostgreSQL.16", "--silent", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity", "--override", "`"$opciones`"") | Out-Null
-    $pgBin = EsperarPsql 600
-  }
-  if (-not $pgBin) {
-    # Respaldo: instalador oficial de EDB descargado directo
-    Write-Host "   winget no dejó PostgreSQL instalado; se descarga el instalador oficial..." -ForegroundColor Yellow
-    $exe = Join-Path $env:TEMP "postgresql-16-windows-x64.exe"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64.exe" -OutFile $exe -UseBasicParsing
-    $codigo = EjecutarConAviso $exe @($opciones)
-    if ($codigo -ne 0) { Write-Host "   El instalador de PostgreSQL terminó con código $codigo" -ForegroundColor Yellow }
-    $pgBin = EsperarPsql 300
-  }
-  if (-not $pgBin) { throw "PostgreSQL no quedó instalado. Revise el registro de instalación y la disponibilidad de PostgreSQL 16 antes de reintentar." }
-  Listo "PostgreSQL instalado. La clave del superusuario quedó en $claveArchivo"
-} elseif (-not $ClavePostgres) {
-  if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
-  if ($NoInteractivo) { throw "Se detectó PostgreSQL existente, pero FactPOS no tiene credenciales guardadas. Por seguridad no se cambiará ninguna contraseña ni base de datos. Para instalar sin intervención, utilice una instancia dedicada a FactPOS o configure el acceso de PostgreSQL mediante un procedimiento administrativo seguro." }
-  $seg = Read-Host "PostgreSQL ya está instalado. Escriba la clave del usuario postgres" -AsSecureString
-  $ClavePostgres = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
-}
-$psql = $pgBin.FullName
-if ($PuertoPostgres -eq 0) { $PuertoPostgres = PuertoRegistrado }
-Listo "Usando $psql"
+$PuertoPostgres = $pgPropio.Puerto
 
  }
 # Antes de actualizar archivos compilados, detener SOLO el servidor de esta instalación.
@@ -311,7 +391,7 @@ if (Test-Path (Join-Path $Carpeta 'apps\servidor\dist\index.js')) {
 # ------------------------------------------------------------- Archivos
 Paso "Copiando FactPOS a $Carpeta"
 New-Item -ItemType Directory -Force -Path $Carpeta, "$Carpeta\logs" | Out-Null
-robocopy $origen $Carpeta /E /NFL /NDL /NJH /NJS /NP /XF .env postgres-superusuario.txt /XD logs | Out-Null
+robocopy $origen $Carpeta /E /NFL /NDL /NJH /NJS /NP /XF .env postgres-superusuario.txt /XD logs postgresql respaldos | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "No se pudieron copiar los archivos (robocopy $LASTEXITCODE)" }
 Listo "Archivos copiados"
 
@@ -321,8 +401,15 @@ if ($esReparacion) {
   if (-not (Test-Path -LiteralPath $envExistente)) { throw 'Falta .env de la instalacion existente.' }
   Listo 'Se conserva .env y la base de datos existente.'
 } else {
-$env:PGPASSWORD = $ClavePostgres
-$existe = & $psql -U postgres -h localhost -p $PuertoPostgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'"
+$urlAdmin = UrlPg 'postgres' $ClavePostgres $PuertoPostgres 'postgres'
+$existe = Bd sql $urlAdmin "SELECT 1 FROM pg_roles WHERE rolname='factpos'"
+if ($script:CodigoBd -ne 0) {
+  # La clave guardada no entra: en el PostgreSQL propio se restablece de forma segura
+  Write-Host "   El superusuario postgres no entra con la clave guardada ($existe); se restablece..." -ForegroundColor Yellow
+  RestablecerClavePostgres $pgPropio $ClavePostgres
+  $existe = Bd sql $urlAdmin "SELECT 1 FROM pg_roles WHERE rolname='factpos'"
+  if ($script:CodigoBd -ne 0) { throw "El superusuario postgres no entra a localhost:$($PuertoPostgres): $existe" }
+}
 $envArchivo = "$Carpeta\.env"
 if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   Listo "La base factpos ya existe; se conserva (actualización)"
@@ -352,21 +439,9 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   }
 } else {
   $claveBD = Clave 24
-  # Antes los errores de psql se ignoraban y el .env quedaba con una clave que nunca se aplicó
-  if ($existe -eq "1") { & $psql -U postgres -h localhost -p $PuertoPostgres -c "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveBD'" | Out-Null }
-  else { & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE ROLE factpos LOGIN PASSWORD '$claveBD'" | Out-Null }
-  if ($LASTEXITCODE -ne 0) { throw "No se pudo crear/actualizar el usuario factpos en PostgreSQL ($psql, puerto $PuertoPostgres). Revise la clave del usuario postgres. No se escribió el .env." }
-  $hayBase = & $psql -U postgres -h localhost -p $PuertoPostgres -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'"
-  if ($hayBase -ne "1") {
-    & $psql -U postgres -h localhost -p $PuertoPostgres -c "CREATE DATABASE factpos OWNER factpos" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo crear la base factpos ($psql, puerto $PuertoPostgres). No se escribió el .env." }
-  }
-  # Comprobar que factpos entra con la clave que se va a guardar
-  $env:PGPASSWORD = $claveBD
-  & $psql -U factpos -h localhost -p $PuertoPostgres -d factpos -tAc "SELECT 1" | Out-Null
-  $codigoPrueba = $LASTEXITCODE
-  $env:PGPASSWORD = $ClavePostgres
-  if ($codigoPrueba -ne 0) { throw "El usuario factpos no puede entrar a localhost:$PuertoPostgres. Puede haber dos PostgreSQL en el mismo puerto (por ejemplo HikCentral). No se escribió el .env." }
+  # Usuario factpos + base factpos + comprobación de que entra con la clave que se va a guardar
+  $r = Bd preparar $urlAdmin $claveBD
+  if ($script:CodigoBd -ne 0) { throw "No se pudo preparar el usuario y la base factpos en localhost:$($PuertoPostgres): $r. No se escribió el .env." }
   if (-not $PinSecreto -and ($Alta -or $Master)) { $PinSecreto = Clave 32 }   # sucursal: lo reemplaza el del principal al darse de alta
   if (-not $PinSecreto) { $PinSecreto = Clave 32; Write-Host "   OJO: se generó un PIN_SECRETO nuevo. Si ya tiene central u otras sucursales, cópielo de allá al archivo .env" -ForegroundColor Yellow }
   @"
@@ -396,35 +471,17 @@ CERT_P12_CLAVE=
   icacls $envArchivo /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
   Listo "Base factpos creada y .env escrito"
 }
-Remove-Item Env:\PGPASSWORD
+Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 
 }
 # Antes de una reparacion, guardar una copia consistente de la base de datos.
 if ($esReparacion) {
-  # Si otro PostgreSQL (HikCentral, WilPOS...) ocupa el puerto de postgresql-16, FactPOS terminaría
-  # hablando con la base de OTRO programa. Se mueve postgresql-16 a un puerto libre y se corrige el .env.
+  # Si otro PostgreSQL (HikCentral, WilPOS...) ocupa el puerto del PostgreSQL de FactPOS, se mueve
+  # el de FactPOS a un puerto libre y se corrige el .env.
   $pgPropio = PostgresFactPOS
   if ($pgPropio) {
-    Paso 'Puerto de PostgreSQL de FactPOS'
-    $ocupante = ProgramaEnPuerto $pgPropio.Puerto
-    $esPropio = $ocupante -and $pgPropio.Bin -and $ocupante.StartsWith($pgPropio.Bin, [StringComparison]::OrdinalIgnoreCase)
-    if ($ocupante -and -not $esPropio) {
-      $nuevo = 5433
-      while ((PuertoOcupado $nuevo) -and $nuevo -lt 5460) { $nuevo++ }
-      Write-Host "   El puerto $($pgPropio.Puerto) lo usa otro programa: $ocupante" -ForegroundColor Yellow
-      Write-Host "   PostgreSQL de FactPOS (postgresql-16) pasa al puerto $nuevo" -ForegroundColor Yellow
-      $lineasConf = @(Get-Content -LiteralPath $pgPropio.Conf | Where-Object { $_ -notmatch '^\s*port\s*=' })
-      $lineasConf += "port = $nuevo"
-      [IO.File]::WriteAllLines($pgPropio.Conf, [string[]]$lineasConf)   # UTF-8 sin BOM (PostgreSQL no acepta BOM)
-      Restart-Service -Name 'postgresql-16' -Force -ErrorAction SilentlyContinue
-      if ((Get-Service -Name 'postgresql-16').Status -ne 'Running') { Start-Service -Name 'postgresql-16' }
-      $pgPropio.Puerto = $nuevo
-    } elseif (-not $ocupante) {
-      if ((Get-Service -Name 'postgresql-16').Status -ne 'Running') { Start-Service -Name 'postgresql-16' } else { Restart-Service -Name 'postgresql-16' -Force }
-    }
-    $hasta = (Get-Date).AddSeconds(60)
-    while (-not (ProgramaEnPuerto $pgPropio.Puerto) -and (Get-Date) -lt $hasta) { Start-Sleep -Seconds 2 }
-    if (-not (ProgramaEnPuerto $pgPropio.Puerto)) { throw "PostgreSQL de FactPOS (postgresql-16) no quedó escuchando en el puerto $($pgPropio.Puerto). Revise $(Split-Path -Parent $pgPropio.Conf)\log" }
+    Paso 'PostgreSQL de FactPOS'
+    $pgPropio = AsegurarPuertoPropio $pgPropio
     $puertoEnv = if ($dbLine -match '@[^:/]+:(\d+)/') { [int]$Matches[1] } else { 5432 }
     if ($puertoEnv -ne $pgPropio.Puerto) {
       $dbLine = $dbLine -replace '(@[^:/]+:)\d+/', "`${1}$($pgPropio.Puerto)/"
@@ -432,80 +489,52 @@ if ($esReparacion) {
       $lineasEnv | Set-Content -LiteralPath $envExistente -Encoding UTF8
       Listo ".env corregido: la base de datos ahora es localhost:$($pgPropio.Puerto) (antes $puertoEnv, otro programa)"
     } else {
-      Listo "PostgreSQL de FactPOS en el puerto $($pgPropio.Puerto)"
+      Listo "PostgreSQL de FactPOS ($($pgPropio.Servicio)) en el puerto $($pgPropio.Puerto)"
     }
   }
   Paso 'Respaldo de seguridad'
-  # pg_dump va en la misma carpeta bin que psql.exe (registro, servicio, Program Files o PATH)
-  $dump = $null
-  $psqlEncontrado = BuscarPsql
-  if ($psqlEncontrado) {
-    $junto = Join-Path $psqlEncontrado.DirectoryName 'pg_dump.exe'
-    if (Test-Path -LiteralPath $junto -PathType Leaf) { $dump = Get-Item -LiteralPath $junto }
-  }
-  if (-not $dump) {
-    $c = Get-Command pg_dump.exe -ErrorAction SilentlyContinue
-    if ($c) { $dump = Get-Item -LiteralPath $c.Source }
-  }
-  if (-not $dump) {
-    foreach ($pf in @($env:ProgramW6432, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | Select-Object -Unique) {
-      $dump = Get-ChildItem "$pf\PostgreSQL\*\bin\pg_dump.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-      if ($dump) { break }
-    }
-  }
-  if ($dump) { Listo "Usando $($dump.FullName)" }
-  if (-not $dump) { throw 'No se encontro pg_dump para respaldar la base existente. Reparacion detenida sin ejecutar migraciones.' }
   $urlBD = ($dbLine -replace '^DATABASE_URL=', '').Trim().Trim('"')
   # Comprobar que el usuario factpos del .env puede entrar. Si no (instalaciones anteriores
   # que ignoraron errores de psql), se le pone la clave del .env usando el superusuario guardado.
-  $psqlRep = Join-Path $dump.DirectoryName 'psql.exe'
-  if (Test-Path -LiteralPath $psqlRep -PathType Leaf) {
-    $eapAnterior = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try {
-      $salida = & $psqlRep --dbname=$urlBD -tAc "SELECT 1" 2>&1
-      if ($LASTEXITCODE -ne 0) {
-        Write-Host "   El usuario factpos no entra con la clave del .env: $($salida -join ' ')" -ForegroundColor Yellow
-        if (-not $ClavePostgres) {
-          $ClavePostgres = Clave 20
-          Set-Content -Path $archivoClave -Value "Usuario: postgres`r`nClave: $ClavePostgres"
-          icacls $archivoClave /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
-        }
-        $u = [uri]$urlBD
-        $claveEnv = [uri]::UnescapeDataString($u.UserInfo.Split(':', 2)[1])
-        $puertoBD = if ($u.Port -gt 0) { $u.Port } else { 5432 }
-        $env:PGPASSWORD = $ClavePostgres
-        $hayRol = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'" 2>&1
-        if ($LASTEXITCODE -ne 0 -and $pgPropio -and $puertoBD -eq $pgPropio.Puerto) {
-          Write-Host "   La clave guardada de postgres no coincide con el PostgreSQL de FactPOS; se restablece..." -ForegroundColor Yellow
-          RestablecerClavePostgres $pgPropio $ClavePostgres $psqlRep
-          $env:PGPASSWORD = $ClavePostgres
-          $hayRol = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='factpos'" 2>&1
-          if ($LASTEXITCODE -eq 0) { Listo "Clave del superusuario postgres restablecida (guardada en $archivoClave)" }
-        }
-        if ($LASTEXITCODE -ne 0) { throw "El superusuario postgres no entra a $($u.Host):$($puertoBD): $($hayRol -join ' ')" }
-        $sql = if ("$hayRol".Trim() -eq '1') { "ALTER ROLE factpos WITH LOGIN PASSWORD '$claveEnv'" } else { "CREATE ROLE factpos LOGIN PASSWORD '$claveEnv'" }
-        $r = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -c $sql 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "No se pudo corregir el usuario factpos: $($r -join ' ')" }
-        $hayBase = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='factpos'" 2>&1
-        if ("$hayBase".Trim() -ne '1') {
-          $r = & $psqlRep -U postgres -h $u.Host -p $puertoBD -d postgres -c "CREATE DATABASE factpos OWNER factpos" 2>&1
-          if ($LASTEXITCODE -ne 0) { throw "No se pudo crear la base factpos: $($r -join ' ')" }
-        }
-        Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
-        $salida = & $psqlRep --dbname=$urlBD -tAc "SELECT 1" 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "El usuario factpos sigue sin poder entrar: $($salida -join ' ')" }
-        Listo 'Clave del usuario factpos corregida (coincide con el .env)'
-      }
-    } finally {
-      Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
-      $ErrorActionPreference = $eapAnterior
+  $salida = Bd probar $urlBD
+  if ($script:CodigoBd -ne 0) {
+    Write-Host "   El usuario factpos no entra con la clave del .env: $salida" -ForegroundColor Yellow
+    if (-not $ClavePostgres) {
+      $ClavePostgres = Clave 20
+      Set-Content -Path $archivoClave -Value "Usuario: postgres`r`nClave: $ClavePostgres"
+      icacls $archivoClave /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
     }
+    $u = [uri]$urlBD
+    $claveEnv = [uri]::UnescapeDataString($u.UserInfo.Split(':', 2)[1])
+    $puertoBD = if ($u.Port -gt 0) { $u.Port } else { 5432 }
+    $urlAdmin = UrlPg 'postgres' $ClavePostgres $puertoBD 'postgres'
+    $r = Bd probar $urlAdmin
+    if ($script:CodigoBd -ne 0 -and $pgPropio -and $puertoBD -eq $pgPropio.Puerto) {
+      Write-Host "   La clave guardada de postgres no coincide con el PostgreSQL de FactPOS; se restablece..." -ForegroundColor Yellow
+      RestablecerClavePostgres $pgPropio $ClavePostgres
+      $r = Bd probar $urlAdmin
+      if ($script:CodigoBd -eq 0) { Listo "Clave del superusuario postgres restablecida (guardada en $archivoClave)" }
+    }
+    if ($script:CodigoBd -ne 0) { throw "El superusuario postgres no entra a localhost:$($puertoBD): $r" }
+    $r = Bd preparar $urlAdmin $claveEnv
+    if ($script:CodigoBd -ne 0) { throw "No se pudo corregir el usuario factpos: $r" }
+    Listo 'Clave del usuario factpos corregida (coincide con el .env)'
   }
   $carpetaBackup = Join-Path $Carpeta 'respaldos'
   New-Item -ItemType Directory -Force -Path $carpetaBackup | Out-Null
-  $backup = Join-Path $carpetaBackup ("factpos-antes-reparacion-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.dump')
-  & $dump.FullName --dbname=$urlBD --format=custom --file=$backup 2>&1 | ForEach-Object { Write-Host $_ }
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $backup) -or (Get-Item $backup).Length -eq 0) {
+  $sello = Get-Date -Format 'yyyyMMdd-HHmmss'
+  # Con pg_dump si el PostgreSQL de FactPOS lo trae (instalaciones con winget); si no, la copia de FactPOS (bd.cjs)
+  $dump = if ($pgPropio -and $pgPropio.Bin) { Join-Path $pgPropio.Bin 'pg_dump.exe' } else { $null }
+  if ($dump -and (Test-Path -LiteralPath $dump -PathType Leaf)) {
+    $backup = Join-Path $carpetaBackup "factpos-antes-reparacion-$sello.dump"
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { & $dump --dbname=$urlBD --format=custom --file=$backup 2>&1 | ForEach-Object { Write-Host "   $_" }; $codigo = $LASTEXITCODE } finally { $ErrorActionPreference = $eap }
+  } else {
+    $backup = Join-Path $carpetaBackup "factpos-antes-reparacion-$sello.fpbak"
+    Write-Host "   $(Bd respaldar $urlBD $backup)"
+    $codigo = $script:CodigoBd
+  }
+  if ($codigo -ne 0 -or -not (Test-Path $backup) -or (Get-Item $backup).Length -eq 0) {
     Remove-Item $backup -ErrorAction SilentlyContinue
     throw 'No se pudo completar el respaldo. No se ejecutaran migraciones.'
   }
@@ -551,6 +580,20 @@ Unregister-ScheduledTask -TaskName $tarea -Confirm:$false -ErrorAction SilentlyC
 Register-ScheduledTask -TaskName $tarea -Action $accion -Trigger $disparador -Settings $opciones -Principal $usuario | Out-Null
 Start-ScheduledTask -TaskName $tarea
 Listo "Tarea '$tarea' registrada e iniciada"
+
+# ---------------------------------------------------------- Respaldo diario
+Paso "Respaldo diario automático"
+$tareaRespaldo = "FactPOS Respaldo"
+$psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$accionR = New-ScheduledTaskAction -Execute $psExe -WorkingDirectory $Carpeta `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Carpeta\instalador\respaldo-diario.ps1`""
+$disparadorR = New-ScheduledTaskTrigger -Daily -At '23:30'
+# StartWhenAvailable: si la PC estaba apagada a esa hora, el respaldo se hace al encenderla
+$opcionesR = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+  -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+Unregister-ScheduledTask -TaskName $tareaRespaldo -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName $tareaRespaldo -Action $accionR -Trigger $disparadorR -Settings $opcionesR -Principal $usuario | Out-Null
+Listo "Copia diaria a las 11:30 p. m. en $Carpeta\respaldos (se guardan 14 días)"
 
 # ---------------------------------------------------------- Firewall
 Paso "Firewall (solo red local)"
