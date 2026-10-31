@@ -221,6 +221,14 @@ export async function rutasPortal(app: FastifyInstance) {
     return { ok: true, web: `/${l.slug}/` };
   });
 
+  /** Estado público de la certificación del software ante la DGII (lo consultan los servidores de los clientes). */
+  app.get("/licencias/certificacion-dgii", async () => {
+    const r = (await pool.query(
+      "SELECT autorizado, to_char(autorizado_fecha, 'YYYY-MM-DD') AS fecha, software_nombre AS nombre, software_version AS version, pasos FROM portal_certificacion_dgii WHERE id = 1")).rows[0];
+    const hechos = Object.values((r?.pasos ?? {}) as Record<string, { estado?: string }>).filter((x) => x.estado === "HECHO").length;
+    return { autorizado: !!r?.autorizado, fecha: r?.fecha ?? null, software: r?.nombre ?? "FactPOS", version: r?.version ?? null, pasosHechos: hechos, totalPasos: 15 };
+  });
+
   /** Última versión publicada de FactPOS (GitHub Releases con etiqueta v1.2.3). */
   app.get("/licencias/version", async () => {
     const r = await ultimaVersion();
