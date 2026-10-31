@@ -8,6 +8,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
 import { rutasInvitaciones } from "./invitaciones.js";
+import { verificarSoftware } from "../fiscal/verificacion-software.js";
 import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
 
 /**
@@ -485,6 +486,8 @@ export async function rutasPortal(app: FastifyInstance) {
 
 
   // ---- Certificación del software ante la DGII (una sola para todo FactPOS) ----
+  /** ¿Puede FactPOS facturar con e-CF? Requisito por requisito, con lo que falta paso a paso. */
+  app.get("/central/portal/verificacion-ecf", async () => verificarSoftware(app));
   app.get("/central/portal/certificacion-dgii", async () => (await pool.query(
     `SELECT tipo_registro AS "tipoRegistro", software_nombre AS "softwareNombre", software_version AS "softwareVersion",
             url_recepcion AS "urlRecepcion", url_aprobacion AS "urlAprobacion", url_autenticacion AS "urlAutenticacion",

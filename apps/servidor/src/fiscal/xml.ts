@@ -11,6 +11,9 @@ import { Decimal } from "decimal.js";
  * se hace aquí, en un solo lugar.
  */
 
+/** Tipos de e-CF que este generador sabe construir. */
+export const TIPOS_ECF_SOPORTADOS = ["E31", "E32", "E34"] as const;
+
 export interface DatosEcf {
   tipo: "E31" | "E32" | "E34";
   encf: string;
