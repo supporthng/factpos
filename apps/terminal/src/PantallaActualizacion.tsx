@@ -81,3 +81,32 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
     </div>
   );
 }
+
+/**
+ * Antes de mostrar nada (usuario y contraseña, ventas…), comprueba si el servidor tiene una versión nueva que esta
+ * pantalla aún no conocía. Si es así, cierra la sesión y recarga una sola vez; así, tras actualizar, el sistema aparece
+ * ya listo para escribir y no se recarga por debajo mientras la persona teclea. Sin respuesta en 2,5 s, abre igual.
+ */
+export function usePreparado(servidor: () => string, alCambiarVersion: () => void) {
+  const [listo, setListo] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const base = servidor().replace(/\/$/, "");
+        if (base) {
+          const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store", signal: AbortSignal.timeout(2500) });
+          const d = r.ok ? ((await r.json()) as Estado) : null;
+          if (d && !d.actualizando) {
+            const guardada = leer();
+            if (guardada && guardada !== d.version) { guardar(d.version); alCambiarVersion(); location.reload(); return; }
+            if (!guardada) guardar(d.version);
+          }
+        }
+      } catch { /* sin servidor: se abre igual */ }
+      if (vivo) setListo(true);
+    })();
+    return () => { vivo = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return listo;
+}

@@ -354,7 +354,7 @@ function openMain(onShown) {
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
-  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (onShown) onShown(); };
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); win.focus(); win.webContents.focus(); if (onShown) onShown(); };
   const tope = setTimeout(mostrar, 12000);
   win.webContents.on('did-start-loading', () => clearTimeout(calma));
   win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 1500); });
