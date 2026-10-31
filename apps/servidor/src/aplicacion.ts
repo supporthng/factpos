@@ -9,6 +9,8 @@ import { rutasLicenciaCentral, rutasLicenciaSucursal } from "./licencia/cliente.
 import { rutasAltaLocal } from "./sync/alta.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { ZodError } from "zod";
 import { pool, ErrorNegocio } from "./db.js";
 import { rutasProductos } from "./rutas/productos.js";
@@ -54,6 +56,22 @@ export async function crearApp() {
 
   await app.register(cors, { origin: true });
 
+  // Compresión de las respuestas (JSON, texto): el catálogo de una tienda pasa de megabytes a unos cientos de KB
+  // y la caja lo recibe mucho antes, aunque la red sea lenta o esté ocupada.
+  const comprimir = promisify(gzip);
+  app.addHook("onSend", async (req, reply, payload) => {
+    if (typeof payload !== "string" && !Buffer.isBuffer(payload)) return payload; // archivos en flujo: sin tocar
+    if (reply.getHeader("content-encoding") || !/\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) return payload;
+    if (!/json|text|javascript|css|svg|xml/.test(String(reply.getHeader("content-type") ?? ""))) return payload;
+    const buf = typeof payload === "string" ? Buffer.from(payload) : payload;
+    if (buf.length < 1024) return payload;
+    const z = await comprimir(buf, { level: 5 });
+    reply.header("content-encoding", "gzip");
+    reply.header("vary", "accept-encoding");
+    reply.removeHeader("content-length");
+    return z;
+  });
+
   // Clave de acceso de la nube (CLAVE_ACCESO): protege las rutas de caja y de
   // diagnóstico. La administración (/central/...) tiene su propio inicio de sesión
   // y la sincronización usa la clave de conexión de cada sucursal.
@@ -63,7 +81,7 @@ export async function crearApp() {
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });

@@ -30,6 +30,32 @@ export async function rutasProductos(app: FastifyInstance) {
     return { cajaId, version: r.rows[0].version };
   });
 
+  /**
+   * Foto de un producto. Antes viajaba dentro del catálogo (hasta 400 KB por producto, en cada descarga);
+   * ahora el catálogo solo lleva su dirección y la caja la pide una vez: el navegador la guarda por versión.
+   */
+  app.get("/imagenes/:productoId", async (req, rep) => {
+    const { productoId } = z.object({ productoId: z.string().uuid() }).parse(req.params);
+    const r = await pool.query<{ imagen: string | null }>("SELECT imagen FROM productos WHERE id = $1", [productoId]);
+    const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/s.exec(r.rows[0]?.imagen ?? "");
+    if (!m) return rep.code(404).send({ error: "Sin imagen" });
+    return rep.header("content-type", m[1]).header("cache-control", "public, max-age=31536000, immutable").send(Buffer.from(m[2], "base64"));
+  });
+
+  /** Solo las existencias (por presentación): la caja las repone tras cada venta sin bajar el catálogo completo. */
+  app.get("/cajas/:cajaId/existencias", async (req) => {
+    const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
+    const ctx = await contextoCaja(cajaId);
+    const r = await pool.query<{ id: string; e: string }>(
+      `SELECT pr.id, (CASE WHEN p.tipo = 'COMBO'
+                        THEN COALESCE((SELECT vc.cantidad FROM v_existencia_combos vc WHERE vc.combo_id = p.id AND vc.almacen_id = $2), 0)
+                        ELSE COALESCE(ex.cantidad, 0) END / pr.factor)::numeric(14,3)::text AS e
+         FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id AND p.activo
+         LEFT JOIN existencias ex ON ex.producto_id = p.id AND ex.almacen_id = $2
+        WHERE p.empresa_id = $1 AND (p.controla_stock OR p.tipo = 'COMBO')`, [ctx.empresaId, ctx.almacenId]);
+    return Object.fromEntries(r.rows.map((x) => [x.id, x.e]));
+  });
+
   app.get("/cajas/:cajaId/catalogo", async (req, rep) => {
     const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
     const ctx = await contextoCaja(cajaId);
@@ -42,7 +68,7 @@ export async function rutasProductos(app: FastifyInstance) {
                   'nombre', p.nombre, 'presentacion', pr.nombre, 'factor', pr.factor::text, 'esPesable', p.es_pesable,
                   'precioIncluyeItbis', p.precio_incluye_impuesto, 'tasaItbis', i.tasa::text,
                   'codigos', (SELECT COALESCE(jsonb_agg(cb.codigo), '[]') FROM codigos_barra cb WHERE cb.presentacion_id = pr.id AND cb.activo),
-                  'imagen', p.imagen, 'categoria', cat.nombre, 'categoriaColor', cat.color, 'categoriaIcono', cat.icono,
+                  'imagen', CASE WHEN p.imagen LIKE 'data:%' THEN '/imagenes/' || p.id::text || '?v=' || p.version::text ELSE p.imagen END, 'categoria', cat.nombre, 'categoriaColor', cat.color, 'categoriaIcono', cat.icono,
                   'controlaStock', p.controla_stock OR p.tipo = 'COMBO', 'tipo', p.tipo,
                   'permiteSinExistencia', p.permite_sin_existencia,
                   'precioVariable', p.precio_variable, 'precioVariableMin', p.precio_variable_min::text,
