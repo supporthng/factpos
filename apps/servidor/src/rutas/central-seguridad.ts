@@ -28,6 +28,12 @@ export const FUNCIONES = [
     porDefecto: false,
   },
   {
+    clave: "borrar_inventario",
+    titulo: "Borrar inventario (dejar las existencias en cero)",
+    descripcion: "Habilita, aquí en Seguridad, la opción de dejar en cero toda la existencia de un almacén. Solo un administrador puede ejecutarla, escribiendo su contraseña y una frase de confirmación. No borra productos: genera ajustes de salida que quedan en el kardex con su nombre. Desactivada: nadie puede borrar el inventario.",
+    porDefecto: false,
+  },
+  {
     clave: "acceso_web",
     titulo: "Acceso web desde internet",
     descripcion: "Permite entrar a la administración desde internet con el enlace de «Conexión web». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",
