@@ -13,24 +13,63 @@ const TIPOS: Record<string, string> = {
 
 /** Facturación electrónica: estado de envíos a la DGII, secuencias e-NCF y configuración. */
 export function Fiscal() {
-  const [vista, setVista] = useState<"envios" | "secuencias" | "ncf" | "certificado" | "config">("envios");
+  const [vista, setVista] = useState<"verificacion" | "envios" | "secuencias" | "ncf" | "certificado" | "config">("verificacion");
   return (
     <>
       <Encabezado titulo="Gestión fiscal" descripcion="Comprobantes e-CF, rangos NCF serie B y certificados digitales." />
       <div className="pestanas">
+        <button className={vista === "verificacion" ? "activa" : ""} onClick={() => setVista("verificacion")}>¿Puedo facturar?</button>
         <button className={vista === "envios" ? "activa" : ""} onClick={() => setVista("envios")}>Envíos a la DGII</button>
         <button className={vista === "secuencias" ? "activa" : ""} onClick={() => setVista("secuencias")}>Secuencias e-NCF</button>
-        <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF (serie B)</button>
         <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF (serie B)</button>
         <button className={vista === "certificado" ? "activa" : ""} onClick={() => setVista("certificado")}>Certificado digital</button>
         <button className={vista === "config" ? "activa" : ""} onClick={() => setVista("config")}>Configuración</button>
       </div>
+      {vista === "verificacion" && <Verificacion irA={setVista} />}
       {vista === "envios" && <Envios />}
       {vista === "secuencias" && <Secuencias />}
       {vista === "ncf" && <RangosNCF />}
       {vista === "ncf" && <RangosNcf />}
       {vista === "certificado" && <CertificadoDigital />}
       {vista === "config" && <Configuracion />}
+    </>
+  );
+}
+
+interface ItemVerif { id: string; titulo: string; estado: "ok" | "falta" | "aviso" | "info"; detalle: string; accion?: string }
+interface Verif { puedeFacturar: boolean; resultado: "LISTO" | "LISTO_CON_AVISOS" | "NO_LISTO"; resumen: string; items: ItemVerif[]; revisadoEn: string }
+const DESTINO: Record<string, "secuencias" | "certificado" | "config" | "envios"> = {
+  direccion: "config", ambiente: "config", pse: "config", certificado: "certificado", "cert-sucursales": "certificado",
+  "sec-E32": "secuencias", "sec-E31": "secuencias", dgii: "config", envios: "envios",
+};
+
+/** ¿Puede esta empresa facturar con la DGII? Cada requisito con su estado y, si falta, qué hacer. */
+function Verificacion({ irA }: { irA: (v: "secuencias" | "certificado" | "config" | "envios") => void }) {
+  const [n, setN] = useState(0);
+  const { datos, error, cargando } = useDatos<Verif>("/central/fiscal/verificacion", [n]);
+  const icono = { ok: "✓", falta: "✕", aviso: "!", info: "i" } as const;
+  const clase = { ok: "ok", falta: "alerta", aviso: "", info: "" } as const;
+  return (
+    <>
+      <Aviso texto={error} />
+      {datos && <Aviso tipo={datos.resultado === "NO_LISTO" ? "error" : datos.resultado === "LISTO" ? "ok" : "info"} texto={datos.resumen} />}
+      <div className="fila-acciones" style={{ marginBottom: 8 }}>
+        <span className="suave pequeno">{datos ? `Revisado ${new Date(datos.revisadoEn).toLocaleString("es-DO")}` : cargando ? "Revisando (incluye una prueba con la DGII)…" : ""}</span>
+        <span className="flex" />
+        <button className="boton" disabled={cargando} onClick={() => setN((x) => x + 1)}>{cargando ? "Revisando…" : "Volver a revisar"}</button>
+      </div>
+      <div className="panel">
+        {(datos?.items ?? []).map((i) => (
+          <div key={i.id} className="seg-fila">
+            <div>
+              <b><span className={"pastilla " + clase[i.estado]} style={{ marginRight: 8 }}>{icono[i.estado]}</span>{i.titulo}</b>
+              <p className="suave pequeno" style={{ margin: "4px 0 0", maxWidth: "75ch" }}>{i.detalle}</p>
+              {i.accion && i.estado !== "ok" && <p className="pequeno" style={{ margin: "4px 0 0", maxWidth: "75ch" }}><b>Qué hacer:</b> {i.accion}{DESTINO[i.id] && <> <button className="enlace" onClick={() => irA(DESTINO[i.id])}>Ir allí</button></>}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="suave pequeno">Ser emisor electrónico autorizado se tramita con la DGII (Oficina Virtual). Si la autenticación con la DGII pasa, es señal de que su solicitud fue aprobada.</p>
     </>
   );
 }

@@ -20,6 +20,8 @@ export interface DocumentoEnvio { encf: string; tipo: string; modo: "ECF" | "RFC
 export interface Transmisor {
   enviar(d: DocumentoEnvio): Promise<Respuesta>;
   consultar(trackId: string, d: DocumentoEnvio): Promise<Respuesta>;
+  /** Prueba de conexión y autenticación (solo el envío directo a la DGII). Lanza si falla. */
+  probar?(): Promise<void>;
 }
 
 /** Error de red/servicio: el documento queda en contingencia y se reintenta. */
@@ -88,6 +90,7 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
   }
 
   return {
+    async probar() { token = null; await autenticar(); },
     async enviar(d) {
       const t = await autenticar();
       const url = d.modo === "RFCE" ? `${baseFc}/recepcionfc/api/recepcion/ecf` : `${base}/recepcion/api/FacturasElectronicas`;
