@@ -5,6 +5,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
 import { hashPin } from "../autorizacion.js";
+import { esCodigoRecuperacion, huellaRecuperacion, nuevoSecreto, nuevosCodigosRecuperacion, uriOtp, verificarCodigo } from "../doble-factor.js";
 import { contextoCaja } from "../contexto.js";
 import {
   PERMISOS, claveSegura, crearToken, hashClave, leerToken, puedeAdministrar, tienePermiso, verificarClave, type SesionAdmin,
@@ -15,9 +16,9 @@ const pinValido = z.string().regex(/^\d{4,6}$/, "El PIN debe tener de 4 a 6 núm
 
 /** Freno a quien prueba contraseñas: 5 intentos fallidos y espera 5 minutos. */
 const fallos = new Map<string, { n: number; hasta: number }>();
-function frenar(clave: string) {
+function frenar(clave: string, max = 5) {
   const f = fallos.get(clave);
-  if (f && f.n >= 5 && f.hasta > Date.now()) {
+  if (f && f.n >= max && f.hasta > Date.now()) {
     throw new ErrorNegocio(`Demasiados intentos. Espere ${Math.ceil((f.hasta - Date.now()) / 60000)} minuto(s)`, 429);
   }
 }
@@ -62,10 +63,12 @@ export async function rutasSesionCaja(app: FastifyInstance) {
 export async function rutasSesionCentral(app: FastifyInstance) {
   /** Usuario y contraseña. Si el mismo usuario existe en dos empresas, se pide el RNC. */
   app.post("/central/entrar", async (req) => {
-    const b = z.object({ usuario: z.string().trim().min(1).max(50), clave: z.string().min(1).max(200), rnc: z.string().trim().max(11).optional() }).parse(req.body);
+    const b = z.object({ usuario: z.string().trim().min(1).max(50), clave: z.string().min(1).max(200), rnc: z.string().trim().max(11).optional(), codigo: z.string().trim().max(20).optional() }).parse(req.body);
     const usuario = b.usuario.toLowerCase();
     const llave = `admin:${usuario}`;
+    const ip = `ip:${String(req.headers["cf-connecting-ip"] ?? req.ip)}`;
     frenar(llave);
+    frenar(ip, 20); // quien prueba muchos usuarios desde un mismo lugar
     const r = await pool.query<{ id: string; nombre: string; empresa_id: string; empresa: string; clave_hash: string; permisos: string[] }>(
       `SELECT u.id, u.nombre, u.empresa_id, e.nombre_comercial AS empresa, u.clave_hash, ro.permisos
          FROM usuarios u JOIN roles ro ON ro.id = u.rol_id JOIN empresas e ON e.id = u.empresa_id
@@ -75,10 +78,33 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     if (r.rowCount! > 1) throw new ErrorNegocio("Ese usuario existe en varias empresas: escriba también el RNC de la empresa", 409);
     const u = r.rows[0];
     if (!u || !(await verificarClave(b.clave, u.clave_hash))) {
-      fallo(llave);
+      fallo(llave); fallo(ip, 15);
       throw new ErrorNegocio("Usuario o contraseña incorrectos", 401);
     }
     if (!puedeAdministrar(u.permisos)) throw new ErrorNegocio(`${u.nombre} no tiene acceso a la administración`, 403);
+    // Verificación en dos pasos (si el usuario la activó)
+    const dos = (await pool.query<{ secreto: string; recuperacion: string[]; ultimo_paso: string }>(
+      "SELECT secreto, recuperacion, ultimo_paso FROM usuarios_2fa WHERE usuario_id = $1 AND activo", [u.id])
+      .catch(() => ({ rows: [] as { secreto: string; recuperacion: string[]; ultimo_paso: string }[] }))).rows[0];
+    if (dos) {
+      const c = (b.codigo ?? "").trim();
+      if (!c) return { requiere2fa: true };
+      let ok = false;
+      if (esCodigoRecuperacion(c) && !/^\d{6}$/.test(c.replace(/\s/g, ""))) {
+        const h = huellaRecuperacion(c);
+        if (dos.recuperacion.includes(h)) {
+          await pool.query("UPDATE usuarios_2fa SET recuperacion = array_remove(recuperacion, $2) WHERE usuario_id = $1", [u.id, h]);
+          ok = true;
+        }
+      } else {
+        const paso = verificarCodigo(dos.secreto, c);
+        if (paso !== null && paso > Number(dos.ultimo_paso)) {
+          ok = true;
+          await pool.query("UPDATE usuarios_2fa SET ultimo_paso = $2 WHERE usuario_id = $1", [u.id, paso]);
+        }
+      }
+      if (!ok) { fallo(llave); fallo(ip, 15); throw new ErrorNegocio("Código de verificación incorrecto", 401); }
+    }
     fallos.delete(llave);
     const token = crearToken({ t: "admin", u: u.id, e: u.empresa_id, n: u.nombre, p: u.permisos }, 12);
     return { token, usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos }, empresa: { id: u.empresa_id, nombre: u.empresa } };
@@ -96,6 +122,62 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     if (!r.rowCount) throw new ErrorNegocio("Su usuario fue desactivado", 401);
     const u = r.rows[0];
     return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa }, modo: config.modo };
+  });
+
+  // ------------------------------------------------------------- Verificación en dos pasos (cada usuario, la suya)
+  app.get("/central/sesion/2fa", async (req) => {
+    const r = await pool.query<{ activo: boolean; n: number }>("SELECT activo, cardinality(recuperacion) AS n FROM usuarios_2fa WHERE usuario_id = $1", [sesionAdmin(req).u]);
+    return { activo: !!r.rows[0]?.activo, codigosRestantes: r.rows[0]?.activo ? r.rows[0].n : 0 };
+  });
+  /** Paso 1: genera la clave para la app de códigos (todavía no queda activa). */
+  app.post("/central/sesion/2fa/iniciar", async (req) => {
+    const s = sesionAdmin(req);
+    const ya = await pool.query("SELECT 1 FROM usuarios_2fa WHERE usuario_id = $1 AND activo", [s.u]);
+    if (ya.rowCount) throw new ErrorNegocio("La verificación en dos pasos ya está activa. Desactívela primero para configurarla de nuevo.", 409);
+    const secreto = nuevoSecreto();
+    await pool.query(
+      `INSERT INTO usuarios_2fa (usuario_id, secreto, activo) VALUES ($1,$2,FALSE)
+       ON CONFLICT (usuario_id) DO UPDATE SET secreto = $2, activo = FALSE, recuperacion = '{}', ultimo_paso = 0, creado_en = now()`, [s.u, secreto]);
+    const emp = (await pool.query<{ n: string }>("SELECT COALESCE(nombre_comercial, 'FactPOS') AS n FROM empresas WHERE id = $1", [s.e])).rows[0]?.n ?? "FactPOS";
+    return { secreto, uri: uriOtp(secreto, s.n, `FactPOS ${emp}`.slice(0, 40)) };
+  });
+  /** Paso 2: confirma con un código de la app. Entrega los códigos de recuperación (se ven una sola vez). */
+  app.post("/central/sesion/2fa/activar", async (req) => {
+    const s = sesionAdmin(req);
+    const b = z.object({ codigo: z.string().trim().max(10) }).parse(req.body);
+    llaveDos(s.u);
+    const r = (await pool.query<{ secreto: string }>("SELECT secreto FROM usuarios_2fa WHERE usuario_id = $1 AND NOT activo", [s.u])).rows[0];
+    if (!r) throw new ErrorNegocio("Primero genere la clave para su app de códigos", 409);
+    const paso = verificarCodigo(r.secreto, b.codigo);
+    if (paso === null) { fallo(`2fa:${s.u}`, 5); throw new ErrorNegocio("Ese código no coincide. Revise la hora de su teléfono e intente con el código actual.", 400); }
+    const { codigos, huellas } = nuevosCodigosRecuperacion();
+    await pool.query("UPDATE usuarios_2fa SET activo = TRUE, recuperacion = $2, ultimo_paso = $3, activado_en = now() WHERE usuario_id = $1", [s.u, huellas, paso]);
+    fallos.delete(`2fa:${s.u}`);
+    return { ok: true, recuperacion: codigos };
+  });
+  /** Desactivar: pide la contraseña (y un código si está activa). */
+  app.post("/central/sesion/2fa/desactivar", async (req) => {
+    const s = sesionAdmin(req);
+    const b = z.object({ clave: z.string().max(200) }).parse(req.body);
+    llaveDos(s.u);
+    const r = await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [s.u]);
+    if (!(await verificarClave(b.clave, r.rows[0]?.clave_hash))) { fallo(`2fa:${s.u}`, 5); throw new ErrorNegocio("La contraseña no es correcta", 400); }
+    await pool.query("DELETE FROM usuarios_2fa WHERE usuario_id = $1", [s.u]);
+    return { ok: true };
+  });
+  const llaveDos = (u: string) => frenar(`2fa:${u}`);
+
+  /** Administrador: quién tiene verificación en dos pasos y restablecerla si alguien perdió su teléfono. */
+  app.get("/central/usuarios-2fa", async (req) => {
+    const r = await pool.query(
+      `SELECT u.id, u.nombre, u.usuario, COALESCE(d.activo, FALSE) AS activo, d.activado_en AS "activadoEn"
+         FROM usuarios u LEFT JOIN usuarios_2fa d ON d.usuario_id = u.id WHERE u.empresa_id = $1 AND u.activo ORDER BY u.nombre`, [sesionAdmin(req).e]);
+    return r.rows;
+  });
+  app.delete("/central/usuarios-2fa/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    await pool.query("DELETE FROM usuarios_2fa WHERE usuario_id = $1 AND usuario_id IN (SELECT id FROM usuarios WHERE empresa_id = $2)", [id, sesionAdmin(req).e]);
+    return { ok: true };
   });
 
   app.post("/central/sesion/clave", async (req) => {

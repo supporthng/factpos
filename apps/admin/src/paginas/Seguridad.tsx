@@ -44,6 +44,38 @@ export function Seguridad() {
         ))}
         {!datos && !error && <p className="suave">Cargando…</p>}
       </div>
+      <DosPasosUsuarios admin={admin} />
     </>
+  );
+}
+
+/** Quién tiene verificación en dos pasos; el administrador la restablece si alguien pierde su teléfono. */
+function DosPasosUsuarios({ admin }: { admin: boolean }) {
+  const { datos, recargar } = useDatos<{ id: string; nombre: string; usuario: string; activo: boolean }[]>("/central/usuarios-2fa");
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!admin) return null;
+  const restablecer = async (u: { id: string; nombre: string }) => {
+    if (!confirm(`¿Quitar la verificación en dos pasos de ${u.nombre}? Podrá entrar solo con su contraseña y volver a activarla.`)) return;
+    try { await api(`/central/usuarios-2fa/${u.id}`, { metodo: "DELETE" }); await recargar(); setMsg(`Se restableció la verificación de ${u.nombre}.`); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Verificación en dos pasos</h3>
+      <p className="suave pequeno">Cada persona la activa desde su nombre (arriba a la derecha) › Verificación en dos pasos. Se recomienda para todos los administradores.</p>
+      {msg && <Aviso texto={msg} tipo="ok" />}
+      <table className="tabla">
+        <thead><tr><th>Usuario</th><th>Estado</th><th /></tr></thead>
+        <tbody>
+          {(datos ?? []).map((u) => (
+            <tr key={u.id}>
+              <td><b>{u.nombre}</b> <span className="suave">· {u.usuario}</span></td>
+              <td><span className={"pastilla " + (u.activo ? "ok" : "")}>{u.activo ? "Activa" : "No activada"}</span></td>
+              <td className="der">{u.activo && <button className="enlace" onClick={() => restablecer(u)}>Restablecer</button>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
