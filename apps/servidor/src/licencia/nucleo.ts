@@ -18,7 +18,7 @@ import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
  *   PRUEBA       sin licencia todavía: 15 días desde la primera instalación
  *   PRUEBA_VENCIDA
  */
-export const LLAVE_PUBLICA_PROVEEDOR = "MCowBQYDK2VwAyEAwAfPaN+TJM/6Wql8kYMwb7SZ8FSf59z4zdG8sy3q8Ok=";
+export const LLAVE_PUBLICA_PROVEEDOR = "MCowBQYDK2VwAyEALySfqQ5dbsXt3Jkdqa4qs33cIVtc8NEEpRwT3lqhXMY=";
 
 export const DIAS_AVISO = 15;
 export const DIAS_GRACIA = 7;
