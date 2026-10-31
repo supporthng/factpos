@@ -1,6 +1,7 @@
 import { sesionActual } from "./api";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { api } from "./api";
+import { Icono, type NombreIcono } from "./Iconos";
 
 /** Datos comunes a todas las pantallas (sucursales, productos, usuarios). */
 export interface Producto { id: string; sku: string; nombre: string; categoriaId: string | null; presentaciones: { id: string; nombre: string; factor: string }[] }
@@ -106,12 +107,13 @@ export function Aviso({ texto, tipo = "error" }: { texto: string; tipo?: "error"
   return <div className={"aviso-linea " + tipo}>{texto}</div>;
 }
 
-export function Kpi({ titulo, valor, detalle, tono }: { titulo: string; valor: string; detalle?: string; tono?: "alerta" | "ok" }) {
+export function Kpi({ titulo, valor, detalle, tono, icono }: { titulo: string; valor: string; detalle?: string; tono?: "alerta" | "ok"; icono?: NombreIcono }) {
   return (
-    <div className={"kpi" + (tono ? " " + tono : "")}>
-      <span className="suave">{titulo}</span>
+    <div className={"kpi" + (icono ? " con-icono" : "") + (tono ? " " + tono : "")}>
+      <span className="suave kpi-titulo">{titulo}</span>
+      {icono && <span className="kpi-icono"><Icono n={icono} /></span>}
       <b>{valor}</b>
-      {detalle && <span className="suave pequeno">{detalle}</span>}
+      {detalle && <span className="suave pequeno kpi-detalle">{detalle}</span>}
     </div>
   );
 }
