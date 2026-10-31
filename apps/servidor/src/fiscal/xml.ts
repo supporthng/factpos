@@ -116,14 +116,15 @@ export function construirEcf(d: DatosEcf, fechaFirma: Date): string {
     t("TipoeCF", tipo),
     t("eNCF", d.encf),
     tipo !== "32" && tipo !== "34" ? t("FechaVencimientoSecuencia", fechaIso(d.venceSecuencia)) : "",
+    // Nota de crédito: 0 = dentro de los 30 días de la factura original, 1 = después.
+    // Según el formato de la DGII va justo después de FechaVencimientoSecuencia (el XSD exige ese orden).
+    tipo === "34" && d.referencia
+      ? t("IndicadorNotaCredito", (d.fechaEmision.getTime() - d.referencia.fecha.getTime()) / 86400e3 > 30 ? "1" : "0")
+      : "",
     t("IndicadorMontoGravado", "1"), // los precios unitarios incluyen ITBIS
     t("TipoIngresos", "01"),         // 01 = ingresos por operaciones (no financieros)
     tipo !== "34" ? t("TipoPago", d.condicion === "CREDITO" ? "2" : "1") : "",
     tipo !== "34" && d.condicion === "CONTADO" ? bloquePagos(d) : "",
-    // Nota de crédito: 0 = dentro de los 30 días de la factura original, 1 = después
-    tipo === "34" && d.referencia
-      ? t("IndicadorNotaCredito", (d.fechaEmision.getTime() - d.referencia.fecha.getTime()) / 86400e3 > 30 ? "1" : "0")
-      : "",
   ].join("");
 
   // 1 = anula el comprobante, 2 = corrige texto, 3 = corrige montos, 4 = reemplazo por contingencia
