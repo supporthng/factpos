@@ -1,4 +1,5 @@
 import { Seguridad } from "./paginas/Seguridad";
+import { ConexionWeb } from "./paginas/ConexionWeb";
 import { PantallaActualizacion } from "./PantallaActualizacion";
 import { Correo } from "./paginas/Correo";
 import { useEffect, useState, type ComponentType } from "react";
@@ -54,10 +55,26 @@ const SECCIONES = [
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
   { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
   { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, i: "licencia", p: ["admin.config"] },
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
+/** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
+const SECCIONES_MOVIL = new Set(["resumen", "productos", "compras", "inventario", "precios", "cxc", "caja", "reportes"]);
+const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
+function useVersionMovil() {
+  const [angosta, setAngosta] = useState(() => matchMedia("(max-width: 760px)").matches);
+  const [completa, setCompleta] = useState(() => lee("factpos.versionCompleta") === "1");
+  useEffect(() => {
+    const m = matchMedia("(max-width: 760px)");
+    const f = () => setAngosta(m.matches);
+    m.addEventListener("change", f);
+    return () => m.removeEventListener("change", f);
+  }, []);
+  return { angosta, movil: angosta && !completa, alternar: () => { guarda("factpos.versionCompleta", completa ? null : "1"); setCompleta(!completa); } };
+}
 /** En el portal del proveedor solo hay clientes/licencias y su propio equipo. */
 const SECCIONES_PORTAL = [
   { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, i: "clientes", p: ["*"] },
@@ -70,6 +87,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: No
 const DESCRIPCION: Record<string, string> = {
   resumen: "Ventas del día, alertas y existencias por reponer",
   productos: "Ficha, códigos de barra, precios y combos",
+  conexionweb: "Enlace de acceso desde internet y su activación",
   seguridad: "Habilitar o deshabilitar funciones sensibles",
   compras: "Entrada de mercancía de los proveedores",
   inventario: "Existencia de cada producto por sucursal",
@@ -150,12 +168,13 @@ function AppInterna() {
     return () => removeEventListener("hashchange", f);
   }, []);
 
+  const vm = useVersionMovil();
   if (!sesion || !catalogo && error) {
     return <Entrar error={error} onListo={(s) => { fijarSesion(s); setError(""); setSesion(s); }} />;
   }
   if (!catalogo) return <div className="cargando">Cargando…</div>;
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede));
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (enPortal || !vm.movil || SECCIONES_MOVIL.has(s.id)));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
   // Ruta: "inicio", "g-<grupo>" o el id de una opción
@@ -227,6 +246,7 @@ function AppInterna() {
             <button className="chip-usuario" title="Cambiar mi contraseña" onClick={() => setCambiarClave(true)}>
               <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>
             </button>
+            {vm.angosta && !enPortal && <button className="boton-icono" title={vm.movil ? "Ver versión completa" : "Ver versión celular"} aria-label={vm.movil ? "Ver versión completa" : "Ver versión celular"} onClick={vm.alternar}><Icono n={vm.movil ? "menu-lateral" : "menu"} /></button>}
             <button className="boton-icono" title="Salir" aria-label="Salir" onClick={salir}><Icono n="salir" /></button>
           </header>
 
