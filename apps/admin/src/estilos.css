@@ -894,3 +894,43 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .app-colapsado .lateral-colapsar { justify-content: center; padding: 10px 0; }
 }
+
+/* Producto: ventana de creación directa */
+.modal.producto-rapido { width: min(760px, 100%); }
+.pr-cabecera { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.pr-cabecera h2 { margin: 0; font-size: 20px; }
+.pr-cabecera p { margin: 4px 0 0; font-size: 13.5px; }
+.pr-tipos { display: inline-flex; border: 1px solid var(--borde-fuerte); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+.pr-tipos button { border: none; background: var(--panel); padding: 8px 16px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.pr-tipos button + button { border-left: 1px solid var(--borde-fuerte); }
+.pr-tipos button small { font-size: 11px; font-weight: 400; color: var(--suave); }
+.pr-tipos button.activo { background: var(--primario-suave); color: var(--primario); }
+.pr-fila { display: grid; gap: 12px; }
+.pr-fila-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+.pr-fila-costo { grid-template-columns: 1fr 1fr 1.3fr; align-items: end; }
+.pr-check { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; font-size: 14px; cursor: pointer; }
+.pr-check input { width: 18px; height: 18px; accent-color: var(--primario); }
+.pr-bloque { border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin: 4px 0 14px; background: color-mix(in srgb, var(--fondo) 55%, var(--panel)); }
+.pr-niveles { display: flex; flex-direction: column; gap: 8px; }
+.pr-nivel { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr .9fr; gap: 10px; align-items: center; }
+.pr-nivel-cab { font-size: 12px; font-weight: 600; color: var(--suave); text-transform: uppercase; letter-spacing: .03em; }
+.pr-nombre { display: flex; flex-direction: column; line-height: 1.2; }
+.pr-nombre small { font-size: 11.5px; }
+.pr-margen { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.pr-nota { align-self: center; margin: 0; }
+.pr-acciones { align-items: center; }
+.pr-espacio { flex: 1; }
+@media (max-width: 640px) { .pr-fila-2, .pr-fila-costo { grid-template-columns: 1fr; } .pr-nivel { grid-template-columns: 1fr 1fr; } }
+
+/* Importar inventario */
+.imp-pasos { display: flex; gap: 8px; margin-bottom: 14px; font-size: 13px; }
+.imp-pasos span { padding: 4px 12px; border-radius: 999px; background: var(--fondo); color: var(--suave); }
+.imp-pasos span.activo { background: var(--primario-suave); color: var(--primario); font-weight: 600; }
+.imp-mapa { display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px 12px; align-items: center; font-size: 14px; }
+.imp-mapa .cab { font-size: 12px; font-weight: 600; color: var(--suave); text-transform: uppercase; }
+.imp-mapa select { width: 100%; }
+.imp-muestra { font-size: 12.5px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imp-tabla { max-height: 260px; overflow: auto; border: 1px solid var(--borde); border-radius: 10px; }
+.imp-tabla table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.imp-tabla td, .imp-tabla th { padding: 6px 10px; border-bottom: 1px solid var(--borde); text-align: left; white-space: nowrap; }
+.imp-tabla tr.mala td { background: var(--alerta-suave); }

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, rd, num } from "../api";
+import { ImportarProductos } from "./ImportarProductos";
 import { Aviso, Encabezado, SelectorProducto, Tabla, useCatalogo, useDatos } from "../ui";
 
 /* ---------- Tipos ---------- */
@@ -76,28 +77,45 @@ function fichaNueva(aux: Auxiliares, sucursales: { id: string; nombre: string }[
 /* =================================================================== */
 export function Productos() {
   const [editando, setEditando] = useState<string | "nuevo" | null>(null);
+  const [rapido, setRapido] = useState(false);
+  const [importar, setImportar] = useState(false);
+  const [borrador, setBorrador] = useState<Ficha | null>(null);
+  const [version, setVersion] = useState(0);
+  const [creado, setCreado] = useState("");
   const aux = useDatos<Auxiliares>("/central/productos-auxiliares");
   if (!aux.datos) return <div className="cargando">Cargando…</div>;
   return editando
-    ? <Editor id={editando === "nuevo" ? null : editando} aux={aux.datos} recargarAux={aux.recargar}
-        onCerrar={() => setEditando(null)} onAbrir={(id) => setEditando(id)} />
-    : <Listado onAbrir={setEditando} aux={aux.datos} />;
+    ? <Editor id={editando === "nuevo" ? null : editando} borrador={editando === "nuevo" ? borrador : null} aux={aux.datos} recargarAux={aux.recargar}
+        onCerrar={() => { setEditando(null); setBorrador(null); }} onAbrir={(id) => { setBorrador(null); setEditando(id); }} />
+    : (
+      <>
+        <Listado onAbrir={setEditando} onNuevo={() => setRapido(true)} onImportar={() => setImportar(true)} aux={aux.datos} version={version} creado={creado} />
+        {importar && <ImportarProductos aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setImportar(false)} onTerminado={() => setVersion((v) => v + 1)} />}
+        {rapido && (
+          <ProductoRapido aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setRapido(false)}
+            onCreado={(nombre) => { setVersion((v) => v + 1); setCreado(nombre); setTimeout(() => setCreado(""), 5000); }}
+            onCompleta={(b) => { setBorrador(b); setRapido(false); setEditando("nuevo"); }} />
+        )}
+      </>
+    );
 }
 
 /* ---------- Listado ---------- */
-function Listado({ onAbrir, aux }: { onAbrir: (id: string | "nuevo") => void; aux: Auxiliares }) {
+function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbrir: (id: string | "nuevo") => void; onNuevo: () => void; onImportar: () => void; aux: Auxiliares; version: number; creado: string }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [estado, setEstado] = useState("activos");
   const [buscar, setBuscar] = useState("");
   useEffect(() => { const t = setTimeout(() => setBuscar(q), 250); return () => clearTimeout(t); }, [q]);
   const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}`;
-  const { datos, error } = useDatos<FilaLista[]>(ruta);
+  const { datos, error, recargar } = useDatos<FilaLista[]>(ruta);
+  useEffect(() => { if (version) recargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
       <Encabezado titulo="Productos" descripcion="Ficha, códigos, los 3 niveles de precio, proveedores y combos. La existencia de cada sucursal se ve aquí y se corrige con un ajuste.">
-        <button className="boton primario" onClick={() => onAbrir("nuevo")}>Nuevo producto</button>
+        <button className="boton" onClick={onImportar} title="Cargar su inventario desde Excel o CSV">Importar desde Excel</button>
+        <button className="boton primario" onClick={onNuevo}>Nuevo producto</button>
       </Encabezado>
       <div className="filtros">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nombre, SKU, marca o código de barras" style={{ width: 320 }} />
@@ -111,6 +129,7 @@ function Listado({ onAbrir, aux }: { onAbrir: (id: string | "nuevo") => void; au
         <span className="suave pequeno">{datos ? `${datos.length} producto(s)` : ""}</span>
       </div>
       <Aviso texto={error} />
+      {creado && <Aviso texto={`Producto “${creado}” creado. Las terminales lo reciben en la próxima sincronización.`} tipo="ok" />}
       {datos && (
         <Tabla
           filas={datos}
@@ -138,13 +157,13 @@ function Listado({ onAbrir, aux }: { onAbrir: (id: string | "nuevo") => void; au
 /* ---------- Editor ---------- */
 type Pestana = "general" | "precios" | "inventario" | "proveedores" | "combo";
 
-function Editor({ id, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
+function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; borrador?: Ficha | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
   const { sucursales, productos } = useCatalogo();
-  const [f, setF] = useState<Ficha | null>(id ? null : fichaNueva(aux, sucursales));
+  const [f, setF] = useState<Ficha | null>(id ? null : borrador ?? fichaNueva(aux, sucursales));
   const [pestana, setPestana] = useState<Pestana>("general");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [sucio, setSucio] = useState(false);
+  const [sucio, setSucio] = useState(!id && !!borrador);
 
   useEffect(() => {
     if (!id) return;
@@ -737,5 +756,223 @@ function Vista({ f, aux, tasa, cambiar }: { f: Ficha; aux: Auxiliares; tasa: num
         </div>
       </div>
     </aside>
+  );
+}
+
+/* =================================================================== */
+/* Ventana de creación directa: lo mínimo para vender, con los 3 niveles de precio. */
+type Niv = { precio: string; pct: string; origen: "pct" | "monto" | null };
+const limpiar = (v: string) => v.replace(/[^\d.]/g, "");
+const nivVacio = (): Record<string, Niv> => ({ "1": { precio: "", pct: "", origen: null }, "2": { precio: "", pct: "", origen: null }, "3": { precio: "", pct: "", origen: null } });
+
+/** Recalcula los niveles cuando cambia el costo, el ITBIS o su inclusión: los definidos por % ajustan el precio; los fijos ajustan el %. */
+function recalcular(nv: Record<string, Niv>, costo: number, tasa: number, incluye: boolean) {
+  return Object.fromEntries(NIVELES.map((k) => {
+    const x = nv[k];
+    if (x.origen === "pct" && x.pct !== "") return [k, { ...x, precio: costo > 0 ? desdePorcentaje(costo, n(x.pct), tasa, incluye, 0).toFixed(2) : "" }];
+    if (x.origen === "monto" && x.precio) { const p = sobreCosto(n(x.precio), costo, tasa, incluye); return [k, { ...x, pct: p == null ? "" : p.toFixed(1) }]; }
+    return [k, x];
+  })) as Record<string, Niv>;
+}
+
+function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
+  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void;
+}) {
+  const { sucursales } = useCatalogo();
+  const [codigo, setCodigo] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [marca, setMarca] = useState("");
+  const [imagen, setImagen] = useState<string | null>(null);
+  const [tipo, setTipo] = useState<Tipo>("INVENTARIABLE");
+  const [categoriaId, setCategoriaId] = useState("");
+  const [nuevaCat, setNuevaCat] = useState<string | null>(null);
+  const [impuestoId, setImpuestoId] = useState(() => aux.impuestos.find((i) => i.tasa === 0.18)?.id ?? aux.impuestos[0]?.id ?? "");
+  const [incluye, setIncluye] = useState(true);
+  const [costo, setCosto] = useState("");
+  const [minimo, setMinimo] = useState("");
+  const [nv, setNv] = useState<Record<string, Niv>>(nivVacio);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const refCodigo = useRef<HTMLInputElement>(null);
+
+  const tasa = aux.impuestos.find((i) => i.id === impuestoId)?.tasa ?? 0;
+  const c = n(costo);
+  const nombreNivel = (k: string) => aux.listas.find((l) => String(l.nivel) === k)?.nombre ?? NOMBRE_NIVEL[k];
+
+  useEffect(() => {
+    const t = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
+    window.addEventListener("keydown", t);
+    return () => window.removeEventListener("keydown", t);
+  }, [onCerrar]);
+
+  const reajustar = (costoN: number, tasaN: number, incluyeN: boolean) => setNv((x) => recalcular(x, costoN, tasaN, incluyeN));
+  const cambiarCosto = (v: string) => { const s = limpiar(v); setCosto(s); reajustar(n(s), tasa, incluye); };
+  const cambiarImpuesto = (id: string) => { setImpuestoId(id); reajustar(c, aux.impuestos.find((i) => i.id === id)?.tasa ?? 0, incluye); };
+  const cambiarIncluye = (v: boolean) => { setIncluye(v); reajustar(c, tasa, v); };
+  const cambiarPct = (k: string, v: string) => {
+    const s = limpiar(v);
+    setNv((x) => ({ ...x, [k]: { origen: s ? "pct" : null, pct: s, precio: s && c > 0 ? desdePorcentaje(c, n(s), tasa, incluye, 0).toFixed(2) : "" } }));
+  };
+  const cambiarPrecio = (k: string, v: string) => {
+    const s = limpiar(v);
+    const p = s ? sobreCosto(n(s), c, tasa, incluye) : null;
+    setNv((x) => ({ ...x, [k]: { origen: s ? "monto" : null, precio: s, pct: p == null ? "" : p.toFixed(1) } }));
+  };
+
+  const buscarCodigo = async () => {
+    const d = codigo.trim();
+    if (!d) return;
+    if (!/^\d{6,14}$/.test(d)) return setMsg({ t: "El código debe tener de 6 a 14 dígitos.", tipo: "error" });
+    try {
+      const r = await api<{ existe: boolean; producto?: { nombre: string }; sugerencia?: { nombre: string | null; marca: string | null; imagen: string | null; fuente: string } | null; sinConexion?: boolean }>(`/central/productos/codigo/${d}`);
+      if (r.existe) return setMsg({ t: `Ese código ya pertenece a “${r.producto!.nombre}”.`, tipo: "error" });
+      const s = r.sugerencia;
+      if (s) { setNombre((x) => x || s.nombre || ""); setMarca((x) => x || s.marca || ""); setImagen((x) => x || s.imagen); }
+      setMsg(s ? { t: `Datos sugeridos por ${s.fuente}. Revíselos.`, tipo: "info" } : { t: r.sinConexion ? "Sin internet para buscar el código; complete los datos." : "Código nuevo. Complete los datos.", tipo: "info" });
+      document.getElementById("pr-nombre")?.focus();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+
+  const crearCategoria = async () => {
+    if (!nuevaCat?.trim()) return;
+    try {
+      const r = await api<{ id: string }>("/central/categorias", { cuerpo: { nombre: nuevaCat.trim() } });
+      recargarAux(); setCategoriaId(r.id); setNuevaCat(null);
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+
+  /** Ficha completa a partir de lo escrito aquí (sirve para guardar y para seguir en el editor avanzado). */
+  const armar = (): Ficha => {
+    const base0 = fichaNueva(aux, sucursales);
+    return {
+      ...base0, tipo, nombre: nombre.trim(), marca: marca.trim() || null, imagen, categoriaId: categoriaId || null,
+      sku: codigo.trim() || "", impuestoId, precioIncluyeItbis: incluye, costoReferencia: costo || "0",
+      presentaciones: [{
+        nombre: "Unidad", factor: "1", codigos: codigo.trim() ? [codigo.trim()] : [],
+        precios: Object.fromEntries(NIVELES.map((k) => [k, nv[k].precio || null])),
+        porcentajes: Object.fromEntries(NIVELES.map((k) => [k, nv[k].origen === "pct" && nv[k].precio ? n(nv[k].pct) : null])),
+      }],
+      sucursales: base0.sucursales.map((s) => ({ ...s, stockMinimo: tipo === "INVENTARIABLE" && minimo ? minimo : "0" })),
+    };
+  };
+
+  const crear = async (otro: boolean) => {
+    if (nombre.trim().length < 2) return setMsg({ t: "Escriba el nombre del producto.", tipo: "error" });
+    if (!impuestoId) return setMsg({ t: "No hay ITBIS configurado.", tipo: "error" });
+    if (n(nv["1"].precio) <= 0) return setMsg({ t: `Falta el precio ${nombreNivel("1").toLowerCase()}: es el que se cobra por defecto en caja.`, tipo: "error" });
+    setGuardando(true); setMsg(null);
+    try {
+      const f = armar();
+      const cuerpo = {
+        ...f, sku: f.sku || "P" + Date.now().toString(36).slice(-6).toUpperCase(),
+        presentaciones: f.presentaciones.map((p) => ({
+          ...p,
+          precios: Object.fromEntries(NIVELES.map((k) => [k, p.precios[k] ? n(p.precios[k]).toFixed(2) : null])),
+          porcentajes: Object.fromEntries(NIVELES.map((k) => [k, p.porcentajes?.[k] != null ? n(p.porcentajes[k]) : null])),
+        })),
+        sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: stockMinimo || "0", stockMaximo, ubicacion, activo })),
+        costoReferencia: String(n(f.costoReferencia)),
+      };
+      await api("/central/productos", { metodo: "POST", cuerpo });
+      onCreado(f.nombre);
+      if (otro) {
+        setCodigo(""); setNombre(""); setMarca(""); setImagen(null); setCosto(""); setMinimo(""); setNv(nivVacio());
+        setMsg({ t: `“${f.nombre}” creado. Siguiente producto:`, tipo: "ok" });
+        refCodigo.current?.focus();
+      } else onCerrar();
+    } catch (e) {
+      setMsg({ t: (e as Error).message, tipo: "error" });
+    } finally { setGuardando(false); }
+  };
+
+  const pasos: { v: Tipo; t: string }[] = [{ v: "INVENTARIABLE", t: "Inventariable" }, { v: "SERVICIO", t: "Servicio" }, { v: "COMBO", t: "Combo" }];
+
+  return (
+    <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
+      <div className="modal producto-rapido" role="dialog" aria-modal="true" aria-label="Nuevo producto">
+        <div className="pr-cabecera">
+          <div><h2>Nuevo producto</h2><p className="suave">Lo necesario para venderlo. Lo demás se completa después en la ficha.</p></div>
+          <button className="boton fantasma" onClick={onCerrar} aria-label="Cerrar">✕</button>
+        </div>
+        {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+
+        <div className="pr-tipos" role="radiogroup" aria-label="Tipo de producto">
+          {pasos.map((p) => (
+            <button key={p.v} role="radio" aria-checked={tipo === p.v} className={tipo === p.v ? "activo" : ""}
+              onClick={() => (p.v === "COMBO" ? onCompleta({ ...armar(), tipo: "COMBO" }) : setTipo(p.v))}>
+              {p.t}{p.v === "COMBO" && <small>ficha completa →</small>}
+            </button>
+          ))}
+        </div>
+
+        <div className="pr-fila pr-fila-2">
+          <label className="campo"><span>Código de barras <em className="suave">(opcional)</em></span>
+            <input ref={refCodigo} autoFocus value={codigo} inputMode="numeric" placeholder="Escanee o escriba"
+              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} onBlur={buscarCodigo} onKeyDown={(e) => e.key === "Enter" && buscarCodigo()} />
+          </label>
+          <label className="campo"><span>Nombre</span>
+            <input id="pr-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ron Brugal Extra Viejo 700 ml" />
+          </label>
+        </div>
+        <div className="pr-fila pr-fila-2">
+          <label className="campo"><span>Categoría</span>
+            {nuevaCat === null ? (
+              <select value={categoriaId} onChange={(e) => (e.target.value === "+" ? setNuevaCat("") : setCategoriaId(e.target.value))}>
+                <option value="">Sin categoría</option>
+                {aux.categorias.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                <option value="+">+ Nueva categoría…</option>
+              </select>
+            ) : (
+              <span className="en-linea"><input autoFocus value={nuevaCat} onChange={(e) => setNuevaCat(e.target.value)} onKeyDown={(e) => e.key === "Enter" && crearCategoria()} placeholder="Nombre" />
+                <button className="boton" onClick={crearCategoria}>Crear</button><button className="boton fantasma" onClick={() => setNuevaCat(null)}>✕</button></span>
+            )}
+          </label>
+          <label className="campo"><span>Marca <em className="suave">(opcional)</em></span><input value={marca} onChange={(e) => setMarca(e.target.value)} /></label>
+        </div>
+
+        <div className="pr-bloque">
+          <div className="pr-fila pr-fila-costo">
+            <label className="campo"><span>Costo (sin ITBIS)</span><input className="numero" inputMode="decimal" value={costo} placeholder="0.00" onChange={(e) => cambiarCosto(e.target.value)} /></label>
+            <label className="campo"><span>ITBIS</span>
+              <select value={impuestoId} onChange={(e) => cambiarImpuesto(e.target.value)}>{aux.impuestos.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}</select>
+            </label>
+            <label className="pr-check"><input type="checkbox" checked={incluye} onChange={(e) => cambiarIncluye(e.target.checked)} /><span>El precio ya incluye ITBIS</span></label>
+          </div>
+
+          <div className="pr-niveles">
+            <div className="pr-nivel pr-nivel-cab"><span>Precios de venta</span><span>% ganancia</span><span>Precio</span><span>Margen</span></div>
+            {NIVELES.map((k) => {
+              const x = nv[k];
+              const m = x.precio ? margen(n(x.precio), c, tasa, incluye) : null;
+              const bajo = x.precio && c > 0 && base(n(x.precio), tasa, incluye) < c;
+              return (
+                <div key={k} className={"pr-nivel" + (bajo ? " alerta" : "")}>
+                  <span className="pr-nombre"><b>{nombreNivel(k)}</b><small className="suave">{k === "1" ? "obligatorio" : "opcional"}</small></span>
+                  <span className="con-sufijo"><input className="numero" inputMode="decimal" value={x.pct} placeholder="—" aria-label={`% de ganancia ${nombreNivel(k)}`} onChange={(e) => cambiarPct(k, e.target.value)} /><i>%</i></span>
+                  <span className="con-sufijo"><input className={"numero" + (bajo ? " alerta" : "")} inputMode="decimal" value={x.precio} placeholder="0.00" aria-label={`Precio ${nombreNivel(k)}`} onChange={(e) => cambiarPrecio(k, e.target.value)} /><i>RD$</i></span>
+                  <span className={"pr-margen" + (bajo ? " texto-alerta" : " suave")}>{bajo ? "bajo el costo" : m == null ? "—" : `${m.toFixed(1)} %`}</span>
+                </div>
+              );
+            })}
+            <small className="suave">Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Si cambia el costo, los precios definidos por % se ajustan solos.</small>
+          </div>
+        </div>
+
+        {tipo === "INVENTARIABLE" && (
+          <div className="pr-fila pr-fila-2">
+            <label className="campo"><span>Existencia mínima <em className="suave">(alerta de reposición)</em></span>
+              <input className="numero" inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => setMinimo(limpiar(e.target.value))} /></label>
+            <p className="suave pequeno pr-nota">La existencia inicial se carga con una compra o un ajuste, para que quede en el kardex.</p>
+          </div>
+        )}
+
+        <div className="acciones-modal pr-acciones">
+          <button className="boton fantasma" onClick={() => onCompleta(armar())} title="Imágenes, presentaciones, proveedores, lotes y más">Ficha completa…</button>
+          <span className="pr-espacio" />
+          <button className="boton" disabled={guardando} onClick={() => crear(true)}>Crear y agregar otro</button>
+          <button className="boton primario" disabled={guardando} onClick={() => crear(false)}>{guardando ? "Guardando…" : "Crear producto"}</button>
+        </div>
+      </div>
+    </div>
   );
 }
