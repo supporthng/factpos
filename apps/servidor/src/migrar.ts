@@ -11,7 +11,22 @@ import { pool } from "./db.js";
 
 const carpeta = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../db/migrations");
 
+/** Clave del candado de PostgreSQL: dos procesos (dos instaladores, o el servidor y un instalador) no migran a la vez. */
+const CANDADO_MIGRACIONES = 7240301;
+
 export async function migrar(log = console.log) {
+  // Candado de sesión: el segundo proceso espera a que el primero termine y luego ya ve todo aplicado.
+  const candado = await pool.connect();
+  try {
+    await candado.query("SELECT pg_advisory_lock($1)", [CANDADO_MIGRACIONES]);
+    await migrarConCandado(log);
+  } finally {
+    try { await candado.query("SELECT pg_advisory_unlock($1)", [CANDADO_MIGRACIONES]); } catch { /* la conexión se cierra y libera sola */ }
+    candado.release();
+  }
+}
+
+async function migrarConCandado(log: (m: string) => void) {
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migraciones (
     nombre TEXT PRIMARY KEY,
     aplicada_en TIMESTAMPTZ NOT NULL DEFAULT now()

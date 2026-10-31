@@ -127,6 +127,13 @@ UninstPage custom un.PaginaDatos un.PaginaDatosSalir
 
 ; ------------------------------------------------------------------ inicio
 Function .onInit
+  ; Un solo instalador a la vez: dos instaladores a la vez se pisan los archivos, los respaldos y las migraciones
+  System::Call 'kernel32::CreateMutex(p 0, i 0, t "FactPOS-Instalador-Unico") p .r1 ?e'
+  Pop $0
+  ${If} $0 == 183
+    MessageBox MB_ICONEXCLAMATION "Ya hay otro instalador de FactPOS abierto.$\r$\n$\r$\nTermínelo (o ciérrelo) antes de abrir otro."
+    Abort
+  ${EndIf}
   StrCpy $Tipo "master"
   StrCpy $Vende "1"
   StrCpy $Fallo "0"
