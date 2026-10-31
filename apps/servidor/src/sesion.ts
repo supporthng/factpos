@@ -95,6 +95,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "admin.recibir", grupo: "Administración", nombre: "Recibir traspasos en su tienda" },
   { id: "admin.cxc", grupo: "Administración", nombre: "Cuentas por cobrar" },
   { id: "admin.pedidos", grupo: "Administración", nombre: "Pedidos de clientes" },
+  { id: "admin.facturas", grupo: "Administración", nombre: "Facturas: buscar, reimprimir, modificar (la anulación pide permiso de supervisor)" },
   { id: "admin.reportes", grupo: "Administración", nombre: "Ver reportes y resumen" },
   { id: "admin.fiscal", grupo: "Administración", nombre: "Facturación electrónica y padrón" },
   { id: "admin.config", grupo: "Administración", nombre: "Sucursales, terminales y marca" },
@@ -110,6 +111,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   const escribe = metodo !== "GET" && metodo !== "HEAD";
   if (ruta.startsWith("/central/sesion")) return null; // cada usuario maneja su propia contraseña y verificación
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
+  if (/^\/central\/facturas(\/|$)/.test(ruta)) return "admin.facturas";
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";
   const mapa: [RegExp, string][] = [

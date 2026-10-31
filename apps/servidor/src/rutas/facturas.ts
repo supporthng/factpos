@@ -37,6 +37,115 @@ export async function datosTicket(c: Pick<PoolClient, "query">, ventaId: string)
   return r.rows[0];
 }
 
+/**
+ * Anula (o corrige) una factura dentro de la transacción: nota de crédito/anulación interna, regreso al inventario,
+ * devolución del dinero en el turno abierto de la caja y reverso del crédito del cliente.
+ * Quien llama debe haber verificado ya la autorización del supervisor.
+ */
+export async function anularVenta(c: PoolClient, a: { cajaId: string; ventaId: string; usuarioId: string; supervisorId: string; motivo: string; corregir: boolean }) {
+  const { cajaId, ventaId } = a;
+  await c.query("SELECT 1 FROM cajas WHERE id = $1 FOR UPDATE", [cajaId]);
+  const ctx = await contextoCaja(cajaId, c);
+  const turno = await c.query<{ id: string }>("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO'", [cajaId]);
+  if (!turno.rowCount) throw new ErrorNegocio("La caja no tiene un turno abierto", 409);
+
+  const o = (await c.query(
+    "SELECT * FROM ventas WHERE id = $1 AND sucursal_id = $2 AND tipo_documento IN ('E31','E32','B01','B02','B14','B15','B16','SIN') FOR UPDATE",
+    [ventaId, ctx.sucursalId],
+  )).rows[0];
+  if (!o) throw new ErrorNegocio("Factura no encontrada en esta sucursal", 404);
+  const ya = await c.query("SELECT 1 FROM ventas WHERE venta_origen_id = $1 AND tipo_documento IN ('E34','ANU')", [ventaId]);
+  if (ya.rowCount) throw new ErrorNegocio("Esta factura ya fue anulada", 409);
+  if (o.condicion === "CREDITO") {
+    // Si el cliente ya abonó, el saldo no alcanza para revertir: se avisa
+    const s = await c.query<{ saldo: string }>("SELECT COALESCE(SUM(monto), 0) AS saldo FROM cxc_movimientos WHERE cliente_id = $1", [o.cliente_id]);
+    if (Number(s.rows[0].saldo) < 0) throw new ErrorNegocio("El cliente tiene saldo a favor; revise su cuenta antes de anular");
+  }
+
+  const ncId = uuidv7();
+  const nc = await c.query<{ numero: string }>(
+    `INSERT INTO ventas (id, sucursal_id, caja_id, turno_id, usuario_id, cliente_id, numero_interno, tipo_documento,
+                         venta_origen_id, condicion, subtotal, descuento, itbis, isc, total, motivo, autorizado_por)
+     SELECT $1, sucursal_id, $2, $3, $4, cliente_id,
+            (SELECT COALESCE(MAX(numero_interno), 0) + 1 FROM ventas WHERE caja_id = $2),
+            CASE WHEN tipo_documento IN ('E31','E32') THEN 'E34' ELSE 'ANU' END, id, condicion, subtotal, descuento, itbis, isc, total, $5, $6
+       FROM ventas WHERE id = $7
+     RETURNING numero_interno AS numero`,
+    [ncId, cajaId, turno.rows[0].id, a.usuarioId, a.motivo, a.supervisorId, ventaId],
+  );
+
+  await c.query(
+    `INSERT INTO venta_items (id, venta_id, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
+                              descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
+                              descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta)
+     SELECT gen_random_uuid(), $1, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
+            descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
+            descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta
+       FROM venta_items WHERE venta_id = $2`,
+    [ncId, ventaId],
+  );
+
+  // La mercancía regresa al inventario: exactamente lo que salió con la factura original
+  // (incluye los componentes de los combos)
+  await c.query(
+    `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
+                                     documento_tipo, documento_id, motivo, usuario_id, lote_id)
+     SELECT gen_random_uuid(), $2, $3, k.producto_id, 'DEVOLUCION_VENTA', -k.cantidad, k.costo_unitario,
+            'venta', $1, $4, $5, k.lote_id
+       FROM kardex_movimientos k
+      WHERE k.documento_tipo = 'venta' AND k.documento_id = $6 AND k.tipo = 'VENTA'
+      ORDER BY k.id`,
+    [ncId, ctx.sucursalId, ctx.almacenId, `Anulación: ${a.motivo}`, a.usuarioId, ventaId],
+  );
+
+  // Devolución de lo cobrado (en el cuadre del turno resta en su forma de pago)
+  await c.query(
+    `INSERT INTO venta_pagos (id, venta_id, forma_pago, monto, referencia)
+     SELECT gen_random_uuid(), $1, forma_pago, monto, referencia FROM venta_pagos WHERE venta_id = $2`,
+    [ncId, ventaId],
+  );
+  await c.query(
+    `INSERT INTO cxc_movimientos (id, sucursal_id, cliente_id, tipo, monto, venta_id, turno_id, usuario_id)
+     SELECT gen_random_uuid(), sucursal_id, cliente_id, 'AJUSTE', -monto, $1, $3, $4
+       FROM cxc_movimientos WHERE venta_id = $2 AND tipo = 'CARGO'`,
+    [ncId, ventaId, turno.rows[0].id, a.usuarioId],
+  );
+
+  const fiscal = o.tipo_documento === "E31" || o.tipo_documento === "E32" ? await emitirEcfVenta(c, ncId) : null;
+
+  await c.query(
+    `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+     VALUES ($1,$2,$3,$4,$5,'venta',$6,$7)`,
+    [uuidv7(), ctx.sucursalId, a.usuarioId, a.supervisorId, a.corregir ? "venta.corregir" : "venta.anular", ventaId,
+     JSON.stringify({ motivo: a.motivo, notaCredito: fiscal?.encf ?? null, anulacionInterna: fiscal === null })],
+  );
+  await c.query(
+    `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
+     SELECT 'ventas', v.id, 'INSERT', jsonb_build_object(
+              'venta', to_jsonb(v),
+              'items', (SELECT jsonb_agg(to_jsonb(i)) FROM venta_items i WHERE i.venta_id = v.id),
+              'pagos', (SELECT jsonb_agg(to_jsonb(p)) FROM venta_pagos p WHERE p.venta_id = v.id),
+              'kardex', (SELECT jsonb_agg(to_jsonb(k)) FROM kardex_movimientos k WHERE k.documento_tipo = 'venta' AND k.documento_id = v.id),
+              'cxc', (SELECT jsonb_agg(to_jsonb(m)) FROM cxc_movimientos m WHERE m.venta_id = v.id),
+              'ecf', (SELECT to_jsonb(d) - 'xml' - 'xml_envio' FROM ecf_documentos d WHERE d.venta_id = v.id),
+              'auditoria', (SELECT jsonb_agg(to_jsonb(a)) FROM auditoria a WHERE a.entidad = 'venta' AND a.entidad_id = $2))
+       FROM ventas v WHERE v.id = $1`,
+    [ncId, ventaId],
+  );
+
+  const ticket = await datosTicket(c, ncId);
+  return {
+    notaCredito: { ...ticket, numero: nc.rows[0].numero },
+    // Para "corregir": los productos de la factura original, para volver a facturarlos
+    recargar: a.corregir
+      ? {
+          clienteId: o.cliente_id,
+          items: ticket.lineas.map((l: any) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad })),
+        }
+      : null,
+  };
+}
+
 export async function rutasFacturas(app: FastifyInstance) {
   /** El supervisor teclea su PIN y obtiene una aprobación para una acción concreta. */
   app.post("/cajas/:cajaId/autorizar", async (req) => {
@@ -91,107 +200,8 @@ export async function rutasFacturas(app: FastifyInstance) {
 
     return enTransaccion(async (c) => {
       const aprob = verificarAutorizacion(b.autorizacion, b.corregir ? "venta.corregir" : "venta.anular", cajaId);
-      await c.query("SELECT 1 FROM cajas WHERE id = $1 FOR UPDATE", [cajaId]);
-      const ctx = await contextoCaja(cajaId, c);
-      const turno = await c.query<{ id: string }>("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO'", [cajaId]);
-      if (!turno.rowCount) throw new ErrorNegocio("La caja no tiene un turno abierto", 409);
-
-      const o = (await c.query(
-        "SELECT * FROM ventas WHERE id = $1 AND sucursal_id = $2 AND tipo_documento IN ('E31','E32','B01','B02','B14','B15','B16','SIN') FOR UPDATE",
-        [ventaId, ctx.sucursalId],
-      )).rows[0];
-      if (!o) throw new ErrorNegocio("Factura no encontrada en esta sucursal", 404);
-      const ya = await c.query("SELECT 1 FROM ventas WHERE venta_origen_id = $1 AND tipo_documento IN ('E34','ANU')", [ventaId]);
-      if (ya.rowCount) throw new ErrorNegocio("Esta factura ya fue anulada", 409);
-      if (o.condicion === "CREDITO") {
-        // Si el cliente ya abonó, el saldo no alcanza para revertir: se avisa
-        const s = await c.query<{ saldo: string }>("SELECT COALESCE(SUM(monto), 0) AS saldo FROM cxc_movimientos WHERE cliente_id = $1", [o.cliente_id]);
-        if (Number(s.rows[0].saldo) < 0) throw new ErrorNegocio("El cliente tiene saldo a favor; revise su cuenta antes de anular");
-      }
-
-      const ncId = uuidv7();
-      const nc = await c.query<{ numero: string }>(
-        `INSERT INTO ventas (id, sucursal_id, caja_id, turno_id, usuario_id, cliente_id, numero_interno, tipo_documento,
-                             venta_origen_id, condicion, subtotal, descuento, itbis, isc, total, motivo, autorizado_por)
-         SELECT $1, sucursal_id, $2, $3, $4, cliente_id,
-                (SELECT COALESCE(MAX(numero_interno), 0) + 1 FROM ventas WHERE caja_id = $2),
-                CASE WHEN tipo_documento IN ('E31','E32') THEN 'E34' ELSE 'ANU' END, id, condicion, subtotal, descuento, itbis, isc, total, $5, $6
-           FROM ventas WHERE id = $7
-         RETURNING numero_interno AS numero`,
-        [ncId, cajaId, turno.rows[0].id, b.usuarioId, b.motivo, aprob.supervisorId, ventaId],
-      );
-
-      await c.query(
-        `INSERT INTO venta_items (id, venta_id, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
-                                  descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
-                                  descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta)
-         SELECT gen_random_uuid(), $1, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
-                descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
-                descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta
-           FROM venta_items WHERE venta_id = $2`,
-        [ncId, ventaId],
-      );
-
-      // La mercancía regresa al inventario: exactamente lo que salió con la factura original
-      // (incluye los componentes de los combos)
-      await c.query(
-        `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                         documento_tipo, documento_id, motivo, usuario_id, lote_id)
-         SELECT gen_random_uuid(), $2, $3, k.producto_id, 'DEVOLUCION_VENTA', -k.cantidad, k.costo_unitario,
-                'venta', $1, $4, $5, k.lote_id
-           FROM kardex_movimientos k
-          WHERE k.documento_tipo = 'venta' AND k.documento_id = $6 AND k.tipo = 'VENTA'
-          ORDER BY k.id`,
-        [ncId, ctx.sucursalId, ctx.almacenId, `Anulación: ${b.motivo}`, b.usuarioId, ventaId],
-      );
-
-      // Devolución de lo cobrado (en el cuadre del turno resta en su forma de pago)
-      await c.query(
-        `INSERT INTO venta_pagos (id, venta_id, forma_pago, monto, referencia)
-         SELECT gen_random_uuid(), $1, forma_pago, monto, referencia FROM venta_pagos WHERE venta_id = $2`,
-        [ncId, ventaId],
-      );
-      await c.query(
-        `INSERT INTO cxc_movimientos (id, sucursal_id, cliente_id, tipo, monto, venta_id, turno_id, usuario_id)
-         SELECT gen_random_uuid(), sucursal_id, cliente_id, 'AJUSTE', -monto, $1, $3, $4
-           FROM cxc_movimientos WHERE venta_id = $2 AND tipo = 'CARGO'`,
-        [ncId, ventaId, turno.rows[0].id, b.usuarioId],
-      );
-
-      const fiscal = o.tipo_documento === "E31" || o.tipo_documento === "E32" ? await emitirEcfVenta(c, ncId) : null;
-
-      await c.query(
-        `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
-         VALUES ($1,$2,$3,$4,$5,'venta',$6,$7)`,
-        [uuidv7(), ctx.sucursalId, b.usuarioId, aprob.supervisorId, b.corregir ? "venta.corregir" : "venta.anular", ventaId,
-         JSON.stringify({ motivo: b.motivo, notaCredito: fiscal?.encf ?? null, anulacionInterna: fiscal === null })],
-      );
-      await c.query(
-        `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
-         SELECT 'ventas', v.id, 'INSERT', jsonb_build_object(
-                  'venta', to_jsonb(v),
-                  'items', (SELECT jsonb_agg(to_jsonb(i)) FROM venta_items i WHERE i.venta_id = v.id),
-                  'pagos', (SELECT jsonb_agg(to_jsonb(p)) FROM venta_pagos p WHERE p.venta_id = v.id),
-                  'kardex', (SELECT jsonb_agg(to_jsonb(k)) FROM kardex_movimientos k WHERE k.documento_tipo = 'venta' AND k.documento_id = v.id),
-                  'cxc', (SELECT jsonb_agg(to_jsonb(m)) FROM cxc_movimientos m WHERE m.venta_id = v.id),
-                  'ecf', (SELECT to_jsonb(d) - 'xml' - 'xml_envio' FROM ecf_documentos d WHERE d.venta_id = v.id),
-                  'auditoria', (SELECT jsonb_agg(to_jsonb(a)) FROM auditoria a WHERE a.entidad = 'venta' AND a.entidad_id = $2))
-           FROM ventas v WHERE v.id = $1`,
-        [ncId, ventaId],
-      );
-
-      const ticket = await datosTicket(c, ncId);
-      return {
-        notaCredito: { ...ticket, numero: nc.rows[0].numero },
-        aprobadoPor: aprob.supervisor,
-        // Para "corregir": los productos de la factura original, para volver a facturarlos
-        recargar: b.corregir
-          ? {
-              clienteId: o.cliente_id,
-              items: ticket.lineas.map((l: any) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad })),
-            }
-          : null,
-      };
+      const r = await anularVenta(c, { cajaId, ventaId, usuarioId: b.usuarioId, supervisorId: aprob.supervisorId, motivo: b.motivo, corregir: b.corregir });
+      return { ...r, aprobadoPor: aprob.supervisor };
     });
   });
 }

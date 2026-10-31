@@ -98,6 +98,7 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "saldo-clientes": { vista: "rpt_saldo_clientes", orden: "saldo DESC" },
   "sucursales": { vista: "rpt_resumen_sucursales", sucursal: true, orden: "sucursal" },
   "ventas-sucursal": { vista: "rpt_ventas_sucursal", fecha: true, sucursal: true, orden: "fecha DESC, venta_total DESC" },
+  "ventas-comprobante": { vista: "rpt_ventas_comprobante", fecha: true, sucursal: true, orden: "fecha DESC, prefijo, tipo" },
   "cierres-caja": { vista: "rpt_cierres_caja", fecha: true, sucursal: true, orden: "cerrado_en DESC" },
 };
 
