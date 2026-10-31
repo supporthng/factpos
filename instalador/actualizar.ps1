@@ -27,6 +27,11 @@ function Detener {
   Start-Sleep -Seconds 2
 }
 $carpetasCodigo = @("apps", "packages", "node_modules", "db", "instalador")
+# robocopy sin reintentos infinitos: por omisión reintenta 1 millón de veces cada archivo bloqueado (se queda colgado)
+function Copiar($origen, $destino) {
+  robocopy $origen $destino /MIR /R:2 /W:2 /MT:16 /NFL /NDL /NJH /NJS /NP | Out-Null
+  return $LASTEXITCODE
+}
 try {
   $nueva = (Get-Content -Raw "$Desde\package.json" | ConvertFrom-Json).version
   $actual = try { (Get-Content -Raw "$Carpeta\package.json" | ConvertFrom-Json).version } catch { "?" }
@@ -37,12 +42,12 @@ try {
   $anterior = "$Carpeta\anterior"
   Remove-Item -Recurse -Force $anterior -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $anterior | Out-Null
-  foreach ($c in $carpetasCodigo) { if (Test-Path "$Carpeta\$c") { robocopy "$Carpeta\$c" "$anterior\$c" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null } }
+  foreach ($c in $carpetasCodigo) { if (Test-Path "$Carpeta\$c") { Write-Host "Respaldando $c…"; [void](Copiar "$Carpeta\$c" "$anterior\$c") } }
   Copy-Item "$Carpeta\package.json" $anterior -ErrorAction SilentlyContinue
 
   # Versión nueva: el código se reemplaza completo; la configuración y los datos se conservan
   foreach ($c in $carpetasCodigo) {
-    if (Test-Path "$Desde\$c") { robocopy "$Desde\$c" "$Carpeta\$c" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null; if ($LASTEXITCODE -ge 8) { throw "No se pudo copiar $c (robocopy $LASTEXITCODE)" } }
+    if (Test-Path "$Desde\$c") { Write-Host "Copiando $c…"; $rc = Copiar "$Desde\$c" "$Carpeta\$c"; if ($rc -ge 8) { throw "No se pudo copiar $c (robocopy $rc). Probablemente un archivo está en uso: cierre FactPOS y vuelva a intentar." } }
   }
   Get-ChildItem $Desde -File | Where-Object { $_.Name -notin ".env", "postgres-superusuario.txt" } | Copy-Item -Destination $Carpeta -Force
 
@@ -55,7 +60,7 @@ try {
 } catch {
   Write-Host "ERROR: $($_.Exception.Message). Se vuelve a la versión anterior." -ForegroundColor Red
   if (Test-Path "$Carpeta\anterior\apps") {
-    foreach ($c in $carpetasCodigo) { if (Test-Path "$Carpeta\anterior\$c") { robocopy "$Carpeta\anterior\$c" "$Carpeta\$c" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null } }
+    foreach ($c in $carpetasCodigo) { if (Test-Path "$Carpeta\anterior\$c") { [void](Copiar "$Carpeta\anterior\$c" "$Carpeta\$c") } }
     Copy-Item "$Carpeta\anterior\package.json" $Carpeta -Force -ErrorAction SilentlyContinue
   }
 } finally {

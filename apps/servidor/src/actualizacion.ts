@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,13 @@ export function compararVersion(a: string, b: string) {
 interface Disponible { version: string; notas: string | null; publicada: string | null }
 let disponible: Disponible | null = null;
 let revisado = 0;
+/** Una actualización que lleva más de 15 minutos no va a terminar sola: se marca con error para poder reintentar. */
+const MAX_ACTUALIZANDO_MS = 15 * 60_000;
+function vigilarProceso() {
+  if (proceso && proceso.estado !== "ERROR" && Date.now() - new Date(proceso.desde).getTime() > MAX_ACTUALIZANDO_MS) {
+    proceso = { ...proceso, estado: "ERROR", mensaje: "La actualización no terminó en 15 minutos. Revise C:\\FactPOS\\logs\\actualizacion.log y actualizacion-lanzador.log; puede reintentar." };
+  }
+}
 let proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string } | null = null;
 
 export async function revisarVersion(forzar = false): Promise<Disponible | null> {
@@ -56,6 +63,7 @@ export async function instalarVersion(version: string, log: (m: string) => void 
   if (process.platform !== "win32") throw new ErrorNegocio("La instalación automática es para servidores Windows", 409);
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new ErrorNegocio("Versión de actualización no válida", 400);
   if (compararVersion(version, versionActual()) <= 0) throw new ErrorNegocio("La versión solicitada no es más reciente", 409);
+  vigilarProceso();
   if (proceso && proceso.estado !== "ERROR") throw new ErrorNegocio("Ya se está instalando una actualización", 409);
   const token = await tokenLicencia();
   // Sin licencia (prueba): solo si el proveedor lo permite en el portal (Portal › Reglas)
@@ -104,10 +112,24 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     proceso = { ...proceso, estado: "INSTALANDO" };
     log(`Actualización ${version}: instalando (el servidor se reinicia en un momento)…`);
     // Tarea de Windows de una sola vez: sobrevive a que se detenga este servidor
-    const ps = `$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "${script}" -Desde "${origen}" -Carpeta "${raiz}"';` +
+    const ps = `$ErrorActionPreference='Stop'; try { ` +
+      `$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "${script}" -Desde "${origen}" -Carpeta "${raiz}"';` +
       `$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;` +
-      `Register-ScheduledTask -TaskName 'FactPOS Actualizar' -Action $a -Principal $p -Force | Out-Null; Start-ScheduledTask -TaskName 'FactPOS Actualizar'`;
-    spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+      `Register-ScheduledTask -TaskName 'FactPOS Actualizar' -Action $a -Principal $p -Force | Out-Null; Start-ScheduledTask -TaskName 'FactPOS Actualizar'; Write-Output 'Tarea de actualizacion iniciada' ` +
+      `} catch { Write-Output ('ERROR: ' + $_.Exception.Message); exit 1 }`;
+    // La salida del lanzador queda en un archivo: si Windows no deja crear la tarea, se ve el motivo
+    mkdirSync(path.join(raiz, "logs"), { recursive: true });
+    const logLanzador = path.join(raiz, "logs", "actualizacion-lanzador.log");
+    const fd = openSync(logLanzador, "a");
+    writeFileSync(logLanzador, `\n[${new Date().toISOString()}] Lanzando actualización ${version}\n`, { flag: "a" });
+    const codigo = await new Promise<number>((ok) => {
+      const hijo = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], { stdio: ["ignore", fd, fd], windowsHide: true });
+      const t = setTimeout(() => ok(-2), 60_000);
+      hijo.on("exit", (c) => { clearTimeout(t); ok(c ?? -1); });
+      hijo.on("error", () => { clearTimeout(t); ok(-1); });
+    });
+    closeSync(fd);
+    if (codigo !== 0) throw new Error(`Windows no permitió programar la actualización (código ${codigo}). Detalle en ${logLanzador}. Suele pasar si el servidor no corre con permisos de administrador.`);
     return { ok: true, version };
   } catch (e) {
     proceso = { estado: "ERROR", version, mensaje: (e as Error).message, desde: new Date().toISOString() };
@@ -132,6 +154,7 @@ export function seguirAlPrincipal(versionPrincipal: string | undefined, log: (m:
 export async function rutasActualizacion(app: FastifyInstance) {
   app.get("/central/actualizacion", async (req) => {
     const forzar = (req.query as { revisar?: string }).revisar === "1";
+    vigilarProceso();
     const d = await revisarVersion(forzar);
     const actual = versionActual();
     return {
