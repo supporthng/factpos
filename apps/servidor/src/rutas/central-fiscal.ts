@@ -25,7 +25,7 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       `SELECT e.rnc, e.razon_social AS "razonSocial", e.nombre_comercial AS "nombreComercial",
               COALESCE(cf.direccion_emisor, '') AS "direccionEmisor", COALESCE(cf.ambiente, 'SIMULADO') AS ambiente,
               COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url AS "pseUrl",
-              COALESCE(cf.alerta_restantes, 500) AS "alertaRestantes", COALESCE(cf.etapa_dgii, 'SIN_SOLICITUD') AS "etapaDgii"
+              COALESCE(cf.alerta_restantes, 500) AS "alertaRestantes"
          FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`,
       [e],
     );
@@ -176,20 +176,6 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
   // ---- Documentos y envíos ----
 
 
-  /** Etapa del trámite como emisor electrónico (la confirmación final es la autenticación en producción). */
-  app.put("/central/fiscal/autorizacion", async (req) => {
-    const b = z.object({
-      etapa: z.enum(["SIN_SOLICITUD", "SOLICITADO", "EN_PRUEBAS", "PRUEBAS_APROBADAS", "AUTORIZADO"]),
-      fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      referencia: z.string().trim().max(80).nullable().optional(),
-    }).parse(req.body);
-    await pool.query(
-      `INSERT INTO configuracion_fiscal (empresa_id, etapa_dgii, autorizacion_fecha, autorizacion_referencia) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (empresa_id) DO UPDATE SET etapa_dgii = $2, autorizacion_fecha = $3, autorizacion_referencia = $4`,
-      [empresaDe(req), b.etapa, b.fecha ?? null, b.referencia || null]);
-    return { ok: true };
-  });
-
   /**
    * ¿Puede esta empresa emitir comprobantes electrónicos con la DGII? Revisa cada requisito y, si falta algo, dice qué.
    * Lo que solo la DGII puede dar (autorización de emisor, e-NCF) se comprueba por sus efectos:
@@ -204,19 +190,13 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const emp = (await pool.query(
       `SELECT e.rnc, e.razon_social, COALESCE(cf.direccion_emisor, '') AS direccion, COALESCE(cf.ambiente, 'SIMULADO') AS ambiente,
               COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url, COALESCE(cf.alerta_restantes, 500) AS alerta,
-              COALESCE(cf.etapa_dgii, 'SIN_SOLICITUD') AS etapa, cf.autorizacion_fecha AS "autFecha", cf.autorizacion_referencia AS "autRef", cf.autenticacion_ok_en AS "autOk"
+              cf.autenticacion_ok_en AS "autOk"
          FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`, [e])).rows[0];
     let autenticadoProduccion = false;
 
-    // 0. ¿Está el sistema autorizado por la DGII como emisor electrónico? (se confirma al final con la autenticación en producción)
-    const PASOS: Record<string, string> = {
-      SIN_SOLICITUD: "Todavía no ha solicitado ser emisor electrónico. Haga la solicitud en la Oficina Virtual (formulario FI-GDF-016).",
-      SOLICITADO: "Solicitud enviada. Espere en el buzón de la Oficina Virtual el enlace al portal de Certificación, con su usuario y clave.",
-      EN_PRUEBAS: "En el portal de Certificación: complete las pruebas de Datos, de Simulación y de Comunicación.",
-      PRUEBAS_APROBADAS: "Pruebas aprobadas. Falta presentar la declaración jurada para que la DGII le autorice como emisor.",
-    };
+    // 0. ¿Puede esta empresa emitir ya con la DGII? Se confirma con la autenticación en producción (abajo).
     const idxAut = items.length;
-    poner("autorizacion", "Autorización de la DGII como emisor electrónico", "falta", "", "");
+    poner("autorizacion", "Autorización de la DGII para emitir e-CF", "falta", "", "");
 
     // 1. Datos del emisor
     const rnc = String(emp.rnc ?? "").replace(/\D/g, "");
@@ -297,20 +277,11 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     {
       const it = items[idxAut];
       if (autenticadoProduccion) {
-        it.estado = "ok"; it.detalle = "La DGII aceptó la autenticación en producción con su certificado: el sistema está autorizado para emitir e-CF."; it.accion = undefined;
-      } else if (emp.etapa === "AUTORIZADO") {
-        const cuando = emp.autOk ? ` Última autenticación exitosa en producción: ${new Date(emp.autOk).toLocaleString("es-DO")}.` : "";
-        const ref = [emp.autRef, emp.autFecha ? `desde ${new Date(emp.autFecha).toLocaleDateString("es-DO")}` : ""].filter(Boolean).join(" · ");
-        if (emp.ambiente === "ECF" && real) {
-          it.estado = "aviso"; it.detalle = `Marcado como autorizado${ref ? ` (${ref})` : ""}, pero no se pudo confirmar ahora con la DGII.${cuando}`;
-          it.accion = "Revise la conexión con la DGII más abajo.";
-        } else {
-          it.estado = "aviso"; it.detalle = `Marcado como autorizado${ref ? ` (${ref})` : ""}. Se confirmará automáticamente al usar el ambiente de producción.${cuando}`;
-          it.accion = "Pase la configuración a producción (ECF) con envío «DGII».";
-        }
+        it.estado = "ok"; it.detalle = "La DGII aceptó la autenticación en producción con su certificado: puede emitir e-CF."; it.accion = undefined;
       } else {
-        it.detalle = PASOS[emp.etapa] ?? PASOS.SIN_SOLICITUD;
-        it.accion = "Cuando avance en el proceso, actualice la etapa aquí abajo. Al estar autorizado y en producción, el sistema lo confirma solo.";
+        const cuando = emp.autOk ? ` Última autenticación exitosa en producción: ${new Date(emp.autOk).toLocaleString("es-DO")}.` : "";
+        it.detalle = `Todavía no se confirma con la DGII.${cuando} Se confirma cuando la autenticación en producción funciona.`;
+        it.accion = "Pase la configuración a producción (ECF) con envío «DGII» y revise la conexión con la DGII más abajo. El avance de la certificación del software lo lleva FactPOS.";
       }
     }
 

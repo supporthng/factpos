@@ -475,6 +475,34 @@ export async function rutasPortal(app: FastifyInstance) {
     return { ok: true };
   });
 
+
+  // ---- Certificación del software ante la DGII (una sola para todo FactPOS) ----
+  app.get("/central/portal/certificacion-dgii", async () => (await pool.query(
+    `SELECT tipo_registro AS "tipoRegistro", software_nombre AS "softwareNombre", software_version AS "softwareVersion",
+            url_recepcion AS "urlRecepcion", url_aprobacion AS "urlAprobacion", url_autenticacion AS "urlAutenticacion",
+            pasos, autorizado, to_char(autorizado_fecha, 'YYYY-MM-DD') AS "autorizadoFecha", referencia, notas, actualizado_en AS "actualizadoEn"
+       FROM portal_certificacion_dgii WHERE id = 1`)).rows[0]);
+  app.put("/central/portal/certificacion-dgii", async (req) => {
+    const url = z.string().trim().max(300).nullable().optional();
+    const b = z.object({
+      tipoRegistro: z.enum(["EMISOR", "PROVEEDOR"]), softwareNombre: z.string().trim().min(1).max(80), softwareVersion: z.string().trim().max(40).nullable().optional(),
+      urlRecepcion: url, urlAprobacion: url, urlAutenticacion: url,
+      pasos: z.record(z.string().regex(/^\d{1,2}$/), z.object({
+        estado: z.enum(["PENDIENTE", "EN_CURSO", "HECHO"]), nota: z.string().trim().max(300).optional(), fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      })),
+      autorizado: z.boolean(), autorizadoFecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      referencia: z.string().trim().max(120).nullable().optional(), notas: z.string().trim().max(2000).nullable().optional(),
+    }).parse(req.body);
+    await pool.query(
+      `UPDATE portal_certificacion_dgii SET tipo_registro = $1, software_nombre = $2, software_version = $3, url_recepcion = $4, url_aprobacion = $5,
+              url_autenticacion = $6, pasos = $7::jsonb, autorizado = $8, autorizado_fecha = $9, referencia = $10, notas = $11,
+              actualizado_en = now(), actualizado_por = $12 WHERE id = 1`,
+      [b.tipoRegistro, b.softwareNombre, b.softwareVersion || null, b.urlRecepcion || null, b.urlAprobacion || null, b.urlAutenticacion || null,
+       JSON.stringify(b.pasos), b.autorizado, b.autorizado ? b.autorizadoFecha ?? null : null, b.referencia || null, b.notas || null, usuarioDe(req)]);
+    await evento(pool, { tipo: "CERTIFICACION_DGII", detalle: { autorizado: b.autorizado, hechos: Object.values(b.pasos).filter((x) => x.estado === "HECHO").length }, usuarioId: usuarioDe(req) });
+    return { ok: true };
+  });
+
   // ---- Instalaciones detectadas y solicitudes de activación
   app.get("/central/portal/instalaciones", async (req) => {
     const { estado } = z.object({ estado: z.enum(["PENDIENTE", "ASIGNADA", "RECHAZADA", "LIBERADA"]).optional() }).parse(req.query);

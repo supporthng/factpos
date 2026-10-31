@@ -69,47 +69,8 @@ function Verificacion({ irA }: { irA: (v: "secuencias" | "certificado" | "config
           </div>
         ))}
       </div>
-      <EtapaAutorizacion onCambio={() => setN((x) => x + 1)} />
-      <p className="suave pequeno">Ser emisor electrónico autorizado se tramita con la DGII (Oficina Virtual). Si la autenticación con la DGII pasa, es señal de que su solicitud fue aprobada.</p>
+      <p className="suave pequeno">La autorización como emisor electrónico se tramita con la DGII; el avance de la certificación del software lo lleva FactPOS. Si la autenticación con la DGII pasa, es señal de que su empresa ya puede emitir.</p>
     </>
-  );
-}
-
-const ETAPAS: [string, string][] = [
-  ["SIN_SOLICITUD", "1. Aún no he solicitado ser emisor electrónico"],
-  ["SOLICITADO", "2. Solicitud enviada a la DGII (espero el acceso al portal de Certificación)"],
-  ["EN_PRUEBAS", "3. Haciendo las pruebas en el portal de Certificación"],
-  ["PRUEBAS_APROBADAS", "4. Pruebas aprobadas (falta la declaración jurada)"],
-  ["AUTORIZADO", "5. La DGII ya me autorizó como emisor electrónico"],
-];
-
-/** En qué parte del trámite con la DGII va la empresa. En producción, el sistema lo confirma solo. */
-function EtapaAutorizacion({ onCambio }: { onCambio: () => void }) {
-  const cfg = useDatos<{ etapaDgii?: string }>("/central/fiscal/config");
-  const [etapa, setEtapa] = useState("");
-  const [fecha, setFecha] = useState("");
-  const [ref, setRef] = useState("");
-  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
-  const actual = etapa || cfg.datos?.etapaDgii || "SIN_SOLICITUD";
-  const guardar = async () => {
-    try {
-      await api("/central/fiscal/autorizacion", { metodo: "PUT", cuerpo: { etapa: actual, fecha: fecha || null, referencia: ref || null } });
-      setMsg({ t: "Etapa guardada.", tipo: "ok" }); onCambio();
-    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
-  };
-  return (
-    <div className="panel">
-      <h3 style={{ marginTop: 0 }}>Mi trámite como emisor electrónico</h3>
-      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
-      <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
-        <select value={actual} onChange={(e) => setEtapa(e.target.value)}>{ETAPAS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
-        {actual === "AUTORIZADO" && <>
-          <input type="date" aria-label="Fecha de autorización" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-          <input placeholder="Referencia de la DGII (opcional)" value={ref} onChange={(e) => setRef(e.target.value)} />
-        </>}
-        <button className="boton primario" onClick={guardar}>Guardar</button>
-      </div>
-    </div>
   );
 }
 
