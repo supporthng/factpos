@@ -3,6 +3,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { api, ErrorApi, alPerderConexion, sesionCaja, type Ajustes } from "./api";
 import { borrar, guardar, leer } from "./almacen";
 import type { VentaRegistrada } from "./Ticket";
+import type { Catalogo, ProductoCatalogo } from "@factpos/compartido";
 
 /**
  * Contingencia: la caja sigue vendiendo si se cae el servidor de la sucursal.
@@ -52,6 +53,63 @@ export const guardarCache = (ajustes: Ajustes, que: "config" | "catalogo" | "tur
   guardar(k(ajustes.cajaId, que), valor).catch(() => {});
 export const leerCache = <T,>(ajustes: Ajustes, que: "config" | "catalogo" | "turno" | "usuarios") => leer<T>(k(ajustes.cajaId, que));
 
+// ------------------------------------------------------------------ Cupos de existencia (sin servidor)
+/**
+ * Con servidor, la caja guarda su cupo de cada producto (su parte de la existencia entre las cajas abiertas).
+ * Sin servidor solo vende hasta ese cupo: dos cajas nunca venden la misma última unidad.
+ * Solo aplica si el administrador lo activó en Configuración › Seguridad.
+ */
+let cupos: Record<string, number> | null = null;   // null = función apagada
+let usado: Record<string, number> = {};            // unidades base vendidas sin servidor desde el último reparto
+let ultimoReparto = 0;
+
+/** Cuánto le queda a esta caja de ese producto sin servidor (null = sin control: con servidor o función apagada). */
+export function disponibleCupo(productoId: string): number | null {
+  if (!cupos || estado.enLinea) return null;
+  return Math.max(0, (cupos[productoId] ?? 0) - (usado[productoId] ?? 0));
+}
+async function cargarCupos(ajustes: Ajustes) {
+  cupos = (await leer<{ cupos: Record<string, number> | null }>(k(ajustes.cajaId, "cupos")))?.cupos ?? null;
+  usado = (await leer<Record<string, number>>(k(ajustes.cajaId, "cupo-usado"))) ?? {};
+}
+export async function refrescarCupos(ajustes: Ajustes) {
+  if (!sesionCaja()) return;
+  ultimoReparto = Date.now();
+  try {
+    const r = await api<{ habilitado: boolean; cupos: Record<string, number> }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/contingencia/cupos`);
+    cupos = r.habilitado ? r.cupos : null;
+    await guardar(k(ajustes.cajaId, "cupos"), { cupos });
+    // El reparto nuevo ya descuenta lo que esta caja envió; lo pendiente de envío se sigue descontando
+    if (!((await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes")))?.length)) {
+      usado = {};
+      await guardar(k(ajustes.cajaId, "cupo-usado"), usado);
+    }
+  } catch { /* se intenta luego; mientras tanto vale el último reparto */ }
+}
+/** Falla si la venta pasa del cupo de algún producto estricto. Devuelve lo que gastaría cada producto. */
+async function revisarCupos(ajustes: Ajustes, items: { presentacionId: string; cantidad: string }[]) {
+  const gasto: Record<string, number> = {};
+  if (!cupos) return gasto;
+  const cat = await leer<Catalogo>(k(ajustes.cajaId, "catalogo"));
+  const idx = new Map<string, ProductoCatalogo>((cat?.productos ?? []).map((p) => [p.presentacionId, p]));
+  const nombres: Record<string, string> = {};
+  const estricto: Record<string, boolean> = {};
+  for (const it of items) {
+    const p = idx.get(it.presentacionId);
+    if (!p || !p.controlaStock || p.tipo === "COMBO") continue;
+    gasto[p.productoId] = (gasto[p.productoId] ?? 0) + Number(it.cantidad) * Number(p.factor);
+    nombres[p.productoId] = p.nombre;
+    estricto[p.productoId] = p.permiteSinExistencia === false;
+  }
+  for (const [id, n] of Object.entries(gasto)) {
+    const queda = Math.max(0, (cupos[id] ?? 0) - (usado[id] ?? 0));
+    if (estricto[id] && n > queda + 1e-9) {
+      throw new Error(`Sin servidor, a esta caja solo le quedan ${queda} de «${nombres[id]}» (su parte de la existencia). Las demás cajas tienen la suya.`);
+    }
+  }
+  return gasto;
+}
+
 // ------------------------------------------------------------------ PIN sin servidor
 /** Al entrar con servidor se guarda una huella del PIN: si luego se cae, la misma persona puede volver a entrar. */
 export async function recordarPin(ajustes: Ajustes, usuario: { id: string; nombre: string }, pin: string) {
@@ -86,6 +144,7 @@ export async function iniciarVigilancia(ajustes: Ajustes) {
   const pend = (await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes"))) ?? [];
   const corte = await leer<Corte>(k(ajustes.cajaId, "corte"));
   const reserva = (await leer<unknown[]>(k(ajustes.cajaId, "reserva")))?.length ?? 0;
+  await cargarCupos(ajustes);
   cambiar({ pendientes: pend.length, reserva, errores: pend.filter((p) => p.error).length, ...(corte ? { enLinea: false, desde: corte.desde } : {}) });
   alPerderConexion(() => { void sinServidor(); });
   const vuelta = async () => {
@@ -94,6 +153,7 @@ export async function iniciarVigilancia(ajustes: Ajustes) {
       fallosSeguidos = 0;
       if (!estado.enLinea || estado.pendientes > 0) await volvioServidor(ajustes);
       else if (estado.reserva < 10) await refrescarReserva(ajustes);
+      if (estado.enLinea && Date.now() - ultimoReparto > 60_000) await refrescarCupos(ajustes);
     } else if (++fallosSeguidos >= 2 || !estado.enLinea) {
       await sinServidor();
     }
@@ -143,6 +203,7 @@ async function volvioServidor(ajustes: Ajustes) {
     setTimeout(() => cambiar({ aviso: null }), 12000);
   }
   await refrescarReserva(ajustes);
+  await refrescarCupos(ajustes);
 }
 
 // ------------------------------------------------------------------ e-NCF apartados
@@ -161,6 +222,7 @@ export async function refrescarReserva(ajustes: Ajustes) {
 
 // ------------------------------------------------------------------ Venta sin servidor
 export async function venderSinServidor(ajustes: Ajustes, v: Omit<VentaPendiente, "encf" | "rangoId" | "ticket" | "creadoEn"> & { ticket: Omit<VentaRegistrada, "fiscal" | "fecha" | "numero"> }) {
+  const gasto = await revisarCupos(ajustes, v.items);
   const reserva = (await leer<{ encf: string; rangoId: string }[]>(k(ajustes.cajaId, "reserva"))) ?? [];
   const num = reserva.shift();
   if (!num) throw new Error("Esta caja no tiene números e-NCF de reserva: no puede facturar sin servidor. Llame al servicio técnico.");
@@ -176,6 +238,10 @@ export async function venderSinServidor(ajustes: Ajustes, v: Omit<VentaPendiente
   await guardar(k(ajustes.cajaId, "reserva"), reserva);
   const corte = (await leer<Corte>(k(ajustes.cajaId, "corte"))) ?? { id: uuidv7(), desde: creadoEn, ventas: 0, monto: 0 };
   await guardar(k(ajustes.cajaId, "corte"), { ...corte, ventas: corte.ventas + 1, monto: corte.monto + Number(v.total) });
+  if (cupos) {
+    for (const [id, u] of Object.entries(gasto)) usado[id] = (usado[id] ?? 0) + u;
+    await guardar(k(ajustes.cajaId, "cupo-usado"), usado).catch(() => {});
+  }
   cambiar({ pendientes: pend.length + 1, reserva: reserva.length, enLinea: false, desde: estado.desde ?? corte.desde });
   return ticket;
 }
