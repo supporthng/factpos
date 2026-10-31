@@ -5,7 +5,7 @@ import { rd } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
 
 export interface VentaRegistrada {
-  id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN"; numeroDocumento?: string | null; fecha: string;
+  id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "ANU" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN"; numeroDocumento?: string | null; fecha: string;
   encfModificado?: string | null; motivo?: string | null;
   subtotal: string; descuento: string; itbis: string; total: string; cambio: string;
   cupon: { codigo: string; total: string } | null;
@@ -40,6 +40,7 @@ const NOMBRE_TIPO: Record<string, string> = {
   E31: "Factura de Crédito Fiscal Electrónica",
   E32: "Factura de Consumo Electrónica",
   E34: "Nota de Crédito Electrónica",
+  ANU: "Anulación de factura",
   B01: "Factura con NCF de Crédito Fiscal",
   B02: "Factura con NCF de Consumo",
   B14: "Factura con NCF de Régimen Especial",
@@ -78,8 +79,8 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
   return (
     <div className="fondo-modal" onMouseDown={onCerrar}>
       <div className="modal ticket-modal" onMouseDown={(e) => e.stopPropagation()}>
-        {!copia && venta.tipoDocumento !== "E34" && Number(venta.cambio) > 0 && <div className="cambio-grande centro">Cambio: {rd(venta.cambio)}</div>}
-        {venta.tipoDocumento === "E34" && <div className="centro aviso-devolucion">Devolver al cliente: <b>{rd(venta.total)}</b></div>}
+        {!copia && venta.tipoDocumento !== "E34" && venta.tipoDocumento !== "ANU" && Number(venta.cambio) > 0 && <div className="cambio-grande centro">Cambio: {rd(venta.cambio)}</div>}
+        {(venta.tipoDocumento === "E34" || venta.tipoDocumento === "ANU") && <div className="centro aviso-devolucion">Devolver al cliente: <b>{rd(venta.total)}</b></div>}
         <style>{`@media print { @page { size: ${fmt.papel}mm auto; margin: 0; } }`}</style>
         <div className="ticket" id="ticket" style={{ width: med.ancho, fontSize: med.letra }}>
           <EncabezadoTicket config={config} />
@@ -89,7 +90,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
           <div className="t-fila"><span>{venta.fiscal ? "e-NCF" : venta.tipoDocumento === "SIN" ? "Número interno" : "NCF"}</span><b>{venta.fiscal?.encf ?? venta.numeroDocumento ?? "Pendiente"}</b></div>
           {venta.tipoDocumento === "E31" && venta.fiscal && <div className="t-fila"><span>Válida hasta</span><span>{venta.fiscal.venceSecuencia.split("-").reverse().join("-")}</span></div>}
           {venta.encfModificado && <div className="t-fila"><span>Modifica e-NCF</span><span>{venta.encfModificado}</span></div>}
-          {venta.tipoDocumento === "E34" && venta.motivo && <div className="t-fila"><span>Motivo</span><span>{venta.motivo}</span></div>}
+          {(venta.tipoDocumento === "E34" || venta.tipoDocumento === "ANU") && venta.motivo && <div className="t-fila"><span>Motivo</span><span>{venta.motivo}</span></div>}
           <div className="t-fila"><span>Fecha</span><span>{fechaRD(venta.fecha)}</span></div>
           <div className="t-fila"><span>{config.nombre} · #{venta.numero}</span>{fmt.mostrarCajero && <span>{usuario.nombre}</span>}</div>
           {fmt.mostrarCliente && venta.cliente && (
@@ -131,7 +132,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
                 <div>Fecha de firma: {fechaRD(venta.fiscal.fechaFirma)}</div>
               </>
             ) : null}
-            {venta.tipoDocumento !== "E34" && fmt.pie && <div className="t-pie">{fmt.pie}</div>}
+            {venta.tipoDocumento !== "E34" && venta.tipoDocumento !== "ANU" && fmt.pie && <div className="t-pie">{fmt.pie}</div>}
             {fmt.pieExtra && <div className="t-pie t-nota">{fmt.pieExtra}</div>}
           </div>
         </div>

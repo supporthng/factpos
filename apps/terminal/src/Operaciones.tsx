@@ -140,12 +140,12 @@ export function Facturas({ ajustes, usuario, onReimprimir, onAnulada, onCorregir
             <span>
               <b>#{f.numero}</b> <span className="mono">{f.encf ?? ""}</span>
               <span className="suave"> · {new Date(f.fecha).toLocaleTimeString("es-DO")} · {f.cliente ?? "Consumidor final"}</span>
-              {f.tipo === "E34" && <span className="pastilla">Nota de crédito</span>}
+              {(f.tipo === "E34" || f.tipo === "ANU") && <span className="pastilla">{f.tipo === "ANU" ? "Anulación" : "Nota de crédito"}</span>}
               {f.anulada && <span className="pastilla roja">Anulada</span>}
             </span>
             <span className="factura-acciones">
               <b>{rd(f.total)}</b>
-              {f.tipo !== "E34" && !f.anulada && (
+              {f.tipo !== "E34" && f.tipo !== "ANU" && !f.anulada && (
                 <>
                   <button className="boton fantasma" onClick={() => { setMotivo(""); setMsg(""); setAccion({ f, corregir: true }); }}>Corregir</button>
                   <button className="boton peligro" onClick={() => { setMotivo(""); setMsg(""); setAccion({ f, corregir: false }); }}>Anular</button>

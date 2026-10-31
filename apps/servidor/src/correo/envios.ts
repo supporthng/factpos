@@ -54,7 +54,7 @@ export async function datosResumen(empresaId: string, fecha: string, sucursales:
     pool.query(`SELECT c.sucursal, c.caja, c.cajero, c.diferencia FROM rpt_cierres_caja c JOIN sucursales s ON s.id = c.sucursal_id WHERE ${filtro} AND c.fecha = $2::date ORDER BY c.sucursal, c.cerrado_en`, p),
     pool.query(
       `SELECT COUNT(*)::int AS cantidad, COALESCE(SUM(v.total), 0) AS monto FROM ventas v JOIN sucursales s ON s.id = v.sucursal_id
-        WHERE ${filtro} AND v.tipo_documento = 'E34' AND (v.creado_en AT TIME ZONE 'America/Santo_Domingo')::date = $2::date`, p),
+        WHERE ${filtro} AND v.tipo_documento IN ('E34','ANU') AND (v.creado_en AT TIME ZONE 'America/Santo_Domingo')::date = $2::date`, p),
     pool.query(
       `SELECT COUNT(*) FILTER (WHERE d.estado = 'RECHAZADO')::int AS rechazados,
               COUNT(*) FILTER (WHERE d.estado IN ('PENDIENTE','CONTINGENCIA','EN_PROCESO','ENVIADO'))::int AS pendientes
