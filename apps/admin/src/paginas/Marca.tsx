@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Icono } from "../Iconos";
 import { extraerPaleta, temaAdmin, temaTerminal, contraste } from "@factpos/compartido";
 import { api } from "../api";
 import { aplicarTemaAdmin } from "../tema";
@@ -64,7 +65,7 @@ export function Marca() {
   };
 
   const ta = temaAdmin({ primario: m.primario, secundario: m.secundario });
-  const tt = temaTerminal({ primario: m.primario, secundario: m.secundario });
+  const tt = temaTerminal({ primario: m.primario, secundario: m.secundario }, "claro"); // la terminal viene en tema claro
   const muestra = [...new Set([...paleta, m.primario, ...(m.secundario ? [m.secundario] : [])])];
 
   return (
@@ -110,26 +111,33 @@ export function Marca() {
         <div className="panel">
           <h3>Vista previa</h3>
           <p className="suave pequeno">Terminal de venta</p>
-          <div className="prev-terminal">
+          <div className="prev-terminal" style={{ boxShadow: `inset 0 3px 0 ${tt["--barra-marca"]}` }}>
             <div className="prev-barra">
               {m.logo ? <img src={m.logo} alt="" /> : <b>{m.nombre}</b>}
-              <span style={{ color: tt["--primario"] }}>Caja 1</span>
+              <span className="prev-caja">Caja 1 · En línea</span>
             </div>
             <div className="prev-cuerpo">
-              <div className="prev-fila" style={{ boxShadow: `inset 3px 0 0 ${tt["--primario"]}` }}>Producto seleccionado</div>
-              <div className="prev-total">Total <b>RD$1,445.00</b></div>
+              <div className="prev-fila" style={{ boxShadow: `inset 3px 0 0 ${tt["--primario"]}`, background: `color-mix(in srgb, ${tt["--primario"]} 7%, #fff)` }}>
+                <span className="prev-num" style={{ background: tt["--primario"] }}>1</span>Producto seleccionado
+              </div>
+              <div className="prev-fila">Otro producto</div>
+              <div className="prev-total" style={{ boxShadow: `inset 0 3px 0 ${tt["--primario"]}` }}><span>Total a pagar</span><b>RD$1,445.00</b></div>
               <div className="prev-cobrar" style={{ background: tt["--cobrar"], color: tt["--texto-sobre-cobrar"] }}>Cobrar</div>
             </div>
           </div>
           <p className="suave pequeno" style={{ marginTop: 16 }}>Administración</p>
           <div className="prev-admin">
-            <div className="prev-lateral" style={{ background: ta["--marca"], color: ta["--marca-texto"] }}>
+            <div className="prev-lateral">
               {m.logo ? <img src={m.logo} alt="" /> : <b>{m.nombre}</b>}
-              <span style={{ background: ta["--primario-suave"], color: ta["--primario"] }}>Inventario</span>
-              <span>Precios</span>
+              <span className="activo" style={{ background: `color-mix(in srgb, ${ta["--primario"]} 10%, #fff)`, color: ta["--primario"], boxShadow: `inset 3px 0 0 ${ta["--primario"]}` }}>
+                <Icono n="productos" tamano={14} />Inventario
+              </span>
+              <span><Icono n="precios" tamano={14} />Precios</span>
+              <span><Icono n="reportes" tamano={14} />Reportes</span>
             </div>
             <div className="prev-contenido">
               <b>Resumen</b>
+              <span className="prev-kpi"><small>Venta de hoy</small><b>RD$48,250</b></span>
               <span className="prev-boton" style={{ background: ta["--primario"], color: ta["--texto-sobre-primario"] }}>Nueva oferta</span>
             </div>
           </div>

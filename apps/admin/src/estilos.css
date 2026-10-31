@@ -553,3 +553,203 @@ tr.inactiva td { opacity: .55; }
 .tarjeta-entrar.ancha { width: min(600px, 100%); }
 .aviso-local { background: #e8f1fb; color: #18406b; border: 1px solid #c2d8f0; border-radius: var(--radio); padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }
 .notas-version { white-space: pre-wrap; font: inherit; background: var(--fondo); border-radius: var(--radio); padding: 12px; max-height: 280px; overflow: auto; }
+
+/* =====================================================================
+   Rediseño 2026 — limpio y claro
+   Menú lateral claro con íconos, barra superior, tarjetas con más aire.
+   Los colores de la marca del cliente siguen entrando por --primario.
+   ===================================================================== */
+:root {
+  --fondo: #f5f6f8;
+  --panel: #ffffff;
+  --borde: #e7eaee;
+  --borde-fuerte: #d5dae1;
+  --texto: #111827;
+  --suave: #6b7280;
+  --radio: 14px;
+  --sombra: 0 1px 2px rgba(17, 24, 39, .04), 0 2px 8px -2px rgba(17, 24, 39, .06);
+  --sombra-alta: 0 12px 32px -8px rgba(17, 24, 39, .18);
+  --ancho-lateral: 252px;
+  font-family: "Archivo Variable", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fondo: #0d1117; --panel: #151b23; --borde: #232b36; --borde-fuerte: #2f3a48; --texto: #e6edf3; --suave: #8b98a8;
+    --sombra: 0 1px 2px rgba(0,0,0,.3); --sombra-alta: 0 12px 32px -8px rgba(0,0,0,.6);
+  }
+}
+::selection { background: color-mix(in srgb, var(--primario) 22%, transparent); }
+h1 { font-size: 27px; font-weight: 750; letter-spacing: -.5px; }
+h2 { font-size: 17px; font-weight: 700; letter-spacing: -.2px; margin: 32px 0 12px; }
+h3 { font-weight: 700; }
+.icono { flex: none; }
+
+/* Controles */
+input, select { border-radius: 10px; padding: 9px 12px; border-color: var(--borde-fuerte); transition: border-color .15s, box-shadow .15s; }
+input:hover:not(:focus):not(:disabled), select:hover:not(:focus):not(:disabled) { border-color: color-mix(in srgb, var(--suave) 55%, var(--borde-fuerte)); }
+input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primario) 16%, transparent); }
+.boton { border-radius: 10px; padding: 9px 16px; transition: background .15s, border-color .15s, box-shadow .15s, transform .05s; }
+.boton:hover:not(:disabled) { border-color: var(--borde-fuerte); background: var(--fondo); }
+.boton:active:not(:disabled) { transform: translateY(1px); }
+.boton.primario { box-shadow: 0 1px 2px rgba(17,24,39,.08), inset 0 1px 0 rgba(255,255,255,.12); }
+.boton.primario:hover:not(:disabled) { background: color-mix(in srgb, var(--primario) 88%, #000); border-color: transparent; }
+.boton:focus-visible, .lateral nav button:focus-visible, .enlace:focus-visible, .boton-icono:focus-visible, .chip-usuario:focus-visible {
+  outline: 2px solid var(--primario); outline-offset: 2px;
+}
+.boton-icono { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--suave); }
+.boton-icono:hover { background: var(--fondo); color: var(--texto); border-color: var(--borde); }
+.avatar { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; flex: none;
+  background: color-mix(in srgb, var(--primario) 14%, var(--panel)); color: var(--primario); font-weight: 750; font-size: 13px; letter-spacing: .02em; }
+
+/* Estructura */
+.app { grid-template-columns: var(--ancho-lateral) 1fr; }
+.lateral { background: var(--panel); color: var(--texto); border-right: 1px solid var(--borde); padding: 18px 12px 12px; }
+.lateral .marca.con-icono { padding: 2px 8px; gap: 11px; }
+.lateral .marca.con-icono svg { border-radius: 10px; box-shadow: 0 2px 6px rgba(14,27,38,.25); }
+.lateral .marca.con-icono .nombre { color: var(--texto); font-size: 20px; }
+.lateral .marca.con-icono .nombre b { color: var(--primario); }
+.lateral .marca small { color: var(--suave); font-size: 12px; }
+.marca-logo { padding: 0 6px; }
+.marca-logo img { background: transparent; padding: 0; max-height: 52px; }
+.marca-logo small { color: var(--suave); opacity: 1; }
+.lateral nav { margin-top: 20px; }
+.lateral .grupo { margin-bottom: 14px; }
+.grupo-titulo { font-size: 11px; font-weight: 700; letter-spacing: .07em; color: var(--suave); opacity: .85; margin: 0 12px 4px; }
+.lateral nav button { display: flex; align-items: center; gap: 11px; padding: 7.5px 12px; border-radius: 10px; color: var(--texto); opacity: 1; font-size: 14.5px; font-weight: 500; margin-bottom: 1px; position: relative; }
+.lateral nav button .icono { width: 19px; height: 19px; color: var(--suave); transition: color .15s; }
+.lateral nav button:hover { background: var(--fondo); }
+.lateral nav button:hover .icono { color: var(--texto); }
+.lateral nav button.activo { background: color-mix(in srgb, var(--primario) 10%, var(--panel)); color: var(--primario); font-weight: 650; }
+.lateral nav button.activo .icono { color: var(--primario); }
+.lateral nav button.activo::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--primario); }
+.lateral-pie { border-top: 1px solid var(--borde); padding-top: 10px; gap: 6px; }
+.usuario-lateral { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 6px; border-radius: 10px; text-align: left; }
+.usuario-lateral:hover { background: var(--fondo); }
+.usuario-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.usuario-texto b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.usuario-texto small { font-size: 12px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.contenido { display: flex; flex-direction: column; }
+.barra-superior { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 32px;
+  background: color-mix(in srgb, var(--fondo) 82%, transparent); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--borde); }
+.migas-superior { display: flex; align-items: center; gap: 8px; font-size: 14px; min-width: 0; white-space: nowrap; }
+.migas-superior .separador { color: var(--borde-fuerte); }
+.migas-superior b { font-weight: 650; }
+.empresa-superior { font-size: 13px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch; }
+.chip-usuario { display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px 3px 3px; border: 1px solid var(--borde); background: var(--panel); border-radius: 999px; font-weight: 600; font-size: 14px; }
+.chip-usuario .avatar { width: 30px; height: 30px; font-size: 12px; }
+.chip-usuario:hover { border-color: var(--borde-fuerte); }
+.solo-movil { display: none; }
+.barra-movil { display: none !important; }
+.velo-menu { display: none; }
+.contenido main { padding: 28px 32px 64px; max-width: 1440px; width: 100%; }
+
+.encabezado { margin-bottom: 22px; align-items: flex-end; }
+.encabezado p.suave { margin-top: 2px; font-size: 14.5px; }
+
+/* Superficies */
+.panel, .tarjeta { border-radius: var(--radio); padding: 20px; border-color: var(--borde); }
+.tarjeta h3 { font-size: 15.5px; }
+.modal { border-radius: 18px; padding: 24px; box-shadow: var(--sombra-alta); }
+.fondo-modal { background: rgba(17, 24, 39, .42); backdrop-filter: blur(2px); }
+
+/* Indicadores */
+.kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 10px; }
+.kpi { position: relative; padding: 18px 18px 16px; gap: 6px; border-radius: var(--radio); }
+.kpi-titulo, .kpi > .suave:first-child { font-size: 13.5px; font-weight: 550; }
+.kpi b { font-size: 26px; font-weight: 750; letter-spacing: -.6px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi .pequeno { font-size: 12.5px; }
+.kpi.con-icono { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "titulo icono" "valor valor" "detalle detalle"; align-items: center; row-gap: 6px; }
+.kpi.con-icono .kpi-titulo { grid-area: titulo; }
+.kpi.con-icono > b { grid-area: valor; }
+.kpi { container-type: inline-size; }
+.kpi > b { font-size: clamp(18px, 10.5cqi, 28px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi.con-icono .kpi-detalle { grid-area: detalle; }
+.kpi-icono { grid-area: icono; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; margin: -4px -2px -4px 8px;
+  background: color-mix(in srgb, var(--primario) 10%, var(--panel)); color: var(--primario); }
+.kpi-icono .icono { width: 20px; height: 20px; }
+.kpi.alerta .kpi-icono { background: var(--alerta-suave); color: var(--alerta); }
+.kpi.ok .kpi-icono { background: var(--ok-suave); color: var(--ok); }
+.tarjetas-sucursal { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+.tarjeta-sucursal h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.icono-sucursal { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--fondo); color: var(--suave); }
+.dato { border-bottom-style: solid; border-bottom-color: color-mix(in srgb, var(--borde) 70%, transparent); padding: 8px 0; font-size: 14.5px; }
+.dato > span { color: var(--suave); }
+.dato b { font-variant-numeric: tabular-nums; }
+
+/* Requiere atención */
+.atencion h2 { margin-top: 28px; }
+.atencion li { padding: 14px 18px; }
+.atencion li .texto { font-size: 14.5px; }
+.atencion .punto { box-shadow: 0 0 0 4px var(--alerta-suave); }
+.atencion .enlace { padding: 6px 12px; border-radius: 8px; background: color-mix(in srgb, var(--primario) 8%, transparent); }
+.atencion .enlace:hover { background: color-mix(in srgb, var(--primario) 15%, transparent); }
+.atencion-vacia { border: 1px solid color-mix(in srgb, var(--ok) 25%, transparent); }
+
+/* Tablas */
+.tabla-contenedor { border-radius: var(--radio); }
+.tabla th { background: color-mix(in srgb, var(--fondo) 60%, var(--panel)); font-size: 11.5px; font-weight: 700; letter-spacing: .05em; padding: 11px 14px; border-bottom-color: var(--borde); }
+.tabla td { padding: 11px 14px; border-bottom-color: color-mix(in srgb, var(--borde) 75%, transparent); font-variant-numeric: tabular-nums; }
+.tabla tbody tr:last-child td { border-bottom: 0; }
+.tabla tbody tr:hover { background: color-mix(in srgb, var(--primario) 3%, var(--panel)); }
+.vacio { border-radius: var(--radio); padding: 40px; }
+.pastilla { font-size: 11.5px; font-weight: 650; text-transform: none; letter-spacing: 0; padding: 3px 10px; }
+.chip { padding: 6px 14px; }
+.pestanas { gap: 2px; }
+.pestanas button { border-radius: 8px 8px 0 0; }
+.pestanas button:hover:not(.activa) { color: var(--texto); }
+
+/* Avisos */
+.aviso-licencia { border-radius: 12px; padding: 11px 16px; background: #fffaeb; border-color: #fde7b0; color: #7a4a00; }
+.aviso-licencia.grave { background: #fef2f2; border-color: #fbd0d0; }
+.aviso-linea { border-radius: 10px; }
+
+/* Entrada */
+.entrar { background: radial-gradient(1200px 600px at 15% -10%, color-mix(in srgb, var(--primario) 18%, transparent), transparent 60%), var(--fondo); }
+.tarjeta-entrar { border: 1px solid var(--borde); border-radius: 20px; box-shadow: var(--sombra-alta); padding: 36px; }
+.tarjeta-entrar .marca.grande { color: var(--texto); }
+.tarjeta-entrar .boton.primario { padding: 12px; font-size: 15.5px; margin-top: 6px; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .lateral { inset: 0 auto 0 0; width: min(300px, 86vw); box-shadow: var(--sombra-alta); }
+  .lateral.abierto { box-shadow: var(--sombra-alta); }
+  .velo-menu { display: block; position: fixed; inset: 0; z-index: 35; background: rgba(17, 24, 39, .4); }
+  .solo-movil { display: inline-grid; }
+  .solo-escritorio, .empresa-superior { display: none; }
+  .chip-usuario { padding: 3px; }
+  .barra-superior { padding: 0 12px; }
+  .contenido main { padding: 20px 16px 48px; }
+  .kpi b { font-size: 24px; }
+}
+@media print { .barra-superior, .lateral { display: none !important; } .app { display: block; } }
+.encabezado > div:first-child { flex: 1 1 420px; min-width: 0; }
+.encabezado p.suave { max-width: 80ch; }
+
+/* Vista previa de "Marca y colores" con el diseño nuevo (terminal y administración claras) */
+.prev-terminal { background: #f3f5f8; color: #111827; border: 1px solid var(--borde); border-radius: 12px; }
+.prev-barra { background: #fff; border-bottom: 1px solid #e4e8ed; padding: 10px 12px; }
+.prev-barra img { background: transparent; padding: 0; }
+.prev-caja { font-size: 12px; font-weight: 600; color: #15803d; background: #ecfdf3; border-radius: 999px; padding: 2px 8px; }
+.prev-cuerpo { gap: 6px; }
+.prev-fila { background: #fff; border: 1px solid #e4e8ed; display: flex; align-items: center; gap: 8px; }
+.prev-num { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; color: #fff; font-size: 11px; font-weight: 700; }
+.prev-total { background: #fff; border: 1px solid #e4e8ed; border-top: 0; border-radius: 10px; padding: 10px 12px; flex-direction: column; gap: 2px; font-size: 13px; }
+.prev-total span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+.prev-total b { font-size: 22px; letter-spacing: -.4px; }
+.prev-cobrar { border-radius: 10px; }
+.prev-admin { grid-template-columns: 150px 1fr; border-radius: 12px; min-height: 150px; }
+.prev-lateral { background: #fff; color: #111827; border-right: 1px solid #e7eaee; gap: 3px; }
+.prev-lateral b { margin-bottom: 8px; }
+.prev-lateral img { background: transparent; padding: 0; margin-bottom: 8px; }
+.prev-lateral span { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 7px; font-size: 12.5px; }
+.prev-lateral span:not(.activo) .icono { color: #6b7280; }
+.prev-contenido { background: #f5f6f8; }
+.prev-kpi { display: flex; flex-direction: column; background: #fff; border: 1px solid #e7eaee; border-radius: 9px; padding: 7px 10px; }
+.prev-kpi small { font-size: 11px; color: #6b7280; }
+.prev-kpi b { font-size: 16px; }
+.prev-boton { border-radius: 8px; }
+.prev-terminal, .prev-admin { margin-top: 6px; }
