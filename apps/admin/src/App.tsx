@@ -1,4 +1,5 @@
 import { Seguridad } from "./paginas/Seguridad";
+import { DosPasos } from "./paginas/DosPasos";
 import { ConfigMovil } from "./paginas/ConfigMovil";
 import { ConexionWeb } from "./paginas/ConexionWeb";
 import { PantallaActualizacion } from "./PantallaActualizacion";
@@ -387,6 +388,8 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
   const [clave, setClave] = useState("");
   const [rnc, setRnc] = useState("");
   const [pedirRnc, setPedirRnc] = useState(false);
+  const [pedirCodigo, setPedirCodigo] = useState(false);
+  const [codigo, setCodigo] = useState("");
   const [msg, setMsg] = useState(error);
   const [entrando, setEntrando] = useState(false);
   // Nube recién instalada (base vacía): se configura la empresa y el primer usuario
@@ -403,8 +406,9 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
     e?.preventDefault();
     setMsg(""); setEntrando(true);
     try {
-      const r = await api<{ token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>(
-        "/central/entrar", { servidor, cuerpo: { usuario, clave, rnc: rnc || undefined } });
+      const r = await api<{ requiere2fa?: boolean; token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>(
+        "/central/entrar", { servidor, cuerpo: { usuario, clave, rnc: rnc || undefined, codigo: codigo || undefined } });
+      if (r.requiere2fa) { setPedirCodigo(true); setMsg("Escriba el código de su app de verificación (o un código de recuperación)."); return; }
       onListo({ servidor, token: r.token, empresaId: r.empresa.id, empresa: r.empresa.nombre, usuarioId: r.usuario.id, nombre: r.usuario.nombre, permisos: r.usuario.permisos });
     } catch (e) {
       const t = (e as Error).message;
@@ -421,8 +425,9 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
         <label className="campo"><span>Usuario</span><input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoCapitalize="none" /></label>
         <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
         {pedirRnc && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
+        {pedirCodigo && <label className="campo"><span>Código de verificación</span><input autoFocus value={codigo} onChange={(e) => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" /></label>}
         {verServidor && <label className="campo"><span>Dirección de la central</span><input value={servidor} onChange={(e) => setServidor(e.target.value)} /></label>}
-        <button className="boton primario ancho" disabled={!usuario || !clave || entrando}>{entrando ? "Entrando…" : "Entrar"}</button>
+        <button className="boton primario ancho" disabled={!usuario || !clave || entrando || (pedirCodigo && !codigo)}>{entrando ? "Entrando…" : "Entrar"}</button>
         {msg && <p className="error">{msg}</p>}
         {!verServidor && !CONFIG.modo && <button type="button" className="enlace pequeno" onClick={() => setVerServidor(true)}>Otra central…</button>}
       </form>
@@ -437,7 +442,7 @@ function PrimerUso({ servidor, pideClave, onListo }: { servidor: string; pideCla
   const set = (k: keyof typeof d, v: string) => setD((x) => ({ ...x, [k]: v }));
   const crear = async (e: React.FormEvent) => {
     e.preventDefault(); setMsg("");
-    if (d.clave.length < 4) return setMsg("La contraseña debe tener al menos 4 caracteres");
+    if (d.clave.length < 8 || !/[A-Za-z]/.test(d.clave) || !/\d/.test(d.clave)) return setMsg("La contraseña debe tener al menos 8 caracteres, con letras y números");
     if (d.clave !== d.repetir) return setMsg("Las dos contraseñas no coinciden");
     setTrabajando(true);
     try {
@@ -461,8 +466,8 @@ function PrimerUso({ servidor, pideClave, onListo }: { servidor: string; pideCla
         <div className="dos-col">
           <label className="campo"><span>Su nombre</span><input value={d.nombre} onChange={(e) => set("nombre", e.target.value)} /></label>
           <label className="campo"><span>Usuario</span><input value={d.usuario} autoCapitalize="none" onChange={(e) => set("usuario", e.target.value.toLowerCase())} /></label>
-          <label className="campo"><span>Contraseña (4 o más)</span><input type="password" minLength={4} maxLength={200} value={d.clave} onChange={(e) => set("clave", e.target.value)} autoComplete="new-password" /></label>
-          <label className="campo"><span>Repita la contraseña</span><input type="password" minLength={4} maxLength={200} value={d.repetir} onChange={(e) => set("repetir", e.target.value)} autoComplete="new-password" /></label>
+          <label className="campo"><span>Contraseña (8 o más, letras y números)</span><input type="password" minLength={8} maxLength={200} value={d.clave} onChange={(e) => set("clave", e.target.value)} autoComplete="new-password" /></label>
+          <label className="campo"><span>Repita la contraseña</span><input type="password" minLength={8} maxLength={200} value={d.repetir} onChange={(e) => set("repetir", e.target.value)} autoComplete="new-password" /></label>
         </div>
         <label className="campo"><span>PIN para la caja (opcional, 4 a 6 números)</span><input value={d.pin} inputMode="numeric" maxLength={6} onChange={(e) => set("pin", e.target.value.replace(/\D/g, ""))} /></label>
         <button className="boton primario ancho" disabled={trabajando || !d.rnc || !d.razonSocial || !d.nombreComercial || !d.nombre || !d.usuario || !d.clave}>
@@ -503,6 +508,7 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
   const [nueva, setNueva] = useState("");
   const [repetir, setRepetir] = useState("");
   const [msg, setMsg] = useState<{ t: string; ok?: boolean } | null>(null);
+  const [dosPasos, setDosPasos] = useState(false);
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (nueva !== repetir) return setMsg({ t: "Las dos contraseñas nuevas no coinciden" });
@@ -517,14 +523,17 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
       <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={guardar}>
         <h2 style={{ marginTop: 0 }}>Cambiar mi contraseña</h2>
         <label className="campo"><span>Contraseña actual</span><input type="password" autoFocus value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" /></label>
-        <label className="campo"><span>Nueva (4 o más caracteres)</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" /></label>
+        <label className="campo"><span>Nueva (8 o más, con letras y números)</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" /></label>
         <label className="campo"><span>Repita la nueva</span><input type="password" value={repetir} onChange={(e) => setRepetir(e.target.value)} autoComplete="new-password" /></label>
         {msg && <p className={msg.ok ? "ok" : "error"}>{msg.t}</p>}
         <div className="acciones-modal">
+          <button type="button" className="boton fantasma" onClick={() => setDosPasos(true)}>Verificación en dos pasos…</button>
+          <span className="pr-espacio" />
           <button type="button" className="boton" onClick={onCerrar}>Cancelar</button>
           <button className="boton primario" disabled={!actual || !nueva}>Guardar</button>
         </div>
       </form>
+      {dosPasos && <DosPasos onCerrar={() => setDosPasos(false)} />}
     </div>
   );
 }

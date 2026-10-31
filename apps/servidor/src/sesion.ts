@@ -29,9 +29,12 @@ export async function verificarClave(clave: string, guardado: string | null | un
   return esperado.length === calc.length && timingSafeEqual(esperado, calc);
 }
 
-/** Contraseña aceptable: 4 caracteres o más. */
+/** Contraseña aceptable: 8 caracteres o más, con letras y números, y que no sea de las más comunes. */
+const CLAVES_COMUNES = new Set(["12345678", "123456789", "1234567890", "password", "password1", "contrasena", "contrasena1", "qwerty123", "admin1234", "admin123", "factpos123", "abc12345", "11111111", "00000000", "iloveyou1", "welcome1"]);
 export function claveSegura(clave: string) {
-  if (clave.length < 4) return "La contraseña debe tener al menos 4 caracteres";
+  if (clave.length < 8) return "La contraseña debe tener al menos 8 caracteres";
+  if (!/[A-Za-z]/.test(clave) || !/\d/.test(clave)) return "La contraseña debe llevar letras y números";
+  if (CLAVES_COMUNES.has(clave.toLowerCase())) return "Esa contraseña es muy común: elija otra";
   return null;
 }
 
@@ -104,6 +107,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
  */
 export function permisoDeRuta(metodo: string, ruta: string): string | null {
   const escribe = metodo !== "GET" && metodo !== "HEAD";
+  if (ruta.startsWith("/central/sesion")) return null; // cada usuario maneja su propia contraseña y verificación
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";
