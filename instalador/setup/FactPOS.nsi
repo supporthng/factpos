@@ -25,6 +25,9 @@ RequestExecutionLevel admin
   !define SALIDA "FactPOS-Setup.exe"
 !endif
 
+!define REGSERV "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS"
+!define REGCLI "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS Cliente"
+
 Name "FactPOS"
 Caption "FactPOS ${VERSION} · Instalación"
 OutFile "${SALIDA}"
@@ -69,6 +72,17 @@ Var TextoFinal
 Var Abrir
 Var Fallo
 Var Registro    ; archivo con todo lo que mostró la instalación
+Var Accion        ; nuevo | actualizar | modificar
+Var ServLoc       ; carpeta del servidor ya instalado ("" si no hay)
+Var ServVer
+Var ServTipo
+Var CliLoc        ; Caja / Administración ya instaladas ("" si no hay)
+Var CliVer
+Var BorrarDatos   ; desinstalador: 1 = borrar configuración, registros y respaldos
+Var Modo          ; desinstalador: servidor | cliente
+Var hA2
+Var hA3
+Var hBorrar
 Var PowerShell  ; powershell.exe de 64 bits si Windows es x64 (el stub NSIS es x86)
 
 ; controles
@@ -88,6 +102,7 @@ Var hClavePg
 !define MUI_WELCOMEPAGE_TITLE "Bienvenido a FactPOS ${VERSION}"
 !define MUI_WELCOMEPAGE_TEXT "Este asistente instala FactPOS en esta computadora.$\r$\n$\r$\nPuede instalar el servidor principal de su negocio, el servidor de una sucursal, una caja o la aplicación de administración.$\r$\n$\r$\nTenga a mano el nombre corto de su empresa y, si la tiene, su clave de licencia.$\r$\n$\r$\nPulse Siguiente para continuar."
 !insertmacro MUI_PAGE_WELCOME
+Page custom PaginaExistente PaginaExistenteSalir
 Page custom PaginaTipo PaginaTipoSalir
 Page custom PaginaDatos PaginaDatosSalir
 ; La impresora se elige después: la caja imprime por la predeterminada de Windows
@@ -105,6 +120,7 @@ Page custom PaginaDatos PaginaDatosSalir
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
+UninstPage custom un.PaginaDatos un.PaginaDatosSalir
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "Spanish"
@@ -117,10 +133,187 @@ Function .onInit
   ; La clave de PostgreSQL se gestiona en el script del servidor.
   ; No solicitar credenciales en el asistente gráfico.
   StrCpy $PgInstalado "0"
+  StrCpy $Accion "nuevo"
+
+  ; ---- ¿Ya hay FactPOS instalado en esta PC?
+  ReadRegStr $ServLoc HKLM "${REGSERV}" "InstallLocation"
+  ReadRegStr $ServVer HKLM "${REGSERV}" "DisplayVersion"
+  ReadRegStr $ServTipo HKLM "${REGSERV}" "FactPOSTipo"
+  ReadRegStr $Empresa HKLM "${REGSERV}" "FactPOSEmpresa"
+  ReadRegStr $CliLoc HKLM "${REGCLI}" "InstallLocation"
+  ReadRegStr $CliVer HKLM "${REGCLI}" "DisplayVersion"
+  ; Versiones anteriores guardaban la Caja/Administración en la clave del servidor
+  ${If} $ServLoc == "$LOCALAPPDATA\FactPOS"
+    ${If} $CliLoc == ""
+      StrCpy $CliLoc $ServLoc
+      StrCpy $CliVer $ServVer
+    ${EndIf}
+    StrCpy $ServLoc ""
+    StrCpy $ServVer ""
+    StrCpy $ServTipo ""
+    StrCpy $Empresa ""
+  ${EndIf}
+  ; Sin clave de registro (instalación muy antigua o dañada): se busca en las carpetas
+  ${If} $ServLoc == ""
+  ${AndIf} ${FileExists} "C:\FactPOS\apps\servidor\dist\index.js"
+    StrCpy $ServLoc "C:\FactPOS"
+    StrCpy $ServVer "anterior"
+  ${EndIf}
+  ; La clave existe pero la carpeta ya no (la borraron a mano): no hay nada que administrar
+  ${If} $ServLoc != ""
+  ${AndIfNot} ${FileExists} "$ServLoc\apps\servidor\dist\index.js"
+    StrCpy $ServLoc ""
+    StrCpy $ServVer ""
+    StrCpy $ServTipo ""
+  ${EndIf}
+  ${If} $CliLoc == ""
+  ${AndIf} ${FileExists} "$LOCALAPPDATA\FactPOS\Desinstalar FactPOS.exe"
+    StrCpy $CliLoc "$LOCALAPPDATA\FactPOS"
+    StrCpy $CliVer "anterior"
+  ${EndIf}
+  ${If} $CliLoc != ""
+  ${AndIfNot} ${FileExists} "$CliLoc\Desinstalar FactPOS.exe"
+    StrCpy $CliLoc ""
+    StrCpy $CliVer ""
+  ${EndIf}
+  ${If} $ServLoc != ""
+    StrCpy $INSTDIR $ServLoc
+    ${If} $Empresa == ""
+      Call LeerEmpresaEnv
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+; Lee FACTPOS_EMPRESA del .env de la instalación existente (para no volver a pedirlo)
+Function LeerEmpresaEnv
+  ${IfNot} ${FileExists} "$ServLoc\.env"
+    Return
+  ${EndIf}
+  ClearErrors
+  FileOpen $1 "$ServLoc\.env" r
+  IfErrors sinarchivo
+  leer:
+    ClearErrors
+    FileRead $1 $2
+    IfErrors cerrar
+    StrCpy $3 $2 16
+    StrCmp $3 "FACTPOS_EMPRESA=" 0 leer
+    StrCpy $2 $2 "" 16
+  recortar:
+    StrCpy $3 $2 1 -1
+    StrCmp $3 "$\r" quitar
+    StrCmp $3 "$\n" quitar
+    Goto listo
+  quitar:
+    StrCpy $2 $2 -1
+    Goto recortar
+  listo:
+    StrCpy $Empresa $2
+  cerrar:
+    FileClose $1
+  sinarchivo:
+FunctionEnd
+
+; ------------------------------------------------------------------ 0. instalación existente
+Function PaginaExistente
+  ${If} $ServLoc == ""
+  ${AndIf} $CliLoc == ""
+    Abort
+  ${EndIf}
+  !insertmacro MUI_HEADER_TEXT "FactPOS ya está instalado" "Elija qué desea hacer con la instalación que ya tiene."
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  StrCpy $4 ""
+  ${If} $ServLoc != ""
+    StrCpy $4 "Servidor: versión $ServVer, en $ServLoc$\r$\n"
+  ${EndIf}
+  ${If} $CliLoc != ""
+    StrCpy $4 "$4Caja / Administración: versión $CliVer$\r$\n"
+  ${EndIf}
+  StrCpy $4 "$4Este instalador: versión ${VERSION}"
+  ${NSD_CreateLabel} 0 0 100% 34u "$4"
+  Pop $0
+  ${NSD_CreateRadioButton} 0 40u 100% 12u "Actualizar o reparar esta instalación"
+  Pop $hR1
+  ${NSD_AddStyle} $hR1 ${WS_GROUP}
+  ${NSD_CreateLabel} 12u 53u -12u 18u "Instala la versión ${VERSION} sobre la actual. Conserva sus datos, la base de datos y la configuración."
+  Pop $0
+  ${NSD_CreateRadioButton} 0 76u 100% 12u "Modificar"
+  Pop $hA2
+  ${NSD_CreateLabel} 12u 89u -12u 18u "Cambiar qué se instala en esta computadora (servidor, caja o administración)."
+  Pop $0
+  ${NSD_CreateRadioButton} 0 112u 100% 12u "Desinstalar FactPOS"
+  Pop $hA3
+  ${NSD_CreateLabel} 12u 125u -12u 18u "Quita los programas de FactPOS de esta computadora. Después podrá elegir si conserva sus datos."
+  Pop $0
+  ${If} $Accion == "modificar"
+    ${NSD_Check} $hA2
+  ${Else}
+    ${NSD_Check} $hR1
+  ${EndIf}
+  nsDialogs::Show
+FunctionEnd
+
+Function PaginaExistenteSalir
+  ${NSD_GetState} $hA2 $0
+  ${NSD_GetState} $hA3 $1
+  ${If} $1 == ${BST_CHECKED}
+    MessageBox MB_YESNO|MB_ICONQUESTION "¿Desinstalar FactPOS de esta computadora?" IDYES siDesinstalar
+    Abort
+    siDesinstalar:
+    Call DesinstalarExistente
+    Quit
+  ${EndIf}
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $Accion "modificar"
+  ${Else}
+    StrCpy $Accion "actualizar"
+  ${EndIf}
+  ${If} $ServLoc != ""
+    StrCpy $INSTDIR $ServLoc
+    ${If} $ServTipo == "servidor"
+      StrCpy $Tipo "servidor"
+    ${Else}
+      StrCpy $Tipo "master"
+    ${EndIf}
+  ${Else}
+    StrCpy $Tipo "caja"
+  ${EndIf}
+FunctionEnd
+
+; Ejecuta el desinstalador de cada parte instalada y espera a que termine
+Function DesinstalarExistente
+  ${If} $ServLoc != ""
+    ${If} ${FileExists} "$ServLoc\Desinstalar FactPOS.exe"
+      ExecWait '"$ServLoc\Desinstalar FactPOS.exe" _?=$ServLoc' $0
+      ${If} $0 == 0
+        Delete "$ServLoc\Desinstalar FactPOS.exe"
+        RMDir "$ServLoc"
+      ${EndIf}
+    ${Else}
+      MessageBox MB_ICONEXCLAMATION "No se encontró el desinstalador del servidor en $ServLoc. Quite FactPOS desde Configuración › Aplicaciones."
+    ${EndIf}
+  ${EndIf}
+  ${If} $CliLoc != ""
+    ${If} ${FileExists} "$CliLoc\Desinstalar FactPOS.exe"
+      ExecWait '"$CliLoc\Desinstalar FactPOS.exe" _?=$CliLoc' $0
+      ${If} $0 == 0
+        Delete "$CliLoc\Desinstalar FactPOS.exe"
+        RMDir "$CliLoc"
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
 FunctionEnd
 
 ; ------------------------------------------------------------------ 1. tipo
 Function PaginaTipo
+  ${If} $Accion == "actualizar"
+  ${AndIf} $ServLoc != ""
+    Abort
+  ${EndIf}
   !insertmacro MUI_HEADER_TEXT "¿Qué es esta computadora?" "Elija qué parte de FactPOS se instala aquí."
   nsDialogs::Create 1018
   Pop $0
@@ -273,6 +466,10 @@ FunctionEnd
 
 ; ------------------------------------------------------------------ 4. carpeta (solo servidores)
 Function SaltarCarpeta
+  ; Con un servidor ya instalado se usa su misma carpeta (no se duplica la instalación)
+  ${If} $ServLoc != ""
+    Abort
+  ${EndIf}
   ${If} $Tipo == "caja"
   ${OrIf} $Tipo == "admin"
     Abort
@@ -412,15 +609,28 @@ Section "FactPOS" SecPrincipal
     StrCpy $3 "$LOCALAPPDATA\FactPOS"
   ${EndIf}
 
-  ; Programas y características
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "DisplayName" "FactPOS"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "Publisher" "FactPOS"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "InstallLocation" "$3"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "DisplayIcon" "$3\Desinstalar FactPOS.exe"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "UninstallString" "$\"$3\Desinstalar FactPOS.exe$\""
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "NoModify" 1
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS" "NoRepair" 1
+  ; Programas y características: una entrada para el servidor y otra para Caja/Administración
+  ${If} $3 == "$LOCALAPPDATA\FactPOS"
+    StrCpy $4 "${REGCLI}"
+    ; Quitar la clave heredada, que antes se compartía con el servidor
+    ReadRegStr $5 HKLM "${REGSERV}" "InstallLocation"
+    ${If} $5 == $3
+      DeleteRegKey HKLM "${REGSERV}"
+    ${EndIf}
+    WriteRegStr HKLM "$4" "DisplayName" "FactPOS Caja / Administración"
+  ${Else}
+    StrCpy $4 "${REGSERV}"
+    WriteRegStr HKLM "$4" "DisplayName" "FactPOS"
+    WriteRegStr HKLM "$4" "FactPOSTipo" "$Tipo"
+    WriteRegStr HKLM "$4" "FactPOSEmpresa" "$Empresa"
+  ${EndIf}
+  WriteRegStr HKLM "$4" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKLM "$4" "Publisher" "FactPOS"
+  WriteRegStr HKLM "$4" "InstallLocation" "$3"
+  WriteRegStr HKLM "$4" "DisplayIcon" "$3\Desinstalar FactPOS.exe"
+  WriteRegStr HKLM "$4" "UninstallString" "$\"$3\Desinstalar FactPOS.exe$\""
+  WriteRegDWORD HKLM "$4" "NoModify" 1
+  WriteRegDWORD HKLM "$4" "NoRepair" 1
 
   ${If} $Fallo == "1"
     SetDetailsView show
@@ -467,35 +677,114 @@ Function AbrirFactPOS
 FunctionEnd
 
 ; ------------------------------------------------------------------ desinstalar
+Function un.onInit
+  StrCpy $BorrarDatos "0"
+  StrCpy $Modo "servidor"
+  ; Un desinstalador guardado en %LOCALAPPDATA%\FactPOS es el de Caja/Administración
+  ${If} $INSTDIR == "$LOCALAPPDATA\FactPOS"
+    StrCpy $Modo "cliente"
+  ${EndIf}
+FunctionEnd
+
+Function un.PaginaDatos
+  !insertmacro MUI_HEADER_TEXT "Sus datos" "Elija qué se conserva al desinstalar."
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  ${If} $Modo == "servidor"
+    ${NSD_CreateLabel} 0 0 100% 44u "Se quitan los programas de FactPOS. La base de datos (ventas, productos, clientes) NO se borra: queda en PostgreSQL, así que puede volver a instalar FactPOS y seguir donde estaba.$\r$\n$\r$\nPor defecto también se conservan la configuración (.env), los registros y los respaldos de $INSTDIR."
+    Pop $0
+    ${NSD_CreateCheckBox} 0 52u 100% 24u "Eliminar también la configuración, los registros y los respaldos de $INSTDIR"
+    Pop $hBorrar
+  ${Else}
+    ${NSD_CreateLabel} 0 0 100% 30u "Se quitan los accesos y la aplicación de Caja / Administración de esta computadora. Los datos del negocio están en el servidor y no se tocan."
+    Pop $0
+    ${NSD_CreateCheckBox} 0 38u 100% 24u "Eliminar también la configuración guardada de esta aplicación (servidor elegido, empresa)"
+    Pop $hBorrar
+  ${EndIf}
+  nsDialogs::Show
+FunctionEnd
+
+Function un.PaginaDatosSalir
+  ${NSD_GetState} $hBorrar $0
+  ${If} $0 == ${BST_CHECKED}
+    ${If} $Modo == "servidor"
+      MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "Se borrarán los respaldos y la configuración de $INSTDIR. Esto no se puede deshacer.$\r$\n$\r$\n¿Continuar?" IDYES siBorrar
+      Abort
+      siBorrar:
+    ${EndIf}
+    StrCpy $BorrarDatos "1"
+  ${Else}
+    StrCpy $BorrarDatos "0"
+  ${EndIf}
+FunctionEnd
+
 Section "Uninstall"
   DetailPrint "Deteniendo FactPOS…"
-  !insertmacro ElegirPowerShell
-  nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Servidor' -Confirm:$$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Respaldo' -Confirm:$$false -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" | Where-Object { $$_.CommandLine -like '*apps\servidor\dist\index.js*' -or $$_.CommandLine -like '*tunnel*--url*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }; Get-NetFirewallRule -DisplayName 'FactPOS*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"`
-  Pop $0
+  SetShellVarContext current
   Delete "$DESKTOP\FactPOS Caja.lnk"
   Delete "$SMSTARTUP\FactPOS Caja.lnk"
   Delete "$DESKTOP\FactPOS Administración.lnk"
   Delete "$SMPROGRAMS\FactPOS Administración.lnk"
-  SetShellVarContext all
-  Delete "$DESKTOP\FactPOS - Servidor.url"
-  Delete "$DESKTOP\FactPOS Administración.url"
-  Delete "$DESKTOP\FactPOS Caja (navegador).url"
-  SetShellVarContext current
-  ; Programa (se conservan .env, logs y respaldos; la base de datos queda en PostgreSQL)
-  RMDir /r "$INSTDIR\apps"
-  RMDir /r "$INSTDIR\packages"
-  RMDir /r "$INSTDIR\node_modules"
-  RMDir /r "$INSTDIR\db"
-  RMDir /r "$INSTDIR\escritorio"
-  RMDir /r "$INSTDIR\instalador"
-  RMDir /r "$INSTDIR\anterior"
-  RMDir /r "$INSTDIR\bin"
-  Delete "$INSTDIR\package.json"
-  Delete "$INSTDIR\package-lock.json"
-  Delete "$INSTDIR\README.md"
-  Delete "$INSTDIR\.env.example"
-  Delete "$INSTDIR\INSTALAR FactPOS.bat"
-  Delete "$INSTDIR\Desinstalar FactPOS.exe"
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS"
-  DetailPrint "FactPOS se desinstaló. Sus datos siguen en la base de datos y en $INSTDIR (.env); bórrelos solo si no los va a necesitar."
+
+  ${If} $Modo == "cliente"
+    ; ---- Caja / Administración
+    RMDir /r "$LOCALAPPDATA\FactPOS\escritorio"
+    RMDir /r "$LOCALAPPDATA\FactPOS\Administracion"
+    Delete "$LOCALAPPDATA\FactPOS\factpos.ico"
+    Delete "$LOCALAPPDATA\FactPOS\instalacion.log"
+    ${If} $BorrarDatos == "1"
+      RMDir /r "$APPDATA\FactPOS Escritorio"
+    ${EndIf}
+    Delete "$LOCALAPPDATA\FactPOS\Desinstalar FactPOS.exe"
+    RMDir "$LOCALAPPDATA\FactPOS"
+    DeleteRegKey HKLM "${REGCLI}"
+    ; clave heredada (versiones anteriores guardaban aquí la Caja/Administración)
+    ReadRegStr $0 HKLM "${REGSERV}" "InstallLocation"
+    ${If} $0 == "$LOCALAPPDATA\FactPOS"
+      DeleteRegKey HKLM "${REGSERV}"
+    ${EndIf}
+    DetailPrint "Caja / Administración desinstaladas."
+  ${Else}
+    ; ---- Servidor
+    !insertmacro ElegirPowerShell
+    nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Servidor' -Confirm:$$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Respaldo' -Confirm:$$false -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'FactPOS Actualizar' -Confirm:$$false -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" | Where-Object { $$_.CommandLine -like '*apps\servidor\dist\index.js*' -or $$_.CommandLine -like '*tunnel*--url*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }; Get-NetFirewallRule -DisplayName 'FactPOS*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"`
+    Pop $0
+    SetShellVarContext all
+    Delete "$DESKTOP\FactPOS - Servidor.url"
+    Delete "$DESKTOP\FactPOS Administración.url"
+    Delete "$DESKTOP\FactPOS Caja (navegador).url"
+    SetShellVarContext current
+    ; Programa (por defecto se conservan .env, logs y respaldos; la base de datos queda en PostgreSQL)
+    RMDir /r "$INSTDIR\apps"
+    RMDir /r "$INSTDIR\packages"
+    RMDir /r "$INSTDIR\node_modules"
+    RMDir /r "$INSTDIR\db"
+    RMDir /r "$INSTDIR\escritorio"
+    RMDir /r "$INSTDIR\instalador"
+    RMDir /r "$INSTDIR\anterior"
+    RMDir /r "$INSTDIR\bin"
+    Delete "$INSTDIR\package.json"
+    Delete "$INSTDIR\package-lock.json"
+    Delete "$INSTDIR\README.md"
+    Delete "$INSTDIR\.env.example"
+    Delete "$INSTDIR\INSTALAR FactPOS.bat"
+    ${If} $BorrarDatos == "1"
+      DetailPrint "Eliminando configuración, registros y respaldos…"
+      RMDir /r "$INSTDIR\logs"
+      RMDir /r "$INSTDIR\respaldos"
+      Delete "$INSTDIR\.env"
+      Delete "$INSTDIR\postgres-superusuario.txt"
+    ${EndIf}
+    Delete "$INSTDIR\Desinstalar FactPOS.exe"
+    RMDir "$INSTDIR"
+    DeleteRegKey HKLM "${REGSERV}"
+    ${If} $BorrarDatos == "1"
+      DetailPrint "FactPOS se desinstaló. La base de datos sigue en PostgreSQL; bórrela solo si no la va a necesitar."
+    ${Else}
+      DetailPrint "FactPOS se desinstaló. Sus datos siguen en la base de datos y en $INSTDIR (.env, logs, respaldos); bórrelos solo si no los va a necesitar."
+    ${EndIf}
+  ${EndIf}
 SectionEnd
