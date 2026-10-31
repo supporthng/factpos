@@ -1,4 +1,5 @@
 import { Seguridad } from "./paginas/Seguridad";
+import { ConfigMovil } from "./paginas/ConfigMovil";
 import { ConexionWeb } from "./paginas/ConexionWeb";
 import { PantallaActualizacion } from "./PantallaActualizacion";
 import { Correo } from "./paginas/Correo";
@@ -56,15 +57,17 @@ const SECCIONES = [
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
   { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
+  { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
   { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, i: "licencia", p: ["admin.config"] },
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
-const SECCIONES_MOVIL = new Set(["resumen", "productos", "compras", "inventario", "precios", "cxc", "caja", "reportes"]);
+const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "precios", "cxc", "caja", "reportes"];
+interface CfgMovil { habilitada: boolean; secciones: string[]; aplica: boolean }
 const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
-function useVersionMovil() {
+function useVersionMovil(cfg: CfgMovil | null) {
   const [angosta, setAngosta] = useState(() => matchMedia("(max-width: 760px)").matches);
   const [completa, setCompleta] = useState(() => lee("factpos.versionCompleta") === "1");
   useEffect(() => {
@@ -73,7 +76,11 @@ function useVersionMovil() {
     m.addEventListener("change", f);
     return () => m.removeEventListener("change", f);
   }, []);
-  return { angosta, movil: angosta && !completa, alternar: () => { guarda("factpos.versionCompleta", completa ? null : "1"); setCompleta(!completa); } };
+  const admin = puede("*");
+  const activa = cfg ? cfg.habilitada : true; // sin configurar: la versión celular viene activa
+  const permitido = !cfg || cfg.aplica || admin; // los administradores siempre entran
+  return { angosta, activa, bloqueado: angosta && activa && !permitido, secciones: new Set(cfg?.secciones ?? SECCIONES_MOVIL_BASE),
+    movil: angosta && activa && !(admin && completa), puedeAlternar: angosta && admin && activa, alternar: () => { guarda("factpos.versionCompleta", completa ? null : "1"); setCompleta(!completa); } };
 }
 /** En el portal del proveedor solo hay clientes/licencias y su propio equipo. */
 const SECCIONES_PORTAL = [
@@ -88,6 +95,7 @@ const DESCRIPCION: Record<string, string> = {
   resumen: "Ventas del día, alertas y existencias por reponer",
   productos: "Ficha, códigos de barra, precios y combos",
   conexionweb: "Enlace de acceso desde internet y su activación",
+  movil: "Qué se ve y quién entra desde el celular",
   seguridad: "Habilitar o deshabilitar funciones sensibles",
   compras: "Entrada de mercancía de los proveedores",
   inventario: "Existencia de cada producto por sucursal",
@@ -140,6 +148,7 @@ function AppInterna() {
   const [logo, setLogo] = useState<string | null>(null);
   const [cambiarClave, setCambiarClave] = useState(false);
   const [, setRefresco] = useState(0);
+  const [cfgMovil, setCfgMovil] = useState<CfgMovil | null>(null);
 
   const salir = () => { fijarSesion(null); setSesion(null); setCatalogo(null); };
   useEffect(() => {
@@ -156,6 +165,7 @@ function AppInterna() {
       .catch(() => {});
     if (enPortal) { setCatalogo(CATALOGO_VACIO); return; }
     api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch((e) => setError(e.message));
+    api<CfgMovil>("/central/movil").then(setCfgMovil).catch(() => {});
     api<{ logo: string | null; primario: string; secundario: string | null; nombre: string }>("/central/marca")
       .then((m) => { aplicarTemaAdmin(m); setLogo(m.logo); })
       .catch(() => {});
@@ -168,13 +178,23 @@ function AppInterna() {
     return () => removeEventListener("hashchange", f);
   }, []);
 
-  const vm = useVersionMovil();
+  const vm = useVersionMovil(cfgMovil);
   if (!sesion || !catalogo && error) {
     return <Entrar error={error} onListo={(s) => { fijarSesion(s); setError(""); setSesion(s); }} />;
   }
   if (!catalogo) return <div className="cargando">Cargando…</div>;
+  if (vm.bloqueado && !enPortal) {
+    return (
+      <div className="bloqueo-movil"><div>
+        <SimboloFactPOS tamano={56} fondo />
+        <h2>Sin acceso desde el celular</h2>
+        <p className="suave">Su usuario no está autorizado para usar FactPOS desde el celular. Pídale acceso a un administrador o entre desde una computadora.</p>
+        <button className="boton primario" onClick={salir}>Salir</button>
+      </div></div>
+    );
+  }
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (enPortal || !vm.movil || SECCIONES_MOVIL.has(s.id)));
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (enPortal || !vm.movil || vm.secciones.has(s.id)));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
   // Ruta: "inicio", "g-<grupo>" o el id de una opción
@@ -246,7 +266,7 @@ function AppInterna() {
             <button className="chip-usuario" title="Cambiar mi contraseña" onClick={() => setCambiarClave(true)}>
               <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>
             </button>
-            {vm.angosta && !enPortal && <button className="boton-icono" title={vm.movil ? "Ver versión completa" : "Ver versión celular"} aria-label={vm.movil ? "Ver versión completa" : "Ver versión celular"} onClick={vm.alternar}><Icono n={vm.movil ? "menu-lateral" : "menu"} /></button>}
+            {vm.puedeAlternar && !enPortal && <button className="boton-icono" title={vm.movil ? "Ver versión completa" : "Ver versión celular"} aria-label={vm.movil ? "Ver versión completa" : "Ver versión celular"} onClick={vm.alternar}><Icono n={vm.movil ? "menu-lateral" : "menu"} /></button>}
             <button className="boton-icono" title="Salir" aria-label="Salir" onClick={salir}><Icono n="salir" /></button>
           </header>
 
