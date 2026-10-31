@@ -7,6 +7,7 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
+import { rutasInvitaciones } from "./invitaciones.js";
 import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
 
 /**
@@ -575,19 +576,20 @@ export async function rutasPortal(app: FastifyInstance) {
   });
 
   // ================================================================ PÁGINAS
+  await rutasInvitaciones(app);
   await rutasPaginas(app);
 }
 
 // -------------------------------------------------------------------------------------------
 // Versiones publicadas (GitHub Releases). Repositorio privado: GITHUB_TOKEN con permiso de lectura.
 // -------------------------------------------------------------------------------------------
-interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null }
+interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null }
 let cacheVersion: { v: Publicada | null; t: number } | null = null;
 const encabezadosGitHub = (extra: Record<string, string> = {}) => ({
   "user-agent": "factpos-portal", accept: "application/vnd.github+json",
   ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}), ...extra,
 });
-async function ultimaVersion(): Promise<Publicada | null> {
+export async function ultimaVersion(): Promise<Publicada | null> {
   if (cacheVersion && Date.now() - cacheVersion.t < 10 * 60_000) return cacheVersion.v;
   const repo = process.env.FACTPOS_REPO || "supporthng/factpos";
   try {
@@ -607,7 +609,8 @@ async function ultimaVersion(): Promise<Publicada | null> {
     });
     const encontrada = publicadas[0];
     const v = encontrada ? { version: encontrada.version, notas: encontrada.rel.body, publicada: encontrada.asset.updated_at ?? encontrada.rel.published_at, // la etiqueta «ultima» se reutiliza: su fecha propia no cambia, la del archivo sí
-      asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url } } : null;
+      asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url },
+      setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup-.*\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })() } : null;
     cacheVersion = { v, t: Date.now() };
     return v;
   } catch {
@@ -615,7 +618,7 @@ async function ultimaVersion(): Promise<Publicada | null> {
   }
 }
 /** Repositorio privado: GitHub entrega una dirección firmada y temporal del archivo. */
-async function urlDescarga(a: { url: string; descarga: string }) {
+export async function urlDescarga(a: { url: string; descarga: string }) {
   if (!process.env.GITHUB_TOKEN) return a.descarga;
   const r = await fetch(a.url, { headers: encabezadosGitHub({ accept: "application/octet-stream" }), redirect: "manual", signal: AbortSignal.timeout(15_000) });
   const lugar = r.headers.get("location");

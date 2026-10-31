@@ -45,7 +45,7 @@ const hace = (iso: string | null) => {
   return m < 60 ? `hace ${Math.max(m, 1)} min` : m < 2880 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
 };
 
-type Vista = "clientes" | "instalaciones" | "planes" | "reglas";
+type Vista = "clientes" | "instalaciones" | "invitaciones" | "planes" | "reglas";
 type Filtro = "todos" | "atencion" | "vigentes" | "sin_activar" | "suspendidos";
 
 export function Portal() {
@@ -58,7 +58,7 @@ export function Portal() {
       <Encabezado titulo="Clientes y licencias"
         descripcion="Cada cliente instala su propio FactPOS con su propia nube. Aquí se manejan sus planes, licencias y cobros; sus datos nunca pasan por el portal." />
       <div className="pestanas">
-        {([["clientes", "Clientes"], ["instalaciones", "Solicitudes"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
+        {([["clientes", "Clientes"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
           <button key={v} className={vista === v ? "activa" : ""} onClick={() => { setVista(v); pendientes.recargar(); }}>
             {t}{v === "instalaciones" && nPend > 0 && <span className="insignia">{nPend}</span>}
           </button>
@@ -72,6 +72,7 @@ export function Portal() {
       )}
       {vista === "clientes" && <Clientes planes={planes.datos ?? []} />}
       {vista === "instalaciones" && <Instalaciones planes={planes.datos ?? []} onCambio={pendientes.recargar} />}
+      {vista === "invitaciones" && <Invitaciones />}
       {vista === "planes" && <Planes planes={planes.datos ?? []} recargar={planes.recargar} />}
       {vista === "reglas" && <ReglasPortal />}
     </>
@@ -595,5 +596,83 @@ function Aprobar({ i, planes, clientes, onListo }: { i: Instalacion; planes: Pla
       </div>
       <Aviso texto={msg} />
     </div>
+  );
+}
+
+/* ---------- Invitaciones por WhatsApp ---------- */
+interface Invitacion {
+  id: string; nombre: string; telefono: string; nota: string | null; creadaEn: string; enviadaEn: string | null;
+  visitas: number; primeraVisita: string | null; ultimaVisita: string | null; descargas: number; ultimaDescarga: string | null; mensaje: string;
+}
+function Invitaciones() {
+  const { datos, error, recargar } = useDatos<{ plantilla: string; base: string; lista: Invitacion[] }>("/central/portal/invitaciones");
+  const [nombre, setNombre] = useState("");
+  const [tel, setTel] = useState("");
+  const [nota, setNota] = useState("");
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [trabajando, setTrabajando] = useState(false);
+  const [enlace, setEnlace] = useState<string | null>(null);
+  const texto = mensaje ?? datos?.plantilla ?? "";
+
+  const enviar = async () => {
+    setTrabajando(true); setMsg(null);
+    try {
+      const r = await api<{ id: string; whatsapp: string }>("/central/portal/invitaciones", { cuerpo: { nombre, telefono: tel, nota: nota || null, mensaje: texto } });
+      const ventana = window.open(r.whatsapp, "_blank", "noopener");
+      setEnlace(ventana ? null : r.whatsapp); // si el navegador bloqueó la ventana, queda el enlace a mano
+      await api(`/central/portal/invitaciones/${r.id}/enviada`, { cuerpo: {} });
+      setMsg({ t: `Se abrió WhatsApp con la invitación para ${nombre}. Pulse «Enviar» allí.`, tipo: "ok" });
+      setNombre(""); setTel(""); setNota(""); await recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    finally { setTrabajando(false); }
+  };
+  const reenviar = (i: Invitacion) => window.open(`https://wa.me/${i.telefono}?text=${encodeURIComponent(i.mensaje)}`, "_blank", "noopener");
+  const quitar = async (i: Invitacion) => {
+    if (!confirm(`¿Quitar la invitación de ${i.nombre}? Su enlace dejará de contarse.`)) return;
+    try { await api(`/central/portal/invitaciones/${i.id}`, { metodo: "DELETE" }); await recargar(); } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const estado = (i: Invitacion) => i.descargas > 0 ? ["Descargó", "ok"] : i.visitas > 0 ? ["Vio la página", "aviso"] : i.enviadaEn ? ["Enviada", ""] : ["Sin enviar", ""];
+
+  return (
+    <>
+      <Aviso texto={error} />
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      {enlace && <p><a className="boton primario" href={enlace} target="_blank" rel="noreferrer">Abrir WhatsApp con la invitación</a></p>}
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Invitar a conocer FactPOS</h3>
+        <p className="suave pequeno">Escriba el WhatsApp de la persona: se abre WhatsApp con el mensaje listo y un enlace propio a la página con el recorrido interactivo y la descarga. Aquí verá si lo abrió y si descargó.</p>
+        <div className="rejilla-3" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
+          <label className="campo"><span>Nombre o negocio</span><input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Colmado Don Pepe" /></label>
+          <label className="campo"><span>WhatsApp (con código de país)</span><input inputMode="numeric" value={tel} onChange={(e) => setTel(e.target.value.replace(/[^\d+\s-]/g, ""))} placeholder="18095551234" /></label>
+          <label className="campo"><span>Nota interna <em className="suave">(opcional)</em></span><input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Lo conocí en la feria" /></label>
+        </div>
+        <label className="campo"><span>Mensaje <em className="suave">({"{nombre}"} y {"{link}"} se completan solos)</em></span>
+          <textarea rows={11} value={texto} onChange={(e) => setMensaje(e.target.value)} style={{ width: "100%", fontFamily: "inherit" }} /></label>
+        <div className="en-linea">
+          <button className="boton primario" disabled={trabajando || nombre.trim().length < 2 || tel.replace(/\D/g, "").length < 10 || texto.trim().length < 10} onClick={enviar}>{trabajando ? "Preparando…" : "Enviar por WhatsApp"}</button>
+          {mensaje != null && <button className="boton fantasma" onClick={() => setMensaje(null)}>Restaurar mensaje</button>}
+          {datos && <a className="enlace" href={`${datos.base}/invitacion`} target="_blank" rel="noreferrer">Ver la página de invitación</a>}
+        </div>
+      </div>
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Invitaciones enviadas</h3>
+        <table className="tabla">
+          <thead><tr><th>Invitado</th><th>WhatsApp</th><th>Estado</th><th className="der">Visitas</th><th className="der">Descargas</th><th>Enviada</th><th /></tr></thead>
+          <tbody>
+            {(datos?.lista ?? []).map((i) => { const [t, c] = estado(i); return (
+              <tr key={i.id}>
+                <td><b>{i.nombre}</b>{i.nota && <div className="suave pequeno">{i.nota}</div>}</td>
+                <td className="mono">{i.telefono}</td>
+                <td><span className={"pastilla " + c}>{t}</span>{i.ultimaVisita && <div className="suave pequeno">Visto {hace(i.ultimaVisita)}</div>}</td>
+                <td className="der">{i.visitas}</td><td className="der">{i.descargas}</td>
+                <td className="suave pequeno">{i.enviadaEn ? hace(i.enviadaEn) : "—"}</td>
+                <td className="der"><button className="enlace" onClick={() => reenviar(i)}>Reenviar</button> · <button className="enlace" onClick={() => quitar(i)}>Quitar</button></td>
+              </tr>); })}
+            {datos && datos.lista.length === 0 && <tr><td colSpan={7} className="suave">Todavía no ha invitado a nadie.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
