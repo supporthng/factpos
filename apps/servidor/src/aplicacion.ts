@@ -43,6 +43,7 @@ import { leerToken, permisoDeRuta, tienePermiso } from "./sesion.js";
 import { rutasCajaMovimientos } from "./rutas/caja-movimientos.js";
 import { rutasCentralCxc } from "./rutas/central-cxc.js";
 import { rutasPedidos } from "./rutas/pedidos.js";
+import { rutasCentralFacturas } from "./rutas/central-facturas.js";
 import { rutasContingencia } from "./rutas/contingencia.js";
 import { rutasCentralIncidentes } from "./rutas/central-incidentes.js";
 import { leerSesionAdmin, rutasSesionCaja, rutasSesionCentral, usuarioVigente } from "./rutas/sesion.js";
@@ -215,6 +216,7 @@ export async function crearApp() {
   await app.register(rutasVerificador);
   await app.register(rutasDelivery);
   await app.register(rutasPedidos);
+  await app.register(rutasCentralFacturas);
   await app.register(rutasFacturas);
   await app.register(rutasCierre);
   await app.register(rutasPadronCaja);

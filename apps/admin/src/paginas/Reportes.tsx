@@ -4,6 +4,7 @@ import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
 const REPORTES: { id: string; titulo: string; grupo: string; fechas?: boolean }[] = [
   { id: "ventas-sucursal", titulo: "Ventas por sucursal", grupo: "Ventas", fechas: true },
+  { id: "ventas-comprobante", titulo: "Ventas por tipo de comprobante (E · B · FI-)", grupo: "Ventas", fechas: true },
   { id: "ventas-diarias", titulo: "Ventas por día y caja", grupo: "Ventas", fechas: true },
   { id: "utilidad-productos", titulo: "Utilidad por producto", grupo: "Ventas", fechas: true },
   { id: "formas-pago", titulo: "Ventas por forma de pago", grupo: "Ventas", fechas: true },
