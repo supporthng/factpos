@@ -5,3 +5,4 @@ export * from "./promociones.js";
 export * from "./carrito.js";
 export * from "./tema.js";
 export * from "./documentos.js";
+export * from "./formato-ticket.js";
