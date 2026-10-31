@@ -160,7 +160,21 @@ export async function guardarLicenciaDeCentral(l: { token: string | null; instal
   olvidarLicencia();
 }
 
+/** Reglas y contacto del proveedor (Portal › Reglas). Se consulta poco y, sin internet, simplemente no hay datos. */
+export interface Politica { pruebaActualiza: boolean; contacto: { nombre: string | null; telefono: string | null; whatsapp: string | null; correo: string | null } }
+let cachePolitica: { p: Politica | null; t: number } | null = null;
+export async function politicaPortal(): Promise<Politica | null> {
+  if (cachePolitica && Date.now() - cachePolitica.t < 30 * 60_000) return cachePolitica.p;
+  try {
+    const r = await fetch(`${PORTAL_URL()}/licencias/politica`, { signal: AbortSignal.timeout(6_000) });
+    const p = r.ok ? ((await r.json()) as Politica) : null;
+    cachePolitica = { p, t: Date.now() };
+    return p;
+  } catch { return cachePolitica?.p ?? null; }
+}
+
 const publico = (r: ResultadoLicencia) => ({
+  plan: r.datos?.plan ?? null,
   estado: r.estado, permiteVender: r.permiteVender, dias: r.dias, mensaje: r.mensaje, error: r.error ?? null,
   cliente: r.datos?.cliente.nombre ?? null, sucursales: r.datos?.sucursales ?? null, vence: r.datos?.vence ?? null, modulos: r.datos?.modulos ?? [],
 });
@@ -175,7 +189,7 @@ export async function rutasLicenciaSucursal(app: FastifyInstance) {
     return {
       ...publico(await estadoLicencia()), local: true,
       instalacionId: f.instalacion_id, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: null,
-      portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(),
+      portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(),
     };
   });
 }
@@ -190,7 +204,7 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     return {
       ...publico(e),
       instalacionId: f.instalacion_id, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
-      portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(),
+      portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(),
       // Servidor master: dirección pública y acceso web por el portal
       tunel: tunelActivo() ? estadoTunel() : null,
       web: e.datos ? `${PORTAL_URL()}/${e.datos.cliente.slug}/` : null,

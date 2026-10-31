@@ -48,15 +48,17 @@ function llavePrivada() {
 interface FilaLicencia {
   id: string; cliente_id: string; sucursales: number; modulos: string[]; vence: string; estado: string;
   instalacion_id: string | null; secreto_hash: string | null; slug: string; nombre: string; rnc: string | null; cliente_activo: boolean;
+  plan_nombre: string | null; plan_actualiza: boolean | null;
 }
 const SELECT_LIC = `SELECT l.id, l.cliente_id, l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado,
-                           l.instalacion_id, l.secreto_hash, c.slug, c.nombre, c.rnc, c.activo AS cliente_activo
-                      FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id`;
+                           l.instalacion_id, l.secreto_hash, c.slug, c.nombre, c.rnc, c.activo AS cliente_activo,
+                           p.nombre AS plan_nombre, p.permite_actualizaciones AS plan_actualiza
+                      FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id LEFT JOIN portal_planes p ON p.id = l.plan_id`;
 
 function emitir(l: FilaLicencia, instalacion: string) {
   const datos: DatosLicencia = {
     v: 1, id: l.id, cliente: { id: l.cliente_id, nombre: l.nombre, slug: l.slug, rnc: l.rnc },
-    instalacion, sucursales: l.sucursales, modulos: l.modulos, emitida: new Date().toISOString(), vence: l.vence,
+    instalacion, sucursales: l.sucursales, modulos: l.modulos, ...(l.plan_nombre ? { plan: l.plan_nombre } : {}), emitida: new Date().toISOString(), vence: l.vence,
   };
   return firmarLicencia(datos, llavePrivada());
 }
@@ -146,14 +148,31 @@ export async function rutasPortal(app: FastifyInstance) {
    */
   app.get("/licencias/descargar", async (req) => {
     const token = String(req.headers["x-licencia"] ?? "");
-    let d: DatosLicencia;
-    try { d = leerLicencia(token); } catch { throw new ErrorNegocio("Licencia inválida", 401); }
-    const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [d.id])).rows[0];
-    if (!l || l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("La licencia no está activa: comuníquese con su proveedor", 403);
-    if (l.instalacion_id && l.instalacion_id !== d.instalacion) throw new ErrorNegocio("Licencia de otra instalación", 403);
+    if (token) {
+      let d: DatosLicencia;
+      try { d = leerLicencia(token); } catch { throw new ErrorNegocio("Licencia inválida", 401); }
+      const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [d.id])).rows[0];
+      if (!l || l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("La licencia no está activa: comuníquese con su proveedor", 403);
+      if (l.instalacion_id && l.instalacion_id !== d.instalacion) throw new ErrorNegocio("Licencia de otra instalación", 403);
+      if (l.plan_actualiza === false) throw new ErrorNegocio(`Su plan (${l.plan_nombre}) no incluye actualizaciones automáticas. Comuníquese con su proveedor.`, 403);
+    } else {
+      // Sin licencia (versión de prueba): solo si el proveedor lo permite en Portal › Reglas
+      const instalacion = uuid.safeParse(String(req.headers["x-instalacion"] ?? ""));
+      const permitido = (await pool.query<{ prueba_actualiza: boolean }>("SELECT prueba_actualiza FROM portal_config WHERE id = 1")).rows[0]?.prueba_actualiza;
+      if (!instalacion.success || !permitido) throw new ErrorNegocio("Active la licencia para recibir actualizaciones", 402);
+      await evento(pool, { tipo: "PRUEBA_DESCARGA", detalle: { instalacion: instalacion.data } });
+    }
     const v = await ultimaVersion();
     if (!v?.asset) throw new ErrorNegocio("No hay un paquete publicado para descargar", 404);
     return { version: v.version, url: await urlDescarga(v.asset) };
+  });
+
+  /** Reglas y contacto que ven las instalaciones (públicas: no llevan nada sensible). */
+  app.get("/licencias/politica", async () => {
+    const c = (await pool.query(
+      `SELECT prueba_actualiza AS "pruebaActualiza", contacto_nombre AS nombre, contacto_telefono AS telefono, contacto_whatsapp AS whatsapp, contacto_correo AS correo
+         FROM portal_config WHERE id = 1`)).rows[0];
+    return { pruebaActualiza: !!c?.pruebaActualiza, contacto: { nombre: c?.nombre ?? null, telefono: c?.telefono ?? null, whatsapp: c?.whatsapp ?? null, correo: c?.correo ?? null } };
   });
 
   /**
@@ -195,8 +214,10 @@ export async function rutasPortal(app: FastifyInstance) {
       `SELECT c.id, c.slug, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
               l.id AS "licenciaId", l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado AS "estadoLicencia",
               l.clave_pista AS "clavePista", l.instalacion_id IS NOT NULL AS activada, l.activada_en AS "activadaEn",
-              l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso"
-         FROM portal_clientes c LEFT JOIN portal_licencias l ON l.cliente_id = c.id
+              l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso",
+              l.plan_id AS "planId", p.nombre AS plan, l.precio_sucursal AS "precioEspecial", p.periodo,
+              COALESCE(l.precio_sucursal, p.precio_sucursal)::float AS "precioSucursal"
+         FROM portal_clientes c LEFT JOIN portal_licencias l ON l.cliente_id = c.id LEFT JOIN portal_planes p ON p.id = l.plan_id
         ORDER BY c.nombre`);
     return r.rows.map((x) => ({
       ...x,
@@ -222,6 +243,8 @@ export async function rutasPortal(app: FastifyInstance) {
     vence: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     modulos: z.array(z.string().max(30)).max(30).default([]),
     estado: z.enum(["ACTIVA", "SUSPENDIDA"]).default("ACTIVA"),
+    planId: uuid.nullable().optional(),
+    precioSucursal: z.number().min(0).max(1_000_000).nullable().optional(),   // precio especial; null = el del plan
     notas: z.string().max(1000).nullable().optional(),
   });
 
@@ -240,9 +263,10 @@ export async function rutasPortal(app: FastifyInstance) {
         if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un cliente con el nombre corto «${b.cliente.slug}»`, 409);
         throw e;
       }
-      await c.query(`INSERT INTO portal_licencias (id, cliente_id, sucursales, modulos, vence, estado, clave_hash, clave_pista, notas)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [lic, id, b.licencia.sucursales, b.licencia.modulos, b.licencia.vence, b.licencia.estado, huella(clave), clave.slice(-4), b.licencia.notas ?? null]);
+      await c.query(`INSERT INTO portal_licencias (id, cliente_id, sucursales, modulos, vence, estado, clave_hash, clave_pista, notas, plan_id, precio_sucursal)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [lic, id, b.licencia.sucursales, b.licencia.modulos, b.licencia.vence, b.licencia.estado, huella(clave), clave.slice(-4), b.licencia.notas ?? null,
+         b.licencia.planId ?? null, b.licencia.precioSucursal ?? null]);
       await evento(c, { licenciaId: lic, clienteId: id, tipo: "CREADA", detalle: b.licencia, usuarioId: u });
       return { id, licenciaId: lic, clave };
     });
@@ -274,11 +298,94 @@ export async function rutasPortal(app: FastifyInstance) {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = esquemaLicencia.parse(req.body);
     const r = await pool.query(
-      `UPDATE portal_licencias SET sucursales = $2, vence = $3, modulos = $4, estado = $5, notas = COALESCE($6, notas), actualizado_en = now()
+      `UPDATE portal_licencias SET sucursales = $2, vence = $3, modulos = $4, estado = $5, notas = COALESCE($6, notas),
+              plan_id = CASE WHEN $7 THEN $8 ELSE plan_id END, precio_sucursal = CASE WHEN $9 THEN $10 ELSE precio_sucursal END, actualizado_en = now()
         WHERE cliente_id = $1 RETURNING id`,
-      [id, b.sucursales, b.vence, b.modulos, b.estado, b.notas ?? null]);
+      [id, b.sucursales, b.vence, b.modulos, b.estado, b.notas ?? null, "planId" in b, b.planId ?? null, "precioSucursal" in b, b.precioSucursal ?? null]);
     if (!r.rowCount) throw new ErrorNegocio("El cliente no tiene licencia", 404);
     await evento(pool, { licenciaId: r.rows[0].id, clienteId: id, tipo: b.estado === "SUSPENDIDA" ? "SUSPENDIDA" : "RENOVADA", detalle: b, usuarioId: usuarioDe(req) });
+    return { ok: true };
+  });
+
+  /**
+   * Renovar: suma meses a la fecha de vencimiento (o a hoy, si ya venció) y registra el cobro.
+   * La nube del cliente recoge la licencia nueva sola (12 h) o al pulsar «Actualizar ahora».
+   */
+  app.post("/central/portal/clientes/:id/renovar", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ meses: z.number().int().min(1).max(60), monto: z.number().min(0).max(100_000_000).nullable().optional(),
+      referencia: z.string().trim().max(120).nullable().optional() }).parse(req.body);
+    const r = await pool.query<{ id: string; vence: string }>(
+      `UPDATE portal_licencias SET vence = (GREATEST(vence, (now() AT TIME ZONE 'America/Santo_Domingo')::date) + make_interval(months => $2))::date,
+              estado = 'ACTIVA', actualizado_en = now()
+        WHERE cliente_id = $1 RETURNING id, to_char(vence, 'YYYY-MM-DD') AS vence`, [id, b.meses]);
+    if (!r.rowCount) throw new ErrorNegocio("El cliente no tiene licencia", 404);
+    await evento(pool, { licenciaId: r.rows[0].id, clienteId: id, tipo: "RENOVADA", detalle: { meses: b.meses, monto: b.monto ?? null, referencia: b.referencia ?? null, vence: r.rows[0].vence }, usuarioId: usuarioDe(req) });
+    return { vence: r.rows[0].vence };
+  });
+
+  // ---- Planes
+  const esquemaPlan = z.object({
+    codigo: z.string().trim().toLowerCase().regex(/^[a-z0-9-]{2,30}$/, "Código: 2 a 30 letras minúsculas, números o guiones"),
+    nombre: z.string().trim().min(2).max(60),
+    descripcion: z.string().trim().max(300).nullable().optional(),
+    precioSucursal: z.number().min(0).max(1_000_000),
+    periodo: z.enum(["MENSUAL", "ANUAL"]),
+    sucursalesIncluidas: z.number().int().min(1).max(999),
+    modulos: z.array(z.string().max(30)).max(30).default([]),
+    permiteActualizaciones: z.boolean().default(true),
+    activo: z.boolean().default(true),
+    orden: z.number().int().min(0).max(999).default(0),
+  });
+  app.get("/central/portal/planes", async () => (await pool.query(
+    `SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_sucursal::float AS "precioSucursal", p.periodo, p.sucursales_incluidas AS "sucursalesIncluidas",
+            p.modulos, p.permite_actualizaciones AS "permiteActualizaciones", p.activo, p.orden,
+            (SELECT COUNT(*)::int FROM portal_licencias l WHERE l.plan_id = p.id) AS clientes
+       FROM portal_planes p ORDER BY p.orden, p.nombre`)).rows);
+  app.post("/central/portal/planes", async (req, rep) => {
+    const b = esquemaPlan.parse(req.body);
+    try {
+      const id = uuidv7();
+      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden]);
+      rep.code(201);
+      return { id };
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un plan con el código «${b.codigo}»`, 409);
+      throw e;
+    }
+  });
+  app.put("/central/portal/planes/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = esquemaPlan.parse(req.body);
+    try {
+      const r = await pool.query(
+        `UPDATE portal_planes SET codigo = $2, nombre = $3, descripcion = $4, precio_sucursal = $5, periodo = $6, sucursales_incluidas = $7, modulos = $8,
+                permite_actualizaciones = $9, activo = $10, orden = $11 WHERE id = $1 RETURNING id`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden]);
+      if (!r.rowCount) throw new ErrorNegocio("Plan no encontrado", 404);
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un plan con el código «${b.codigo}»`, 409);
+      throw e;
+    }
+    return { ok: true };
+  });
+
+  // ---- Reglas y contacto
+  app.get("/central/portal/reglas", async () => (await pool.query(
+    `SELECT prueba_actualiza AS "pruebaActualiza", contacto_nombre AS "contactoNombre", contacto_telefono AS "contactoTelefono",
+            contacto_whatsapp AS "contactoWhatsapp", contacto_correo AS "contactoCorreo" FROM portal_config WHERE id = 1`)).rows[0]);
+  app.put("/central/portal/reglas", async (req) => {
+    const b = z.object({
+      pruebaActualiza: z.boolean(),
+      contactoNombre: z.string().trim().max(80).nullable(), contactoTelefono: z.string().trim().max(30).nullable(),
+      contactoWhatsapp: z.string().trim().max(30).nullable(), contactoCorreo: z.string().trim().max(120).nullable(),
+    }).parse(req.body);
+    await pool.query(
+      `UPDATE portal_config SET prueba_actualiza = $1, contacto_nombre = $2, contacto_telefono = $3, contacto_whatsapp = $4, contacto_correo = $5, actualizado_en = now() WHERE id = 1`,
+      [b.pruebaActualiza, b.contactoNombre || null, b.contactoTelefono || null, b.contactoWhatsapp || null, b.contactoCorreo || null]);
+    await evento(pool, { tipo: "REGLAS", detalle: { pruebaActualiza: b.pruebaActualiza }, usuarioId: usuarioDe(req) });
     return { ok: true };
   });
 

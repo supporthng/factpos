@@ -938,3 +938,27 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .pasos-clave { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel); max-width: 75ch; font-size: 14px; }
 .pasos-clave summary { cursor: pointer; font-weight: 600; color: var(--primario); }
 .pasos-clave ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+
+/* Licencias: portal del proveedor y pantalla del cliente */
+.chips-filtro { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.chips-filtro button { border: 1px solid var(--borde-fuerte); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 13.5px; color: var(--suave); }
+.chips-filtro button span { margin-left: 6px; font-weight: 500; opacity: .8; font-variant-numeric: tabular-nums; }
+.chips-filtro button.activo { background: var(--primario-suave); border-color: var(--primario); color: var(--primario); }
+.uso-barra { display: flex; flex-direction: column; gap: 4px; min-width: 96px; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.uso-barra i { display: block; height: 6px; border-radius: 999px; background: var(--borde); overflow: hidden; }
+.uso-barra b { display: block; height: 100%; background: var(--primario); border-radius: 999px; }
+.uso-barra b.excedido { background: var(--alerta); }
+.panel.renovar { background: var(--panel); margin-bottom: 14px; }
+
+.lic-resumen { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
+.lic-plan { display: flex; flex-direction: column; gap: 10px; }
+.lic-plan h3 { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lic-barra { height: 10px; border-radius: 999px; background: var(--borde); overflow: hidden; }
+.lic-barra b { display: block; height: 100%; border-radius: 999px; background: var(--ok); }
+.lic-barra b.aviso { background: var(--alerta); }
+.lic-barra b.grave { background: #b42318; }
+.lic-lista { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.lic-lista li { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--borde); }
+.lic-lista li:last-child { border-bottom: none; padding-bottom: 0; }
+.lic-contacto a { display: inline-block; margin: 4px 14px 0 0; font-weight: 600; }
+@media (max-width: 800px) { .lic-resumen { grid-template-columns: 1fr; } }

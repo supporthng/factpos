@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, puede } from "../api";
-import { Aviso, Encabezado, Kpi, useDatos } from "../ui";
+import { Aviso, Encabezado, useDatos } from "../ui";
 
 /**
  * Licencia de FactPOS de esta empresa: estado, sucursales permitidas y
@@ -11,6 +11,7 @@ interface EstadoLicencia {
   permiteVender: boolean; dias: number; mensaje: string | null; error: string | null;
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
   instalacionId: string; activada: boolean; local?: boolean;
+  plan?: string | null; politica?: { pruebaActualiza: boolean; contacto: { nombre: string | null; telefono: string | null; whatsapp: string | null; correo: string | null } } | null;
   tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null } | null; web?: string | null; ultimoContacto: string | null; ultimoError: string | null; portal: string; sucursalesEnUso: number;
 }
 const NOMBRES: Record<EstadoLicencia["estado"], string> = {
@@ -39,19 +40,39 @@ export function Licencia() {
 
   if (!datos) return <><Encabezado titulo="Licencia" /><Aviso texto={error} /></>;
   const d = datos;
-  const tono = d.permiteVender ? (d.estado === "VIGENTE" ? "ok" : undefined) : "alerta";
   return (
     <>
       <Encabezado titulo="Licencia de FactPOS"
         descripcion="La licencia se cobra por sucursal. Se renueva sola con su proveedor; aquí ve su estado y la activa con la clave que le dieron." />
       {d.mensaje && <Aviso texto={d.mensaje} tipo={d.permiteVender ? "info" : "error"} />}
 
-      <div className="kpis">
-        <Kpi titulo="Estado" valor={NOMBRES[d.estado]} tono={tono}
-          detalle={d.vence ? `Vence el ${fecha(d.vence)}` : d.estado === "PRUEBA" ? `Quedan ${d.dias} día(s) de prueba` : undefined} />
-        <Kpi titulo="Sucursales activas" valor={`${d.sucursalesEnUso} de ${d.sucursales ?? 2}`}
-          detalle={d.sucursales ? "Tiendas que venden (los almacenes no cuentan)" : "La prueba permite 2"} />
-        <Kpi titulo="Empresa licenciada" valor={d.cliente ?? "—"} detalle={d.activada ? "Licencia activada" : "Sin activar"} />
+      <div className="lic-resumen">
+        <div className="panel lic-plan">
+          <h3>
+            {d.plan ? `Plan ${d.plan}` : d.activada ? "Licencia activa" : "Versión de prueba"}
+            <span className={"pastilla " + (d.estado === "VIGENTE" ? "ok" : d.permiteVender ? "aviso" : "alerta")}>{NOMBRES[d.estado]}</span>
+          </h3>
+          {d.cliente && <p className="suave" style={{ margin: 0 }}>Licenciado a <b>{d.cliente}</b></p>}
+          <Vigencia d={d} />
+          <ul className="lic-lista">
+            <li><span className="suave">{d.vence ? "Vence" : "La prueba termina"}</span><b>{d.vence ? fecha(d.vence) : `en ${Math.max(d.dias, 0)} día(s)`}</b></li>
+            <li><span className="suave">Sucursales activas</span><b>{d.sucursalesEnUso} de {d.sucursales ?? 2}</b></li>
+            <li><span className="suave">Actualizaciones</span><b>{d.activada ? "Incluidas" : d.politica?.pruebaActualiza ? "Disponibles durante la prueba" : "Al activar la licencia"}</b></li>
+            {d.modulos.length > 0 && <li><span className="suave">Módulos</span><b>{d.modulos.join(", ")}</b></li>}
+          </ul>
+          {d.sucursales != null && d.sucursalesEnUso >= d.sucursales && (
+            <p className="texto-aviso pequeno" style={{ margin: 0 }}>Usa todas sus sucursales: para abrir otra tienda, amplíe la licencia con su proveedor.</p>
+          )}
+        </div>
+        <div className="panel lic-contacto">
+          <h3 style={{ marginTop: 0 }}>{d.activada ? "Renovar o ampliar" : "Comprar o activar"}</h3>
+          <p className="suave pequeno">
+            {d.activada
+              ? "La renovación la registra su proveedor y llega sola a su sistema (hasta 12 horas) o al pulsar «Actualizar ahora»."
+              : "Pida su clave de activación a su proveedor y escríbala abajo. Hasta entonces el sistema funciona en prueba."}
+          </p>
+          <Contacto c={d.politica?.contacto ?? null} />
+        </div>
       </div>
 
       {d.local ? (
@@ -104,6 +125,34 @@ export function Licencia() {
       )}
       <p className="suave pequeno">Instalación: <span className="mono">{d.instalacionId}</span> · Portal: {d.portal}</p>
     </>
+  );
+}
+
+function Vigencia({ d }: { d: EstadoLicencia }) {
+  // Barra del tiempo que queda: 365 días (licencia) o 15 (prueba) como referencia visual
+  const total = d.vence ? 365 : 15;
+  const pct = Math.max(0, Math.min(100, Math.round((d.dias / total) * 100)));
+  const clase = !d.permiteVender || d.dias < 0 ? "grave" : d.dias < 15 ? "aviso" : "";
+  const texto = d.dias >= 0 ? `Quedan ${d.dias} día(s)` : `Venció hace ${-d.dias} día(s)`;
+  return (
+    <div>
+      <div className="lic-barra" role="img" aria-label={texto}><b className={clase} style={{ width: `${pct}%` }} /></div>
+      <span className="suave pequeno">{texto}</span>
+    </div>
+  );
+}
+
+function Contacto({ c }: { c: { nombre: string | null; telefono: string | null; whatsapp: string | null; correo: string | null } | null }) {
+  if (!c || !(c.telefono || c.whatsapp || c.correo)) return <p className="suave pequeno" style={{ margin: 0 }}>Comuníquese con su proveedor de FactPOS.</p>;
+  return (
+    <div>
+      {c.nombre && <b>{c.nombre}</b>}
+      <div>
+        {c.whatsapp && <a href={`https://wa.me/${c.whatsapp}`} target="_blank" rel="noreferrer">WhatsApp</a>}
+        {c.telefono && <a href={`tel:${c.telefono}`}>{c.telefono}</a>}
+        {c.correo && <a href={`mailto:${c.correo}`}>{c.correo}</a>}
+      </div>
+    </div>
   );
 }
 

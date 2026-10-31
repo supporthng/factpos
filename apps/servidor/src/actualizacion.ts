@@ -7,7 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { unzipSync } from "fflate";
 import { pool, ErrorNegocio } from "./db.js";
 import { config } from "./config.js";
-import { PORTAL_URL } from "./licencia/cliente.js";
+import { PORTAL_URL, filaLicencia, politicaPortal } from "./licencia/cliente.js";
 
 /**
  * ACTUALIZACIONES de los servidores de los clientes («avisar y un clic»).
@@ -58,10 +58,13 @@ export async function instalarVersion(version: string, log: (m: string) => void 
   if (compararVersion(version, versionActual()) <= 0) throw new ErrorNegocio("La versión solicitada no es más reciente", 409);
   if (proceso && proceso.estado !== "ERROR") throw new ErrorNegocio("Ya se está instalando una actualización", 409);
   const token = await tokenLicencia();
-  if (!token) throw new ErrorNegocio("Active la licencia para recibir actualizaciones", 402);
+  // Sin licencia (prueba): solo si el proveedor lo permite en el portal (Portal › Reglas)
+  const pruebaOk = !token && !!(await politicaPortal())?.pruebaActualiza;
+  if (!token && !pruebaOk) throw new ErrorNegocio("Active la licencia para recibir actualizaciones", 402);
+  const cabecera: Record<string, string> = token ? { "x-licencia": token } : { "x-instalacion": (await filaLicencia()).instalacion_id };
   proceso = { estado: "DESCARGANDO", version, mensaje: null, desde: new Date().toISOString() };
   try {
-    const r = await fetch(`${PORTAL_URL()}/licencias/descargar?version=${encodeURIComponent(version)}`, { headers: { "x-licencia": token }, signal: AbortSignal.timeout(20_000) });
+    const r = await fetch(`${PORTAL_URL()}/licencias/descargar?version=${encodeURIComponent(version)}`, { headers: cabecera, signal: AbortSignal.timeout(20_000) });
     const d = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
     if (!r.ok || !d.url) throw new Error(d.error ?? `El portal respondió ${r.status}`);
     log(`Actualización ${version}: descargando…`);
@@ -136,6 +139,7 @@ export async function rutasActualizacion(app: FastifyInstance) {
       hayNueva: !!d && compararVersion(d.version, actual) > 0, proceso, puedeInstalar: process.platform === "win32" && !process.env.VERCEL,
       // Descargar actualizaciones exige una licencia activa (en la prueba no hay): la pantalla lo explica antes de pulsar «Instalar»
       licenciaActiva: !!(await tokenLicencia()),
+      pruebaActualiza: !!(await politicaPortal())?.pruebaActualiza,
       modo: config.modo,
     };
   });

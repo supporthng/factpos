@@ -31,6 +31,7 @@ export interface DatosLicencia {
   instalacion: string;       // nube del cliente a la que se activó
   sucursales: number;        // máximo de sucursales (tiendas) activas
   modulos: string[];
+  plan?: string;             // nombre del plan contratado (informativo)
   emitida: string;           // ISO
   vence: string;             // AAAA-MM-DD (incluido)
 }
