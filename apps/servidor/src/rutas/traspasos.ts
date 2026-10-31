@@ -6,6 +6,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { syncActiva } from "../sync/sucursal.js";
 import { config } from "../config.js";
+import { repartirPorLotes } from "../lotes.js";
 
 const cantidad = z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida");
 
@@ -89,19 +90,25 @@ export async function crearTraspaso(c: PoolClient, body: DatosTraspaso) {
     if (new Decimal(ex.rows[0].cantidad).lt(it.cantidad)) {
       throw new ErrorNegocio(`Existencia insuficiente de ${ex.rows[0].nombre}: hay ${Number(ex.rows[0].cantidad)}`);
     }
-    // El trigger del kardex fija el costo de salida al promedio vigente del origen
-    const k = await c.query<{ costo_unitario: string }>(
-      `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                       documento_tipo, documento_id, usuario_id)
-       VALUES ($1,$2,$3,$4,'TRANSFERENCIA_SALIDA',$5,0,'transferencia',$6,$7)
-       RETURNING costo_unitario`,
-      [uuidv7(), origen.sucursal_id, origen.id, it.productoId, new Decimal(it.cantidad).neg().toFixed(3), id, body.usuarioId],
-    );
-    const costo = k.rows[0].costo_unitario;
+    // El trigger del kardex fija el costo de salida al promedio vigente del origen.
+    // Sale primero lo que vence antes; cada lote viaja con su número y vencimiento.
+    let costo = "0";
+    const conLote: { loteId: string; cantidad: string }[] = [];
+    for (const pieza of await repartirPorLotes(c, origen.id, [{ productoId: it.productoId, cantidad: new Decimal(it.cantidad).neg().toFixed(3) }])) {
+      const k = await c.query<{ costo_unitario: string }>(
+        `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
+                                         documento_tipo, documento_id, usuario_id, lote_id)
+         VALUES ($1,$2,$3,$4,'TRANSFERENCIA_SALIDA',$5,0,'transferencia',$6,$7,$8)
+         RETURNING costo_unitario`,
+        [uuidv7(), origen.sucursal_id, origen.id, it.productoId, pieza.cantidad, id, body.usuarioId, pieza.loteId],
+      );
+      costo = k.rows[0].costo_unitario;
+      if (pieza.loteId) conLote.push({ loteId: pieza.loteId, cantidad: new Decimal(pieza.cantidad).neg().toFixed(3) });
+    }
     await c.query(
-      `INSERT INTO transferencia_items (id, transferencia_id, producto_id, cantidad_enviada, costo_unitario, cantidad_pedida)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [uuidv7(), id, it.productoId, it.cantidad, costo, it.cantidadPedida ?? null],
+      `INSERT INTO transferencia_items (id, transferencia_id, producto_id, cantidad_enviada, costo_unitario, cantidad_pedida, lotes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [uuidv7(), id, it.productoId, it.cantidad, costo, it.cantidadPedida ?? null, conLote.length ? JSON.stringify(conLote) : null],
     );
     valor = valor.plus(new Decimal(costo).mul(it.cantidad));
   }
@@ -130,13 +137,33 @@ export async function recibirTraspaso(c: PoolClient, id: string, body: DatosRece
     if (!cant.eq(it.cantidad_enviada)) conDiferencia = true;
     await c.query("UPDATE transferencia_items SET cantidad_recibida = $1 WHERE id = $2", [cant.toFixed(3), it.id]);
     if (cant.gt(0)) {
-      // Entra al costo de origen; el trigger recalcula el promedio del destino
-      await c.query(
-        `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                         documento_tipo, documento_id, usuario_id)
-         VALUES ($1,$2,$3,$4,'TRANSFERENCIA_ENTRADA',$5,$6,'transferencia',$7,$8)`,
-        [uuidv7(), tr.destino_sucursal_id, tr.destino_almacen_id, it.producto_id, cant.toFixed(3), it.costo_unitario, id, body.usuarioId],
-      );
+      // Entra al costo de origen; el trigger recalcula el promedio del destino.
+      // Con los mismos lotes que salieron (si llegó menos, se reparte primero en los que vencen antes).
+      const salieron: { lote_id: string | null; cantidad: string }[] = [];
+      const enviados = (Array.isArray(it.lotes) ? it.lotes : []) as { loteId: string; cantidad: string }[];
+      if (enviados.length) {
+        // Solo lotes que ya llegaron a esta base (vienen de la central con el catálogo)
+        const hay = new Set((await c.query<{ id: string }>("SELECT id FROM lotes WHERE id = ANY($1::uuid[])", [enviados.map((x) => x.loteId)])).rows.map((x) => x.id));
+        for (const x of enviados) if (hay.has(x.loteId)) salieron.push({ lote_id: x.loteId, cantidad: x.cantidad });
+      }
+      let falta = cant;
+      const piezas: { loteId: string | null; cantidad: Decimal }[] = [];
+      for (const f of salieron) {
+        if (falta.lte(0)) break;
+        const toma = Decimal.min(falta, new Decimal(f.cantidad));
+        if (toma.lte(0)) continue;
+        piezas.push({ loteId: f.lote_id, cantidad: toma });
+        falta = falta.minus(toma);
+      }
+      if (falta.gt(0)) piezas.push({ loteId: null, cantidad: falta });
+      for (const pieza of piezas) {
+        await c.query(
+          `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
+                                           documento_tipo, documento_id, usuario_id, lote_id)
+           VALUES ($1,$2,$3,$4,'TRANSFERENCIA_ENTRADA',$5,$6,'transferencia',$7,$8,$9)`,
+          [uuidv7(), tr.destino_sucursal_id, tr.destino_almacen_id, it.producto_id, pieza.cantidad.toFixed(3), it.costo_unitario, id, body.usuarioId, pieza.loteId],
+        );
+      }
     }
   }
 

@@ -753,3 +753,100 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .prev-kpi b { font-size: 16px; }
 .prev-boton { border-radius: 8px; }
 .prev-terminal, .prev-admin { margin-top: 6px; }
+
+/* =====================================================================
+   Navegación en cuadrícula (inicio → función → opción)
+   y forma con menú lateral; se elige con el selector de la barra superior.
+   ===================================================================== */
+.app.app-cuadricula { display: block; height: 100%; }
+.app.app-cuadricula .contenido { height: 100%; overflow: auto; }
+.app.app-lateral { display: grid; grid-template-columns: var(--ancho-lateral) 1fr; }
+.app.app-lateral .contenido { overflow: auto; }
+
+.barra-superior { gap: 14px; }
+.app-cuadricula .barra-superior { background: color-mix(in srgb, var(--panel) 88%, transparent); }
+.marca-superior { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 4px 6px 4px 0; border-radius: 10px; }
+.marca-superior svg { border-radius: 9px; box-shadow: 0 2px 6px rgba(14,27,38,.22); }
+.marca-superior img { max-height: 36px; max-width: 150px; object-fit: contain; }
+.marca-superior .nombre { font-size: 19px; font-weight: 800; letter-spacing: -.4px; color: var(--texto); }
+.marca-superior .nombre b { color: var(--primario); }
+.app-cuadricula .migas-superior { padding-left: 14px; border-left: 1px solid var(--borde); }
+.migas-superior button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 6px 8px; border-radius: 8px; color: var(--suave); font-weight: 550; }
+.migas-superior button:hover { background: var(--fondo); color: var(--texto); }
+.migas-superior button.actual, .migas-superior b.actual { color: var(--texto); font-weight: 650; }
+.migas-superior b.actual { padding: 6px 4px; }
+
+.selector-forma { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--borde); border-radius: 11px; background: var(--fondo); }
+.selector-forma button { display: grid; place-items: center; width: 32px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--suave); }
+.selector-forma button:hover { color: var(--texto); }
+.selector-forma button.activo { background: var(--panel); color: var(--primario); box-shadow: 0 1px 3px rgba(17,24,39,.12); }
+
+/* Franja con las demás opciones de la función abierta */
+.subnav { position: sticky; top: 60px; z-index: 14; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 8px 32px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--borde); }
+.subnav::-webkit-scrollbar { display: none; }
+.subnav button { flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--suave); font-weight: 600; font-size: 14px; }
+.subnav button:hover { background: var(--fondo); color: var(--texto); }
+.subnav button.activo { background: color-mix(in srgb, var(--primario) 10%, var(--panel)); border-color: color-mix(in srgb, var(--primario) 22%, transparent); color: var(--primario); }
+
+/* Inicio y página de cada función */
+.main-cuadricula { max-width: 1240px !important; margin: 0 auto; }
+.saludo { margin: 6px 0 22px; }
+.saludo h1 { font-size: 30px; letter-spacing: -.7px; }
+.saludo p { font-size: 15px; margin-top: 2px; }
+.saludo.con-icono { display: flex; align-items: center; gap: 14px; }
+.saludo .volver { font-size: 26px; line-height: 1; border: 1px solid var(--borde); background: var(--panel); color: var(--texto); }
+
+.cuadricula { --c: var(--primario); display: grid; gap: 16px; }
+.cuadricula-grupos { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cuadricula-opciones { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+
+.mosaico { position: relative; display: flex; text-align: left; color: var(--texto); background: var(--panel);
+  border: 1px solid var(--borde); border-radius: 18px; box-shadow: var(--sombra); overflow: hidden;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.mosaico:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--c) 40%, var(--borde)); box-shadow: 0 14px 30px -14px color-mix(in srgb, var(--c) 45%, rgba(17,24,39,.35)); }
+.mosaico:active { transform: translateY(-1px); }
+.mosaico:focus-visible { outline: 3px solid color-mix(in srgb, var(--c) 60%, transparent); outline-offset: 2px; }
+.mosaico-icono { display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 15px; color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, var(--panel)); }
+.mosaico-texto { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mosaico-texto b { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
+.mosaico-texto small { color: var(--suave); font-size: 13.5px; line-height: 1.4; }
+
+/* Función principal: recuadro alto con color de fondo suave */
+.mosaico-grupo { flex-direction: column; gap: 14px; padding: 22px; min-height: 196px;
+  background: radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--c) 10%, transparent), transparent 60%), var(--panel); }
+.mosaico-grupo .mosaico-icono { width: 58px; height: 58px; border-radius: 17px; color: #fff; background: var(--c);
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--c) 80%, transparent); }
+.mosaico-grupo .mosaico-texto b { font-size: 19px; }
+.mosaico-pie { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.mosaico-pie i { font-style: normal; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: color-mix(in srgb, var(--c) 80%, var(--texto));
+  background: color-mix(in srgb, var(--c) 9%, var(--panel)); }
+.mosaico-pie i.mas { background: var(--fondo); color: var(--suave); }
+
+/* Opción dentro de una función: recuadro horizontal */
+.mosaico-opcion { align-items: center; gap: 16px; padding: 18px 18px 18px 18px; min-height: 104px; }
+.mosaico-flecha { margin-left: auto; font-size: 24px; color: var(--borde-fuerte); transition: transform .16s, color .16s; }
+.mosaico-opcion:hover .mosaico-flecha { color: var(--c); transform: translateX(3px); }
+
+@media (prefers-reduced-motion: reduce) { .mosaico, .mosaico-flecha { transition: none; } .mosaico:hover { transform: none; } }
+@media (max-width: 900px) {
+  .app.app-lateral { grid-template-columns: 1fr; }
+  .subnav { top: 60px; padding: 8px 12px; }
+  .app-cuadricula .migas-superior { padding-left: 8px; }
+  .migas-superior button span { display: none; }
+  .selector-forma { display: none; }
+  .cuadricula-grupos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .mosaico-grupo { padding: 16px; min-height: 0; gap: 10px; }
+  .mosaico-grupo .mosaico-icono { width: 46px; height: 46px; border-radius: 14px; }
+  .mosaico-pie { display: none; }
+  .cuadricula-opciones { grid-template-columns: 1fr; gap: 10px; }
+  .mosaico-opcion { min-height: 0; padding: 14px; }
+  .saludo h1 { font-size: 24px; }
+}
+@media (max-width: 420px) { .cuadricula-grupos { grid-template-columns: 1fr; } }
+.barra-superior, .subnav { flex: none; }
+.app-cuadricula .contenido main { margin: 0 auto; }
+/* Compras: lote y vencimiento por línea */
+.lote-linea { display: flex; flex-direction: column; gap: 4px; }
+.lote-linea input { width: 100%; padding: 6px 8px; font-size: 13px; }

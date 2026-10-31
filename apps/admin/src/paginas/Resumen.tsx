@@ -1,5 +1,6 @@
 import { rd, num } from "../api";
 import { Aviso, Encabezado, Kpi, Tabla, useDatos } from "../ui";
+import { Icono } from "../Iconos";
 
 interface FilaSucursal {
   sucursal_id: string; sucursal: string; venta_hoy: string; transacciones_hoy: string;
@@ -13,6 +14,7 @@ interface Atencion {
   certificado: { vence: string | null; sinActivar: number };
   secuencias: { sucursal: string; tipo: string; disponibles: string; alerta: number }[];
   correosConError: number;
+  vencimientos?: { vencidos: number; valorVencido: string; proximos: number };
 }
 type Tono = "grave" | "aviso";
 interface Punto { tono: Tono; texto: string; ir: string; accion: string }
@@ -24,7 +26,7 @@ const ir = (seccion: string) => { location.hash = seccion; };
 export function Resumen() {
   const { datos, error } = useDatos<FilaSucursal[]>("/central/sucursales");
   const at = useDatos<Atencion>("/central/resumen/atencion");
-  const bajo = useDatos<any[]>("/central/reportes/bajo-minimo");
+  const bajo = useDatos<any[]>("/central/reportes/reposicion");
   const filas = datos ?? [];
   const sum = (k: keyof FilaSucursal) => filas.reduce((a, f) => a + Number(f[k]), 0);
   const a = at.datos;
@@ -55,6 +57,8 @@ export function Resumen() {
         ir: "fiscal", accion: "Asignar números",
       });
     }
+    if (a.vencimientos?.vencidos) puntos.push({ tono: "grave", texto: `${a.vencimientos.vencidos} lote(s) VENCIDO(S) siguen en existencia (${rd(a.vencimientos.valorVencido)} al costo): retírelos con un ajuste por vencimiento`, ir: "reportes", accion: "Ver vencidos" });
+    if (a.vencimientos?.proximos) puntos.push({ tono: "aviso", texto: `${a.vencimientos.proximos} lote(s) vencen en los próximos 15 días`, ir: "reportes", accion: "Ver lotes" });
     if (a.correosConError) puntos.push({ tono: "aviso", texto: `${a.correosConError} correo(s) de reportes no se pudieron enviar`, ir: "correo", accion: "Ver correo" });
   }
   if (sum("productos_bajo_minimo")) puntos.push({ tono: "aviso", texto: `${num(sum("productos_bajo_minimo"))} producto(s) por debajo del mínimo`, ir: "inventario", accion: "Ver existencias" });
@@ -67,10 +71,10 @@ export function Resumen() {
       <Encabezado titulo="Resumen" descripcion={`Hoy, ${hoyTexto}, en ${filas.length === 1 ? "la sucursal" : `las ${filas.length} sucursales`}`} />
       <Aviso texto={error} />
       <div className="kpis">
-        <Kpi titulo="Venta de hoy" valor={rd(ventaHoy)} detalle={a ? `Ayer: ${rd(a.ayer)}` : `${num(transHoy)} transacciones`} />
-        <Kpi titulo="Ventas de hoy" valor={num(transHoy)} detalle={`Ticket promedio ${rd(transHoy ? ventaHoy / transHoy : 0)}`} />
-        <Kpi titulo="Inventario al costo" valor={rd(sum("valor_inventario"))} detalle={`${filas.length} sucursal(es)`} />
-        <Kpi titulo="Para atender" valor={a ? num(puntos.length) : "…"} tono={puntos.some((p) => p.tono === "grave") ? "alerta" : puntos.length ? undefined : "ok"} detalle={a && !puntos.length ? "Todo en orden" : undefined} />
+        <Kpi icono="venta" titulo="Venta de hoy" valor={rd(ventaHoy)} detalle={a ? `Ayer: ${rd(a.ayer)}` : `${num(transHoy)} transacciones`} />
+        <Kpi icono="ticket" titulo="Ventas de hoy" valor={num(transHoy)} detalle={`Ticket promedio ${rd(transHoy ? ventaHoy / transHoy : 0)}`} />
+        <Kpi icono="inventario" titulo="Inventario al costo" valor={rd(sum("valor_inventario"))} detalle={`${filas.length} sucursal(es)`} />
+        <Kpi icono="incidentes" titulo="Para atender" valor={a ? num(puntos.length) : "…"} tono={puntos.some((p) => p.tono === "grave") ? "alerta" : puntos.length ? undefined : "ok"} detalle={a && !puntos.length ? "Todo en orden" : undefined} />
       </div>
 
       {a && (
@@ -95,8 +99,8 @@ export function Resumen() {
       <h2>Por sucursal</h2>
       <div className="tarjetas-sucursal">
         {filas.map((f) => (
-          <div key={f.sucursal_id} className="tarjeta">
-            <h3>{f.sucursal}</h3>
+          <div key={f.sucursal_id} className="tarjeta tarjeta-sucursal">
+            <h3><span className="icono-sucursal"><Icono n="sucursales" tamano={18} /></span>{f.sucursal}</h3>
             <div className="dato"><span>Venta de hoy</span><b>{rd(f.venta_hoy)}</b></div>
             <div className="dato"><span>Ventas</span><b>{num(f.transacciones_hoy)}</b></div>
             <div className="dato"><span>Ticket promedio</span><b>{rd(Number(f.transacciones_hoy) ? Number(f.venta_hoy) / Number(f.transacciones_hoy) : 0)}</b></div>
@@ -130,16 +134,17 @@ export function Resumen() {
       <Tabla
         filas={(bajo.datos ?? []).slice(0, 10)}
         clave={(f) => f.sucursal_id + f.producto_id}
-        vacio="Ningún producto está por debajo del mínimo"
+        vacio="No hace falta reponer nada por ahora"
         columnas={[
           { titulo: "Producto", valor: (f) => <><b>{f.nombre}</b> <span className="suave">{f.sku}</span></> },
           { titulo: "Sucursal", valor: (f) => filas.find((s) => s.sucursal_id === f.sucursal_id)?.sucursal ?? "" },
-          { titulo: "Existencia", valor: (f) => num(f.cantidad, 0), der: true },
-          { titulo: "Mínimo", valor: (f) => num(f.stock_minimo, 0), der: true },
+          { titulo: "Existencia", valor: (f) => num(f.existencia, 0), der: true },
+          { titulo: "Vende al día", valor: (f) => num(f.venta_diaria, 1), der: true },
+          { titulo: "Alcanza para", valor: (f) => (f.dias_de_inventario === null ? "—" : `${num(f.dias_de_inventario, 0)} días`), der: true },
           { titulo: "Sugerido comprar", valor: (f) => <b>{num(f.sugerido_comprar, 0)}</b>, der: true },
         ]}
       />
-      {(bajo.datos?.length ?? 0) > 10 && <button className="enlace" onClick={() => ir("reportes")}>Ver los {bajo.datos!.length} en Reportes › Bajo mínimo</button>}
+      {(bajo.datos?.length ?? 0) > 10 && <button className="enlace" onClick={() => ir("reportes")}>Ver los {bajo.datos!.length} en Reportes › Reposición inteligente</button>}
     </>
   );
 }

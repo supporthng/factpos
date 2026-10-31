@@ -10,6 +10,7 @@ import { enTransaccion, ErrorNegocio, pool } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type ContextoCaja, type PresentacionVenta } from "../contexto.js";
 import { ofertasPara, validarCupon, bloquearOfertasConTope } from "../promociones.js";
 import { emitirEcfVenta } from "../fiscal/emitir.js";
+import { repartirPorLotes } from "../lotes.js";
 import { asignarNumeroNoElectronico } from "../fiscal/numeracion-modalidades.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { datosTicket } from "./facturas.js";
@@ -249,16 +250,21 @@ export async function registrarVenta(
   }
 
   const ventaId = body.ventaId ?? uuidv7();
+  // NCF serie B (B01/B02) o número interno (factura sin comprobante): se asigna ANTES de guardar la
+  // venta, en esta misma transacción (las ventas no se modifican después de registradas).
+  const numeroDocumento = ["B01", "B02", "SIN"].includes(body.tipoDocumento)
+    ? await asignarNumeroNoElectronico(c, ctx.sucursalId, body.tipoDocumento as "B01" | "B02" | "SIN") : null;
   const v = await c.query<{ numero: string }>(
     `INSERT INTO ventas (id, sucursal_id, caja_id, turno_id, usuario_id, cliente_id, numero_interno,
-                         tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia, notas)
+                         tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia, notas, numero_documento)
      VALUES ($1,$2,$3,$4,$5,$6,
              (SELECT COALESCE(MAX(numero_interno), 0) + 1 FROM ventas WHERE caja_id = $3),
-             $7,$8,$9,$10,$11,0,$12, COALESCE($13::timestamptz, now()), $14, $15)
+             $7,$8,$9,$10,$11,0,$12, COALESCE($13::timestamptz, now()), $14, $15, $16)
      RETURNING numero_interno AS numero`,
     [ventaId, ctx.sucursalId, cajaId, turnoId, body.usuarioId, body.clienteId ?? null,
      body.tipoDocumento, credito.gt(0) ? "CREDITO" : "CONTADO",
-     q.totales.subtotal, q.totales.descuento, q.totales.itbis, q.totales.total, cont?.creadoEn ?? null, !!cont, body.notas || null],
+     q.totales.subtotal, q.totales.descuento, q.totales.itbis, q.totales.total, cont?.creadoEn ?? null, !!cont, body.notas || null,
+     numeroDocumento],
   );
   const numero = v.rows[0].numero;
 
@@ -311,13 +317,15 @@ export async function registrarVenta(
     }
   }
   if (K.length) {
+    // Primero sale lo que vence antes (lotes); lo demás sale sin lote
+    const KL = await repartirPorLotes(c, ctx.almacenId, K);
     await c.query(
       `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                       documento_tipo, documento_id, usuario_id, creado_en)
-       SELECT id, $2, $3, producto_id, 'VENTA', cantidad, 0, 'venta', $4, $5, COALESCE($8::timestamptz, now())
-         FROM unnest($1::uuid[], $6::uuid[], $7::numeric[]) AS t(id, producto_id, cantidad)`,
-      [K.map(() => uuidv7()), ctx.sucursalId, ctx.almacenId, ventaId, body.usuarioId,
-       K.map((k) => k.productoId), K.map((k) => k.cantidad), cont?.creadoEn ?? null],
+                                       documento_tipo, documento_id, usuario_id, creado_en, lote_id)
+       SELECT id, $2, $3, producto_id, 'VENTA', cantidad, 0, 'venta', $4, $5, COALESCE($8::timestamptz, now()), lote_id
+         FROM unnest($1::uuid[], $6::uuid[], $7::numeric[], $9::uuid[]) AS t(id, producto_id, cantidad, lote_id)`,
+      [KL.map(() => uuidv7()), ctx.sucursalId, ctx.almacenId, ventaId, body.usuarioId,
+       KL.map((k) => k.productoId), KL.map((k) => k.cantidad), cont?.creadoEn ?? null, KL.map((k) => k.loteId)],
     );
   }
 
@@ -353,10 +361,6 @@ export async function registrarVenta(
     );
   }
 
-  // Asignación transaccional independiente por modalidad.
-  const numeroDocumento = ["B01", "B02", "SIN"].includes(body.tipoDocumento)
-    ? await asignarNumeroNoElectronico(c, ctx.sucursalId, body.tipoDocumento as "B01" | "B02" | "SIN") : null;
-  if (numeroDocumento) await c.query("UPDATE ventas SET numero_documento=$2 WHERE id=$1", [ventaId, numeroDocumento]);
 
   // Facturación electrónica: e-NCF, XML firmado, código de seguridad y QR para el ticket.
   // El envío a la DGII lo hace la cola en segundo plano (funciona sin internet).

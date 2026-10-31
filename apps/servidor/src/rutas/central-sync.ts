@@ -52,6 +52,7 @@ export const TABLAS_BAJADA: [string, string][] = [
   ["configuracion_sucursal", "sucursal_id = $2"],
   ["ecf_autorizaciones", "empresa_id = $1"],
   ["ecf_rangos", "sucursal_id = $2"],
+  ["facturacion_rangos_ncf", "sucursal_id = $2"],
   ["repartidores", "sucursal_id = $2"],
   ["transferencias", "destino_sucursal_id = $2 OR origen_sucursal_id = $2"],
   ["pedidos_sucursal", "sucursal_id = $2 OR surte_sucursal_id = $2"],
@@ -331,6 +332,15 @@ async function aplicarSubida(c: Pg, sucursalId: string, tabla: string, p: Payloa
             [p.ecf.rango_id, p.ecf.encf],
           );
         }
+      }
+      // NCF serie B: la central también lleva la cuenta de los números usados (para no reasignarlos)
+      const ncf = /^(B0[12])(\d{8})$/.exec(String(p.venta?.numero_documento ?? ""));
+      if (ncf) {
+        await c.query(
+          `UPDATE facturacion_rangos_ncf SET siguiente = LEAST(hasta + 1, GREATEST(siguiente, $3::bigint + 1))
+            WHERE sucursal_id = $1 AND tipo = $2 AND $3::bigint BETWEEN desde AND hasta`,
+          [p.venta.sucursal_id, ncf[1], ncf[2]],
+        );
       }
       await aplicarFilas(c, "auditoria", p.auditoria, "insertar");
       return;

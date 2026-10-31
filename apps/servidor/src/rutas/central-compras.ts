@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Decimal } from "decimal.js";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { registrarLote, revisarLoteEntrada } from "../lotes.js";
 
 /**
  * Compras (entrada de mercancía con la factura del proveedor).
@@ -39,6 +40,9 @@ const CompraSchema = z.object({
     enOferta: z.boolean().default(false),
     /** Costo normal cuando vino en oferta (para saber cuánto se ahorró) */
     costoRegular: costo.nullable().default(null),
+    /** Lote y vencimiento de lo recibido (obligatorio si el producto controla lotes) */
+    numeroLote: z.string().trim().max(40).nullable().default(null),
+    loteVence: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de vencimiento AAAA-MM-DD").nullable().default(null),
   })).min(1, "Agregue al menos un producto").max(500),
 }).refine((c) => c.condicion === "CONTADO" || !!c.venceEn, "Indique el vencimiento de la factura a crédito")
   .refine((c) => c.items.every((i) => !i.enOferta || !i.costoRegular || Number(i.costoRegular) >= Number(i.costoUnitario)),
@@ -83,6 +87,7 @@ export async function rutasCentralCompras(app: FastifyInstance) {
     if (!c) throw new ErrorNegocio("Compra no encontrada", 404);
     const items = await pool.query(
       `SELECT ci.linea, p.nombre, pr.nombre AS presentacion, ci.cantidad, ci.factor, ci.costo_unitario AS "costoUnitario",
+              ci.numero_lote AS "numeroLote", to_char(ci.vence_en, 'YYYY-MM-DD') AS "loteVence",
               ci.itbis, ci.total, ci.en_oferta AS "enOferta", ci.costo_regular AS "costoRegular"
          FROM compra_items ci JOIN presentaciones pr ON pr.id = ci.presentacion_id JOIN productos p ON p.id = pr.producto_id
         WHERE ci.compra_id = $1 ORDER BY ci.linea`, [id],
@@ -111,8 +116,9 @@ export async function rutasCentralCompras(app: FastifyInstance) {
         if (dup.rowCount) throw new ErrorNegocio(`Ya se registró una compra con el NCF ${b.ncfProveedor} de este proveedor`, 409);
       }
 
-      const pres = new Map((await c.query<{ id: string; productoId: string; nombre: string; tipo: string; factor: string; tasa: string }>(
-        `SELECT pr.id, p.id AS "productoId", p.nombre || ' ' || pr.nombre AS nombre, p.tipo, pr.factor::text AS factor, i.tasa::text AS tasa
+      const pres = new Map((await c.query<{ id: string; productoId: string; nombre: string; tipo: string; factor: string; tasa: string; controlaLotes: boolean }>(
+        `SELECT pr.id, p.id AS "productoId", p.nombre || ' ' || pr.nombre AS nombre, p.tipo, pr.factor::text AS factor, i.tasa::text AS tasa,
+                COALESCE(p.controla_lotes, false) AS "controlaLotes"
            FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id JOIN impuestos i ON i.id = p.impuesto_id
           WHERE pr.id = ANY($1::uuid[]) AND p.empresa_id = $2`,
         [b.items.map((i) => i.presentacionId), empresaId],
@@ -123,6 +129,7 @@ export async function rutasCentralCompras(app: FastifyInstance) {
         const p = pres.get(it.presentacionId);
         if (!p) throw new ErrorNegocio(`Producto de la línea ${n + 1} no encontrado`);
         if (p.tipo !== "INVENTARIABLE") throw new ErrorNegocio(`${p.nombre} no lleva inventario (${p.tipo.toLowerCase()}); no se compra`);
+        revisarLoteEntrada(p.nombre, p.controlaLotes, it.numeroLote, it.loteVence);
         const base = new Decimal(it.cantidad).mul(it.costoUnitario).toDecimalPlaces(2);
         const imp = base.mul(p.tasa).toDecimalPlaces(2);
         subtotal = subtotal.plus(base);
@@ -139,24 +146,29 @@ export async function rutasCentralCompras(app: FastifyInstance) {
          b.venceEn, subtotal.toFixed(2), itbis.toFixed(2), total.toFixed(2), usuarioId, b.notas],
       );
       await c.query(
-        `INSERT INTO compra_items (id, compra_id, linea, presentacion_id, cantidad, factor, costo_unitario, itbis, total, en_oferta, costo_regular)
+        `INSERT INTO compra_items (id, compra_id, linea, presentacion_id, cantidad, factor, costo_unitario, itbis, total, en_oferta, costo_regular,
+                                   numero_lote, vence_en)
          SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::smallint[], $4::uuid[], $5::numeric[], $6::numeric[], $7::numeric[],
-                              $8::numeric[], $9::numeric[], $10::boolean[], $11::numeric[])`,
+                              $8::numeric[], $9::numeric[], $10::boolean[], $11::numeric[], $12::varchar[], $13::date[])`,
         [lineas.map(() => uuidv7()), lineas.map(() => id), lineas.map((l) => l.linea), lineas.map((l) => l.it.presentacionId),
          lineas.map((l) => l.it.cantidad), lineas.map((l) => l.p.factor), lineas.map((l) => l.it.costoUnitario),
          lineas.map((l) => l.imp.toFixed(2)), lineas.map((l) => l.base.plus(l.imp).toFixed(2)),
-         lineas.map((l) => l.it.enOferta), lineas.map((l) => (l.it.enOferta ? l.it.costoRegular : null))],
+         lineas.map((l) => l.it.enOferta), lineas.map((l) => (l.it.enOferta ? l.it.costoRegular : null)),
+         lineas.map((l) => l.it.numeroLote), lineas.map((l) => l.it.loteVence)],
       );
+      // Lote de cada línea (con su vencimiento): la entrada al kardex lo lleva
+      const lotes: (string | null)[] = [];
+      for (const l of lineas) lotes.push(await registrarLote(c, l.p.productoId, l.it.numeroLote, l.it.loteVence));
       // Entrada al inventario: unidades base y costo por unidad base (el trigger recalcula el promedio)
       await c.query(
         `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                         documento_tipo, documento_id, motivo, usuario_id)
-         SELECT x.id, $2, $3, x.producto, 'COMPRA', x.cantidad, x.costo, 'compra', $4, $5, $6
-           FROM unnest($1::uuid[], $7::uuid[], $8::numeric[], $9::numeric[]) AS x(id, producto, cantidad, costo)`,
+                                         documento_tipo, documento_id, motivo, usuario_id, lote_id)
+         SELECT x.id, $2, $3, x.producto, 'COMPRA', x.cantidad, x.costo, 'compra', $4, $5, $6, x.lote
+           FROM unnest($1::uuid[], $7::uuid[], $8::numeric[], $9::numeric[], $10::uuid[]) AS x(id, producto, cantidad, costo, lote)`,
         [lineas.map(() => uuidv7()), b.sucursalId, suc.almacen, id,
          `Compra${b.numeroFactura ? ` factura ${b.numeroFactura}` : ""}${b.ncfProveedor ? ` NCF ${b.ncfProveedor}` : ""}`, usuarioId,
          lineas.map((l) => l.p.productoId), lineas.map((l) => new Decimal(l.it.cantidad).mul(l.p.factor).toString()),
-         lineas.map((l) => new Decimal(l.it.costoUnitario).div(l.p.factor).toDecimalPlaces(4).toString())],
+         lineas.map((l) => new Decimal(l.it.costoUnitario).div(l.p.factor).toDecimalPlaces(4).toString()), lotes],
       );
       // Último costo NORMAL del proveedor (la oferta no cambia su precio de lista)
       for (const l of lineas) {

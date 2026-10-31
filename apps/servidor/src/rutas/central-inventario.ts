@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Decimal } from "decimal.js";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { repartirPorLotes } from "../lotes.js";
 
 /**
  * Administración central: ajustes de inventario, conteos físicos, reportes,
@@ -50,13 +51,23 @@ async function crearAjuste(
   );
   let valor = new Decimal(0);
   for (const l of d.lineas) {
-    const kardexId = uuidv7();
-    const k = await c.query<{ costo_unitario: string }>(
-      `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                       documento_tipo, documento_id, motivo, usuario_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'ajuste',$8,$9,$10) RETURNING costo_unitario`,
-      [kardexId, d.sucursalId, d.almacenId, l.productoId, l.tipo, l.cantidad.toFixed(3), l.costoUnitario ?? 0, id, l.nota ?? d.motivo, d.usuarioId],
-    );
+    // Las salidas se reparten por lotes: primero lo que vence antes; si es por VENCIMIENTO, primero lo ya vencido.
+    // (El documento guarda la línea completa; el kardex puede llevar una fila por lote.)
+    const piezas = l.cantidad.lt(0) && l.tipo !== "CONTEO_FISICO"
+      ? await repartirPorLotes(c, d.almacenId, [{ productoId: l.productoId, cantidad: l.cantidad.toFixed(3) }], { vencidosPrimero: l.tipo === "VENCIMIENTO" })
+      : [{ productoId: l.productoId, cantidad: l.cantidad.toFixed(3), loteId: null, indice: 0 }];
+    let kardexId = "";
+    let k = { rows: [{ costo_unitario: "0" }] };
+    for (const pieza of piezas) {
+      const kid = uuidv7();
+      if (!kardexId) kardexId = kid;
+      k = await c.query<{ costo_unitario: string }>(
+        `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
+                                         documento_tipo, documento_id, motivo, usuario_id, lote_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'ajuste',$8,$9,$10,$11) RETURNING costo_unitario`,
+        [kid, d.sucursalId, d.almacenId, l.productoId, l.tipo, pieza.cantidad, l.costoUnitario ?? 0, id, l.nota ?? d.motivo, d.usuarioId, pieza.loteId],
+      );
+    }
     await c.query(
       `INSERT INTO ajuste_items (id, ajuste_id, producto_id, tipo, cantidad, costo_unitario, kardex_id, nota)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -76,6 +87,7 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "valorizacion": { vista: "rpt_valorizacion_inventario", sucursal: true, orden: "valor DESC" },
   "bajo-minimo": { vista: "rpt_bajo_minimo", sucursal: true, orden: "nombre" },
   "por-vencer": { vista: "rpt_proximos_vencer", sucursal: true, orden: "vence_en" },
+  "reposicion": { vista: "rpt_reposicion", sucursal: true, orden: "dias_de_inventario NULLS LAST, sugerido_comprar DESC" },
   "perdidas": { vista: "rpt_perdidas", fecha: true, sucursal: true, orden: "fecha DESC" },
   "ajustes": { vista: "rpt_ajustes", fecha: true, sucursal: true, orden: "fecha DESC, numero DESC" },
   "ofertas": { vista: "rpt_ofertas", fecha: true, sucursal: true, orden: "fecha DESC" },

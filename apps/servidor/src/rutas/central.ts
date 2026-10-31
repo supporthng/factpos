@@ -47,7 +47,7 @@ export async function rutasCentral(app: FastifyInstance) {
     const p = [e, suc];
     const enSuc = (col: string) => `($2::uuid[] IS NULL OR ${col} = ANY($2))`;
     const hoyRd = "(now() AT TIME ZONE 'America/Santo_Domingo')::date";
-    const [comparar, cierres, ecf, incidentes, cert, secuencias, correos] = await Promise.all([
+    const [comparar, cierres, ecf, incidentes, cert, secuencias, correos, vencimientos] = await Promise.all([
       pool.query(
         `SELECT COALESCE(SUM(venta_total) FILTER (WHERE fecha = ${hoyRd} - 1), 0) AS ayer,
                 COALESCE(SUM(venta_total) FILTER (WHERE fecha = ${hoyRd} - 7), 0) AS "semanaPasada",
@@ -80,6 +80,13 @@ export async function rutasCentral(app: FastifyInstance) {
           ORDER BY 3 LIMIT 10`, p),
       pool.query(
         `SELECT COUNT(*)::int AS n FROM correos_enviados WHERE empresa_id = $1 AND estado = 'ERROR' AND creado_en > now() - interval '3 days'`, [e]),
+      // Lotes vencidos que siguen en existencia y los que vencen en 15 días
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE v.dias_para_vencer < 0)::int AS vencidos,
+                COALESCE(SUM(v.valor_al_costo) FILTER (WHERE v.dias_para_vencer < 0), 0)::text AS "valorVencido",
+                COUNT(*) FILTER (WHERE v.dias_para_vencer BETWEEN 0 AND 15)::int AS proximos
+           FROM rpt_proximos_vencer v JOIN sucursales s ON s.id = v.sucursal_id
+          WHERE s.empresa_id = $1 AND ${enSuc("v.sucursal_id")}`, p),
     ]);
     return {
       ...comparar.rows[0],
@@ -89,6 +96,7 @@ export async function rutasCentral(app: FastifyInstance) {
       certificado: cert.rows[0],
       secuencias: secuencias.rows,
       correosConError: correos.rows[0].n,
+      vencimientos: vencimientos.rows[0],
     };
   });
 

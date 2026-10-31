@@ -138,7 +138,10 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       await c.query("SELECT id FROM empresas WHERE id=$1 FOR UPDATE", [empresaDe(req)]);
       const suc = await c.query("SELECT id FROM sucursales WHERE id=$1 AND empresa_id=$2", [b.sucursalId, empresaDe(req)]);
       if (!suc.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
-      const fecha = await c.query("SELECT ($1::date = to_date($1, 'YYYY-MM-DD')) AS valida, ($1::date >= CURRENT_DATE) AS vigente", [b.venceEn]);
+      // to_date acepta 2026-02-30 (lo pasa a marzo): la fecha es válida solo si vuelve igual
+      const fecha = await c.query(
+        "SELECT to_char(to_date($1::text, 'YYYY-MM-DD'), 'YYYY-MM-DD') = $1::text AS valida, to_date($1::text, 'YYYY-MM-DD') >= CURRENT_DATE AS vigente",
+        [b.venceEn]);
       if (!fecha.rows[0]?.valida || !fecha.rows[0]?.vigente) throw new ErrorNegocio("Fecha de vencimiento inválida o vencida", 400);
       const choque = await c.query(
         `SELECT r.id FROM facturacion_rangos_ncf r JOIN sucursales s ON s.id=r.sucursal_id

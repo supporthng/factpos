@@ -42,6 +42,7 @@ const modos: Record<string, Modo> = { clientes: "ultimo" };
 const opciones: Record<string, Parameters<typeof aplicarFilas>[4]> = {
   // La sucursal es dueña del contador: nunca retrocede aunque la central tenga un número viejo
   ecf_rangos: { extraSet: { siguiente: "GREATEST(ecf_rangos.siguiente, EXCLUDED.siguiente)" } },
+  facturacion_rangos_ncf: { extraSet: { siguiente: "GREATEST(facturacion_rangos_ncf.siguiente, EXCLUDED.siguiente)" } },
   categorias: { orden: "ORDER BY (r.padre_id IS NOT NULL)" },
 };
 

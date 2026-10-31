@@ -136,9 +136,9 @@ export async function rutasFacturas(app: FastifyInstance) {
       // (incluye los componentes de los combos)
       await c.query(
         `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
-                                         documento_tipo, documento_id, motivo, usuario_id)
+                                         documento_tipo, documento_id, motivo, usuario_id, lote_id)
          SELECT gen_random_uuid(), $2, $3, k.producto_id, 'DEVOLUCION_VENTA', -k.cantidad, k.costo_unitario,
-                'venta', $1, $4, $5
+                'venta', $1, $4, $5, k.lote_id
            FROM kardex_movimientos k
           WHERE k.documento_tipo = 'venta' AND k.documento_id = $6 AND k.tipo = 'VENTA'
           ORDER BY k.id`,

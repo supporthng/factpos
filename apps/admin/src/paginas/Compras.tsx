@@ -15,6 +15,8 @@ interface Referencia {
 interface Linea {
   clave: string; presentacionId: string; nombre: string; presentacion: string; factor: string;
   cantidad: string; costo: string; enOferta: boolean; costoRegular: string; ref: Referencia | null;
+  /** Lote y vencimiento de lo recibido (obligatorio si el producto controla lotes) */
+  lote: string; vence: string;
 }
 
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
@@ -80,6 +82,7 @@ function DetalleCompra({ id, onCerrar }: { id: string; onCerrar: () => void }) {
               { titulo: "Producto", valor: (i: any) => <>{i.nombre} <span className="suave">{i.presentacion}</span>{i.enOferta && <span className="pastilla en-oferta">En oferta</span>}</> },
               { titulo: "Cant.", der: true, valor: (i: any) => num(i.cantidad, n(i.cantidad) % 1 ? 2 : 0) },
               { titulo: "Costo", der: true, valor: (i: any) => <>{rd(i.costoUnitario)}{i.enOferta && i.costoRegular && <small className="suave bloque tachado">{rd(i.costoRegular)}</small>}</> },
+              { titulo: "Lote", valor: (i: any) => (i.numeroLote || i.loteVence ? <>{i.numeroLote ?? "—"}{i.loteVence && <small className="suave bloque">vence {fechaCorta(i.loteVence)}</small>}</> : <span className="suave">—</span>) },
               { titulo: "ITBIS", der: true, valor: (i: any) => rd(i.itbis) },
               { titulo: "Total", der: true, valor: (i: any) => <b>{rd(i.total)}</b> },
             ]} />
@@ -120,7 +123,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     if (lineas.some((l) => l.presentacionId === presentacionId)) return setMsg(`${p.nombre} ${pr.nombre} ya está en la compra.`);
     setMsg("");
     const clave = crypto.randomUUID();
-    setLineas((ls) => [...ls, { clave, presentacionId, nombre: p.nombre, presentacion: pr.nombre, factor: pr.factor, cantidad: "", costo: "", enOferta: false, costoRegular: "", ref: null }]);
+    setLineas((ls) => [...ls, { clave, presentacionId, nombre: p.nombre, presentacion: pr.nombre, factor: pr.factor, cantidad: "", costo: "", enOferta: false, costoRegular: "", ref: null, lote: "", vence: "" }]);
     try {
       const ref = await api<Referencia>(`/central/ofertas/referencia/${presentacionId}`);
       // Se propone el último costo normal (por presentación) como punto de partida
@@ -166,6 +169,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
           items: lineas.map((l) => ({
             presentacionId: l.presentacionId, cantidad: String(n(l.cantidad)), costoUnitario: String(n(l.costo)),
             enOferta: l.enOferta, costoRegular: l.enOferta && l.costoRegular ? String(n(l.costoRegular)) : null,
+            numeroLote: l.lote.trim() || null, loteVence: l.vence || null,
           })),
         },
       });
@@ -230,7 +234,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
         {lineas.length === 0 ? <p className="suave">Agregue los productos de la factura.</p> : (
           <div className="tabla-contenedor">
             <table className="tabla tabla-edicion tabla-compra">
-              <thead><tr><th>Producto</th><th className="der">Cantidad</th><th className="der">Costo sin ITBIS</th><th>En oferta del proveedor</th><th>Compras anteriores</th><th className="der">Total</th><th /></tr></thead>
+              <thead><tr><th>Producto</th><th className="der">Cantidad</th><th className="der">Costo sin ITBIS</th><th>En oferta del proveedor</th><th>Lote y vencimiento</th><th>Compras anteriores</th><th className="der">Total</th><th /></tr></thead>
               <tbody>
                 {lineas.map((l, i) => {
                   const f = n(l.factor);
@@ -257,6 +261,14 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
                             <input className="numero" inputMode="decimal" value={l.costoRegular} placeholder="Sin oferta"
                               onChange={(e) => fijar(l.clave, { costoRegular: e.target.value.replace(/[^\d.]/g, "") })} /></span>
                         )}
+                      </td>
+                      <td style={{ width: 170 }}>
+                        <span className="lote-linea">
+                          <input value={l.lote} placeholder="Lote (opcional)" maxLength={40} aria-label="Número de lote"
+                            onChange={(e) => fijar(l.clave, { lote: e.target.value })} />
+                          <input type="date" value={l.vence} min={hoy()} aria-label="Fecha de vencimiento" title="Vence"
+                            onChange={(e) => fijar(l.clave, { vence: e.target.value })} />
+                        </span>
                       </td>
                       <td className="pequeno referencia-linea">
                         {!l.ref ? <span className="suave">…</span> : (
