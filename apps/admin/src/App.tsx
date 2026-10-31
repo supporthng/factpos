@@ -542,7 +542,25 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
 }
 
 /** Aplicación + pantalla de actualización (que tapa todo mientras el servidor se actualiza y cierra la sesión al terminar). */
+/** En el celular las tablas «apiladas» se ven como tarjetas: cada celda lleva el nombre de su columna. */
+function useTablasApiladas() {
+  useEffect(() => {
+    const poner = () => document.querySelectorAll<HTMLTableElement>("table.apilada").forEach((t) => {
+      const cab = Array.from(t.tHead?.rows[0]?.cells ?? []).map((h) => h.textContent?.trim() ?? "");
+      t.querySelectorAll("tbody > tr").forEach((tr) => Array.from(tr.children).forEach((td, i) => {
+        const e = td as HTMLElement;
+        if (!e.hasAttribute("colspan") && cab[i] && e.dataset.label !== cab[i]) e.dataset.label = cab[i];
+      }));
+    });
+    poner();
+    const o = new MutationObserver(poner);
+    o.observe(document.body, { childList: true, subtree: true });
+    return () => o.disconnect();
+  }, []);
+}
+
 export function App() {
+  useTablasApiladas();
   const servidor = () => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin);
   const listo = usePreparado(servidor, () => fijarSesion(null));
   return (

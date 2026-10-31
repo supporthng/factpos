@@ -1004,3 +1004,15 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .mov-usuarios { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2px 16px; margin: 8px 0 4px 26px; max-height: 280px; overflow: auto; }
 .bloqueo-movil { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; }
 .bloqueo-movil > div { max-width: 360px; }
+
+/* Tablas apiladas: en el celular cada fila es una tarjeta */
+@media (max-width: 720px) {
+  table.apilada, table.apilada tbody, table.apilada tr, table.apilada td { display: block; width: 100%; box-sizing: border-box; }
+  table.apilada thead { display: none; }
+  .tabla-contenedor:has(> table.apilada) { background: none; border: 0; box-shadow: none; overflow: visible; }
+  table.apilada tbody tr { background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio); margin-bottom: 12px; padding: 6px 0; box-shadow: var(--sombra); }
+  table.apilada td { border: 0; padding: 6px 14px; text-align: left !important; overflow-wrap: anywhere; }
+  table.apilada td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); margin-bottom: 2px; }
+  table.apilada td[colspan] { padding: 10px 14px; }
+  table.apilada .detalle-cliente { overflow-x: hidden; }
+}
