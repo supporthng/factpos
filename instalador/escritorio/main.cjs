@@ -5,6 +5,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 const crypto = require('node:crypto');
+const os = require('node:os');
 
 const ICON = path.join(__dirname, 'factpos.ico');
 if (process.platform === 'win32') app.setAppUserModelId('com.factpos.escritorio');
@@ -89,6 +90,7 @@ function startUiServer() {
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
           return res.end(JSON.stringify({ servidor: localUrl }));
         }
+        if (u.pathname === '/principal') return principalApi(req, res, u);
         if (u.pathname === '/sw.js') { res.writeHead(404); return res.end(); } // sin service worker: la aplicación ya funciona sin conexión
         const root = uiRoot();
         let rel = decodeURIComponent(u.pathname);
@@ -114,6 +116,82 @@ function fetchBuf(url) {
     });
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('tiempo agotado')); });
+  });
+}
+// ------------------------------------------------------------------ Caja principal
+// Si se cae el servidor, las cajas se pasan existencia entre sí por la red local. La caja principal solo hace de
+// buzón (guarda mensajes en memoria); quien decide cuánto da cada caja es esa misma caja, con su propio cupo.
+const BUZON_PORT = 47832;
+let buzonSrv = null;
+let claveRed = null;
+const buzones = new Map(); // cajaId -> { en, msgs[] }
+function lanUrl() {
+  const cand = [];
+  for (const list of Object.values(os.networkInterfaces())) for (const i of list || []) if (i.family === 'IPv4' && !i.internal) cand.push(i.address);
+  const ip = cand.find(a => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))/.test(a)) || cand[0];
+  return ip ? `http://${ip}:${BUZON_PORT}` : null;
+}
+function startBuzon() {
+  if (buzonSrv) return;
+  buzonSrv = http.createServer((req, res) => {
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, x-clave-red', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'content-type': 'application/json' };
+    const out = (code, obj) => { res.writeHead(code, cors); res.end(JSON.stringify(obj ?? {})); };
+    if (req.method === 'OPTIONS') return out(204);
+    if (!claveRed) return out(503, { error: 'sin clave' });
+    const dada = Buffer.from(String(req.headers['x-clave-red'] || ''));
+    const buena = Buffer.from(claveRed);
+    if (dada.length !== buena.length || !crypto.timingSafeEqual(dada, buena)) return out(401, { error: 'clave' });
+    const u = new URL(req.url, 'http://x');
+    const box = id => { let b = buzones.get(id); if (!b) buzones.set(id, b = { en: 0, msgs: [] }); return b; };
+    const push = (id, m) => { const b = box(id); if (b.msgs.length < 200) b.msgs.push(m); };
+    if (req.method === 'GET' && u.pathname === '/buzon') {
+      const id = u.searchParams.get('caja') || '';
+      if (!/^[0-9a-f-]{36}$/.test(id)) return out(400);
+      const b = box(id); b.en = Date.now();
+      const msgs = b.msgs; b.msgs = [];
+      return out(200, { msgs });
+    }
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', c => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on('end', () => {
+        try {
+          const m = JSON.parse(body);
+          const num = Number(m.cantidad);
+          const idOk = v => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v);
+          if (!idOk(m.de) || !idOk(m.productoId) || !(num > 0) || num > 1e6) return out(400);
+          if (u.pathname === '/pedir') {
+            for (const [id, b] of buzones) if (id !== m.de && Date.now() - b.en < 30000) push(id, { tipo: 'pedir', de: m.de, productoId: m.productoId, cantidad: num });
+            return out(200);
+          }
+          if (u.pathname === '/entregar' && idOk(m.para)) { push(m.para, { tipo: 'entrega', de: m.de, productoId: m.productoId, cantidad: num }); return out(200); }
+          return out(404);
+        } catch { return out(400); }
+      });
+      return;
+    }
+    out(404);
+  });
+  buzonSrv.on('error', () => { buzonSrv = null; });
+  buzonSrv.listen(BUZON_PORT, '0.0.0.0');
+}
+function stopBuzon() { if (buzonSrv) { buzonSrv.close(); buzonSrv = null; } buzones.clear(); }
+// La pantalla de esta misma caja enciende o apaga el papel de principal (solo desde 127.0.0.1)
+function principalApi(req, res, u) {
+  const origin = req.headers.origin;
+  if (req.headers.host !== `127.0.0.1:${UI_PORT}` || (origin && origin !== `http://127.0.0.1:${UI_PORT}`)) { res.writeHead(403); return res.end(); }
+  const json = (obj) => { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  if (req.method === 'GET') return json({ activo: !!config.principal, url: lanUrl() });
+  let body = '';
+  req.on('data', c => { body += c; if (body.length > 2048) req.destroy(); });
+  req.on('end', () => {
+    try {
+      const m = JSON.parse(body);
+      if (typeof m.clave === 'string' && m.clave.length >= 16 && m.clave.length < 200) claveRed = m.clave;
+      if (typeof m.activo === 'boolean' && m.activo !== !!config.principal) { config.principal = m.activo; saveConfig(); }
+      if (config.principal) startBuzon(); else stopBuzon();
+      json({ activo: !!config.principal, url: lanUrl() });
+    } catch { res.writeHead(400); res.end(); }
   });
 }
 let syncing = false;
@@ -173,6 +251,7 @@ async function startCaja() {
     app.quit(); return;
   }
   endpoint = new URL(`http://127.0.0.1:${UI_PORT}/`);
+  if (config.principal) startBuzon(); // la clave llega cuando la pantalla habla con el servidor
   // Si el servidor está en este mismo equipo y no corre, se intenta encender sin hacer esperar a la caja
   if (server && localServer()) { available(server).then(ok => { if (!ok) startInstalledServer(); }); }
   openMain();
@@ -237,10 +316,18 @@ async function start() {
   watchUpdates();
 }
 
-function openMain() {
-  const win = new BrowserWindow({ icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+function openMain(onShown) {
+  const win = new BrowserWindow({ show: false, icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   mainOpened = true;
   mainWindow = win;
+  // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
+  // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
+  let shown = false, calma = null;
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (onShown) onShown(); };
+  const tope = setTimeout(mostrar, 12000);
+  win.webContents.on('did-start-loading', () => clearTimeout(calma));
+  win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 1500); });
+  win.webContents.on('did-fail-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 500); });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
     try { if (new URL(url).origin !== endpoint.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
@@ -300,10 +387,14 @@ function beginUpdate(state) {
 }
 function finishUpdate(ok, text) {
   sendMini({ paso: text, porcentaje: 100, final: true, ok });
-  setTimeout(() => {
+  // La ventana de avance se queda hasta que el sistema esté listo para usarse
+  const cerrarMini = () => {
     if (miniWindow && !miniWindow.isDestroyed()) { miniWindow.setClosable(true); miniWindow.destroy(); }
     miniWindow = null; updating = false;
-    if (selected === 'caja') syncUi().finally(openMain); else openMain();
+  };
+  setTimeout(() => {
+    sendMini({ paso: 'Abriendo el sistema…', porcentaje: 100, final: true, ok });
+    if (selected === 'caja') syncUi().finally(() => openMain(cerrarMini)); else openMain(cerrarMini);
   }, ok ? 2000 : 4500);
 }
 function watchUpdates() {

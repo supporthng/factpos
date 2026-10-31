@@ -22,6 +22,12 @@ export const FUNCIONES = [
     porDefecto: false,
   },
   {
+    clave: "caja_principal",
+    titulo: "Caja principal (las cajas se pasan existencia sin servidor)",
+    descripcion: "Requiere activar los cupos de existencia. Permite marcar una caja como principal: si se cae el servidor, la caja que se quede sin su parte de un producto se la pide a las demás por la red local. La caja principal debe quedar encendida mientras se vende. Desactivada: cada caja vende solo su parte.",
+    porDefecto: false,
+  },
+  {
     clave: "acceso_web",
     titulo: "Acceso web desde internet",
     descripcion: "Permite entrar a la administración desde internet con el enlace de «Conexión web». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",

@@ -4,6 +4,8 @@ import { api, rd, type Ajustes } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
 import { Modal, TamanoPantalla, type Cliente } from "./Venta";
 import { PinSupervisor, type Aprobacion } from "./Operaciones";
+import { estadoPrincipal, fijarPrincipal } from "./contingencia";
+import { leerAjustes } from "./api";
 
 /**
  * Herramientas de la pantalla de venta: cambiar precio, descuento a toda la
@@ -287,10 +289,29 @@ export function ConfirmarCancelar({ articulos, total, onConfirmar, onCerrar }: {
 
 // ---------------------------------------------------------------- ajustes
 export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCerrar: () => void }) {
+  const [principal, setPrincipal] = useState<{ activo: boolean; url: string | null } | null>(null);
+  useEffect(() => { estadoPrincipal().then(setPrincipal); }, []);
+  const cambiarPrincipal = async (activo: boolean) => {
+    const a = leerAjustes();
+    if (a) await fijarPrincipal(a, activo);
+    setPrincipal(await estadoPrincipal());
+  };
   return (
     <Modal titulo="Configuración de esta terminal" onCerrar={onCerrar}>
       <p className="suave">{config.nombre} · {config.sucursal}</p>
       <TamanoPantalla />
+      {principal && (
+        <label className="campo">
+          <span>
+            <input type="checkbox" checked={principal.activo} onChange={(e) => void cambiarPrincipal(e.target.checked)} />{" "}
+            Esta es la caja principal
+          </span>
+          <small className="suave">
+            Si se cae el servidor, las cajas se pasan existencia entre sí a través de esta. Debe quedar encendida mientras se vende.
+            Solo una caja por sucursal. {principal.activo && (principal.url ? `Dirección en la red: ${principal.url}` : "No se detectó la red de este equipo.")}
+          </small>
+        </label>
+      )}
       <p className="nota">Atajos: F1 catálogo · F2 buscar · F3 suspender · F4 cliente · F5 en pausa · F6 cupón · F7 descuento · F8 delivery ·
         F9 facturas y devoluciones · F10 turno y cierre · F12 cobrar · Alt+P precio · Alt+N nota · Alt+Q cotización · Alt+E existencias · Alt+G gaveta · Esc cancelar.</p>
     </Modal>
