@@ -17,7 +17,9 @@ export interface ConfigCaja {
   empresa: string;
   rnc: string;
   modulos: { delivery: { activo: boolean } };
-  marca: { logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean };
+  marca: { logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; formato?: Partial<import("@factpos/compartido").FormatoTicket> };
+  direccion?: string | null;
+  telefono?: string | null;
 }
 
 /** Tema camaleón: los colores del logo del cliente pintan la terminal. */

@@ -104,7 +104,8 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
   app.get("/central/marca", async (req) => {
     const r = await pool.query(
       `SELECT e.nombre_comercial AS nombre, m.logo, COALESCE(m.color_primario, '#2dd4bf') AS primario,
-              CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END AS secundario, COALESCE(m.logo_en_ticket, true) AS "logoEnTicket"
+              CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END AS secundario, COALESCE(m.logo_en_ticket, true) AS "logoEnTicket",
+              COALESCE(m.formato_ticket, '{}'::jsonb) AS formato
          FROM empresas e LEFT JOIN configuracion_marca m ON m.empresa_id = e.id WHERE e.id = $1`,
       [empresaDe(req)],
     );
@@ -123,6 +124,21 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
        ON CONFLICT (empresa_id) DO UPDATE SET logo = $2, color_primario = $3, color_secundario = $4, logo_en_ticket = $5`,
       [empresaDe(req), b.logo, b.primario.toLowerCase(), b.secundario?.toLowerCase() ?? null, b.logoEnTicket],
     );
+    return { ok: true };
+  });
+
+  /** Diseño del ticket impreso (papel, letra, logo, datos que se muestran, encabezado y pie). */
+  app.put("/central/marca/formato", async (req) => {
+    const b = z.object({
+      papel: z.enum(["58", "80"]), letra: z.enum(["pequena", "normal", "grande"]), logoTamano: z.enum(["pequeno", "mediano", "grande"]),
+      mostrarRnc: z.boolean(), mostrarSucursal: z.boolean(), mostrarDireccion: z.boolean(), mostrarTelefono: z.boolean(),
+      encabezadoExtra: z.string().max(240), mostrarCajero: z.boolean(), mostrarCliente: z.boolean(), mostrarAhorro: z.boolean(), mostrarQr: z.boolean(),
+      pie: z.string().max(120), pieExtra: z.string().max(400),
+    }).parse(req.body);
+    await pool.query(
+      `INSERT INTO configuracion_marca (empresa_id, formato_ticket) VALUES ($1, $2::jsonb)
+       ON CONFLICT (empresa_id) DO UPDATE SET formato_ticket = $2::jsonb`,
+      [empresaDe(req), JSON.stringify(b)]);
     return { ok: true };
   });
 

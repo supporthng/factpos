@@ -27,6 +27,7 @@ import { Kardex } from "./paginas/Kardex";
 import { Fiscal } from "./paginas/Fiscal";
 import { Sucursales } from "./paginas/Sucursales";
 import { Marca } from "./paginas/Marca";
+import { FormatosImpresion } from "./paginas/FormatosImpresion";
 import { Padron } from "./paginas/Padron";
 import { Usuarios } from "./paginas/Usuarios";
 import { Cxc } from "./paginas/Cxc";
@@ -58,7 +59,8 @@ const SECCIONES = [
   { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Configuración", C: Incidentes, i: "incidentes", p: ["admin.config"] },
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
-  { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "marca", titulo: "Logo y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
   { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
@@ -119,7 +121,8 @@ const DESCRIPCION: Record<string, string> = {
   incidentes: "Fallas, caídas de conexión y soporte",
   usuarios: "Cuentas, roles y permisos del personal",
   correo: "Envío de reportes y facturas por correo",
-  marca: "Logo y colores de la caja y la administración",
+  marca: "Suba el logo de su empresa; el sistema toma sus colores",
+  formatos: "Diseño del ticket: papel, logo, encabezado, pie y datos",
   licencia: "Plan, vigencia y activación de FactPOS",
   actualizaciones: "Nuevas versiones del sistema",
   clientes: "Empresas, licencias y sus instalaciones",

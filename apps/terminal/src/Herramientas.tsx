@@ -4,6 +4,7 @@ import { api, rd, type Ajustes } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
 import { Modal, TamanoPantalla, type Cliente } from "./Venta";
 import { PinSupervisor, type Aprobacion } from "./Operaciones";
+import { EncabezadoTicket } from "./Ticket";
 import { estadoPrincipal, fijarPrincipal } from "./contingencia";
 import { leerAjustes } from "./api";
 
@@ -157,12 +158,7 @@ export function Cotizacion({ config, usuario, cliente, lineas, totales, notas, o
           </select>
         </label>
         <div className="ticket" id="ticket">
-          <div className="t-centro">
-            {config.marca.logo && config.marca.logoEnTicket && <img className="t-logo" src={config.marca.logo} alt="" />}
-            <b className="t-grande">{config.empresa}</b>
-            <div>RNC {config.rnc}</div>
-            <div>{config.sucursal}</div>
-          </div>
+          <EncabezadoTicket config={config} />
           <div className="t-linea" />
           <div className="t-centro"><b>COTIZACIÓN</b></div>
           <div className="t-centro t-copia">Documento no fiscal · no válido como factura</div>

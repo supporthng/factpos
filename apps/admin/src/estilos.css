@@ -1031,3 +1031,10 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
   .chips-filtro { flex-wrap: wrap; }
   .detalle-cliente { padding: 10px 8px; }
 }
+
+/* Vista previa del ticket (Formatos de impresión) */
+.vista-ticket { background: #fff; color: #000; font-family: ui-monospace, Consolas, "Courier New", monospace; line-height: 1.35; padding: 14px; margin: 8px auto 0; box-shadow: var(--sombra); max-width: 100%; box-sizing: content-box; overflow-wrap: anywhere; }
+.vt-centro { text-align: center; } .vt-centro img { display: block; margin: 0 auto 4px; object-fit: contain; filter: grayscale(1) contrast(1.4); }
+.vt-linea { border-top: 1px dashed #000; margin: 6px 0; }
+.vt-fila { display: flex; justify-content: space-between; gap: 8px; }
+.vt-qr { width: 30mm; height: 30mm; margin: 6px auto; border: 2px solid #000; display: grid; place-items: center; font-weight: 800; }

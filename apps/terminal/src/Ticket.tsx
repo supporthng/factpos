@@ -1,3 +1,4 @@
+import { formatoTicket, medidasTicket } from "@factpos/compartido";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { rd } from "./api";
@@ -16,6 +17,23 @@ export interface VentaRegistrada {
   notas?: string | null;
   /** Hecha en la caja sin servidor: el e-CF se firma al volver el servidor */
   contingencia?: boolean;
+}
+
+/** Encabezado del ticket según el formato elegido por el administrador (logo, datos del negocio y líneas extra). */
+export function EncabezadoTicket({ config }: { config: ConfigCaja }) {
+  const fmt = formatoTicket(config.marca.formato);
+  const med = medidasTicket(fmt);
+  return (
+    <div className="t-centro">
+      {config.marca.logo && config.marca.logoEnTicket && <img className="t-logo" src={config.marca.logo} alt="" style={{ maxWidth: med.logoAncho, maxHeight: med.logoAlto }} />}
+      <b className="t-grande">{config.empresa}</b>
+      {fmt.mostrarRnc && <div>RNC {config.rnc}</div>}
+      {fmt.mostrarSucursal && <div>{config.sucursal}</div>}
+      {fmt.mostrarDireccion && config.direccion && <div>{config.direccion}</div>}
+      {fmt.mostrarTelefono && config.telefono && <div>Tel. {config.telefono}</div>}
+      {fmt.encabezadoExtra.split("\n").filter((l) => l.trim()).map((l, i) => <div key={i}>{l}</div>)}
+    </div>
+  );
 }
 
 const NOMBRE_TIPO: Record<string, string> = {
@@ -39,6 +57,8 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
   venta: VentaRegistrada; copia?: boolean; config: ConfigCaja; usuario: Usuario; onCerrar: () => void;
 }) {
   const [qr, setQr] = useState("");
+  const fmt = formatoTicket(config.marca.formato);
+  const med = medidasTicket(fmt);
   useEffect(() => {
     if (!venta.fiscal?.urlQr) return setQr("");
     QRCode.toDataURL(venta.fiscal.urlQr, { margin: 0, width: 220, errorCorrectionLevel: "M" }).then(setQr);
@@ -57,13 +77,9 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
       <div className="modal ticket-modal" onMouseDown={(e) => e.stopPropagation()}>
         {!copia && venta.tipoDocumento !== "E34" && Number(venta.cambio) > 0 && <div className="cambio-grande centro">Cambio: {rd(venta.cambio)}</div>}
         {venta.tipoDocumento === "E34" && <div className="centro aviso-devolucion">Devolver al cliente: <b>{rd(venta.total)}</b></div>}
-        <div className="ticket" id="ticket">
-          <div className="t-centro">
-            {config.marca.logo && config.marca.logoEnTicket && <img className="t-logo" src={config.marca.logo} alt="" />}
-            <b className="t-grande">{config.empresa}</b>
-            <div>RNC {config.rnc}</div>
-            <div>{config.sucursal}</div>
-          </div>
+        <style>{`@media print { @page { size: ${fmt.papel}mm auto; margin: 0; } }`}</style>
+        <div className="ticket" id="ticket" style={{ width: med.ancho, fontSize: med.letra }}>
+          <EncabezadoTicket config={config} />
           <div className="t-linea" />
           {copia && <div className="t-centro t-copia">*** COPIA ***</div>}
           <div className="t-centro"><b>{NOMBRE_TIPO[venta.tipoDocumento] ?? venta.tipoDocumento}</b></div>
@@ -72,8 +88,8 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
           {venta.encfModificado && <div className="t-fila"><span>Modifica e-NCF</span><span>{venta.encfModificado}</span></div>}
           {venta.tipoDocumento === "E34" && venta.motivo && <div className="t-fila"><span>Motivo</span><span>{venta.motivo}</span></div>}
           <div className="t-fila"><span>Fecha</span><span>{fechaRD(venta.fecha)}</span></div>
-          <div className="t-fila"><span>{config.nombre} · #{venta.numero}</span><span>{usuario.nombre}</span></div>
-          {venta.cliente && (
+          <div className="t-fila"><span>{config.nombre} · #{venta.numero}</span>{fmt.mostrarCajero && <span>{usuario.nombre}</span>}</div>
+          {fmt.mostrarCliente && venta.cliente && (
             <>
               <div className="t-fila"><span>Cliente</span><span>{venta.cliente.nombre}</span></div>
               {venta.cliente.documento && <div className="t-fila"><span>RNC/Cédula</span><span>{venta.cliente.documento}</span></div>}
@@ -91,7 +107,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
           <div className="t-linea" />
           <div className="t-fila"><span>Subtotal</span><span>{rd(venta.subtotal)}</span></div>
           <div className="t-fila"><span>ITBIS</span><span>{rd(venta.itbis)}</span></div>
-          {Number(venta.descuento) > 0 && <div className="t-fila"><span>Usted ahorró</span><span>{rd(venta.descuento)}</span></div>}
+          {fmt.mostrarAhorro && Number(venta.descuento) > 0 && <div className="t-fila"><span>Usted ahorró</span><span>{rd(venta.descuento)}</span></div>}
           <div className="t-fila t-total"><span>TOTAL</span><span>{rd(venta.total)}</span></div>
           {venta.pagos.map((p, i) => (
             <div key={i} className="t-fila"><span>{PAGO[p.formaPago] ?? p.formaPago}{p.formaPago === "TARJETA" && p.referencia ? ` · Aprob. ${p.referencia}` : ""}</span><span>{rd(p.recibido ?? p.monto)}</span></div>
@@ -107,12 +123,13 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
               </div>
             ) : venta.fiscal ? (
               <>
-                {qr && <img src={qr} alt="Código QR del comprobante" className="t-qr" />}
+                {fmt.mostrarQr && qr && <img src={qr} alt="Código QR del comprobante" className="t-qr" />}
                 <div>Código de seguridad: <b>{venta.fiscal.codigoSeguridad}</b></div>
                 <div>Fecha de firma: {fechaRD(venta.fiscal.fechaFirma)}</div>
               </>
             ) : null}
-            {venta.tipoDocumento !== "E34" && <div className="t-pie">¡Gracias por su compra!</div>}
+            {venta.tipoDocumento !== "E34" && fmt.pie && <div className="t-pie">{fmt.pie}</div>}
+            {fmt.pieExtra && <div className="t-pie t-nota">{fmt.pieExtra}</div>}
           </div>
         </div>
         <div className="acciones-ticket">
