@@ -7,6 +7,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { repartirPorLotes } from "../lotes.js";
 import { exigirFuncion } from "./central-seguridad.js";
+import { verificarClave } from "../sesion.js";
 
 /**
  * Administración central: ajustes de inventario, conteos físicos, reportes,
@@ -145,6 +146,136 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         sucursalId: b.sucursalId, almacenId, usuarioId, motivo: b.motivo, origen: "MANUAL",
         lineas: b.items.map((i) => ({ productoId: i.productoId, tipo: "AJUSTE_ENTRADA" as const, cantidad: new Decimal(i.cantidad), costoUnitario: i.costoUnitario, nota: i.nota })),
       });
+    });
+    rep.code(201);
+    return r;
+  });
+
+
+  // -------------------------------------------------------------------
+  // Actualizar el inventario con Excel (existencia contada o ajuste)
+  // -------------------------------------------------------------------
+  const cuerpoExcel = z.object({
+    sucursalId: uuid, almacenId: uuid.optional(),
+    modo: z.enum(["FIJAR", "SUMAR"]),
+    filas: z.array(z.object({
+      fila: z.number().int(), sku: z.string().trim().max(60).optional(), codigo: z.string().trim().max(30).optional(),
+      cantidad: z.number().finite().min(-1e9).max(1e9), costo: z.number().finite().min(0).max(1e9).optional(),
+    })).min(1).max(5000),
+  });
+  const accesoSucursal = (req: { headers: Record<string, unknown> }, sucursalId: string) => {
+    const p = sucursalesDe(req);
+    if (p && !p.includes(sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
+  };
+  interface Resuelta { fila: number; productoId?: string; sku?: string; nombre?: string; actual: number; nuevo: number; diferencia: number; costo?: number; error?: string }
+  /** Cada fila se busca por SKU o código de barras; la diferencia contra la existencia actual es lo que se ajusta. */
+  const resolverExcel = async (c: Pick<PoolClient, "query">, empresaId: string, almacenId: string, b: z.infer<typeof cuerpoExcel>): Promise<Resuelta[]> => {
+    const vistos = new Set<string>();
+    const salida: Resuelta[] = [];
+    for (const f of b.filas) {
+      const clave = (f.sku || f.codigo || "").trim();
+      if (!clave) { salida.push({ fila: f.fila, actual: 0, nuevo: 0, diferencia: 0, error: "Sin SKU ni código de barras" }); continue; }
+      const r = await c.query<{ id: string; sku: string; nombre: string; actual: string }>(
+        `SELECT p.id, p.sku, p.nombre, COALESCE(e.cantidad, 0)::text AS actual
+           FROM productos p LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = $2
+          WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock AND (
+                ($3 <> '' AND lower(p.sku) = lower($3))
+             OR ($4 <> '' AND p.id IN (SELECT pr.producto_id FROM codigos_barra cb JOIN presentaciones pr ON pr.id = cb.presentacion_id WHERE cb.empresa_id = $1 AND cb.codigo = $4)))
+          LIMIT 1`,
+        [empresaId, almacenId, f.sku ?? "", f.codigo ?? ""],
+      );
+      if (!r.rowCount) { salida.push({ fila: f.fila, actual: 0, nuevo: 0, diferencia: 0, error: `No se encontró «${clave}» (o no lleva inventario)` }); continue; }
+      const p = r.rows[0];
+      if (vistos.has(p.id)) { salida.push({ fila: f.fila, sku: p.sku, nombre: p.nombre, actual: Number(p.actual), nuevo: 0, diferencia: 0, error: "Producto repetido en el archivo: se usa la primera fila" }); continue; }
+      vistos.add(p.id);
+      const actual = Number(p.actual);
+      const nuevo = b.modo === "FIJAR" ? f.cantidad : actual + f.cantidad;
+      if (nuevo < 0) { salida.push({ fila: f.fila, productoId: p.id, sku: p.sku, nombre: p.nombre, actual, nuevo, diferencia: 0, error: "La existencia no puede quedar negativa" }); continue; }
+      salida.push({ fila: f.fila, productoId: p.id, sku: p.sku, nombre: p.nombre, actual, nuevo, diferencia: Math.round((nuevo - actual) * 1000) / 1000, costo: f.costo });
+    }
+    return salida;
+  };
+
+  app.post("/central/inventario/excel/vista", async (req) => {
+    const b = cuerpoExcel.parse(req.body);
+    accesoSucursal(req, b.sucursalId);
+    const almacenId = await almacenDe(pool, b.sucursalId, b.almacenId);
+    return { filas: await resolverExcel(pool, empresaDe(req), almacenId, b) };
+  });
+
+  app.post("/central/inventario/excel/aplicar", async (req, rep) => {
+    const b = cuerpoExcel.extend({ motivo: z.string().trim().min(3).max(200) }).parse(req.body);
+    accesoSucursal(req, b.sucursalId);
+    const usuarioId = uuid.parse(req.headers["x-usuario-id"]);
+    const r = await enTransaccion(async (c) => {
+      const almacenId = await almacenDe(c, b.sucursalId, b.almacenId);
+      const filas = (await resolverExcel(c, empresaDe(req), almacenId, b)).filter((f) => !f.error && f.productoId && f.diferencia !== 0);
+      if (!filas.length) throw new ErrorNegocio("No hay diferencias que aplicar: la existencia ya coincide con el archivo.");
+      const ajuste = await crearAjuste(c, {
+        sucursalId: b.sucursalId, almacenId, usuarioId, motivo: `Actualización por Excel: ${b.motivo}`, origen: "MANUAL",
+        lineas: filas.map((f) => ({
+          productoId: f.productoId!, tipo: f.diferencia > 0 ? "AJUSTE_ENTRADA" as const : "AJUSTE_SALIDA" as const,
+          cantidad: new Decimal(f.diferencia), costoUnitario: f.diferencia > 0 && f.costo ? f.costo.toFixed(4) : undefined, nota: `Excel fila ${f.fila}`,
+        })),
+      });
+      return { ...ajuste, productos: filas.length };
+    });
+    rep.code(201);
+    return r;
+  });
+
+  /** Archivo base para editar y volver a subir: SKU, código de barras, nombre y existencia actual. */
+  app.get("/central/inventario/plantilla", async (req, rep) => {
+    const f = z.object({ sucursalId: uuid, almacenId: uuid.optional() }).parse(req.query);
+    accesoSucursal(req, f.sucursalId);
+    const almacenId = await almacenDe(pool, f.sucursalId, f.almacenId);
+    const r = await pool.query(
+      `SELECT p.sku AS "SKU",
+              (SELECT string_agg(cb.codigo, ' ') FROM codigos_barra cb JOIN presentaciones pr ON pr.id = cb.presentacion_id WHERE pr.producto_id = p.id AND cb.empresa_id = p.empresa_id) AS "Código de barras",
+              p.nombre AS "Producto", COALESCE(e.cantidad, 0)::text AS "Existencia"
+         FROM productos p LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = $2
+        WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock ORDER BY p.nombre`,
+      [empresaDe(req), almacenId],
+    );
+    return enviarCsv(rep, "inventario-plantilla", r.rows);
+  });
+
+  /**
+   * Borrar inventario (deja en cero el almacén). Está en Configuración › Seguridad: la función debe estar activada,
+   * el usuario debe ser administrador (la ruta exige «*»), escribir su contraseña y la frase de confirmación.
+   * No borra productos ni historial: genera ajustes que quedan en el kardex.
+   */
+  app.post("/central/seguridad/borrar-inventario", async (req, rep) => {
+    const e = empresaDe(req);
+    await exigirFuncion(e, "borrar_inventario");
+    const b = z.object({
+      sucursalId: uuid, almacenId: uuid.optional(), clave: z.string().min(1).max(200),
+      frase: z.literal("BORRAR INVENTARIO", { errorMap: () => ({ message: "Escriba exactamente BORRAR INVENTARIO" }) }),
+      motivo: z.string().trim().min(10, "Explique el motivo (mínimo 10 caracteres)").max(180),
+    }).parse(req.body);
+    accesoSucursal(req, b.sucursalId);
+    const usuarioId = uuid.parse(req.headers["x-usuario-id"]);
+    const u = await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [usuarioId]);
+    if (!(await verificarClave(b.clave, u.rows[0]?.clave_hash))) throw new ErrorNegocio("La contraseña no es correcta", 403);
+    const r = await enTransaccion(async (c) => {
+      const s = await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, e]);
+      if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+      const almacenId = await almacenDe(c, b.sucursalId, b.almacenId);
+      const filas = await c.query<{ producto_id: string; cantidad: string }>(
+        "SELECT x.producto_id, x.cantidad FROM existencias x JOIN productos p ON p.id = x.producto_id WHERE x.almacen_id = $1 AND p.empresa_id = $2 AND x.cantidad <> 0", [almacenId, e]);
+      if (!filas.rowCount) throw new ErrorNegocio("El inventario de ese almacén ya está en cero.");
+      const ajuste = await crearAjuste(c, {
+        sucursalId: b.sucursalId, almacenId, usuarioId, motivo: `Borrado de inventario: ${b.motivo}`, origen: "MANUAL",
+        lineas: filas.rows.map((x) => {
+          const q = new Decimal(x.cantidad);
+          return { productoId: x.producto_id, tipo: q.gt(0) ? "AJUSTE_SALIDA" as const : "AJUSTE_ENTRADA" as const, cantidad: q.neg(), nota: "Borrado de inventario" };
+        }),
+      });
+      await c.query(
+        `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+         VALUES ($1,$2,$3,$3,'inventario.borrar','ajuste',$4,$5)`,
+        [uuidv7(), b.sucursalId, usuarioId, ajuste.id, JSON.stringify({ motivo: b.motivo, productos: filas.rowCount })]);
+      return { ...ajuste, productos: filas.rowCount };
     });
     rep.code(201);
     return r;

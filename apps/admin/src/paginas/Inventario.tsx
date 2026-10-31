@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { api, rd, num, descargarCsv } from "../api";
+import { api, rd, num, descargarCsv, puede } from "../api";
 import { Aviso, Encabezado, Tabla, useCatalogo, useDatos } from "../ui";
+import { ActualizarInventarioExcel } from "./ActualizarInventarioExcel";
 
 interface Fila {
   productoId: string; sku: string; nombre: string; existenciaTotal: string; valorTotal: string;
@@ -14,7 +15,8 @@ export function Inventario() {
   const [bajo, setBajo] = useState(false);
   const [buscar, setBuscar] = useState("");
   const ruta = `/central/inventario?${new URLSearchParams({ ...(buscar ? { q: buscar } : {}), ...(bajo ? { soloBajoMinimo: "1" } : {}) })}`;
-  const { datos, error } = useDatos<Fila[]>(ruta);
+  const { datos, error, recargar } = useDatos<Fila[]>(ruta);
+  const [excel, setExcel] = useState(false);
   const [editar, setEditar] = useState<{ productoId: string; sucursalId: string; nombre: string; sucursal: string } | null>(null);
 
   const total = (datos ?? []).reduce((a, f) => a + Number(f.valorTotal), 0);
@@ -22,6 +24,7 @@ export function Inventario() {
   return (
     <>
       <Encabezado titulo="Inventario" descripcion={`Existencia por sucursal · valor total al costo ${rd(total)}`}>
+        {puede("admin.inventario") && <button className="boton" onClick={() => setExcel(true)}>Actualizar con Excel</button>}
         <button className="boton fantasma" onClick={() => descargarCsv("/central/reportes/valorizacion", "valorizacion-inventario")}>Exportar valorización</button>
       </Encabezado>
       <div className="filtros">
@@ -54,6 +57,7 @@ export function Inventario() {
         ]}
       />
       <p className="suave pequeno">Toque una existencia para cambiar el mínimo, el máximo o habilitar el producto en esa sucursal.</p>
+      {excel && <ActualizarInventarioExcel onCerrar={() => setExcel(false)} onTerminado={() => recargar()} />}
       {editar && <Parametros {...editar} onCerrar={() => setEditar(null)} />}
     </>
   );

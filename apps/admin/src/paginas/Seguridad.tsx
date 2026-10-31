@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, puede } from "../api";
 import { Aviso, Encabezado } from "../ui";
 import { type FuncionSeguridad } from "../seguridad";
-import { useDatos } from "../ui";
+import { useDatos, SelectorSucursal, useCatalogo } from "../ui";
 
 /**
  * Seguridad: funciones sensibles que se pueden habilitar o deshabilitar.
@@ -44,6 +44,7 @@ export function Seguridad() {
         ))}
         {!datos && !error && <p className="suave">Cargando…</p>}
       </div>
+      <BorrarInventario admin={admin} habilitada={!!datos?.funciones.find((f) => f.clave === "borrar_inventario")?.habilitada} />
       <DosPasosUsuarios admin={admin} />
     </>
   );
@@ -76,6 +77,43 @@ function DosPasosUsuarios({ admin }: { admin: boolean }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** Zona de riesgo: dejar en cero el inventario de una sucursal. Solo con la función activada, contraseña y frase. */
+function BorrarInventario({ admin, habilitada }: { admin: boolean; habilitada: boolean }) {
+  const { sucursales } = useCatalogo();
+  const [sucursalId, setSucursalId] = useState(sucursales[0]?.id ?? "");
+  const [motivo, setMotivo] = useState("");
+  const [clave, setClave] = useState("");
+  const [frase, setFrase] = useState("");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  if (!admin || !habilitada) return null;
+  const borrar = async () => {
+    const s = sucursales.find((x) => x.id === sucursalId)?.nombre ?? "la sucursal";
+    if (!confirm(`Se dejará en CERO toda la existencia de ${s}. Esto no se puede deshacer (solo volviendo a cargar el inventario). ¿Continuar?`)) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await api<{ productos: number; numero: string }>("/central/seguridad/borrar-inventario", { metodo: "POST", cuerpo: { sucursalId, motivo, clave, frase } });
+      setMsg({ t: `Inventario borrado: ${r.productos} producto(s) quedaron en cero (ajuste Nº ${r.numero}).`, tipo: "ok" });
+      setClave(""); setFrase(""); setMotivo("");
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setOcupado(false);
+  };
+  return (
+    <div className="panel" style={{ borderColor: "var(--peligro, #c0392b)" }}>
+      <h3 style={{ marginTop: 0 }}>Borrar inventario</h3>
+      <p className="suave pequeno">Deja en cero la existencia de todos los productos de una sucursal. No borra productos ni historial: genera ajustes de salida en el kardex con su nombre. Cuando termine, desactive la función arriba.</p>
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
+        <SelectorSucursal todas={false} valor={sucursalId} onCambio={setSucursalId} />
+        <input style={{ minWidth: 260 }} placeholder="Motivo (mínimo 10 caracteres)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+        <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
+        <input placeholder="Escriba BORRAR INVENTARIO" value={frase} onChange={(e) => setFrase(e.target.value)} />
+        <button className="boton peligro" disabled={ocupado || !sucursalId || motivo.trim().length < 10 || !clave || frase !== "BORRAR INVENTARIO"} onClick={borrar}>Borrar inventario</button>
+      </div>
     </div>
   );
 }
