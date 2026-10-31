@@ -18,6 +18,15 @@ $ErrorActionPreference = "Stop"
 New-Item -ItemType Directory -Force -Path "$Carpeta\logs" | Out-Null
 Start-Transcript -Path "$Carpeta\logs\actualizacion.log" -Append | Out-Null
 $tarea = "FactPOS Servidor"
+# Avance para las pantallas (ventana de actualización, cajas, administración): archivo que lee el servidor al volver
+$archivoEstado = "$Carpeta\logs\actualizacion-estado.json"
+$versionNueva = "?"
+function Estado([string]$estado, [string]$paso, [int]$pct, [string]$mensaje = $null) {
+  try {
+    $o = [ordered]@{ estado = $estado; version = $versionNueva; paso = $paso; porcentaje = $pct; mensaje = $mensaje; en = (Get-Date).ToUniversalTime().ToString("o") }
+    [IO.File]::WriteAllText($archivoEstado, ($o | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+  } catch {}
+}
 function Detener {
   Stop-ScheduledTask -TaskName $tarea -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
@@ -35,9 +44,12 @@ function Copiar($origen, $destino) {
 try {
   $nueva = (Get-Content -Raw "$Desde\package.json" | ConvertFrom-Json).version
   $actual = try { (Get-Content -Raw "$Carpeta\package.json" | ConvertFrom-Json).version } catch { "?" }
+  $versionNueva = $nueva
   Write-Host "Actualizando FactPOS $actual -> $nueva ($(Get-Date))"
+  Estado "EN_CURSO" "Cerrando FactPOS" 50
   Detener
 
+  Estado "EN_CURSO" "Guardando la versión actual" 55
   # Copia de la versión actual para volver atrás si algo falla
   $anterior = "$Carpeta\anterior"
   Remove-Item -Recurse -Force $anterior -ErrorAction SilentlyContinue
@@ -47,23 +59,29 @@ try {
 
   # Versión nueva: el código se reemplaza completo; la configuración y los datos se conservan
   foreach ($c in $carpetasCodigo) {
-    if (Test-Path "$Desde\$c") { Write-Host "Copiando $c…"; $rc = Copiar "$Desde\$c" "$Carpeta\$c"; if ($rc -ge 8) { throw "No se pudo copiar $c (robocopy $rc). Probablemente un archivo está en uso: cierre FactPOS y vuelva a intentar." } }
+    if (Test-Path "$Desde\$c") { Estado "EN_CURSO" "Instalando archivos ($c)" (65 + 3 * [array]::IndexOf($carpetasCodigo, $c)); Write-Host "Copiando $c…"; $rc = Copiar "$Desde\$c" "$Carpeta\$c"; if ($rc -ge 8) { throw "No se pudo copiar $c (robocopy $rc). Probablemente un archivo está en uso: cierre FactPOS y vuelva a intentar." } }
   }
   Get-ChildItem $Desde -File | Where-Object { $_.Name -notin ".env", "postgres-superusuario.txt" } | Copy-Item -Destination $Carpeta -Force
 
+  Estado "EN_CURSO" "Actualizando la base de datos" 85
   Push-Location $Carpeta
   & node apps\servidor\dist\migrar.js
   $ok = $LASTEXITCODE -eq 0
   Pop-Location
   if (-not $ok) { throw "Fallaron las migraciones de la base de datos" }
+  Estado "EN_CURSO" "Iniciando FactPOS" 95
   Write-Host "Listo: FactPOS $nueva instalado"
+  $resultado = "OK"
 } catch {
   Write-Host "ERROR: $($_.Exception.Message). Se vuelve a la versión anterior." -ForegroundColor Red
+  $resultado = "ERROR"; $motivo = $_.Exception.Message
+  Estado "EN_CURSO" "Hubo un problema: volviendo a la versión anterior" 90
   if (Test-Path "$Carpeta\anterior\apps") {
     foreach ($c in $carpetasCodigo) { if (Test-Path "$Carpeta\anterior\$c") { [void](Copiar "$Carpeta\anterior\$c" "$Carpeta\$c") } }
     Copy-Item "$Carpeta\anterior\package.json" $Carpeta -Force -ErrorAction SilentlyContinue
   }
 } finally {
+  if ($resultado -eq "OK") { Estado "OK" "Actualización terminada" 100 } else { Estado "ERROR" "No se pudo actualizar; se restauró la versión anterior" 100 $motivo }
   Start-ScheduledTask -TaskName $tarea -ErrorAction SilentlyContinue
   Remove-Item -Recurse -Force $Desde -ErrorAction SilentlyContinue
   Unregister-ScheduledTask -TaskName "FactPOS Actualizar" -Confirm:$false -ErrorAction SilentlyContinue

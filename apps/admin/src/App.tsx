@@ -1,3 +1,5 @@
+import { Seguridad } from "./paginas/Seguridad";
+import { PantallaActualizacion } from "./PantallaActualizacion";
 import { Correo } from "./paginas/Correo";
 import { useEffect, useState, type ComponentType } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
@@ -52,6 +54,7 @@ const SECCIONES = [
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
   { id: "marca", titulo: "Marca y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
   { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, i: "licencia", p: ["admin.config"] },
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
@@ -67,6 +70,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: No
 const DESCRIPCION: Record<string, string> = {
   resumen: "Ventas del día, alertas y existencias por reponer",
   productos: "Ficha, códigos de barra, precios y combos",
+  seguridad: "Habilitar o deshabilitar funciones sensibles",
   compras: "Entrada de mercancía de los proveedores",
   inventario: "Existencia de cada producto por sucursal",
   ajustes: "Corregir existencias: mermas, daños, sobrantes",
@@ -105,7 +109,7 @@ const datosGrupo = (g: string) => GRUPOS[g] ?? { slug: g.toLowerCase(), i: "resu
 
 const CATALOGO_VACIO: CatalogoAdmin = { sucursales: [], productos: [], categorias: [], usuarios: [] };
 
-export function App() {
+function AppInterna() {
   const [sesion, setSesion] = useState<Sesion | null>(leerSesion());
   const [catalogo, setCatalogo] = useState<CatalogoAdmin | null>(null);
   const [seccion, setSeccion] = useState<string>(() => location.hash.slice(1) || "inicio");
@@ -482,5 +486,17 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
         </div>
       </form>
     </div>
+  );
+}
+
+/** Aplicación + pantalla de actualización (que tapa todo mientras el servidor se actualiza y cierra la sesión al terminar). */
+export function App() {
+  return (
+    <>
+      <AppInterna />
+      <PantallaActualizacion
+        servidor={() => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin)}
+        alCambiarVersion={() => fijarSesion(null)} />
+    </>
   );
 }

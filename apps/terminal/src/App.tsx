@@ -1,3 +1,4 @@
+import { PantallaActualizacion } from "./PantallaActualizacion";
 import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
 import { useEffect, useState } from "react";
@@ -33,7 +34,7 @@ export interface Turno { id: string; abiertoEn: string; fondoInicial: string; us
 /**
  * Flujo de la terminal: configurar (una sola vez) → elegir usuario → abrir turno → vender.
  */
-export function App() {
+function AppInterna() {
   const [ajustes, setAjustes] = useState<Ajustes | null>(leerAjustes());
   const [config, setConfig] = useState<ConfigCaja | null>(null);
   const previa = sesionCaja();
@@ -320,5 +321,15 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
       <button className="boton primario ancho" onClick={abrir}>Abrir turno</button>
       {msg && <p className="error">{msg}</p>}
     </Pantalla>
+  );
+}
+
+/** Aplicación + pantalla de actualización (tapa todo mientras el servidor se actualiza y pide el PIN de nuevo al terminar). */
+export function App() {
+  return (
+    <>
+      <AppInterna />
+      <PantallaActualizacion servidor={() => leerAjustes()?.servidor ?? ""} alCambiarVersion={() => fijarSesionCaja(null)} />
+    </>
   );
 }

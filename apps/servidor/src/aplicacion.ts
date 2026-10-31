@@ -23,6 +23,7 @@ import { rutasCierre } from "./rutas/cierre.js";
 import { rutasPadronCaja, rutasPadronCentral } from "./rutas/padron.js";
 import { rutasCentral } from "./rutas/central.js";
 import { rutasCentralInventario } from "./rutas/central-inventario.js";
+import { rutasCentralSeguridad } from "./rutas/central-seguridad.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
 import { rutasCentralProductos } from "./rutas/central-productos.js";
@@ -60,7 +61,7 @@ export async function crearApp() {
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
@@ -204,6 +205,7 @@ export async function crearApp() {
     await app.register(rutasSesionCentral);
     await app.register(rutasCentral);
     await app.register(rutasCentralInventario);
+    await app.register(rutasCentralSeguridad);
     await app.register(rutasCentralFiscal);
     await app.register(rutasCentralOrganizacion);
     await app.register(rutasCentralProductos);

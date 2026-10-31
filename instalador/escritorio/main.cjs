@@ -5,6 +5,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 
+const ICON = path.join(__dirname, 'factpos.ico');
+if (process.platform === 'win32') app.setAppUserModelId('com.factpos.escritorio');
 const args = process.argv.slice(1);
 const modeArg = args.find(x => x.startsWith('--modo='));
 const mode = modeArg ? modeArg.split('=')[1] : 'admin';
@@ -37,7 +39,7 @@ function askCompany() {
   return new Promise(resolve => {
     let done = false;
     const finish = v => { if (done) return; done = true; ipcMain.removeAllListeners('factpos:empresa'); if (!w.isDestroyed()) w.destroy(); resolve(v); };
-    const w = new BrowserWindow({ width: 460, height: 250, resizable: false, minimizable: false, maximizable: false, autoHideMenuBar: true, title: 'FactPOS · Su empresa', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const w = new BrowserWindow({ icon: ICON, width: 460, height: 250, resizable: false, minimizable: false, maximizable: false, autoHideMenuBar: true, title: 'FactPOS · Su empresa', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     w.removeMenu();
     ipcMain.on('factpos:empresa', (_e, v) => finish(typeof v === 'string' ? v.trim().toLowerCase() : null));
     w.on('closed', () => finish(null));
@@ -108,8 +110,14 @@ async function start() {
     ok = await available(endpoint);
     if (!ok && localServer() && !config.empresa) { if (await startInstalledServer()) ok = await checkWithRetry(endpoint); }
   }
-  const win = new BrowserWindow({ width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  openMain();
+  watchUpdates();
+}
+
+function openMain() {
+  const win = new BrowserWindow({ icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   mainOpened = true;
+  mainWindow = win;
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
     try { if (new URL(url).origin !== server.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
@@ -119,6 +127,84 @@ async function start() {
     try { if (new URL(url).origin !== server.origin) event.preventDefault(); } catch { event.preventDefault(); }
   });
   win.loadURL(endpoint.toString());
+}
+
+// ------------------------------------------------------------------ actualizaciones
+// Si el servidor se actualiza: se cierra todo, se muestra una ventana pequeña con el avance y,
+// al terminar, el sistema se abre de nuevo (las pantallas piden usuario y contraseña porque la versión cambió).
+let mainWindow = null;
+let miniWindow = null;
+let updating = false;
+let updateStartedAt = 0;
+let versionBefore = null;
+function getJson(url) {
+  return new Promise(resolve => {
+    const transport = url.protocol === 'https:' ? require('node:https') : http;
+    const req = transport.get(url, { timeout: 3000 }, res => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => { try { resolve(res.statusCode === 200 ? JSON.parse(data) : null); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+// En el equipo del servidor, el script de actualización deja el avance en un archivo (el servidor está apagado en pleno reinicio)
+function readStateFile() {
+  const roots = [];
+  if (process.env.PORTABLE_EXECUTABLE_DIR) roots.push(path.resolve(process.env.PORTABLE_EXECUTABLE_DIR, '..'));
+  roots.push('C:\\FactPOS');
+  for (const r of roots) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(r, 'logs', 'actualizacion-estado.json'), 'utf8').replace(/^\uFEFF/, ''));
+      if (j && Date.now() - new Date(j.en).getTime() < 20 * 60 * 1000) return j;
+    } catch {}
+  }
+  return null;
+}
+function openMini() {
+  miniWindow = new BrowserWindow({ icon: ICON, width: 440, height: 230, resizable: false, minimizable: false, maximizable: false, closable: false, alwaysOnTop: true, autoHideMenuBar: true, title: 'FactPOS · Actualizando', backgroundColor: '#102b3a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  miniWindow.removeMenu();
+  miniWindow.loadFile(path.join(__dirname, 'actualizando.html'));
+}
+function sendMini(msg) { if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('factpos:actualizacion', msg); }
+function beginUpdate(state) {
+  updating = true; updateStartedAt = Date.now(); versionBefore = state.version;
+  mainOpened = false; // cerrar las ventanas no debe cerrar la aplicación
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+  mainWindow = null;
+  openMini();
+}
+function finishUpdate(ok, text) {
+  sendMini({ paso: text, porcentaje: 100, final: true, ok });
+  setTimeout(() => {
+    if (miniWindow && !miniWindow.isDestroyed()) { miniWindow.setClosable(true); miniWindow.destroy(); }
+    miniWindow = null; updating = false;
+    openMain();
+  }, ok ? 2000 : 4500);
+}
+function watchUpdates() {
+  if (selected === 'admin' && config.empresa) return; // administración en la nube: la actualiza el portal
+  let busy = false;
+  const timer = setInterval(async () => {
+    if (busy) return; busy = true;
+    try {
+      const st = await getJson(new URL('/actualizacion/estado', server));
+      if (!updating) {
+        if (st && st.actualizando) beginUpdate(st);
+      } else if (st && !st.actualizando) {
+        updating = 'cerrando';
+        const changed = st.version !== versionBefore;
+        const failed = st.resultado && st.resultado.estado === 'ERROR';
+        finishUpdate(!failed, failed ? 'No se pudo actualizar; se conservó la versión anterior.' : changed ? `FactPOS ${st.version} listo` : 'Actualización terminada');
+      } else if (updating === true) {
+        const f = st ? { paso: st.paso, porcentaje: st.porcentaje, destino: st.destino } : readStateFile();
+        sendMini(st ? { paso: f.paso, porcentaje: f.porcentaje, destino: f.destino } : f ? { paso: f.paso, porcentaje: f.porcentaje, destino: f.version, reiniciando: !f.porcentaje } : { paso: 'Reiniciando el servidor…', porcentaje: null });
+        if (Date.now() - updateStartedAt > 20 * 60 * 1000) { updating = 'cerrando'; finishUpdate(false, 'La actualización tardó demasiado. Se abrirá el sistema; avise a soporte.'); }
+      }
+    } finally { busy = false; }
+  }, 2500);
+  timer.unref();
 }
 app.whenReady().then(start);
 let mainOpened = false;

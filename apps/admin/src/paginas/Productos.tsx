@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, rd, num } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
+import { useFuncionSeguridad } from "../seguridad";
 import { Aviso, Encabezado, SelectorProducto, Tabla, useCatalogo, useDatos } from "../ui";
 
 /* ---------- Tipos ---------- */
@@ -171,6 +172,11 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
   }, [id]);
   if (!f) return <div className="cargando">Cargando…</div>;
 
+  const refrescarExistencia = async () => {
+    if (!id) return;
+    const d = await api<Ficha>(`/central/productos/${id}`);
+    setF((cur) => cur && { ...cur, sucursales: cur.sucursales.map((s) => ({ ...s, existencia: d.sucursales.find((x) => x.sucursalId === s.sucursalId)?.existencia ?? s.existencia })) });
+  };
   const cambiar = (p: Partial<Ficha>) => { setF({ ...f, ...p }); setSucio(true); };
   const tasa = aux.impuestos.find((i) => i.id === f.impuestoId)?.tasa ?? 0;
   const costoUnidad = n(f.costoReferencia);
@@ -239,7 +245,7 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
           </div>
           {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} nuevo={!id} setMsg={setMsg} />}
           {pestana === "precios" && <PreciosFicha f={f} cambiar={cambiar} tasa={tasa} costo={costoUnidad} aux={aux} />}
-          {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} />}
+          {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} id={id} tipo={f.tipo} alAgregar={refrescarExistencia} />}
           {pestana === "proveedores" && <ProveedoresFicha f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
           {pestana === "combo" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} />}
         </div>
@@ -582,14 +588,27 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
 }
 
 /* ---------- Inventario ---------- */
-function InventarioFicha({ f, cambiar }: { f: Ficha; cambiar: (p: Partial<Ficha>) => void }) {
+function InventarioFicha({ f, cambiar, id, tipo, alAgregar }: { f: Ficha; cambiar: (p: Partial<Ficha>) => void; id: string | null; tipo: string; alAgregar: () => Promise<void> }) {
+  const { habilitada } = useFuncionSeguridad("agregar_existencia");
+  const [abrir, setAbrir] = useState(false);
+  const [aviso, setAviso] = useState("");
   const fijar = (i: number, p: Partial<Ficha["sucursales"][number]>) => cambiar({ sucursales: f.sucursales.map((x, j) => (j === i ? { ...x, ...p } : x)) });
   return (
     <div className="panel">
       <div className="encabezado-sub">
         <h3>Inventario por sucursal</h3>
-        <a className="enlace" href="#ajustes" onClick={() => setTimeout(() => location.reload(), 0)}>Corregir existencia con un ajuste</a>
+        <span className="en-linea">
+          {id && tipo === "INVENTARIABLE" && (
+            <button className="boton" disabled={!habilitada} onClick={() => setAbrir(true)}
+              title={habilitada ? "Sumar existencia con una entrada en el kardex" : "Desactivado. Un administrador puede activarlo en Configuración › Seguridad."}>Agregar existencia</button>
+          )}
+          <a className="enlace" href="#ajustes" onClick={() => setTimeout(() => location.reload(), 0)}>Corregir existencia con un ajuste</a>
+        </span>
       </div>
+      {aviso && <Aviso texto={aviso} tipo="ok" />}
+      {id && tipo === "INVENTARIABLE" && !habilitada && <p className="suave pequeno">«Agregar existencia» está desactivado. Un administrador puede activarlo en Configuración › Seguridad.</p>}
+      {abrir && id && <AgregarExistencia productoId={id} sucursales={f.sucursales} costo={f.costoReferencia} onCerrar={() => setAbrir(false)}
+        onListo={async (m) => { setAbrir(false); setAviso(m); await alAgregar(); }} />}
       <p className="suave pequeno">Cada sucursal tiene su propio inventario. La existencia solo cambia con compras, ventas, traspasos o ajustes, para que el kardex cuadre siempre.</p>
       <table className="tabla tabla-edicion">
         <thead><tr><th>Sucursal</th><th className="der">Existencia</th><th className="der">Mínimo</th><th className="der">Máximo</th><th>Ubicación</th><th>Se vende</th></tr></thead>
@@ -609,6 +628,41 @@ function InventarioFicha({ f, cambiar }: { f: Ficha; cambiar: (p: Partial<Ficha>
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ---------- Agregar existencia (requiere Seguridad) ---------- */
+function AgregarExistencia({ productoId, sucursales, costo, onCerrar, onListo }: {
+  productoId: string; sucursales: Ficha["sucursales"]; costo: string; onCerrar: () => void; onListo: (mensaje: string) => void | Promise<void>;
+}) {
+  const [sucursalId, setSucursalId] = useState(sucursales.find((x) => x.activo)?.sucursalId ?? sucursales[0]?.sucursalId ?? "");
+  const [cantidad, setCantidad] = useState("");
+  const [costoU, setCostoU] = useState(n(costo) > 0 ? String(n(costo)) : "");
+  const [nota, setNota] = useState("");
+  const [err, setErr] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const enviar = async () => {
+    if (n(cantidad) <= 0) return setErr("Escriba una cantidad mayor que cero.");
+    setGuardando(true); setErr("");
+    try {
+      await api("/central/productos-existencia", { cuerpo: { sucursalId, motivo: "Existencia agregada desde Productos", items: [{ productoId, cantidad: String(n(cantidad)), costoUnitario: costoU ? String(n(costoU)) : undefined, nota: nota || undefined }] } });
+      await onListo(`Se agregaron ${cantidad} unidades a ${sucursales.find((x) => x.sucursalId === sucursalId)?.sucursal ?? "la sucursal"}.`);
+    } catch (e) { setErr((e as Error).message); setGuardando(false); }
+  };
+  return (
+    <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Agregar existencia" style={{ maxWidth: 420 }}>
+        <h2>Agregar existencia</h2>
+        <p className="suave pequeno">Se registra como una entrada en el kardex, con su usuario y fecha.</p>
+        {err && <Aviso texto={err} tipo="error" />}
+        <label className="campo"><span>Sucursal</span>
+          <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>{sucursales.map((x) => <option key={x.sucursalId} value={x.sucursalId}>{x.sucursal}</option>)}</select></label>
+        <label className="campo"><span>Cantidad a agregar</span><input autoFocus className="numero" inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && enviar()} /></label>
+        <label className="campo"><span>Costo unitario <em className="suave">(opcional)</em></span><input className="numero" inputMode="decimal" value={costoU} onChange={(e) => setCostoU(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+        <label className="campo"><span>Nota <em className="suave">(opcional)</em></span><input value={nota} onChange={(e) => setNota(e.target.value)} /></label>
+        <div className="acciones-modal"><button className="boton fantasma" onClick={onCerrar}>Cancelar</button><button className="boton primario" disabled={guardando} onClick={enviar}>{guardando ? "Guardando…" : "Agregar"}</button></div>
+      </div>
     </div>
   );
 }
@@ -790,6 +844,9 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
   const [incluye, setIncluye] = useState(true);
   const [costo, setCosto] = useState("");
   const [minimo, setMinimo] = useState("");
+  const { habilitada: puedeExistencia } = useFuncionSeguridad("agregar_existencia");
+  const [existencia, setExistencia] = useState("");
+  const [sucExist, setSucExist] = useState("");
   const [nv, setNv] = useState<Record<string, Niv>>(nivVacio);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -873,10 +930,19 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
         sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: stockMinimo || "0", stockMaximo, ubicacion, activo })),
         costoReferencia: String(n(f.costoReferencia)),
       };
-      await api("/central/productos", { metodo: "POST", cuerpo });
+      const creado = await api<{ id: string }>("/central/productos", { metodo: "POST", cuerpo });
+      if (tipo === "INVENTARIABLE" && puedeExistencia && n(existencia) > 0) {
+        try {
+          await api("/central/productos-existencia", { cuerpo: { sucursalId: sucExist || sucursales[0]?.id, motivo: "Existencia inicial", items: [{ productoId: creado.id, cantidad: String(n(existencia)), costoUnitario: n(costo) > 0 ? String(n(costo)) : undefined }] } });
+        } catch (e) {
+          onCreado(f.nombre);
+          setGuardando(false);
+          return setMsg({ t: `“${f.nombre}” se creó, pero no se pudo agregar la existencia: ${(e as Error).message}`, tipo: "error" });
+        }
+      }
       onCreado(f.nombre);
       if (otro) {
-        setCodigo(""); setNombre(""); setMarca(""); setImagen(null); setCosto(""); setMinimo(""); setNv(nivVacio());
+        setCodigo(""); setNombre(""); setMarca(""); setImagen(null); setCosto(""); setMinimo(""); setExistencia(""); setNv(nivVacio());
         setMsg({ t: `“${f.nombre}” creado. Siguiente producto:`, tipo: "ok" });
         refCodigo.current?.focus();
       } else onCerrar();
@@ -962,7 +1028,15 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
           <div className="pr-fila pr-fila-2">
             <label className="campo"><span>Existencia mínima <em className="suave">(alerta de reposición)</em></span>
               <input className="numero" inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => setMinimo(limpiar(e.target.value))} /></label>
-            <p className="suave pequeno pr-nota">La existencia inicial se carga con una compra o un ajuste, para que quede en el kardex.</p>
+            {puedeExistencia ? (
+              <label className="campo"><span>Existencia actual <em className="suave">(se registra en el kardex)</em></span>
+                <span className="en-linea">
+                  <input className="numero" inputMode="decimal" value={existencia} placeholder="0" onChange={(e) => setExistencia(limpiar(e.target.value))} />
+                  {sucursales.length > 1 && <select value={sucExist || sucursales[0]?.id} onChange={(e) => setSucExist(e.target.value)} aria-label="Sucursal de la existencia">{sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>}
+                </span></label>
+            ) : (
+              <p className="suave pequeno pr-nota">La existencia inicial se carga con una compra o un ajuste. Un administrador puede habilitar «Agregar existencia» en Configuración › Seguridad.</p>
+            )}
           </div>
         )}
 

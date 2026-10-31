@@ -42,7 +42,39 @@ function vigilarProceso() {
     proceso = { ...proceso, estado: "ERROR", mensaje: "La actualización no terminó en 15 minutos. Revise C:\\FactPOS\\logs\\actualizacion.log y actualizacion-lanzador.log; puede reintentar." };
   }
 }
-let proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string } | null = null;
+let proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string; paso?: string; porcentaje?: number } | null = null;
+
+// -------- Estado para las pantallas (administración, cajas, ventana de escritorio) --------
+// El script de actualización (otro proceso) y este servidor escriben el avance en un archivo:
+// así se puede mostrar aun cuando el servidor está apagado en pleno reinicio.
+const ARCHIVO_ESTADO = path.join(raiz, "logs", "actualizacion-estado.json");
+interface EstadoArchivo { estado: "EN_CURSO" | "OK" | "ERROR"; version: string; paso: string; porcentaje: number; mensaje: string | null; en: string }
+function escribirEstado(e: Omit<EstadoArchivo, "en">) {
+  try { mkdirSync(path.dirname(ARCHIVO_ESTADO), { recursive: true }); writeFileSync(ARCHIVO_ESTADO, JSON.stringify({ ...e, en: new Date().toISOString() })); } catch { /* sin disco: no se muestra avance */ }
+}
+function leerEstado(): EstadoArchivo | null {
+  try { return JSON.parse(readFileSync(ARCHIVO_ESTADO, "utf8").replace(/^\uFEFF/, "")) as EstadoArchivo; } catch { return null; }
+}
+const avance = (version: string, paso: string, porcentaje: number) => {
+  if (proceso) proceso = { ...proceso, paso, porcentaje };
+  escribirEstado({ estado: "EN_CURSO", version, paso, porcentaje, mensaje: null });
+};
+/** Lo que ven las pantallas: ¿se está actualizando?, paso y porcentaje, y cómo terminó la última. */
+export function estadoPublico() {
+  vigilarProceso();
+  const f = leerEstado();
+  const fresco = !!f && Date.now() - new Date(f.en).getTime() < 20 * 60_000;
+  const enMemoria = proceso && proceso.estado !== "ERROR" ? proceso : null;
+  const archivoEnCurso = fresco && f!.estado === "EN_CURSO" ? f : null;
+  return {
+    version: versionActual(),
+    actualizando: !!(enMemoria || archivoEnCurso),
+    destino: enMemoria?.version ?? archivoEnCurso?.version ?? null,
+    paso: archivoEnCurso?.paso ?? enMemoria?.paso ?? (enMemoria ? (enMemoria.estado === "DESCARGANDO" ? "Descargando la actualización" : "Instalando") : null),
+    porcentaje: archivoEnCurso?.porcentaje ?? enMemoria?.porcentaje ?? null,
+    resultado: fresco && f!.estado !== "EN_CURSO" ? { estado: f!.estado, version: f!.version, mensaje: f!.mensaje, en: f!.en } : null,
+  };
+}
 
 export async function revisarVersion(forzar = false): Promise<Disponible | null> {
   if (!forzar && Date.now() - revisado < 6 * 3600_000) return disponible;
@@ -78,9 +110,22 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     log(`Actualización ${version}: descargando…`);
     const urlDescarga = new URL(d.url);
     if (urlDescarga.protocol !== "https:") throw new Error("La descarga debe utilizar HTTPS");
+    avance(version, "Descargando la actualización", 2);
     const z = await fetch(urlDescarga, { signal: AbortSignal.timeout(10 * 60_000) });
     if (!z.ok) throw new Error(`No se pudo descargar (${z.status})`);
-    const paquete = new Uint8Array(await z.arrayBuffer());
+    const total = Number(z.headers.get("content-length")) || 0;
+    const partes: Uint8Array[] = [];
+    let recibido = 0, ultimo = 0;
+    for (const lector = z.body!.getReader(); ;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      partes.push(value); recibido += value.byteLength;
+      if (total && recibido > 250 * 1024 * 1024) throw new Error("El paquete supera el tamaño máximo permitido (250 MB)");
+      if (total && Date.now() - ultimo > 700) { ultimo = Date.now(); avance(version, "Descargando la actualización", 2 + Math.round((recibido / total) * 28)); }
+    }
+    const paquete = new Uint8Array(recibido);
+    for (let i = 0, o = 0; i < partes.length; o += partes[i].byteLength, i++) paquete.set(partes[i], o);
+    avance(version, "Preparando los archivos", 32);
     if (paquete.byteLength > 250 * 1024 * 1024) throw new Error("El paquete supera el tamaño máximo permitido (250 MB)");
     const archivos = unzipSync(paquete);
     const totalDescomprimido = Object.values(archivos).reduce((total, archivo) => total + archivo.byteLength, 0);
@@ -110,6 +155,7 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     if (versionPaquete !== version) throw new Error(`La versión del paquete (${versionPaquete ?? "desconocida"}) no coincide con la solicitada (${version})`);
     if (!existsSync(path.join(origen, "apps", "servidor", "dist", "index.js"))) throw new Error("El paquete no contiene el servidor compilado");
     proceso = { ...proceso, estado: "INSTALANDO" };
+    avance(version, "Preparando la instalación", 45);
     log(`Actualización ${version}: instalando (el servidor se reinicia en un momento)…`);
     // Tarea de Windows de una sola vez: sobrevive a que se detenga este servidor
     const ps = `$ErrorActionPreference='Stop'; try { ` +
@@ -133,6 +179,7 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     return { ok: true, version };
   } catch (e) {
     proceso = { estado: "ERROR", version, mensaje: (e as Error).message, desde: new Date().toISOString() };
+    escribirEstado({ estado: "ERROR", version, paso: "No se pudo actualizar", porcentaje: 0, mensaje: (e as Error).message });
     throw new ErrorNegocio(`No se pudo actualizar: ${(e as Error).message}`, 502);
   }
 }
@@ -152,6 +199,8 @@ export function seguirAlPrincipal(versionPrincipal: string | undefined, log: (m:
 }
 
 export async function rutasActualizacion(app: FastifyInstance) {
+  /** Pública: las pantallas la consultan para mostrar el avance y cerrar la sesión cuando cambia la versión. */
+  app.get("/actualizacion/estado", async (_req, rep) => { rep.header("cache-control", "no-store"); return estadoPublico(); });
   app.get("/central/actualizacion", async (req) => {
     const forzar = (req.query as { revisar?: string }).revisar === "1";
     vigilarProceso();

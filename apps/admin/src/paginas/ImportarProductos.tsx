@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
-import { api, sesionActual } from "../api";
+import { api } from "../api";
 import { Aviso, useCatalogo } from "../ui";
+import { useFuncionSeguridad } from "../seguridad";
 import { aNumero, leerTabla, type Tabla } from "../leerTabla";
 
 /**
@@ -34,6 +35,7 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
   recargarAux: () => void; onCerrar: () => void; onTerminado: () => void;
 }) {
   const { sucursales } = useCatalogo();
+  const { habilitada: puedeExistencia } = useFuncionSeguridad("agregar_existencia");
   const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
   const [tabla, setTabla] = useState<Tabla>([]);
   const [nombreArchivo, setNombreArchivo] = useState("");
@@ -169,15 +171,15 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
       await Promise.all(Array.from({ length: 5 }, trabajador));
       // Existencia inicial: un ajuste de entrada (queda en el kardex)
       let stock = 0;
-      const conExistencia = sucursalId ? creados.filter((c) => c.existencia > 0) : [];
+      const conExistencia = sucursalId && puedeExistencia ? creados.filter((c) => c.existencia > 0) : [];
       for (let i = 0; i < conExistencia.length; i += 500) {
         const lote = conExistencia.slice(i, i + 500);
         try {
-          await api("/central/ajustes", {
+          await api("/central/productos-existencia", {
             metodo: "POST",
             cuerpo: {
-              sucursalId, usuarioId: sesionActual().usuarioId, motivo: `Carga inicial por importación (${nombreArchivo})`.slice(0, 200),
-              items: lote.map((c) => ({ productoId: c.id, tipo: "AJUSTE_ENTRADA", cantidad: c.existencia.toFixed(3).replace(/\.?0+$/, "") || "0", ...(c.costo > 0 ? { costoUnitario: c.costo.toFixed(2) } : {}) })),
+              sucursalId, motivo: `Carga inicial por importación (${nombreArchivo})`.slice(0, 200),
+              items: lote.map((c) => ({ productoId: c.id, cantidad: c.existencia.toFixed(3).replace(/\.?0+$/, "") || "0", ...(c.costo > 0 ? { costoUnitario: c.costo.toFixed(2) } : {}) })),
             },
           });
           stock += lote.length;
@@ -229,7 +231,10 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
                 <label className="pr-check"><input type="checkbox" checked={incluye} onChange={(e) => setIncluye(e.target.checked)} /><span>Los precios del archivo ya incluyen ITBIS</span></label>
                 <label className="pr-check"><input type="checkbox" checked={crearCats} onChange={(e) => setCrearCats(e.target.checked)} /><span>Crear las categorías que no existan</span></label>
               </div>
-              {mapa.existencia != null && (
+              {mapa.existencia != null && !puedeExistencia && (
+                <p className="suave pequeno">La columna de existencia no se cargará: «Agregar existencia» está desactivado. Un administrador puede activarlo en Configuración › Seguridad.</p>
+              )}
+              {mapa.existencia != null && puedeExistencia && (
                 <label className="campo" style={{ maxWidth: 360, marginBottom: 0 }}><span>Cargar la existencia inicial en</span>
                   <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
                     <option value="">No cargar existencia</option>

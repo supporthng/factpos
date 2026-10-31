@@ -33,7 +33,7 @@ export const tunelActivo = () => config.modo === "central" && !process.env.VERCE
 
 /** Rutas que se pueden usar desde internet (por el túnel). */
 export function permitidoPorTunel(ruta: string) {
-  return ruta === "/salud" || ruta.startsWith("/central/") || ruta === "/admin" || ruta.startsWith("/admin/");
+  return ruta === "/salud" || ruta === "/actualizacion/estado" || ruta.startsWith("/central/") || ruta === "/admin" || ruta.startsWith("/admin/");
 }
 /** ¿La petición llegó por el túnel (desde internet)? Cloudflare agrega esta cabecera. */
 export const vieneDelTunel = (headers: Record<string, unknown>) => typeof headers["cf-connecting-ip"] === "string";

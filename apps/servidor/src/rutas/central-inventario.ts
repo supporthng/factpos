@@ -6,6 +6,7 @@ import { Decimal } from "decimal.js";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { repartirPorLotes } from "../lotes.js";
+import { exigirFuncion } from "./central-seguridad.js";
 
 /**
  * Administración central: ajustes de inventario, conteos físicos, reportes,
@@ -118,6 +119,36 @@ export async function rutasCentralInventario(app: FastifyInstance) {
   // -------------------------------------------------------------------
   // Ajustes de inventario
   // -------------------------------------------------------------------
+  /**
+   * Existencia desde la pantalla de Productos (al crear, al editar o al importar): entrada al kardex como ajuste.
+   * Solo si un administrador activó «agregar_existencia» en Configuración › Seguridad.
+   */
+  app.post("/central/productos-existencia", async (req, rep) => {
+    const e = empresaDe(req);
+    await exigirFuncion(e, "agregar_existencia");
+    const b = z.object({
+      sucursalId: uuid, almacenId: uuid.optional(),
+      motivo: z.string().trim().min(3).max(200).default("Existencia agregada desde Productos"),
+      items: z.array(z.object({
+        productoId: uuid, cantidad: cant.refine((v) => Number(v) > 0, "La cantidad debe ser mayor que cero"),
+        costoUnitario: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(), nota: z.string().max(200).optional(),
+      })).min(1).max(2000),
+    }).parse(req.body);
+    const usuarioId = uuid.parse(req.headers["x-usuario-id"]);
+    const r = await enTransaccion(async (c) => {
+      const ok = await c.query<{ n: number }>(
+        "SELECT COUNT(*)::int AS n FROM productos WHERE empresa_id = $1 AND tipo = 'INVENTARIABLE' AND id = ANY($2::uuid[])", [e, [...new Set(b.items.map((i) => i.productoId))]]);
+      if (ok.rows[0].n !== new Set(b.items.map((i) => i.productoId)).size) throw new ErrorNegocio("Solo los productos inventariables llevan existencia");
+      const almacenId = await almacenDe(c, b.sucursalId, b.almacenId);
+      return crearAjuste(c, {
+        sucursalId: b.sucursalId, almacenId, usuarioId, motivo: b.motivo, origen: "MANUAL",
+        lineas: b.items.map((i) => ({ productoId: i.productoId, tipo: "AJUSTE_ENTRADA" as const, cantidad: new Decimal(i.cantidad), costoUnitario: i.costoUnitario, nota: i.nota })),
+      });
+    });
+    rep.code(201);
+    return r;
+  });
+
   app.post("/central/ajustes", async (req, rep) => {
     const b = z
       .object({
