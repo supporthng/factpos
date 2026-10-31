@@ -126,7 +126,29 @@ const VERSION_PG = process.env.FACTPOS_PG_VERSION || "16.15.0-beta.19";
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// El EXE es el unico artefacto publico. NSIS comprime el contenido directamente.
+// Paquete de ACTUALIZACIÓN (FactPOS-Instalador-<versión>.zip): lo descarga el servidor desde
+// Administración › Actualizaciones. Sin PostgreSQL ni el ejecutable de escritorio (no cambian
+// con cada versión y harían el paquete enorme); instalador\actualizar.ps1 copia solo el código.
+{
+  const { zipSync } = await import("fflate");
+  const archivos = {};
+  const excluidos = new Set(["postgresql", "escritorio"]);
+  const recorrer = (carpeta, prefijo) => {
+    for (const nombre of readdirSync(carpeta)) {
+      if (!prefijo && excluidos.has(nombre)) continue;
+      const ruta = join(carpeta, nombre);
+      const rel = prefijo ? `${prefijo}/${nombre}` : nombre;
+      if (statSync(ruta).isDirectory()) recorrer(ruta, rel);
+      else archivos[rel] = readFileSync(ruta);
+    }
+  };
+  recorrer(dir, "");
+  const zip = join(salida, `FactPOS-Instalador-${version}.zip`);
+  writeFileSync(zip, zipSync(archivos, { level: 6 }));
+  console.log(`Listo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB, paquete de actualización)`);
+}
+
+// El instalador (EXE) es lo que se descarga para instalar; el ZIP de arriba, para actualizar. NSIS comprime el contenido directamente.
 // Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
 let makensis = null;
 try { execSync("makensis -VERSION", { stdio: "ignore" }); makensis = "makensis"; } catch { /* sin NSIS */ }
