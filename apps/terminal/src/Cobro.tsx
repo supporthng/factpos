@@ -1,3 +1,4 @@
+import { SelectorComprobante, ClienteFiscalRapido, requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from "./Comprobante";
 import { useMemo, useState } from "react";
 import { Decimal } from "decimal.js";
 import type { Cupon } from "@factpos/compartido";
@@ -27,7 +28,7 @@ export interface CobroLocal {
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, alFallar, metodo = "EFECTIVO", notas }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
@@ -39,6 +40,12 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   metodo?: MetodoPago;
   /** Observaciones de la venta */
   notas?: string;
+  /** Tipo de comprobante (se elige en la pantalla de venta o aquí) */
+  tipo: TipoComprobante; onTipo: (t: TipoComprobante) => void;
+  /** Un cliente elegido o creado aquí mismo (RNC con consulta a la DGII) */
+  onCliente: (c: Cliente) => void;
+  /** Abrir la búsqueda completa de clientes y volver al cobro */
+  onBuscarCliente: () => void;
 }) {
   const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
   const [verOtros, setVerOtros] = useState(metodo !== "EFECTIVO");
@@ -46,8 +53,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
   const [credito, setCredito] = useState("");
   const [recibido, setRecibido] = useState("");
-  // Cliente creado en caja para pedir comprobante: la factura sale de crédito fiscal (E31)
-  const [tipoFactura, setTipoFactura] = useState<"E32" | "E31" | "B01" | "B02" | "SIN">(cliente?.nuevoParaFiscal ? "E31" : "E32");
+  const tipoFactura = tipo;
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState("");
   // Mismo id si se reintenta: el servidor no duplica la venta
@@ -174,17 +180,21 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         {cliente && Number(cliente.limiteCredito) > 0 && campo(`Crédito (disp. ${rd(disponibleCredito.toFixed(2))})`, credito, setCredito)}
       </details>
 
-      <label className="campo">
-        <span>Tipo de factura</span>
-        <select value={tipoFactura} onChange={(e) => setTipoFactura(e.target.value as typeof tipoFactura)}>
-          <option value="E32">Electrónica de consumo (E32)</option>
-          <option value="E31">Electrónica de crédito fiscal (E31)</option>
-          <option value="B02">NCF de consumo (B02)</option>
-          <option value="B01">NCF de crédito fiscal (B01)</option>
-          <option value="SIN">Factura interna sin comprobante</option>
-        </select>
-        <small>La numeración se asigna al confirmar. Los NCF B requieren rangos autorizados vigentes.</small>
-      </label>
+      <div className="cobro-seccion">
+        <span className="cobro-etiqueta">Comprobante</span>
+        <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} />
+        <small className="suave">La numeración se asigna al confirmar. Los NCF de serie B requieren rangos autorizados vigentes.</small>
+      </div>
+      <div className="cobro-seccion">
+        <span className="cobro-etiqueta">Cliente</span>
+        <div className="cobro-cliente">
+          <span>{cliente ? <><b>{cliente.nombre}</b>{cliente.documento && <> · {cliente.documento}</>}</> : <><b>Cliente mostrador</b> <span className="suave">(consumidor final)</span></>}</span>
+          {!sinServidor && <button className="boton chico" onClick={onBuscarCliente}>{cliente ? "Cambiar" : "Buscar o crear cliente"}</button>}
+        </div>
+        {!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente) && (
+          <ClienteFiscalRapido ajustes={ajustes} usuario={usuario} onCliente={onCliente} onManual={onBuscarCliente} />
+        )}
+      </div>
 
       {(error || msg) && <p className="error">{error || msg}</p>}
       <button className="boton cobrar" disabled={!!error || enviando} onClick={cobrar}>

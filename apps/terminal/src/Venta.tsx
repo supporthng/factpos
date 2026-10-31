@@ -44,6 +44,7 @@ import { Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada 
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
 import { PanelPedidos, type PedidoDetalle } from "./Pedidos";
+import { SelectorComprobante, requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from "./Comprobante";
 
 export interface Cliente {
   id: string; nombre: string; tipoDocumento: string; documento: string | null; telefono: string | null;
@@ -73,6 +74,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [sel, setSel] = useState(-1);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   /** Pedido de cliente cargado en la venta: al cobrar, queda facturado */
+  /** Tipo de comprobante de esta venta (Consumo por defecto) */
+  const [tipoComp, setTipoComp] = useState<TipoComprobante>("E32");
+  const volverACobro = useRef(false);
   const [pedidoActivo, setPedidoActivo] = useState<{ id: string; numero: string } | null>(null);
   const [cupon, setCupon] = useState<Cupon | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -329,7 +333,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setSel((s) => Math.min(s, lineas.length - 2));
   };
   const nuevaVenta = () => {
-    setPedidoActivo(null);
+    setPedidoActivo(null); setTipoComp("E32");
     setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); setNotas(""); setMetodo("EFECTIVO"); avisadas.current = new Set();
   };
 
@@ -597,6 +601,11 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </dl>
           {cot.error && <p className="error">{cot.error}</p>}
 
+          <span className="pv-titulo-pago">Comprobante</span>
+          <SelectorComprobante tipo={tipoComp} compacto onTipo={(t) => {
+            setTipoComp(t);
+            if (requiereDocumento(t) && !tieneDocumentoFiscal(cliente)) { avisar("Crédito fiscal: elija un cliente con RNC o cédula", "ok"); setModal("cliente"); }
+          }} />
           <span className="pv-titulo-pago">Forma de pago</span>
           <div className="pv-metodos">
             {([["EFECTIVO", "Efectivo", "billete"], ["TARJETA", "Tarjeta", "tarjeta"], ["TRANSFERENCIA", "Transferencia", "banco"], ["MIXTO", "Mixto", "mixto"]] as const).map(([m, t, ic]) => (
@@ -640,7 +649,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           onElegir={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
       )}
       {modal === "cliente" && (
-        <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} onElegir={(c) => { setCliente(c); setModal(null); }} onCerrar={() => setModal(null)} />
+        <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} onElegir={(c) => { setCliente(c); if (c.nuevoParaFiscal && tipoComp === "E32") setTipoComp("E31"); setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} onCerrar={() => { setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} />
       )}
       {modal === "cupon" && (
         <PedirCupon ajustes={ajustes} clienteId={cliente?.id}
@@ -654,6 +663,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           motivoDescuento={lineas.filter((l) => l.motivoDescuento).map((l) => `${l.prod.nombre}: ${l.motivoDescuento}`).join("; ") || undefined}
           metodo={metodo}
           notas={notas}
+          tipo={tipoComp} onTipo={setTipoComp}
+          onCliente={(c) => { setCliente(c); }}
+          onBuscarCliente={() => { volverACobro.current = true; setModal("cliente"); }}
           onCerrar={() => setModal(null)}
           alFallar={conTope ? () => { cargarCatalogo().catch(() => {}); } : undefined}
           local={{
