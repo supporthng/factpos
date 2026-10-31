@@ -96,9 +96,10 @@ export async function rutasContingencia(app: FastifyInstance) {
         WHERE p.empresa_id = $2 AND p.activo AND p.controla_stock AND p.tipo <> 'COMBO' AND ex.cantidad > 0`, [ctx.almacenId, ctx.empresaId]);
     const cupos: Record<string, number> = {};
     for (const x of r.rows) cupos[x.id] = Math.floor((Number(x.cantidad) / cajas) * 1000) / 1000; // lo que sobra del reparto no se asigna
-    const pr = principales.get(ctx.almacenId);
-    return { habilitado: true, cajas, en: new Date().toISOString(), cupos,
-             principal: pr && Date.now() - pr.en < 10 * 60_000 ? pr.url : null, claveRed: claveRed(ctx.almacenId) };
+    const permitePrincipal = await funcionHabilitada(ctx.empresaId, "caja_principal");
+    const pr = permitePrincipal ? principales.get(ctx.almacenId) : undefined;
+    return { habilitado: true, cajas, en: new Date().toISOString(), cupos, permitePrincipal,
+             principal: pr && Date.now() - pr.en < 10 * 60_000 ? pr.url : null, claveRed: permitePrincipal ? claveRed(ctx.almacenId) : null };
   });
 
   /** La caja principal anuncia su dirección para que las demás la encuentren si se cae el servidor. */
@@ -106,6 +107,7 @@ export async function rutasContingencia(app: FastifyInstance) {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
     const b = z.object({ url: z.string().regex(/^http:\/\/(\d{1,3}\.){3}\d{1,3}:\d{2,5}$/).nullable() }).parse(req.body);
     const ctx = await contextoCaja(cajaId);
+    if (b.url && !(await funcionHabilitada(ctx.empresaId, "caja_principal"))) return { ok: false };
     if (b.url) principales.set(ctx.almacenId, { url: b.url, en: Date.now() });
     else if (principales.get(ctx.almacenId)) principales.delete(ctx.almacenId);
     return { ok: true };

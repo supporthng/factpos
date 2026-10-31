@@ -64,6 +64,7 @@ let cupos: Record<string, number> | null = null;   // null = función apagada
 let usado: Record<string, number> = {};            // unidades base vendidas sin servidor desde el último reparto
 let ultimoReparto = 0;
 let red: { principal: string | null; clave: string | null } = { principal: null, clave: null };
+let permitePrincipal = false; // el administrador activó «Caja principal» en Seguridad
 
 /** Cuánto le queda a esta caja de ese producto sin servidor (null = sin control: con servidor o función apagada). */
 export function disponibleCupo(productoId: string): number | null {
@@ -71,7 +72,8 @@ export function disponibleCupo(productoId: string): number | null {
   return Math.max(0, (cupos[productoId] ?? 0) - (usado[productoId] ?? 0));
 }
 async function cargarCupos(ajustes: Ajustes) {
-  const g = await leer<{ cupos: Record<string, number> | null; principal?: string | null; clave?: string | null }>(k(ajustes.cajaId, "cupos"));
+  const g = await leer<{ cupos: Record<string, number> | null; principal?: string | null; clave?: string | null; permite?: boolean }>(k(ajustes.cajaId, "cupos"));
+  permitePrincipal = !!g?.permite;
   cupos = g?.cupos ?? null;
   red = { principal: g?.principal ?? null, clave: g?.clave ?? null };
   usado = (await leer<Record<string, number>>(k(ajustes.cajaId, "cupo-usado"))) ?? {};
@@ -80,11 +82,13 @@ export async function refrescarCupos(ajustes: Ajustes) {
   if (!sesionCaja()) return;
   ultimoReparto = Date.now();
   try {
-    const r = await api<{ habilitado: boolean; cupos: Record<string, number>; principal?: string | null; claveRed?: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/contingencia/cupos`);
+    const r = await api<{ habilitado: boolean; cupos: Record<string, number>; principal?: string | null; claveRed?: string | null; permitePrincipal?: boolean }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/contingencia/cupos`);
     cupos = r.habilitado ? r.cupos : null;
+    permitePrincipal = !!r.permitePrincipal;
     red = { principal: r.principal ?? null, clave: r.claveRed ?? null };
-    await guardar(k(ajustes.cajaId, "cupos"), { cupos, principal: red.principal, clave: red.clave });
-    if (r.habilitado) await anunciarPrincipal(ajustes);
+    await guardar(k(ajustes.cajaId, "cupos"), { cupos, principal: red.principal, clave: red.clave, permite: permitePrincipal });
+    if (r.habilitado && permitePrincipal) await anunciarPrincipal(ajustes);
+    else if (await esDeEscritorio()) fetch("/principal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ activo: false }) }).catch(() => {}); // función apagada: esta caja deja de ser principal
     // El reparto nuevo ya descuenta lo que esta caja envió; lo pendiente de envío se sigue descontando
     if (!((await leer<VentaPendiente[]>(k(ajustes.cajaId, "pendientes")))?.length)) {
       usado = {};
@@ -96,7 +100,7 @@ export async function refrescarCupos(ajustes: Ajustes) {
 const esDeEscritorio = () => fetch("/escritorio.json", { cache: "no-store" }).then((r) => r.ok).catch(() => false);
 /** Estado de esta caja como principal (solo existe en la aplicación de escritorio). */
 export async function estadoPrincipal(): Promise<{ activo: boolean; url: string | null } | null> {
-  if (!(await esDeEscritorio())) return null;
+  if (!permitePrincipal || !(await esDeEscritorio())) return null;
   try { return await (await fetch("/principal", { cache: "no-store" })).json(); } catch { return null; }
 }
 export async function fijarPrincipal(ajustes: Ajustes, activo: boolean) {
@@ -151,11 +155,11 @@ async function atenderRed(ajustes: Ajustes) {
       if (da <= 0) continue;
       // Primero se descuenta y se guarda; si el envío falla se pierde el cupo, nunca se vende de más
       cupos[m.productoId] = (cupos[m.productoId] ?? 0) - da;
-      await guardar(k(ajustes.cajaId, "cupos"), { cupos, principal: red.principal, clave: red.clave });
+      await guardar(k(ajustes.cajaId, "cupos"), { cupos, principal: red.principal, clave: red.clave, permite: permitePrincipal });
       await llamar("/entregar", { para: m.de, de: ajustes.cajaId, productoId: m.productoId, cantidad: da }).catch(() => {});
     } else if (m.tipo === "entrega") {
       cupos[m.productoId] = (cupos[m.productoId] ?? 0) + Number(m.cantidad);
-      await guardar(k(ajustes.cajaId, "cupos"), { cupos, principal: red.principal, clave: red.clave });
+      await guardar(k(ajustes.cajaId, "cupos"), { cupos, principal: red.principal, clave: red.clave, permite: permitePrincipal });
       cambiar({ aviso: "Otra caja le pasó existencia. Ya puede seguir vendiendo.", cupoVersion: estado.cupoVersion + 1 });
       setTimeout(() => cambiar({ aviso: null }), 8000);
     }
