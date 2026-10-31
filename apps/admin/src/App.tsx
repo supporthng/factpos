@@ -6,6 +6,7 @@ import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, useCatalogo, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
+import { InicioCifras, EstadoSistema } from "./paginas/InicioCifras";
 import { Inventario } from "./paginas/Inventario";
 import { Productos } from "./paginas/Productos";
 import { Compras } from "./paginas/Compras";
@@ -236,6 +237,8 @@ export function App() {
                   <h1>{saludo()}, {sesion.nombre.split(" ")[0]}</h1>
                   <p className="suave">¿Qué desea hacer hoy? Elija una función.</p>
                 </div>
+                {!enPortal && <InicioCifras irA={setSeccion} />}
+                <h2 className="titulo-seccion">Módulos</h2>
                 <div className="cuadricula cuadricula-grupos">
                   {grupos.map((g) => {
                     const dg = datosGrupo(g), items = enGrupo(g);
@@ -249,12 +252,13 @@ export function App() {
                         {items.length > 1 && (
                           <span className="mosaico-pie">
                             {items.slice(0, 3).map((s) => <i key={s.id}>{s.titulo}</i>)}
-                            {items.length > 3 && <i className="mas">+{items.length - 3}</i>}
+                            {items.length > 3 && <i className="mas">+{items.length - 3} más</i>}
                           </span>
                         )}
                       </button>
                     );
                   })}
+                  {!enPortal && <EstadoSistema />}
                 </div>
               </>
             )}
