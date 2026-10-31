@@ -2,7 +2,7 @@ import { Seguridad } from "./paginas/Seguridad";
 import { DosPasos } from "./paginas/DosPasos";
 import { ConfigMovil } from "./paginas/ConfigMovil";
 import { ConexionWeb } from "./paginas/ConexionWeb";
-import { PantallaActualizacion } from "./PantallaActualizacion";
+import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { Correo } from "./paginas/Correo";
 import { useEffect, useState, type ComponentType } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
@@ -540,12 +540,12 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
 
 /** Aplicación + pantalla de actualización (que tapa todo mientras el servidor se actualiza y cierra la sesión al terminar). */
 export function App() {
+  const servidor = () => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin);
+  const listo = usePreparado(servidor, () => fijarSesion(null));
   return (
     <>
-      <AppInterna />
-      <PantallaActualizacion
-        servidor={() => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin)}
-        alCambiarVersion={() => fijarSesion(null)} />
+      {listo ? <AppInterna /> : <div className="cargando">Iniciando…</div>}
+      <PantallaActualizacion servidor={servidor} alCambiarVersion={() => fijarSesion(null)} />
     </>
   );
 }

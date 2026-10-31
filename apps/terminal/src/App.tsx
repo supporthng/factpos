@@ -1,4 +1,4 @@
-import { PantallaActualizacion } from "./PantallaActualizacion";
+import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
 import { useEffect, useState } from "react";
@@ -336,9 +336,10 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
 
 /** Aplicación + pantalla de actualización (tapa todo mientras el servidor se actualiza y pide el PIN de nuevo al terminar). */
 export function App() {
+  const listo = usePreparado(() => leerAjustes()?.servidor ?? "", () => fijarSesionCaja(null));
   return (
     <>
-      <AppInterna />
+      {listo ? <AppInterna /> : <div className="cargando" style={{ padding: 40, textAlign: "center" }}>Iniciando…</div>}
       <PantallaActualizacion servidor={() => leerAjustes()?.servidor ?? ""} alCambiarVersion={() => fijarSesionCaja(null)} />
     </>
   );
