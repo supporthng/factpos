@@ -103,7 +103,8 @@ export async function verificarSoftware(app: FastifyInstance) {
     pasos: CAPACIDADES.importadorSetPruebas ? [] : ["Descargar el set de pruebas del portal de certificación.", "Construir el módulo que lo lee, genera, firma y envía cada XML mostrando su estado."] });
 
   // Trámite en el portal
-  const c = (await pool.query("SELECT autorizado, pasos FROM portal_certificacion_dgii WHERE id = 1").catch(() => ({ rows: [] as { autorizado: boolean; pasos: Record<string, { estado?: string }> }[] }))).rows[0];
+  type FilaCert = { autorizado: boolean; pasos: Record<string, { estado?: string }> };
+  const c = (await pool.query<FilaCert>("SELECT autorizado, pasos FROM portal_certificacion_dgii WHERE id = 1").catch(() => ({ rows: [] as FilaCert[] }))).rows[0];
   const hechos = Object.values(c?.pasos ?? {}).filter((x) => x.estado === "HECHO").length;
   r.push({ id: "autorizacion", titulo: "Autorización de la DGII", exige: "Completar los 15 pasos del proceso y que la DGII autorice como emisor electrónico.",
     estado: c?.autorizado ? "ok" : hechos > 0 ? "parcial" : "falta",
