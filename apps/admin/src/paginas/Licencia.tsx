@@ -10,7 +10,7 @@ interface EstadoLicencia {
   estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | "PRUEBA" | "PRUEBA_VENCIDA";
   permiteVender: boolean; dias: number; mensaje: string | null; error: string | null;
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
-  instalacionId: string; activada: boolean; local?: boolean;
+  instalacionId: string; licenciaId?: string | null; activada: boolean; local?: boolean;
   solicitud?: { estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA" | "SUSPENDIDA"; revisada: string } | null;
   solicitudEnviada?: { enviadaEn: string; datos: { planId?: string | null; sucursales?: number; empresa?: string } | null } | null;
   empresa?: { nombre: string; rnc: string } | null;
@@ -312,6 +312,7 @@ function MiLicencia({ d, onError }: { d: EstadoLicencia; onError: (t: string) =>
         </span>
       </div>
       <ul className="lic-lista">
+        <li><span className="suave">Número de licencia</span><b className="mono">{d.licenciaId ?? "—"}</b></li>
         <li><span className="suave">Licenciado a</span><b>{d.cliente}</b></li>
         <li><span className="suave">Plan</span><b>{d.plan ?? "—"}</b></li>
         <li><span className="suave">Sucursales permitidas</span><b>{d.sucursales}</b></li>

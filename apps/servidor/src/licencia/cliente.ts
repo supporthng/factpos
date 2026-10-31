@@ -272,7 +272,7 @@ export async function rutasLicenciaSucursal(app: FastifyInstance) {
     const f = await filaLicencia();
     return {
       ...publico(await estadoLicencia()), local: true,
-      instalacionId: f.instalacion_id, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: null,
+      instalacionId: f.instalacion_id, licenciaId: e.datos?.id ?? null, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: null,
       portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(),
     };
   });
