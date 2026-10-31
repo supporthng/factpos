@@ -7,6 +7,20 @@ import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.
 import { usarCertificado, certificado } from "../fiscal/firma.js";
 import { dgii } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
+import { PORTAL_URL } from "../licencia/cliente.js";
+
+/** Estado de la certificación del software en el portal de FactPOS (caché de 10 min). */
+let cacheCert: { t: number; v: { autorizado: boolean; fecha: string | null; software: string; pasosHechos: number; totalPasos: number } | null } | null = null;
+async function certificacionSoftware() {
+  if (cacheCert && Date.now() - cacheCert.t < 600_000) return cacheCert.v;
+  let v = null;
+  try {
+    const r = await fetch(`${PORTAL_URL()}/licencias/certificacion-dgii`, { signal: AbortSignal.timeout(5000) });
+    if (r.ok) v = await r.json();
+  } catch { /* sin internet */ }
+  cacheCert = { t: Date.now(), v };
+  return v;
+}
 
 /**
  * Administración de la facturación electrónica (central):
@@ -197,6 +211,12 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     // 0. ¿Puede esta empresa emitir ya con la DGII? Se confirma con la autenticación en producción (abajo).
     const idxAut = items.length;
     poner("autorizacion", "Autorización de la DGII para emitir e-CF", "falta", "", "");
+
+    // 0b. Certificación del software (FactPOS) ante la DGII: la lleva el proveedor en su portal
+    const sw = await certificacionSoftware();
+    if (!sw) poner("software", "Certificación de FactPOS ante la DGII", "info", "No se pudo consultar el portal de FactPOS (sin internet).");
+    else if (sw.autorizado) poner("software", "Certificación de FactPOS ante la DGII", "ok", `${sw.software} está autorizado por la DGII${sw.fecha ? ` desde el ${new Date(sw.fecha + "T12:00:00").toLocaleDateString("es-DO")}` : ""}.`);
+    else poner("software", "Certificación de FactPOS ante la DGII", "aviso", `${sw.software} está en proceso de certificación: ${sw.pasosHechos} de ${sw.totalPasos} pasos completados.`, "Lo gestiona FactPOS; no necesita hacer nada. Hasta entonces no se garantiza la emisión de e-CF en producción.");
 
     // 1. Datos del emisor
     const rnc = String(emp.rnc ?? "").replace(/\D/g, "");
