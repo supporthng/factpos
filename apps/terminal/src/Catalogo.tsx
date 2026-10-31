@@ -19,7 +19,8 @@ function etiquetaOferta(o: Oferta) {
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo }: {
+export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo, servidor }: {
+  servidor: string;
   catalogo: Catalogo;
   nivel: number;
   enCarrito: Map<string, number>;
@@ -93,7 +94,7 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo 
             <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
               style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={(precio === null && !p.precioVariable) || bloqueado}>
               <div className="arte">
-                {p.imagen ? <img src={p.imagen} alt="" loading="lazy" /> : <Arte icono={p.categoriaIcono} />}
+                {p.imagen ? <img src={p.imagen.startsWith("/") ? servidor.replace(/\/$/, "") + p.imagen : p.imagen} alt="" loading="lazy" decoding="async" /> : <Arte icono={p.categoriaIcono} />}
                 {p.categoria && <span className="chip-cat">{p.categoria}</span>}
                 {oferta && <span className="chip-oferta" title={oferta.nombre}>{etiquetaOferta(oferta)}{oferta.restantes != null && <small> · quedan {Math.floor(Number(oferta.restantes) / Number(p.factor))}</small>}</span>}
                 {n > 0 && <span className="cuenta">{p.esPesable ? "✓" : n}</span>}

@@ -96,6 +96,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setOfertasAcabadas((xs) => [...xs, o]);
   }, []);
   const restantesPrevias = useRef<Map<string, number> | null>(null);
+  const existenciasRef = useRef<() => Promise<void>>(async () => {});
   const cargarCatalogo = useCallback(async () => {
     const c = await api<Catalogo>(ajustes.servidor, `/cajas/${ajustes.cajaId}/catalogo`);
     const ahora = new Map(c.ofertas.filter((o) => o.restantes != null).map((o) => [o.id, Number(o.restantes)]));
@@ -113,6 +114,17 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setCatalogo(c);
     guardarCache(ajustes, "catalogo", c); // para poder vender si se cae el servidor
   }, [ajustes, anunciar]);
+  /** Pone al día solo las existencias (unos KB), sin bajar de nuevo el catálogo completo. */
+  const refrescarExistencias = useCallback(async () => {
+    const m = await api<Record<string, string>>(ajustes.servidor, `/cajas/${ajustes.cajaId}/existencias`);
+    setCatalogo((c) => {
+      if (!c) return c;
+      const n = { ...c, productos: c.productos.map((p) => (m[p.presentacionId] !== undefined ? { ...p, existencia: m[p.presentacionId] } : p)) };
+      guardarCache(ajustes, "catalogo", n);
+      return n;
+    });
+  }, [ajustes]);
+  existenciasRef.current = refrescarExistencias;
   useEffect(() => {
     cargarCatalogo().catch(async (e) => {
       // Sin servidor: el último catálogo guardado en esta caja
@@ -120,8 +132,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       if (c) setCatalogo((actual) => actual ?? c);
       else setAviso({ texto: e.message, tipo: "error" });
     });
+    let vuelta = 0;
     const t = setInterval(async () => {
       try {
+        if (++vuelta % 3 === 0) refrescarExistencias().catch(() => {}); // cada 30 s: lo que venden las otras cajas
         const v = await api<{ version: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/catalogo/version`);
         setCatalogo((actual) => {
           if (actual && actual.version !== v.version) cargarCatalogo();
@@ -130,7 +144,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       } catch { /* sin conexión: se sigue vendiendo con el catálogo actual */ }
     }, 10000); // cada 10 s: así las demás cajas ven pronto una oferta agotada
     return () => clearInterval(t);
-  }, [ajustes, cargarCatalogo]);
+  }, [ajustes, cargarCatalogo, refrescarExistencias]);
 
   const nivelCliente = cliente?.nivel ?? catalogo?.nivelPredeterminado ?? 1;
 
@@ -498,7 +512,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       <main className="pv-cuerpo">
         {verCatalogo && catalogo && (
           <section className="pv-catalogo" aria-label="Catálogo">
-            <VistaCatalogo catalogo={catalogo} nivel={nivelCliente} enCarrito={enCarrito}
+            <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivelCliente} enCarrito={enCarrito}
               onAgregar={(p) => agregar(p, "1")} onCodigo={procesarCodigo} />
           </section>
         )}
@@ -659,7 +673,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 .catch(() => { if (n > 0) setTimeout(() => avisarFacturado(n - 1), 5000); });
               avisarFacturado(5);
             }
-            setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta(); setModal("ticket"); cargarCatalogo().catch(() => {}); }}
+            setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta(); setModal("ticket"); existenciasRef.current().catch(() => {}); }}
         />
       )}
       {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}
