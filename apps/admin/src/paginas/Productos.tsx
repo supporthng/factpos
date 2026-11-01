@@ -528,7 +528,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
               <table className="tabla tabla-edicion tabla-precios">
                 <thead><tr><th>Nivel</th><th>Definir por</th><th className="der">Valor</th><th className="der">Precio de venta</th><th className="der">Ganancia</th><th className="der">Margen s/venta</th></tr></thead>
                 <tbody>
-                  {((["1"]) as readonly string[]).map((k) => {
+                  {(["1"] as const).map((k) => {
                     const pct = esPct(p, k);
                     const desc = esDesc(p, k);
                     const v = p.precios[k] ?? "";
