@@ -38,7 +38,7 @@ export function iniciarEscala() {
 export type Tema = "claro" | "oscuro";
 const CLAVE_TEMA = "factpos.tema";
 export function leerTema(): Tema {
-  try { return localStorage.getItem(CLAVE_TEMA) === "oscuro" ? "oscuro" : "claro"; } catch { return "claro"; }
+  try { return localStorage.getItem(CLAVE_TEMA) === "claro" ? "claro" : "oscuro"; } catch { return "oscuro"; }
 }
 export function aplicarTema() {
   document.documentElement.dataset.tema = leerTema();
