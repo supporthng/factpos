@@ -23,6 +23,7 @@ import { Ajustes } from "./paginas/Ajustes";
 import { Conteos } from "./paginas/Conteos";
 import { Precios } from "./paginas/Precios";
 import { Ofertas } from "./paginas/Ofertas";
+import { Clientes } from "./paginas/Clientes";
 import { Traspasos } from "./paginas/Traspasos";
 import { Delivery } from "./paginas/Delivery";
 import { Reportes } from "./paginas/Reportes";
@@ -53,6 +54,7 @@ const SECCIONES = [
   { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, i: "kardex", p: ["admin.inventario"] },
   { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, i: "precios", p: ["admin.precios"] },
   { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
+  { id: "clientela", titulo: "Clientes", grupo: "Comercial", C: Clientes, i: "clientes", p: ["admin.clientes", "admin.cxc"] },
   { id: "facturas", titulo: "Facturas", grupo: "Comercial", C: Facturas, i: "ticket", p: ["admin.facturas"] },
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Comercial", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, i: "delivery", p: ["admin.config"] },
@@ -125,6 +127,7 @@ const DESCRIPCION: Record<string, string> = {
   kardex: "Historial de entradas y salidas de un producto",
   precios: "Cambiar precios por nivel y por sucursal",
   ofertas: "Promociones, combos y descuentos con tope",
+  clientela: "Clientes y el nivel de precio de cada uno",
   delivery: "Pedidos a domicilio y repartidores",
   cxc: "Clientes a crédito, abonos y estados de cuenta",
   caja: "Retiros, gastos y movimientos de caja",

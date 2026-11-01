@@ -47,6 +47,8 @@ const ProductoSchema = z
         precios: z.record(z.enum(["1", "2", "3"]), monto.nullable()).default({}),
         /** % de ganancia sobre el costo con que se calculó cada precio (null = fijado por monto) */
         porcentajes: z.record(z.enum(["1", "2", "3"]), z.number().min(0).max(1000).nullable()).default({}),
+        /** Precios 2 y 3: «PRECIO1» = el % es un descuento sobre el precio 1 (se recalcula solo); por omisión, sobre el costo */
+        bases: z.record(z.enum(["2", "3"]), z.enum(["COSTO", "PRECIO1"])).default({}),
       }))
       .min(1, "Agregue al menos una presentación"),
     sucursales: z
@@ -135,21 +137,28 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
     }
     for (const lp of listas) {
       const k = String(lp.nivel) as "1" | "2" | "3";
-      const nuevoPrecio = pr.precios[k];
+      // Descuento sobre el precio 1: el precio lo calcula el servidor (así también se respeta si cambia el precio 1 por otra vía)
+      const sobrePrecio1 = k !== "1" && pr.bases[k as "2" | "3"] === "PRECIO1" && pr.porcentajes[k] != null && pr.porcentajes[k]! <= 100;
+      const precio1 = pr.precios["1"];
+      const nuevoPrecio = sobrePrecio1
+        ? (precio1 ? (Math.round(Number(precio1) * (1 - pr.porcentajes[k]! / 100) * 100) / 100).toFixed(2) : null)
+        : pr.precios[k];
       const pct = nuevoPrecio ? pr.porcentajes[k] ?? null : null;
-      const actual = (await c.query<{ precio: string; activo: boolean; porcentaje: string | null }>(
-        "SELECT precio, activo, porcentaje FROM precios WHERE lista_precio_id = $1 AND presentacion_id = $2 AND sucursal_id IS NULL", [lp.id, prId],
+      const base = sobrePrecio1 && nuevoPrecio ? "PRECIO1" : "COSTO";
+      const actual = (await c.query<{ precio: string; activo: boolean; porcentaje: string | null; base: string }>(
+        "SELECT precio, activo, porcentaje, base FROM precios WHERE lista_precio_id = $1 AND presentacion_id = $2 AND sucursal_id IS NULL", [lp.id, prId],
       )).rows[0];
       const anterior = actual?.activo ? actual.precio : null;
       const mismoPrecio = (nuevoPrecio ?? null) === anterior || (!!nuevoPrecio && !!anterior && Number(nuevoPrecio) === Number(anterior));
       const mismoPct = (actual?.porcentaje == null ? null : Number(actual.porcentaje)) === pct;
-      if (mismoPrecio && mismoPct) continue;
+      const mismaBase = (actual?.base ?? "COSTO") === base;
+      if (mismoPrecio && mismoPct && mismaBase) continue;
       if (nuevoPrecio) {
         await c.query(
-          `INSERT INTO precios (id, lista_precio_id, presentacion_id, precio, porcentaje) VALUES ($1,$2,$3,$4,$5)
+          `INSERT INTO precios (id, lista_precio_id, presentacion_id, precio, porcentaje, base) VALUES ($1,$2,$3,$4,$5,$6)
            ON CONFLICT (lista_precio_id, presentacion_id, COALESCE(sucursal_id, '00000000-0000-0000-0000-000000000000'))
-           DO UPDATE SET precio = EXCLUDED.precio, porcentaje = EXCLUDED.porcentaje, activo = true`,
-          [uuidv7(), lp.id, prId, nuevoPrecio, pct],
+           DO UPDATE SET precio = EXCLUDED.precio, porcentaje = EXCLUDED.porcentaje, base = EXCLUDED.base, activo = true`,
+          [uuidv7(), lp.id, prId, nuevoPrecio, pct, base],
         );
       } else {
         await c.query("UPDATE precios SET activo = false WHERE lista_precio_id = $1 AND presentacion_id = $2 AND sucursal_id IS NULL", [lp.id, prId]);
@@ -258,7 +267,9 @@ export async function rutasCentralProductos(app: FastifyInstance) {
                 COALESCE((SELECT jsonb_object_agg(lp.nivel, x.precio::text) FROM precios x JOIN listas_precio lp ON lp.id = x.lista_precio_id
                            WHERE x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL AND lp.nivel IS NOT NULL), '{}') AS precios,
                 COALESCE((SELECT jsonb_object_agg(lp.nivel, x.porcentaje::float) FROM precios x JOIN listas_precio lp ON lp.id = x.lista_precio_id
-                           WHERE x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL AND lp.nivel IS NOT NULL AND x.porcentaje IS NOT NULL), '{}') AS porcentajes
+                           WHERE x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL AND lp.nivel IS NOT NULL AND x.porcentaje IS NOT NULL), '{}') AS porcentajes,
+                COALESCE((SELECT jsonb_object_agg(lp.nivel, x.base) FROM precios x JOIN listas_precio lp ON lp.id = x.lista_precio_id
+                           WHERE x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL AND lp.nivel IN (2, 3) AND x.base = 'PRECIO1'), '{}') AS bases
            FROM presentaciones pr WHERE pr.producto_id = $1
             AND (EXISTS (SELECT 1 FROM codigos_barra WHERE presentacion_id = pr.id AND activo)
                  OR EXISTS (SELECT 1 FROM precios WHERE presentacion_id = pr.id AND activo) OR pr.es_principal)
@@ -336,8 +347,8 @@ export async function rutasCentralProductos(app: FastifyInstance) {
         const npr = uuidv7();
         await c.query("INSERT INTO presentaciones (id, producto_id, nombre, factor, es_principal) VALUES ($1,$2,$3,$4,$5)", [npr, nid, pr.nombre, pr.factor, pr.es_principal]);
         await c.query(
-          `INSERT INTO precios (id, lista_precio_id, presentacion_id, sucursal_id, precio, porcentaje)
-           SELECT gen_random_uuid(), lista_precio_id, $1, sucursal_id, precio, porcentaje FROM precios WHERE presentacion_id = $2 AND activo`,
+          `INSERT INTO precios (id, lista_precio_id, presentacion_id, sucursal_id, precio, porcentaje, base)
+           SELECT gen_random_uuid(), lista_precio_id, $1, sucursal_id, precio, porcentaje, base FROM precios WHERE presentacion_id = $2 AND activo`,
           [npr, pr.id],
         );
       }
