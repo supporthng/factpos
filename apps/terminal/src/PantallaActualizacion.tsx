@@ -9,6 +9,7 @@ interface Estado {
   version: string; actualizando: boolean; destino: string | null; paso: string | null; porcentaje: number | null;
   resultado: { estado: "OK" | "ERROR"; version: string; mensaje: string | null; en: string } | null;
 }
+const vcorta = (v: string | null | undefined) => (v ?? "").replace(/\.0$/, "");
 const CLAVE_VERSION = "factpos.version-vista";
 const leer = () => { try { return localStorage.getItem(CLAVE_VERSION); } catch { return null; } };
 const guardar = (v: string) => { try { localStorage.setItem(CLAVE_VERSION, v); } catch { /* sin almacenamiento */ } };
@@ -72,7 +73,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
   return (
     <div className="actualizando-fondo" role="alertdialog" aria-live="polite">
       <div className="actualizando-caja">
-        <h2>Actualizando FactPOS{e?.destino ? ` a la versión ${e.destino}` : ""}</h2>
+        <h2>Actualizando FactPOS{e?.destino ? ` a la versión ${vcorta(e.destino)}` : ""}</h2>
         <p>{sinConexion ? "Reiniciando el servidor…" : e?.paso ?? "Preparando…"}</p>
         <div className={"actualizando-barra" + (pct == null || sinConexion ? " indeterminada" : "")}><b style={{ width: pct != null && !sinConexion ? `${Math.max(4, pct)}%` : undefined }} /></div>
         <p className="suave pequeno">No apague el equipo. Al terminar, el sistema se abrirá solo y le pedirá su usuario y contraseña.</p>

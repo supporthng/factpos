@@ -485,10 +485,10 @@ function watchUpdates() {
         updating = 'cerrando';
         const changed = st.version !== versionBefore;
         const failed = st.resultado && st.resultado.estado === 'ERROR';
-        finishUpdate(!failed, failed ? 'No se pudo actualizar; se conservó la versión anterior.' : changed ? `FactPOS ${st.version} listo` : 'Actualización terminada');
+        finishUpdate(!failed, failed ? 'No se pudo actualizar; se conservó la versión anterior.' : changed ? `FactPOS ${String(st.version).replace(/\.0$/, '')} listo` : 'Actualización terminada');
       } else if (updating === true) {
         const f = st ? { paso: st.paso, porcentaje: st.porcentaje, destino: st.destino } : readStateFile();
-        sendMini(st ? { paso: f.paso, porcentaje: f.porcentaje, destino: f.destino } : f ? { paso: f.paso, porcentaje: f.porcentaje, destino: f.version, reiniciando: !f.porcentaje } : { paso: 'Reiniciando el servidor…', porcentaje: null });
+        sendMini(st ? { paso: f.paso, porcentaje: f.porcentaje, destino: String(f.destino ?? '').replace(/\.0$/, '') } : f ? { paso: f.paso, porcentaje: f.porcentaje, destino: String(f.version ?? '').replace(/\.0$/, ''), reiniciando: !f.porcentaje } : { paso: 'Reiniciando el servidor…', porcentaje: null });
         if (Date.now() - updateStartedAt > 20 * 60 * 1000) { updating = 'cerrando'; finishUpdate(false, 'La actualización tardó demasiado. Se abrirá el sistema; avise a soporte.'); }
       }
     } finally { busy = false; }

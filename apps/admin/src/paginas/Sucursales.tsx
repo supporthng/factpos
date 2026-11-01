@@ -68,7 +68,7 @@ export function Sucursales() {
             <div key={x.codigo} className="fila-solicitud">
               <div>
                 <b>{x.equipo ?? "Equipo sin nombre"}</b> <span className="pastilla mono">{x.codigo}</span>
-                <div className="suave pequeno">{x.ip ? `Desde ${x.ip} · ` : ""}{hace(x.creadoEn)}{x.version ? ` · versión ${x.version}` : ""}</div>
+                <div className="suave pequeno">{x.ip ? `Desde ${x.ip} · ` : ""}{hace(x.creadoEn)}{x.version ? ` · versión ${String(x.version).replace(/\.0$/, "")}` : ""}</div>
               </div>
               <span className="flex" />
               <button className="enlace" onClick={() => rechazar(x.codigo, x.equipo)}>Rechazar</button>

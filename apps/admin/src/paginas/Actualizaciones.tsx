@@ -40,7 +40,7 @@ export function Actualizaciones() {
           </div>
           {d.proceso && (
             <Aviso tipo={d.proceso.estado === "ERROR" ? "error" : "info"}
-              texto={d.proceso.estado === "ERROR" ? `La actualización a ${d.proceso.version} falló: ${d.proceso.mensaje}` : `Actualizando a ${d.proceso.version}…`} />
+              texto={d.proceso.estado === "ERROR" ? `La actualización a ${d.proceso.version.replace(/\.0$/, "")} falló: ${d.proceso.mensaje}` : `Actualizando a ${d.proceso.version.replace(/\.0$/, "")}…`} />
           )}
           {d.hayNueva ? (
             <div className="panel">
