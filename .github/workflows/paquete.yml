@@ -49,8 +49,13 @@ jobs:
       - name: Versión incremental de main
         if: github.ref == 'refs/heads/main'
         shell: bash
-        # El número grande (p. ej. 2.1) se cambia a mano en version.txt; el último número sube solo en cada publicación
-        run: npm pkg set version="$(tr -d '[:space:]' < version.txt).${GITHUB_RUN_NUMBER}"
+        # Cada publicación sube un décimo: 2.1, 2.2 … 2.9, 3.0 (3), 3.1 … 3.9, 4.0 (4)…
+        # version.txt guarda "<versión inicial> <número de ejecución de esa publicación>" (p. ej. "2.1 113"); para saltar
+        # a otra versión se cambian esos dos números. Internamente se escribe 2.1.0 (el instalador exige tres números).
+        run: |
+          read base corrida < version.txt
+          k=$(( ${base%%.*} * 10 + ${base##*.} + GITHUB_RUN_NUMBER - corrida ))
+          npm pkg set version="$(( k / 10 )).$(( k % 10 )).0"
       - run: npm run build
       - run: npm test
       - name: Compilar Electron
