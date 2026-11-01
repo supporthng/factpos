@@ -11,7 +11,7 @@ interface EstadoLicencia {
   estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | "PRUEBA" | "PRUEBA_VENCIDA";
   permiteVender: boolean; dias: number; mensaje: string | null; error: string | null;
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
-  instalacionId: string; licenciaId?: string | null; activada: boolean; local?: boolean;
+  instalacionId: string; licenciaId?: string | null; clave?: string | null; activada: boolean; local?: boolean;
   solicitud?: { estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA" | "SUSPENDIDA"; revisada: string } | null;
   solicitudEnviada?: { enviadaEn: string; datos: { planId?: string | null; sucursales?: number; empresa?: string } | null } | null;
   empresa?: { nombre: string; rnc: string } | null;
@@ -137,7 +137,7 @@ export function Licencia() {
         <h3 style={{ marginTop: 0 }}>{d.activada ? "Cambiar o volver a activar la licencia" : "¿Ya tiene una clave de activación?"}</h3>
         <p className="suave">Escriba la clave de activación que le entregó su proveedor (empieza con FPS-). Solo se usa una vez por instalación.</p>
         <div className="en-linea">
-          <input className="mono" value={clave} onChange={(e) => setClave(e.target.value.toUpperCase())} placeholder="FPS-XXXX-XXXX-XXXX-XXXX" maxLength={24} disabled={!admin} />
+          <input className="mono" value={clave} onChange={(e) => setClave(e.target.value.toUpperCase())} placeholder={d.clave ?? "FPS-XXXX-XXXX-XXXX-XXXX"} maxLength={24} disabled={!admin} />
           <button className="boton primario" disabled={!admin || trabajando || clave.replace(/[^A-Z0-9]/g, "").length < 16}
             onClick={() => accion("/central/licencia/activar", { clave }, "Licencia activada")}>Activar</button>
         </div>
@@ -319,6 +319,7 @@ function MiLicencia({ d, onError }: { d: EstadoLicencia; onError: (t: string) =>
         <li><span className="suave">Plan</span><b>{d.plan ?? "—"}</b></li>
         <li><span className="suave">Sucursales permitidas</span><b>{d.sucursales}</b></li>
         <li><span className="suave">Vence</span><b>{d.vence ? fecha(d.vence) : "—"}</b></li>
+        <li><span className="suave">Clave de activación</span><b className="mono">{d.clave ?? "Se muestra al volver a activar con su clave"}</b></li>
         <li><span className="suave">Instalación</span><b className="mono">{d.instalacionId}</b></li>
       </ul>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>El archivo está firmado por FactPOS y solo sirve en esta instalación. Guárdelo como respaldo.</p>

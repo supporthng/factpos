@@ -124,8 +124,8 @@ export async function activarLicencia(clave: string, apiUrl?: string) {
   });
   const e = evaluarLicencia(r.licencia, { instalacion: f.instalacion_id });
   if (e.error) throw new ErrorNegocio(`El portal devolvió una licencia que no se pudo verificar: ${e.error}`, 502);
-  await pool.query("UPDATE licencia SET token = $1, secreto = $2, portal_url = $3, ultimo_contacto = now(), ultimo_error = NULL, actualizado_en = now() WHERE id = 1",
-    [r.licencia, r.secreto, PORTAL_URL()]);
+  await pool.query("UPDATE licencia SET token = $1, secreto = $2, portal_url = $3, clave_activacion = $4, ultimo_contacto = now(), ultimo_error = NULL, actualizado_en = now() WHERE id = 1",
+    [r.licencia, r.secreto, PORTAL_URL(), clave.trim().toUpperCase()]);
   olvidarLicencia();
   await reportarTunel(PORTAL_URL()).catch(() => false);
   // Master: con la licencia activa ya puede tener su dirección fija (<empresa>.factpos.app)
@@ -308,6 +308,7 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     return {
       ...publico(e),
       instalacionId: f.instalacion_id, licenciaId: e.datos?.id ?? null, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
+      clave: (await pool.query<{ c: string | null }>("SELECT clave_activacion AS c FROM licencia WHERE id = 1").catch(() => ({ rows: [] }))).rows[0]?.c ?? null,
       portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(), solicitud: estadoSolicitud(), solicitudEnviada: await solicitudEnviada(),
       empresa: (await pool.query("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas ORDER BY actualizado_en LIMIT 1").catch(() => ({ rows: [] }))).rows[0] ?? null,
       // Servidor master: dirección pública y acceso web por el portal
