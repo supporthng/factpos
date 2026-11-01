@@ -49,7 +49,8 @@ async function http(url: string, init: RequestInit) {
     throw new SinConexion(`Sin conexión con ${new URL(url).host}: ${(e as Error).message}`);
   }
   const texto = await r.text();
-  if (r.status >= 500) throw new SinConexion(`Servicio no disponible (${r.status})`);
+  // Fallas del servicio o límites de uso: el documento NO está rechazado, se reintenta con espera
+  if (r.status >= 500 || [408, 425, 429].includes(r.status)) throw new SinConexion(`Servicio no disponible o saturado (${r.status})`);
   let cuerpo: any;
   try { cuerpo = JSON.parse(texto); } catch { cuerpo = { texto }; }
   return { status: r.status, cuerpo };
@@ -61,7 +62,7 @@ const archivo = (xml: string, nombre: string) => {
   return f;
 };
 
-function mapaEstado(v: unknown): EstadoDgii {
+export function mapaEstado(v: unknown): EstadoDgii {
   const s = String(v ?? "").toLowerCase();
   if (s.includes("condicional")) return "ACEPTADO_COND";
   if (s.includes("aceptado")) return "ACEPTADO";
@@ -89,40 +90,84 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
     return token.valor;
   }
 
+  /** Si la DGII responde 401 (token vencido o revocado) se pide uno nuevo y se repite una sola vez. */
+  async function conToken(fn: (t: string) => Promise<{ status: number; cuerpo: any }>) {
+    let r = await fn(await autenticar());
+    if (r.status === 401) { token = null; r = await fn(await autenticar()); }
+    if (r.status === 401 || r.status === 403) throw new SinConexion(`La DGII no aceptó la autenticación (${r.status}); se reintenta`);
+    return r;
+  }
+
   return {
     async probar() { token = null; await autenticar(); },
     async enviar(d) {
-      const t = await autenticar();
       const url = d.modo === "RFCE" ? `${baseFc}/recepcionfc/api/recepcion/ecf` : `${base}/recepcion/api/FacturasElectronicas`;
-      const r = await http(url, {
+      const r = await conToken((t) => http(url, {
         method: "POST", headers: { authorization: `Bearer ${t}` }, body: archivo(d.xml, `${d.rncEmisor}${d.encf}.xml`),
-      });
+      }));
       if (r.status >= 400) return { estado: "RECHAZADO", mensajes: r.cuerpo };
       if (d.modo === "RFCE") return { estado: mapaEstado(r.cuerpo.estado), mensajes: r.cuerpo.mensajes ?? r.cuerpo };
       return { estado: "EN_PROCESO", trackId: r.cuerpo.trackId, mensajes: r.cuerpo };
     },
     async consultar(trackId) {
-      const t = await autenticar();
-      const r = await http(`${base}/consultaresultado/api/Consultas/Estado?TrackId=${encodeURIComponent(trackId)}`, {
+      const r = await conToken((t) => http(`${base}/consultaresultado/api/Consultas/Estado?TrackId=${encodeURIComponent(trackId)}`, {
         method: "GET", headers: { authorization: `Bearer ${t}` },
-      });
+      }));
       return { estado: mapaEstado(r.cuerpo.estado), mensajes: r.cuerpo.mensajes ?? r.cuerpo };
     },
   };
 }
 
 // ---------------------------------------------------------------------
-export function pse(url: string): Transmisor {
-  const cab = { "content-type": "application/json", authorization: `Bearer ${process.env.PSE_TOKEN ?? ""}` };
+/**
+ * Proveedor de servicios de facturación electrónica (PSE) autorizado por la DGII.
+ *
+ * Cada proveedor tiene su propia API. Para no tocar la cola de envío ni el resto del sistema, lo único que
+ * cambia entre proveedores es este contrato: cómo se arma la petición y cómo se leen sus respuestas.
+ * `generico` es el formato propio de FactPOS (JSON); para un proveedor real se escribe otro `FormatoPse`.
+ */
+export interface FormatoPse {
+  nombre: string;
+  /** Petición para emitir el documento */
+  emitir(d: DocumentoEnvio): { ruta: string; metodo: "POST" | "PUT"; cuerpo: unknown };
+  /** Petición para saber cómo va un documento ya enviado */
+  consultar(trackId: string, d: DocumentoEnvio): { ruta: string };
+  /** Estado final o en proceso a partir de la respuesta del proveedor */
+  leer(status: number, cuerpo: any): Respuesta;
+  /** Encabezados de autenticación */
+  cabeceras(): Record<string, string>;
+}
+
+export const formatoGenerico: FormatoPse = {
+  nombre: "generico",
+  emitir: (d) => ({ ruta: "/ecf", metodo: "POST", cuerpo: d }),
+  consultar: (trackId) => ({ ruta: `/ecf/${encodeURIComponent(trackId)}` }),
+  leer: (_status, c) => ({ estado: mapaEstado(c?.estado), trackId: c?.trackId, mensajes: c?.mensajes ?? c }),
+  cabeceras: () => ({ "content-type": "application/json", authorization: `Bearer ${process.env.PSE_TOKEN ?? ""}` }),
+};
+
+export function pse(url: string, formato: FormatoPse = formatoGenerico): Transmisor {
+  const base = url.replace(/\/$/, "");
+  /** 401/403: son las credenciales de FactPOS ante el proveedor, no un problema del documento: se reintenta, no se rechaza. */
+  const revisar = (r: { status: number; cuerpo: any }) => {
+    if (r.status === 401 || r.status === 403) throw new SinConexion(`El proveedor no aceptó las credenciales de FactPOS (${r.status}); se reintenta`);
+    return r;
+  };
   return {
     async enviar(d) {
-      const r = await http(`${url.replace(/\/$/, "")}/ecf`, { method: "POST", headers: cab, body: JSON.stringify(d) });
+      const p = formato.emitir(d);
+      const r = revisar(await http(`${base}${p.ruta}`, { method: p.metodo, headers: formato.cabeceras(), body: JSON.stringify(p.cuerpo) }));
+      // Ya lo tiene (un envío anterior llegó pero se perdió la respuesta): no se duplica, se consulta por su número
+      if (r.status === 409) return { estado: "EN_PROCESO", trackId: d.encf, mensajes: r.cuerpo };
       if (r.status >= 400) return { estado: "RECHAZADO", mensajes: r.cuerpo };
-      return { estado: mapaEstado(r.cuerpo.estado), trackId: r.cuerpo.trackId, mensajes: r.cuerpo.mensajes };
+      return formato.leer(r.status, r.cuerpo);
     },
-    async consultar(trackId) {
-      const r = await http(`${url.replace(/\/$/, "")}/ecf/${encodeURIComponent(trackId)}`, { method: "GET", headers: cab });
-      return { estado: mapaEstado(r.cuerpo.estado), mensajes: r.cuerpo.mensajes };
+    async consultar(trackId, d) {
+      const p = formato.consultar(trackId, d);
+      const r = revisar(await http(`${base}${p.ruta}`, { method: "GET", headers: formato.cabeceras() }));
+      if (r.status === 404) return { estado: "EN_PROCESO", trackId, mensajes: r.cuerpo };   // aún no lo ve: se consulta de nuevo
+      if (r.status >= 400) return { estado: "RECHAZADO", mensajes: r.cuerpo };
+      return formato.leer(r.status, r.cuerpo);
     },
   };
 }

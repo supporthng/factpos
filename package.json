@@ -11,7 +11,7 @@
     "preparar": "npm run build && npm run semilla",
     "start": "npm run start -w @factpos/servidor",
     "build": "npm run build -w @factpos/compartido && npm run build -w @factpos/servidor && npm run build -w @factpos/terminal && npm run build -w @factpos/admin && node scripts/embeber-admin.mjs",
-    "test": "npm test -w @factpos/compartido",
+    "test": "npm test -w @factpos/compartido && npm test -w @factpos/servidor",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:migrar": "npm run migrar -w @factpos/servidor",
     "dev:servidor": "npm run dev -w @factpos/servidor",
