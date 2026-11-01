@@ -406,6 +406,15 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     }
   });
 
+  /** Precios 2 y 3 como % de descuento sobre el precio 1 (se definen una vez para toda la empresa) */
+  app.put("/central/niveles-precio", async (req) => {
+    const b = z.object({ nivel2: z.number().min(0).max(90), nivel3: z.number().min(0).max(90) }).parse(req.body);
+    const e = empresaDe(req);
+    await pool.query("UPDATE listas_precio SET descuento_pct = $2 WHERE empresa_id = $1 AND nivel = 2 AND NOT es_predeterminada", [e, b.nivel2]);
+    await pool.query("UPDATE listas_precio SET descuento_pct = $2 WHERE empresa_id = $1 AND nivel = 3 AND NOT es_predeterminada", [e, b.nivel3]);
+    return { ok: true };
+  });
+
   // ---- Catálogos auxiliares del formulario ----
   app.get("/central/productos-auxiliares", async (req) => {
     const e = empresaDe(req);
@@ -413,7 +422,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
       pool.query(`SELECT id, nombre, tipo, tasa::float AS tasa FROM impuestos WHERE empresa_id = $1 AND tipo = 'ITBIS' ORDER BY tasa DESC`, [e]),
       pool.query(`SELECT id, nombre, color, icono FROM categorias WHERE empresa_id = $1 ORDER BY orden, nombre`, [e]),
       pool.query(`SELECT id, nombre, rnc FROM proveedores WHERE empresa_id = $1 AND activo ORDER BY nombre`, [e]),
-      pool.query(`SELECT nivel, nombre FROM listas_precio WHERE empresa_id = $1 AND nivel IS NOT NULL ORDER BY nivel`, [e]),
+      pool.query(`SELECT nivel, nombre, descuento_pct::float AS "descuentoPct" FROM listas_precio WHERE empresa_id = $1 AND nivel IS NOT NULL ORDER BY nivel`, [e]),
       pool.query(`SELECT precios_por_sucursal AS "preciosPorSucursal" FROM empresas WHERE id = $1`, [e]),
     ]);
     return { impuestos: impuestos.rows, categorias: categorias.rows, proveedores: proveedores.rows, listas: listas.rows, ...empresa.rows[0] };

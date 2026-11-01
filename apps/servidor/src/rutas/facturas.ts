@@ -19,7 +19,7 @@ export async function datosTicket(c: Pick<PoolClient, "query">, ventaId: string)
             (SELECT jsonb_agg(jsonb_build_object(
                 'descripcion', i.descripcion, 'cantidad', i.cantidad, 'precio', i.precio_unitario, 'total', i.total,
                 'oferta', o.nombre, 'descuentoOferta', i.descuento_oferta, 'descuentoCupon', i.descuento_cupon,
-                'descuentoManual', i.descuento_manual, 'presentacionId', i.presentacion_id) ORDER BY i.linea)
+                'descuentoManual', i.descuento_manual, 'descuentoNivel', i.descuento_nivel, 'presentacionId', i.presentacion_id) ORDER BY i.linea)
                FROM venta_items i LEFT JOIN ofertas o ON o.id = i.oferta_id WHERE i.venta_id = v.id) AS lineas,
             (SELECT jsonb_agg(jsonb_build_object('formaPago', p.forma_pago, 'monto', p.monto, 'recibido', p.recibido, 'cambio', p.cambio, 'referencia', p.referencia))
                FROM venta_pagos p WHERE p.venta_id = v.id) AS pagos,
@@ -77,10 +77,10 @@ export async function anularVenta(c: PoolClient, a: { cajaId: string; ventaId: s
   await c.query(
     `INSERT INTO venta_items (id, venta_id, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
                               descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
-                              descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta)
+                              descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta, descuento_nivel)
      SELECT gen_random_uuid(), $1, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
             descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
-            descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta
+            descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta, descuento_nivel
        FROM venta_items WHERE venta_id = $2`,
     [ncId, ventaId],
   );

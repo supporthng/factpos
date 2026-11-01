@@ -9,7 +9,7 @@ export interface VentaRegistrada {
   encfModificado?: string | null; motivo?: string | null;
   subtotal: string; descuento: string; itbis: string; total: string; cambio: string;
   cupon: { codigo: string; total: string } | null;
-  lineas: { descripcion: string; cantidad: string; precio: string; total: string; oferta: string | null; descuentoOferta: string; descuentoCupon: string }[];
+  lineas: { descripcion: string; cantidad: string; precio: string; total: string; oferta: string | null; descuentoOferta: string; descuentoCupon: string; descuentoNivel?: string; nombreNivel?: string }[];
   pagos: { formaPago: string; monto: string; recibido?: string; cambio?: string; referencia?: string }[];
   fiscal: { encf: string; codigoSeguridad: string; fechaFirma: string; urlQr: string; modo: "ECF" | "RFCE"; venceSecuencia: string } | null;
   cliente?: { nombre: string; documento: string | null } | null;
@@ -105,6 +105,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
               <div>{l.descripcion}</div>
               <div className="t-fila"><span>{Number(l.cantidad) % 1 ? Number(l.cantidad).toFixed(3) : l.cantidad} × {rd(l.precio)}</span><span>{rd(l.total)}</span></div>
               {Number(l.descuentoOferta) > 0 && <div className="t-fila t-desc"><span>  {l.oferta}</span><span>−{rd(l.descuentoOferta)}</span></div>}
+              {Number(l.descuentoNivel ?? 0) > 0 && <div className="t-fila t-desc"><span>  {l.nombreNivel ?? "Descuento de nivel"}</span><span>−{rd(l.descuentoNivel!)}</span></div>}
               {Number(l.descuentoCupon) > 0 && <div className="t-fila t-desc"><span>  Cupón</span><span>−{rd(l.descuentoCupon)}</span></div>}
             </div>
           ))}

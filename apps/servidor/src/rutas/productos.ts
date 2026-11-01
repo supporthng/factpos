@@ -63,6 +63,8 @@ export async function rutasProductos(app: FastifyInstance) {
       `WITH niveles AS (SELECT id, nivel FROM listas_precio WHERE empresa_id = $1 AND nivel IS NOT NULL)
        SELECT ${sqlVersion("$2")} AS version,
               (SELECT nivel FROM listas_precio WHERE empresa_id = $1 AND es_predeterminada) AS "nivelPredeterminado",
+              (SELECT COALESCE(jsonb_object_agg(nivel::text, descuento_pct::text), '{}'::jsonb) FROM listas_precio
+                WHERE empresa_id = $1 AND nivel > 1 AND descuento_pct > 0 AND NOT es_predeterminada) AS "descuentosNivel",
               (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                   'presentacionId', pr.id, 'productoId', p.id, 'categoriaId', p.categoria_id, 'sku', p.sku,
                   'nombre', p.nombre, 'presentacion', pr.nombre, 'factor', pr.factor::text, 'esPesable', p.es_pesable,
