@@ -17,7 +17,7 @@ import { encolarFilas } from "./sync/outbox.js";
  * Los avisos los manda la CENTRAL (tiene internet estable): así llega el aviso aunque
  * el servidor de la sucursal esté apagado.
  */
-export type TipoIncidente = "CAJA_SIN_SERVIDOR" | "SERVIDOR_APAGADO" | "SUCURSAL_SIN_COMUNICACION" | "PRUEBA";
+export type TipoIncidente = "CAJA_SIN_SERVIDOR" | "SERVIDOR_APAGADO" | "SUCURSAL_SIN_COMUNICACION" | "PRUEBA" | "RESPALDO_ATRASADO";
 
 export interface Incidente {
   id: string; empresa_id: string | null; sucursal_id: string | null; caja_id: string | null; tipo: TipoIncidente;
@@ -75,6 +75,7 @@ export function textoAviso(i: Incidente & { sucursal?: string | null; caja?: str
     typeof d.equipo === "string" && `💻 Equipo: ${d.equipo}`,
     !fin && i.tipo === "SUCURSAL_SIN_COMUNICACION" && "Revise: luz e internet de la tienda, que la PC del servidor esté encendida y el servicio «FactPOS Servidor» corriendo.",
     !fin && i.tipo === "CAJA_SIN_SERVIDOR" && "La caja siguió vendiendo y ya envió sus ventas. Revise por qué se cayó el servidor (registro: C:\\FactPOS\\logs\\servidor.log).",
+    !fin && i.tipo === "RESPALDO_ATRASADO" && "Hace más de 24 horas que no se hace un respaldo. Revise el disco (espacio libre) y que el servidor esté encendido; en Administración › Respaldos puede hacer uno ahora.",
     !fin && i.tipo === "SERVIDOR_APAGADO" && "El servidor de la tienda estuvo apagado o reiniciándose. Revise la luz, el UPS y Windows Update.",
   ];
   return lineas.filter(Boolean).join("\n");

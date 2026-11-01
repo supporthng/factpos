@@ -94,7 +94,7 @@ async function usoEcf() {
   } catch { return undefined; }
 }
 
-async function llamarPortal<T>(ruta: string, cuerpo: unknown): Promise<T> {
+export async function llamarPortal<T>(ruta: string, cuerpo: unknown): Promise<T> {
   let r: Response;
   if (ruta === "/licencias/renovar" || ruta === "/licencias/activar") {
     const ecf = await usoEcf();

@@ -123,7 +123,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
     [/^\/central\/cxc/, "admin.cxc"],
     [/^\/central\/pedidos(\/|$)/, "admin.pedidos"],
     [/^\/central\/(fiscal|padron)/, "admin.fiscal"],
-    [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo|alta)/, "admin.config"],
+    [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo|alta|respaldos)/, "admin.config"],
   ];
   return mapa.find(([re]) => re.test(ruta))?.[1] ?? "*";
 }
