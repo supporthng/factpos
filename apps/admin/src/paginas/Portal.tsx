@@ -13,7 +13,7 @@ interface Cliente {
   licenciaId: string | null; sucursales: number | null; vence: string | null; estadoLicencia: "ACTIVA" | "SUSPENDIDA" | null;
   clavePista: string | null; activada: boolean; activadaEn: string | null; ultimoContacto: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | null;
-  respaldoExtraGb?: number; lectorCupo?: number; lectorUsadas?: number; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
+  respaldoExtraGb?: number; lectorCupo?: number; lectorUsadas?: number; respaldoUsadoBytes?: number; respaldoCopias?: number; lectorHistorial?: { mes: string; usadas: number }[]; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
@@ -131,7 +131,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
 
       <div className="tabla-contenedor">
         <table className="tabla apilada">
-          <thead><tr><th>Cliente</th><th>Plan</th><th>Licencia</th><th>Sucursales</th><th>Instalación</th><th></th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Plan</th><th>Licencia</th><th>Sucursales</th><th>Instalación</th><th>Consumo</th><th></th></tr></thead>
           <tbody>
             {lista.map((c) => (
               <Fragment key={c.id}>
@@ -155,14 +155,18 @@ function Clientes({ planes }: { planes: Plan[] }) {
                       ? <>Activada<div className={"pequeno " + (sinContacto(c) ? "texto-alerta" : "suave")}>Contacto {hace(c.ultimoContacto)}{c.versionApp ? ` · v${c.versionApp}` : ""}</div></>
                       : <span className="suave">Sin activar{c.clavePista ? ` (clave …${c.clavePista})` : ""}</span>}
                   </td>
+                  <td className="pequeno">
+                    <div>Respaldos: {((c.respaldoUsadoBytes ?? 0) / 1024 ** 3).toFixed(2)} / {2 + (c.respaldoExtraGb ?? 0)} GB</div>
+                    <div>Facturas IA: {c.lectorUsadas ?? 0} / {c.lectorCupo ?? 0}</div>
+                  </td>
                   <td className="der"><button className="enlace" onClick={() => setAbierto(abierto === c.id ? null : c.id)}>{abierto === c.id ? "Cerrar" : "Administrar"}</button></td>
                 </tr>
                 {abierto === c.id && (
-                  <tr><td colSpan={6} className="detalle-cliente"><DetalleCliente key={`${c.vence}${c.sucursales}${c.planId}${c.estadoLicencia}`} c={c} planes={planes} onCambio={recargar} onClave={(k) => setClave({ cliente: c.nombre, clave: k })} /></td></tr>
+                  <tr><td colSpan={7} className="detalle-cliente"><DetalleCliente key={`${c.vence}${c.sucursales}${c.planId}${c.estadoLicencia}`} c={c} planes={planes} onCambio={recargar} onClave={(k) => setClave({ cliente: c.nombre, clave: k })} /></td></tr>
                 )}
               </Fragment>
             ))}
-            {!lista.length && <tr><td colSpan={6} className="suave">{datos ? (todos.length ? "Ningún cliente coincide con el filtro." : "Todavía no hay clientes. Cree el primero con «Nuevo cliente».") : "Cargando…"}</td></tr>}
+            {!lista.length && <tr><td colSpan={7} className="suave">{datos ? (todos.length ? "Ningún cliente coincide con el filtro." : "Todavía no hay clientes. Cree el primero con «Nuevo cliente».") : "Cargando…"}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -325,6 +329,14 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
             sucursales: l.sucursales, vence: l.vence, estado: l.estado, modulos: plan?.modulos ?? [], planId: l.planId || null, precioSucursal: l.precio !== "" ? Number(l.precio) : null } }),
             "Licencia guardada. El cliente la recibe sola en su próxima actualización (máx. 12 h) o al pulsar «Actualizar ahora».")}>Guardar cambios</button>
         </div>
+        <h4>Consumo</h4>
+        <table className="tabla">
+          <tbody>
+            <tr><td>Respaldos en la nube</td><td className="der">{((c.respaldoUsadoBytes ?? 0) / 1024 ** 3).toFixed(2)} GB de {2 + (c.respaldoExtraGb ?? 0)} GB · {c.respaldoCopias ?? 0} copias</td></tr>
+            <tr><td>Facturas leídas este mes</td><td className="der">{c.lectorUsadas ?? 0} de {c.lectorCupo ?? 0}</td></tr>
+            {(c.lectorHistorial ?? []).map((h) => <tr key={h.mes}><td className="suave">Facturas leídas · {h.mes}</td><td className="der suave">{h.usadas}</td></tr>)}
+          </tbody>
+        </table>
         <h4>Espacio de respaldos en la nube</h4>
         <div className="en-linea">
           <label className="campo" style={{ margin: 0 }}><span>GB extra contratados (se suman a los 2 GB base)</span>

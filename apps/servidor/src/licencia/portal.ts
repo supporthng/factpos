@@ -377,7 +377,9 @@ export async function rutasPortal(app: FastifyInstance) {
               l.clave_pista AS "clavePista", l.instalacion_id IS NOT NULL AS activada, l.activada_en AS "activadaEn",
               l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso",
               l.respaldo_extra_gb AS "respaldoExtraGb", l.lector_cupo AS "lectorCupo",
-              COALESCE((SELECT u.usadas FROM portal_lector_uso u WHERE u.licencia_id = l.id AND u.mes = to_char(now() AT TIME ZONE 'America/Santo_Domingo', 'YYYY-MM')), 0) AS "lectorUsadas", l.plan_id AS "planId", p.nombre AS plan, l.precio_sucursal AS "precioEspecial", p.periodo,
+              COALESCE((SELECT u.usadas FROM portal_lector_uso u WHERE u.licencia_id = l.id AND u.mes = to_char(now() AT TIME ZONE 'America/Santo_Domingo', 'YYYY-MM')), 0) AS "lectorUsadas", COALESCE((SELECT sum(r.tamano) FROM portal_respaldos r WHERE r.licencia_id = l.id), 0)::float AS "respaldoUsadoBytes",
+              COALESCE((SELECT count(*) FROM portal_respaldos r WHERE r.licencia_id = l.id), 0)::int AS "respaldoCopias",
+              COALESCE((SELECT json_agg(json_build_object('mes', u.mes, 'usadas', u.usadas) ORDER BY u.mes DESC) FROM (SELECT mes, usadas FROM portal_lector_uso WHERE licencia_id = l.id ORDER BY mes DESC LIMIT 6) u), '[]'::json) AS "lectorHistorial", l.plan_id AS "planId", p.nombre AS plan, l.precio_sucursal AS "precioEspecial", p.periodo,
               COALESCE(l.precio_sucursal, p.precio_sucursal)::float AS "precioSucursal"
          FROM portal_clientes c LEFT JOIN portal_licencias l ON l.cliente_id = c.id LEFT JOIN portal_planes p ON p.id = l.plan_id
         ORDER BY c.nombre`);
