@@ -380,6 +380,9 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
             </div>
           )}
           {f.tipo === "INVENTARIABLE" && (
+            <Regla v={f.permiteSinExistencia} on={(v) => cambiar({ permiteSinExistencia: v })} t="Permitir facturar sin existencia" d="Apagado (lo normal): si no hay existencia, la caja agrega solo lo que queda y avisa; en 0 no se factura. Encendido: factura aunque el sistema diga 0." />
+          )}
+          {f.tipo === "INVENTARIABLE" && (
             <Regla v={f.controlaLotes} on={(v) => cambiar({ controlaLotes: v })} t="Controla lotes y vencimiento" d="Lácteos, embutidos, medicinas." />
           )}
         </div>
@@ -878,6 +881,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
   const [incluye, setIncluye] = useState(true);
   const [costo, setCosto] = useState("");
   const [minimo, setMinimo] = useState("");
+  const [sinExistencia, setSinExistencia] = useState(false);
   const [existencia, setExistencia] = useState("");
   const [sucExist, setSucExist] = useState("");
   const [nv, setNv] = useState<Record<string, Niv>>(nivVacio);
@@ -935,7 +939,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
   const armar = (): Ficha => {
     const base0 = fichaNueva(aux, sucursales);
     return {
-      ...base0, tipo, nombre: nombre.trim(), marca: marca.trim() || null, imagen, categoriaId: categoriaId || null,
+      ...base0, permiteSinExistencia: tipo === "INVENTARIABLE" && sinExistencia, tipo, nombre: nombre.trim(), marca: marca.trim() || null, imagen, categoriaId: categoriaId || null,
       sku: codigo.trim() || "", impuestoId, precioIncluyeItbis: incluye, costoReferencia: costo || "0",
       presentaciones: [{
         nombre: "Unidad", factor: "1", codigos: codigo.trim() ? [codigo.trim()] : [],
@@ -975,7 +979,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
       }
       onCreado(f.nombre);
       if (otro) {
-        setCodigo(""); setNombre(""); setMarca(""); setImagen(null); setCosto(""); setMinimo(""); setExistencia(""); setNv(nivVacio());
+        setCodigo(""); setNombre(""); setMarca(""); setImagen(null); setCosto(""); setMinimo(""); setExistencia(""); setSinExistencia(false); setNv(nivVacio());
         setMsg({ t: `“${f.nombre}” creado. Siguiente producto:`, tipo: "ok" });
         refCodigo.current?.focus();
       } else onCerrar();
@@ -1066,6 +1070,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
                 <input className="numero" inputMode="decimal" value={existencia} placeholder="0" onChange={(e) => setExistencia(limpiar(e.target.value))} />
                 {sucursales.length > 1 && <select value={sucExist || sucursales[0]?.id} onChange={(e) => setSucExist(e.target.value)} aria-label="Sucursal de la existencia">{sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>}
               </span></label>
+            <label className="pr-check" style={{ gridColumn: "1 / -1" }}><input type="checkbox" checked={sinExistencia} onChange={(e) => setSinExistencia(e.target.checked)} /><span>Permitir facturar sin existencia <em className="suave">(desactivado: no se factura lo que no hay)</em></span></label>
           </div>
         )}
 

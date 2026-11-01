@@ -72,7 +72,7 @@ export async function rutasProductos(app: FastifyInstance) {
                   'codigos', (SELECT COALESCE(jsonb_agg(cb.codigo), '[]') FROM codigos_barra cb WHERE cb.presentacion_id = pr.id AND cb.activo),
                   'imagen', CASE WHEN p.imagen LIKE 'data:%' THEN '/imagenes/' || p.id::text || '?v=' || p.version::text ELSE p.imagen END, 'categoria', cat.nombre, 'categoriaColor', cat.color, 'categoriaIcono', cat.icono,
                   'controlaStock', p.controla_stock OR p.tipo = 'COMBO', 'tipo', p.tipo,
-                  'permiteSinExistencia', false,
+                  'permiteSinExistencia', p.permite_sin_existencia,
                   'precioVariable', p.precio_variable, 'precioVariableMin', p.precio_variable_min::text,
                   'precioVariableMax', p.precio_variable_max::text, 'nombreCorto', p.nombre_corto,
                   'existencia', (CASE WHEN p.tipo = 'COMBO'
