@@ -25,6 +25,8 @@ const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 export function versionActual(): string {
   try { return JSON.parse(readFileSync(path.join(raiz, "package.json"), "utf8")).version; } catch { return process.env.npm_package_version ?? "0.0.0"; }
 }
+/** 2.1.0 → 2.1 (así se muestra el número de versión) */
+export const versionCorta = (v: string) => v.replace(/\.0$/, "");
 /** -1, 0, 1 comparando "1.2.3" */
 export function compararVersion(a: string, b: string) {
   const x = a.split(".").map(Number), y = b.split(".").map(Number);
@@ -213,7 +215,7 @@ export async function rutasActualizacion(app: FastifyInstance) {
     const d = await revisarVersion(forzar);
     const actual = versionActual();
     return {
-      actual, disponible: d?.version ?? null, notas: d?.notas ?? null, publicada: d?.publicada ?? null,
+      actual: versionCorta(actual), disponible: d ? versionCorta(d.version) : null, notas: d?.notas ?? null, publicada: d?.publicada ?? null,
       hayNueva: !!d && compararVersion(d.version, actual) > 0, proceso, puedeInstalar: process.platform === "win32" && !process.env.VERCEL,
       // Descargar actualizaciones exige una licencia activa (en la prueba no hay): la pantalla lo explica antes de pulsar «Instalar»
       licenciaActiva: !!(await tokenLicencia()),
