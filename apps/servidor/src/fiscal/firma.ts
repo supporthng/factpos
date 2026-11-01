@@ -41,7 +41,7 @@ export function leerP12(der: Buffer, clave: string): Certificado {
   } catch (e) {
     const m = (e as Error).message ?? "";
     if (/password|MAC/i.test(m)) throw new Error("La contraseña del certificado no es correcta");
-    throw new Error("El archivo no es un certificado .p12 / .pfx válido");
+    throw new Error("El archivo no es un certificado .p12 / .pfx válido. Un .cer o .crt solo trae la parte pública: se necesita el archivo .p12 (o .pfx) que incluye la llave.");
   }
   const bolsas = (tipo: string) => p12.getBags({ bagType: tipo })[tipo] ?? [];
   const llave = (bolsas(forge.pki.oids.pkcs8ShroudedKeyBag)[0]?.key ?? bolsas(forge.pki.oids.keyBag)[0]?.key) as forge.pki.rsa.PrivateKey | undefined;

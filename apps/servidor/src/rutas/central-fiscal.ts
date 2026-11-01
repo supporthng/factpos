@@ -426,13 +426,15 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       const cert = await guardarCertificado(c, empresaDe(req), { p12, clave: b.clave }, usuario.success ? usuario.data : null);
       if (cert.vence.getTime() < Date.now()) throw new ErrorNegocio(`Este certificado venció el ${cert.vence.toISOString().slice(0, 10)}: pida la renovación a la entidad certificadora`);
       if (cert.validoDesde && cert.validoDesde.getTime() > Date.now() + 86400e3) throw new ErrorNegocio("Este certificado todavía no es válido (revise la fecha de la computadora o espere a que empiece su vigencia)");
-      return cert;
+      // El cliente solo sube su certificado: queda activo en todas sus sucursales (sin configurar nada más)
+      const n = (await c.query("UPDATE sucursales SET certificado_habilitado = TRUE WHERE empresa_id = $1 AND activo AND NOT certificado_habilitado", [empresaDe(req)])).rowCount ?? 0;
+      return Object.assign(cert, { sucursalesActivadas: n });
     }).catch((e: Error) => {
       if (e instanceof ErrorNegocio) throw e;
       throw new ErrorNegocio(e.message);
     });
     if (!process.env.VERCEL) usarCertificado(r); // central en una PC: lo usa de una vez
     rep.code(201);
-    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella };
+    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella, sucursalesActivadas: r.sucursalesActivadas };
   });
 }
