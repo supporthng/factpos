@@ -1039,3 +1039,16 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .vt-fila { display: flex; justify-content: space-between; gap: 8px; }
 .vt-qr { width: 30mm; height: 30mm; margin: 6px auto; border: 2px solid #000; display: grid; place-items: center; font-weight: 800; }
 .boton.desactivado { opacity: .45; cursor: not-allowed; pointer-events: none; }
+
+/* Tablas en tarjetas (celular): sin desplazarse de lado */
+@media (max-width: 760px) {
+  .tabla-tarjetas, .tabla-tarjetas tbody { display: block; width: 100%; min-width: 0; }
+  .tabla-tarjetas thead { display: none; }
+  .tabla-tarjetas tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; padding: 12px 14px; border-bottom: 1px solid var(--borde); }
+  .tabla-tarjetas td { display: block; padding: 0; border: 0; text-align: left; min-width: 0; }
+  .tabla-tarjetas td:first-child { grid-column: 1 / -1; }
+  .tabla-tarjetas td:not(:first-child)::before { content: attr(data-etiqueta); display: block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--suave); margin-bottom: 1px; }
+  .tabla-tarjetas td:not(:first-child) { font-weight: 600; }
+  .tabla-tarjetas .oculto-movil { display: none; }
+  .tabla-contenedor:has(.tabla-tarjetas) { overflow-x: visible; }
+}
