@@ -12,8 +12,9 @@ export const SECCIONES_ELEGIBLES: { id: string; titulo: string; grupo: string }[
   { id: "productos", titulo: "Productos", grupo: "Inventario" }, { id: "compras", titulo: "Compras", grupo: "Inventario" },
   { id: "inventario", titulo: "Existencias", grupo: "Inventario" }, { id: "ajustes", titulo: "Ajustes", grupo: "Inventario" },
   { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario" }, { id: "traspasos", titulo: "Traspasos", grupo: "Inventario" }, { id: "kardex", titulo: "Kardex", grupo: "Inventario" },
-  { id: "precios", titulo: "Precios", grupo: "Comercial" }, { id: "ofertas", titulo: "Ofertas", grupo: "Comercial" }, { id: "delivery", titulo: "Delivery", grupo: "Comercial" },
+  { id: "precios", titulo: "Precios", grupo: "Comercial" }, { id: "ofertas", titulo: "Ofertas", grupo: "Comercial" }, { id: "facturas", titulo: "Facturas", grupo: "Comercial" }, { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Comercial" }, { id: "delivery", titulo: "Delivery", grupo: "Comercial" },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas" }, { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas" },
+  { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal" }, { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal" },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes" },
 ];
 
