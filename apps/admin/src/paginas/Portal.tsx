@@ -257,7 +257,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
 }
 
 const EVENTOS: Record<string, string> = {
-  CREADA: "Licencia creada", RENOVADA: "Renovada", ACTIVADA: "Activada por el cliente", LIBERADA: "Instalación liberada", SUSPENDIDA: "Suspendida",
+  CREADA: "Licencia creada", RENOVADA: "Renovada", ACTIVADA: "Activada por el cliente", LIBERADA: "Instalación liberada", TRASLADO_INICIADO: "Traslado a otro equipo iniciado", TRASLADO_COMPLETADO: "Traslado completado", SUSPENDIDA: "Suspendida",
   SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas",
 };
 

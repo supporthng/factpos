@@ -11,7 +11,7 @@ interface EstadoLicencia {
   estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | "PRUEBA" | "PRUEBA_VENCIDA";
   permiteVender: boolean; dias: number; mensaje: string | null; error: string | null;
   cliente: string | null; sucursales: number | null; vence: string | null; modulos: string[];
-  instalacionId: string; licenciaId?: string | null; clave?: string | null; activada: boolean; local?: boolean;
+  instalacionId: string; licenciaId?: string | null; clave?: string | null; traslado?: boolean; activada: boolean; local?: boolean;
   solicitud?: { estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA" | "SUSPENDIDA"; revisada: string } | null;
   solicitudEnviada?: { enviadaEn: string; datos: { planId?: string | null; sucursales?: number; empresa?: string } | null } | null;
   empresa?: { nombre: string; rnc: string } | null;
@@ -126,6 +126,7 @@ export function Licencia() {
       )}
 
       {d.activada && !d.local && <MiLicencia d={d} onError={(t) => setMsg({ t, tipo: "error" })} />}
+      {!d.local && <Traslado d={d} admin={admin} onCambio={async () => { await recargar(); window.dispatchEvent(new Event("factpos:licencia")); }} />}
 
       {d.local ? (
         <div className="panel"><p className="suave" style={{ margin: 0 }}>
@@ -239,6 +240,82 @@ function SolicitarActivacion({ d, onCerrar, onEnviada }: { d: EstadoLicencia; on
         </div>
       </div>
     </div>
+  );
+}
+
+/** Mover el servidor a otro equipo (la licencia viaja con toda la base de datos) y completar el traslado en el equipo nuevo. */
+function Traslado({ d, admin, onCambio }: { d: EstadoLicencia; admin: boolean; onCambio: () => Promise<void> }) {
+  const [abierto, setAbierto] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [trabajando, setTrabajando] = useState(false);
+  const [error, setError] = useState("");
+  const [hecho, setHecho] = useState<{ codigo: string; carpeta: string } | null>(null);
+  const [codigo, setCodigo] = useState("");
+  const [okCompleto, setOkCompleto] = useState(false);
+
+  const mover = async () => {
+    setTrabajando(true); setError("");
+    try { setHecho(await api<{ codigo: string; carpeta: string }>("/central/licencia/traslado/iniciar", { cuerpo: { confirmar: "MOVER" } })); await onCambio(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setTrabajando(false); }
+  };
+  const completar = async () => {
+    setTrabajando(true); setError("");
+    try { await api("/central/licencia/traslado/completar", { cuerpo: { codigo } }); setOkCompleto(true); setCodigo(""); await onCambio(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setTrabajando(false); }
+  };
+
+  return (
+    <>
+      {d.activada && !d.traslado && (
+        <div className="panel">
+          <h3 style={{ marginTop: 0 }}>Mover el servidor a otro equipo</h3>
+          <p className="suave">
+            La licencia es de un solo equipo. Si cambia de computadora, se mueve <b>todo el servidor</b>: la licencia viaja junto con toda la base de datos
+            y la configuración, no se puede mover sola. El equipo actual queda solo en modo consulta.
+          </p>
+          {!hecho ? (
+            abierto ? (
+              <div className="en-linea">
+                <input value={texto} onChange={(e) => setTexto(e.target.value.toUpperCase())} placeholder="Escriba MOVER para confirmar" disabled={!admin || trabajando} />
+                <button className="boton primario" disabled={!admin || trabajando || texto !== "MOVER"} onClick={mover}>{trabajando ? "Preparando el paquete…" : "Mover ahora"}</button>
+                <button className="boton" disabled={trabajando} onClick={() => { setAbierto(false); setTexto(""); }}>Cancelar</button>
+              </div>
+            ) : (
+              <button className="boton" disabled={!admin} onClick={() => setAbierto(true)}>Mover a otro equipo…</button>
+            )
+          ) : (
+            <div className="texto-aviso">
+              <p style={{ marginTop: 0 }}><b>Paquete listo.</b> Este equipo quedó solo en modo consulta. Guarde este código:</p>
+              <p className="mono" style={{ fontSize: 22, margin: "4px 0" }}>{hecho.codigo}</p>
+              <p className="pequeno">Carpeta con todos los datos: <span className="mono">{hecho.carpeta}</span></p>
+              <ol className="pequeno" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                <li>Copie la carpeta completa al equipo nuevo (memoria USB).</li>
+                <li>En el equipo nuevo instale FactPOS y ejecute <span className="mono">instalador\restaurar-traslado.ps1 -Paquete "&lt;carpeta&gt;"</span> como Administrador.</li>
+                <li>Abra Administración › Licencia en el equipo nuevo y escriba el código.</li>
+              </ol>
+            </div>
+          )}
+          {!admin && <p className="suave pequeno">Solo un administrador puede mover el servidor.</p>}
+        </div>
+      )}
+      {d.traslado && !okCompleto && (
+        <div className="panel">
+          <p className="texto-alerta" style={{ marginTop: 0 }}>Esta licencia se movió a otro equipo: aquí solo se puede consultar.</p>
+        </div>
+      )}
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Completar traslado</h3>
+        <p className="suave">¿Restauró aquí el paquete de traslado de otro equipo? Escriba el código que recibió para activar la licencia en este equipo.</p>
+        <div className="en-linea">
+          <input className="mono" value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="TRS-XXXX-XXXX-XXXX" maxLength={20} disabled={!admin || trabajando} />
+          <button className="boton primario" disabled={!admin || trabajando || codigo.replace(/[^A-Z0-9]/g, "").length < 12} onClick={completar}>Completar traslado</button>
+        </div>
+        {okCompleto && <p className="texto-ok" style={{ marginBottom: 0 }}>Listo: la licencia quedó activa en este equipo.</p>}
+        {error && <p className="texto-alerta" style={{ marginBottom: 0 }}>{error}</p>}
+      </div>
+    </>
   );
 }
 
