@@ -295,7 +295,7 @@ input.alerta { border-color: var(--alerta); color: var(--alerta); }
 .calculo-margen { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: end; }
 .calculo-margen .campo { margin-bottom: 0; }
 .con-sufijo { position: relative; display: block; }
-.con-sufijo input { width: 100%; padding-right: 28px; }
+.con-sufijo input { width: 100%; padding-right: 44px; }
 .con-sufijo i { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--suave); }
 .nuevo-proveedor input:first-child { flex: 1; }
 .zona-imagen { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; border: 2px dashed var(--borde-fuerte); border-radius: var(--radio); cursor: pointer; text-align: center; background: var(--fondo); overflow: hidden; }
