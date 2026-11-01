@@ -44,6 +44,7 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { leerToken, permisoDeRuta, tienePermiso } from "./sesion.js";
 import { rutasCajaMovimientos } from "./rutas/caja-movimientos.js";
 import { rutasCentralCxc } from "./rutas/central-cxc.js";
+import { rutasCentralClientes } from "./rutas/central-clientes.js";
 import { rutasPedidos } from "./rutas/pedidos.js";
 import { rutasCentralFacturas } from "./rutas/central-facturas.js";
 import { rutasContingencia } from "./rutas/contingencia.js";
@@ -241,6 +242,7 @@ export async function crearApp() {
     if (config.modo === "central") await app.register(rutasCentralSync);
     await app.register(rutasCentralTraspasos);
     await app.register(rutasCentralCxc);
+    await app.register(rutasCentralClientes);
     await app.register(rutasCentralIncidentes);
     await app.register(rutasCentralCorreo);
     if (config.modo === "central") await app.register(rutasCentralAlta);

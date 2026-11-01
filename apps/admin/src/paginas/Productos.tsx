@@ -11,6 +11,8 @@ interface Presentacion {
   precios: Partial<Record<"1" | "2" | "3", string | null>>;
   /** % de ganancia sobre el costo; si existe, ese nivel se define por % y el precio se calcula */
   porcentajes?: Partial<Record<"1" | "2" | "3", string | number | null>>;
+  /** Precios 2 y 3: "PRECIO1" = el % es un descuento sobre el precio 1 */
+  bases?: Partial<Record<"2" | "3", "COSTO" | "PRECIO1">>;
 }
 interface Ficha {
   id?: string;
@@ -61,7 +63,21 @@ const sobreCosto = (precio: number, costo: number, tasa: number, incluye: boolea
   const b = base(precio, tasa, incluye);
   return b > 0 && costo > 0 ? ((b - costo) / costo) * 100 : null;
 };
-const esPct = (p: Presentacion, k: string) => p.porcentajes?.[k as "1"] != null;
+/** Descuento sobre el precio 1 (solo precios 2 y 3) */
+const esDesc = (p: Presentacion, k: string) => k !== "1" && p.bases?.[k as "2"] === "PRECIO1" && p.porcentajes?.[k as "1"] != null;
+/** % de ganancia sobre el costo */
+const esPct = (p: Presentacion, k: string) => p.porcentajes?.[k as "1"] != null && !esDesc(p, k);
+/** Precio = precio 1 menos el % de descuento */
+const desdePrecio1 = (precio1: number, pct: number) => (Math.round(precio1 * (1 - pct / 100) * 100) / 100).toFixed(2);
+/** Recalcula los niveles definidos como descuento sobre el precio 1 */
+const derivar = (p: Presentacion): Presentacion => {
+  const p1 = n(p.precios["1"]);
+  const precios = { ...p.precios };
+  for (const k of ["2", "3"] as const) {
+    if (esDesc(p, k)) precios[k] = p1 && p.porcentajes![k] !== "" ? desdePrecio1(p1, n(p.porcentajes![k])) : null;
+  }
+  return { ...p, precios };
+};
 
 function fichaNueva(aux: Auxiliares, sucursales: { id: string; nombre: string }[]): Ficha {
   return {
@@ -193,7 +209,8 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
         presentaciones: f.presentaciones.map((p) => ({
           ...p,
           precios: Object.fromEntries(NIVELES.map((k) => [k, p.precios[k] ? String(n(p.precios[k]).toFixed(2)) : null])),
-          porcentajes: Object.fromEntries(NIVELES.map((k) => [k, esPct(p, k) && p.precios[k] && p.porcentajes![k] !== "" ? n(p.porcentajes![k]) : null])),
+          porcentajes: Object.fromEntries(NIVELES.map((k) => [k, (esPct(p, k) || esDesc(p, k)) && p.precios[k] && p.porcentajes![k] !== "" ? n(p.porcentajes![k]) : null])),
+          bases: Object.fromEntries((["2", "3"] as const).map((k) => [k, esDesc(p, k) ? "PRECIO1" : "COSTO"])),
         })),
         sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: stockMinimo || "0", stockMaximo: stockMaximo || null, ubicacion: ubicacion || null, activo })),
         proveedores: f.proveedores.map(({ proveedorId, codigoProveedor, ultimoCosto, principal }) => ({ proveedorId, codigoProveedor: codigoProveedor || null, ultimoCosto: ultimoCosto || null, principal })),
@@ -428,37 +445,45 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
   const [redondeo, setRedondeo] = useState(5);
   const calc = (costoP: number, pct: number) => desdePorcentaje(costoP, pct, tasa, f.precioIncluyeItbis, redondeo).toFixed(2);
 
-  const cambiarNivel = (i: number, k: string, cambio: { precio?: string | null; pct?: string | number | null }) =>
+  const cambiarNivel = (i: number, k: string, cambio: { precio?: string | null; pct?: string | number | null; base?: "COSTO" | "PRECIO1" }) =>
     cambiar({
-      presentaciones: f.presentaciones.map((x, j) => (j !== i ? x : {
+      presentaciones: f.presentaciones.map((x, j) => (j !== i ? x : derivar({
         ...x,
         precios: "precio" in cambio ? { ...x.precios, [k]: cambio.precio } : x.precios,
         porcentajes: "pct" in cambio ? { ...x.porcentajes, [k]: cambio.pct } : x.porcentajes,
-      })),
+        bases: "base" in cambio && k !== "1" ? { ...x.bases, [k]: cambio.base } : x.bases,
+      }))),
     });
 
-  const alternar = (i: number, k: string, aPct: boolean) => {
+  const alternar = (i: number, k: string, modo: "monto" | "costo" | "precio1") => {
     const p = f.presentaciones[i];
-    if (!aPct) return cambiarNivel(i, k, { pct: null });
+    if (modo === "monto") return cambiarNivel(i, k, { pct: null, base: "COSTO" });
+    if (modo === "precio1") {
+      // Se parte del descuento que ya da el precio actual respecto al precio 1
+      const p1 = n(p.precios["1"]), actual = n(p.precios[k as "1"]);
+      const d = p1 > 0 && actual > 0 ? Math.max(0, Math.round((1 - actual / p1) * 1000) / 10) : null;
+      return cambiarNivel(i, k, { pct: d === null ? "" : String(d), base: "PRECIO1" });
+    }
     // Al pasar a %, se parte del % que ya da el precio actual
     const actual = sobreCosto(n(p.precios[k as "1"]), costo * n(p.factor), tasa, f.precioIncluyeItbis);
-    cambiarNivel(i, k, { pct: actual === null ? "" : String(Math.round(actual * 10) / 10) });
+    cambiarNivel(i, k, { pct: actual === null ? "" : String(Math.round(actual * 10) / 10), base: "COSTO" });
   };
 
   const aplicarATodas = () => {
     if (!costo) return;
     cambiar({
-      presentaciones: f.presentaciones.map((p) => ({
+      presentaciones: f.presentaciones.map((p) => derivar({
         ...p,
         precios: Object.fromEntries(NIVELES.map((k) => [k, porNivel[k] ? calc(costo * n(p.factor), n(porNivel[k])) : p.precios[k] ?? null])),
         porcentajes: Object.fromEntries(NIVELES.map((k) => [k, porNivel[k] ? porNivel[k] : p.porcentajes?.[k] ?? null])),
+        bases: Object.fromEntries((["2", "3"] as const).map((k) => [k, porNivel[k] ? "COSTO" : p.bases?.[k] ?? "COSTO"])),
       })),
     });
   };
 
   const recalcularTodo = () =>
     cambiar({
-      presentaciones: f.presentaciones.map((p) => ({
+      presentaciones: f.presentaciones.map((p) => derivar({
         ...p,
         precios: Object.fromEntries(NIVELES.map((k) => [k, esPct(p, k) && p.porcentajes![k] !== "" ? calc(costo * n(p.factor), n(p.porcentajes![k])) : p.precios[k] ?? null])),
       })),
@@ -486,7 +511,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
             <label className="interruptor pequeno"><input type="checkbox" checked={f.precioIncluyeItbis} onChange={(e) => cambiar({ precioIncluyeItbis: e.target.checked })} />Incluye ITBIS ({Math.round(tasa * 100)} %)</label>
           </div>
         </div>
-        <p className="suave pequeno">Defina cada precio por <b>monto</b> o por <b>% de ganancia sobre el costo</b>. Con %, el precio se calcula solo y se puede recalcular cuando cambie el costo.</p>
+        <p className="suave pequeno">Defina cada precio por <b>monto</b> o por <b>% de ganancia sobre el costo</b>. Los precios 2 y 3 también pueden ser un <b>% de descuento sobre el precio 1</b> y se recalculan solos cuando éste cambie.</p>
         {f.precioVariable && <Aviso tipo="info" texto={`Precio variable: la cajera lo escribe entre ${rd(f.precioVariableMin)} y ${rd(f.precioVariableMax)}. El precio de aquí se propone por defecto.`} />}
         {desfasados && (
           <div className="aviso-linea info fila-aviso">
@@ -504,6 +529,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
                 <tbody>
                   {NIVELES.map((k) => {
                     const pct = esPct(p, k);
+                    const desc = esDesc(p, k);
                     const v = p.precios[k] ?? "";
                     const pr = n(v);
                     const b = base(pr, tasa, f.precioIncluyeItbis);
@@ -516,16 +542,18 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
                         <td><b>Precio {k}</b> <span className="suave">{nombreNivel}</span></td>
                         <td>
                           <div className="segmentado" role="group" aria-label={`Precio ${k}: definir por`}>
-                            <button className={!pct ? "activo" : ""} aria-pressed={!pct} onClick={() => pct && alternar(i, k, false)}>RD$</button>
-                            <button className={pct ? "activo" : ""} aria-pressed={pct} onClick={() => !pct && alternar(i, k, true)} disabled={!costoP} title={costoP ? "" : "Indique el costo en General"}>%</button>
+                            <button className={!pct && !desc ? "activo" : ""} aria-pressed={!pct && !desc} onClick={() => (pct || desc) && alternar(i, k, "monto")}>RD$</button>
+                            <button className={pct ? "activo" : ""} aria-pressed={pct} onClick={() => !pct && alternar(i, k, "costo")} disabled={!costoP} title={costoP ? "% de ganancia sobre el costo" : "Indique el costo en General"}>% costo</button>
+                            {k !== "1" && <button className={desc ? "activo" : ""} aria-pressed={desc} onClick={() => !desc && alternar(i, k, "precio1")} disabled={!n(p.precios["1"])} title={n(p.precios["1"]) ? "% de descuento sobre el precio 1" : "Primero escriba el precio 1"}>% desc. P1</button>}
                           </div>
                         </td>
                         <td className="der" style={{ width: 140 }}>
-                          {pct ? (
+                          {pct || desc ? (
                             <span className="con-sufijo">
-                              <input className="numero" inputMode="decimal" value={String(p.porcentajes![k] ?? "")} aria-label={`% de ganancia del precio ${k}`}
+                              <input className="numero" inputMode="decimal" value={String(p.porcentajes![k] ?? "")} aria-label={desc ? `% de descuento del precio ${k} sobre el precio 1` : `% de ganancia del precio ${k}`}
                                 onChange={(e) => {
                                   const t = e.target.value.replace(/[^\d.]/g, "");
+                                  if (desc) return cambiarNivel(i, k, { pct: t, precio: null });
                                   cambiarNivel(i, k, { pct: t, precio: t ? calc(costoP, n(t)) : null });
                                 }} />
                               <i>%</i>
