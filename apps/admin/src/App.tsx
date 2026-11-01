@@ -11,7 +11,7 @@ import { Correo } from "./paginas/Correo";
 import { useEffect, useState, type ComponentType } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 import { Portal } from "./paginas/Portal";
-import { Actualizaciones } from "./paginas/Actualizaciones";
+import { Actualizaciones, AvisoActualizacion } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, useCatalogo, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
@@ -310,6 +310,7 @@ function AppInterna() {
 
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
             {esLocal() && <AvisoLocal />}
+            {!enPortal && actualId !== "actualizaciones" && <AvisoActualizacion irA={() => setSeccion("actualizaciones")} />}
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
 
             {vista === "inicio" && (

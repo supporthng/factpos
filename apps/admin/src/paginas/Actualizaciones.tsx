@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, puede } from "../api";
 import { Aviso, Encabezado, Kpi, useDatos } from "../ui";
 
@@ -64,5 +64,45 @@ export function Actualizaciones() {
         </>
       )}
     </>
+  );
+}
+
+
+/**
+ * Al abrir el sistema (y cada media hora) se consulta si hay una versión nueva; si la hay, un administrador
+ * ve un aviso arriba con el botón para actualizar. «Más tarde» lo oculta hasta que se abra el sistema de nuevo.
+ */
+export function AvisoActualizacion({ irA }: { irA: () => void }) {
+  const [d, setD] = useState<Estado | null>(null);
+  const [oculto, setOculto] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [trabajando, setTrabajando] = useState(false);
+  const admin = puede("*");
+  useEffect(() => {
+    if (!admin) return;
+    let vivo = true;
+    const revisar = () => api<Estado>(`/central/actualizacion?revisar=1&t=${Date.now()}`).then((r) => { if (vivo) setD(r); }).catch(() => {});
+    revisar();
+    const t = setInterval(revisar, 30 * 60_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [admin]);
+  if (!admin || !d || !d.hayNueva || !d.puedeInstalar || oculto) return null;
+  if (d.proceso && d.proceso.estado !== "ERROR") return null;
+  const instalar = async () => {
+    if (!confirm(`¿Instalar FactPOS ${d.disponible}? El servidor se reinicia (1 a 3 minutos). Las cajas siguen vendiendo mientras tanto.`)) return;
+    setTrabajando(true); setMsg("");
+    try { await api("/central/actualizacion/instalar", { cuerpo: {} }); setMsg("Instalando… el sistema se reinicia y se vuelve a abrir solo."); }
+    catch (e) { setMsg((e as Error).message); }
+    finally { setTrabajando(false); }
+  };
+  return (
+    <div className="aviso-licencia">
+      <span><b>Hay una versión nueva de FactPOS: {d.disponible}</b> (usted tiene la {d.actual}).{msg && <> {msg}</>}</span>
+      <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button className="enlace" onClick={irA}>Ver detalles</button>
+        <button className="enlace" onClick={() => setOculto(true)}>Más tarde</button>
+        <button className="boton primario" disabled={trabajando || (d.licenciaActiva === false && !d.pruebaActualiza)} onClick={instalar}>{trabajando ? "Preparando…" : "Actualizar ahora"}</button>
+      </span>
+    </div>
   );
 }
