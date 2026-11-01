@@ -12,7 +12,8 @@
     "migrar": "tsx src/migrar.ts",
     "semilla": "tsx src/semilla.ts",
     "vercel-build": "cd ../.. && npm install -w @factpos/admin --include=dev --no-audit --no-fund && npm run build -w @factpos/compartido && npm run build -w @factpos/servidor && npm run build -w @factpos/admin && node scripts/embeber-admin.mjs --src && node scripts/vercel-compartido.mjs && node scripts/migrar-en-vercel.mjs",
-    "padron": "tsx src/padron-cli.ts"
+    "padron": "tsx src/padron-cli.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@factpos/compartido": "0.1.0",

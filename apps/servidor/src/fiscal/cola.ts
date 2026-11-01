@@ -15,7 +15,8 @@ async function transmisorDe(empresaId: string): Promise<Transmisor> {
   const r = await pool.query("SELECT transmisor, ambiente, pse_url FROM configuracion_fiscal WHERE empresa_id = $1", [empresaId]);
   const cfg = r.rows[0] ?? { transmisor: "SIMULADO", ambiente: "SIMULADO" };
   if (cfg.transmisor === "DGII" && cfg.ambiente !== "SIMULADO") return dgii(cfg.ambiente);
-  if (cfg.transmisor === "PSE" && cfg.pse_url) return pse(cfg.pse_url);
+  // La dirección del proveedor la pone FactPOS (PSE_URL del servidor); la de la empresa solo manda si la tiene
+  if (cfg.transmisor === "PSE" && (cfg.pse_url || process.env.PSE_URL)) return pse(cfg.pse_url || process.env.PSE_URL!);
   return simulado;
 }
 
