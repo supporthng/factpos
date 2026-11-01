@@ -30,8 +30,10 @@ function Estado([string]$estado, [string]$paso, [int]$pct, [string]$mensaje = $n
 function Detener {
   Stop-ScheduledTask -TaskName $tarea -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
+  # También el proceso que escucha el puerto 3000 (un servidor viejo lanzado de otra forma)
+  $escuchan = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue | ForEach-Object { $_.OwningProcess })
   Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='cloudflared.exe'" |
-    Where-Object { $_.CommandLine -like "*apps\servidor\dist\index.js*" -or $_.CommandLine -like "*tunnel*--url*" } |
+    Where-Object { $_.CommandLine -like "*apps\servidor\dist\index.js*" -or $_.CommandLine -like "*tunnel*--url*" -or $_.ProcessId -in $escuchan } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 2
 }
@@ -41,6 +43,7 @@ function Copiar($origen, $destino) {
   robocopy $origen $destino /MIR /R:2 /W:2 /MT:16 /NFL /NDL /NJH /NJS /NP | Out-Null
   return $LASTEXITCODE
 }
+Estado "EN_CURSO" "Iniciando la actualización" 47
 try {
   $nueva = (Get-Content -Raw "$Desde\package.json" | ConvertFrom-Json).version
   $actual = try { (Get-Content -Raw "$Carpeta\package.json" | ConvertFrom-Json).version } catch { "?" }
