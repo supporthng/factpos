@@ -78,7 +78,7 @@ const SECCIONES = [
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
-const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "precios", "cxc", "caja", "reportes"];
+const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "facturas", "pedidos", "cxc", "caja", "reportes"];
 interface CfgMovil { habilitada: boolean; secciones: string[]; aplica: boolean }
 const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
@@ -94,7 +94,7 @@ function useVersionMovil(cfg: CfgMovil | null) {
   const admin = puede("*");
   const activa = cfg ? cfg.habilitada : true; // sin configurar: la versión celular viene activa
   const permitido = !cfg || cfg.aplica || admin; // los administradores siempre entran
-  return { angosta, activa, bloqueado: angosta && activa && !permitido, secciones: new Set(cfg?.secciones ?? SECCIONES_MOVIL_BASE),
+  return { admin, angosta, activa, bloqueado: angosta && activa && !permitido, secciones: new Set(cfg?.secciones ?? SECCIONES_MOVIL_BASE),
     movil: angosta && activa && !(admin && completa), puedeAlternar: angosta && admin && activa, alternar: () => { guarda("factpos.versionCompleta", completa ? null : "1"); setCompleta(!completa); } };
 }
 /** En el portal del proveedor solo hay clientes/licencias y su propio equipo. */
@@ -219,7 +219,7 @@ function AppInterna() {
     );
   }
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (enPortal || !vm.movil || vm.secciones.has(s.id)));
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
   // Ruta: "inicio", "g-<grupo>" o el id de una opción
