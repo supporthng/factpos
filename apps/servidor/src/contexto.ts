@@ -59,7 +59,7 @@ export const SQL_PRESENTACION = `
   SELECT pr.id AS "presentacionId", p.id AS "productoId", p.sku, p.nombre, p.categoria_id AS "categoriaId",
          pr.nombre AS presentacion, pr.factor, p.es_pesable AS "esPesable",
          p.controla_stock AS "controlaStock", p.precio_incluye_impuesto AS "precioIncluyeItbis",
-         p.tipo, p.permite_sin_existencia AS "permiteSinExistencia",
+         p.tipo, FALSE AS "permiteSinExistencia",
          p.precio_variable AS "precioVariable", p.precio_variable_min AS "precioVariableMin", p.precio_variable_max AS "precioVariableMax",
          i.tasa AS "tasaItbis",
          pc.precio, pc.lista_precio_id AS "listaPrecioId",

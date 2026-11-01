@@ -130,7 +130,8 @@ async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito:
   const demanda = new Map<string, { p: PresentacionVenta; cant: Decimal }>();
   carrito.items.forEach((it, i) => {
     const p = prods[i];
-    if (p.permiteSinExistencia || p.tipo === "SERVICIO") return;
+    // Un producto con existencia insuficiente (o en 0) no se factura; los servicios y los productos sin control de existencia sí
+    if (p.tipo === "SERVICIO" || (!p.controlaStock && p.tipo !== "COMBO")) return;
     const d = demanda.get(p.productoId) ?? { p, cant: new Decimal(0) };
     d.cant = d.cant.plus(new Decimal(it.cantidad).mul(p.factor));
     demanda.set(p.productoId, d);

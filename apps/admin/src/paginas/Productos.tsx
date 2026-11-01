@@ -83,7 +83,7 @@ function fichaNueva(aux: Auxiliares, sucursales: { id: string; nombre: string }[
   return {
     sku: "", nombre: "", nombreCorto: null, marca: null, categoriaId: null, tipo: "INVENTARIABLE",
     impuestoId: aux.impuestos.find((i) => i.tasa === 0.18)?.id ?? aux.impuestos[0]?.id ?? "", precioIncluyeItbis: true, esPesable: false,
-    costoReferencia: "0", permiteSinExistencia: true, precioVariable: false, precioVariableMin: null, precioVariableMax: null,
+    costoReferencia: "0", permiteSinExistencia: false, precioVariable: false, precioVariableMin: null, precioVariableMax: null,
     controlaLotes: false, volumenMl: null, gradoAlcohol: null, imagen: null, activo: true,
     presentaciones: [{ nombre: "Unidad", factor: "1", codigos: [], precios: {} }],
     sucursales: sucursales.map((s) => ({ sucursalId: s.id, sucursal: s.nombre, existencia: "0", stockMinimo: "0", stockMaximo: null, ubicacion: null, activo: true })),
@@ -380,7 +380,6 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
             </div>
           )}
           {f.tipo !== "SERVICIO" && (
-            <Regla v={!f.permiteSinExistencia} on={(v) => cambiar({ permiteSinExistencia: !v })} t="Bloquear venta sin existencia" d="Si el sistema dice 0, la caja no lo deja vender. Apagado: vende y avisa." />
           )}
           {f.tipo === "INVENTARIABLE" && (
             <Regla v={f.controlaLotes} on={(v) => cambiar({ controlaLotes: v })} t="Controla lotes y vencimiento" d="Lácteos, embutidos, medicinas." />
