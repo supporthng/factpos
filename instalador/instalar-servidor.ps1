@@ -593,8 +593,9 @@ if ($Master) {
 Paso "Servidor como servicio (arranca con Windows)"
 $nodeExe = (Get-Command node).Source
 $tarea = "FactPOS Servidor"
-$accion = New-ScheduledTaskAction -Execute "cmd.exe" -WorkingDirectory $Carpeta `
-  -Argument "/c `"`"$nodeExe`" apps\servidor\dist\index.js >> logs\servidor.log 2>&1`""
+$psSrv = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$accion = New-ScheduledTaskAction -Execute $psSrv -WorkingDirectory $Carpeta `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Carpeta\instalador\arrancar-servidor.ps1`" -Carpeta `"$Carpeta`" -Node `"$nodeExe`" -Puerto $Puerto"
 $disparador = New-ScheduledTaskTrigger -AtStartup
 $opciones = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
   -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
