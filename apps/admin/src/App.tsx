@@ -24,6 +24,7 @@ import { Conteos } from "./paginas/Conteos";
 import { Precios } from "./paginas/Precios";
 import { Ofertas } from "./paginas/Ofertas";
 import { Clientes } from "./paginas/Clientes";
+import { Cotizaciones } from "./paginas/Cotizaciones";
 import { Traspasos } from "./paginas/Traspasos";
 import { Delivery } from "./paginas/Delivery";
 import { Reportes } from "./paginas/Reportes";
@@ -55,6 +56,7 @@ const SECCIONES = [
   { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, i: "precios", p: ["admin.precios"] },
   { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
   { id: "clientela", titulo: "Clientes", grupo: "Comercial", C: Clientes, i: "clientes", p: ["admin.clientes", "admin.cxc"] },
+  { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Comercial", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
   { id: "facturas", titulo: "Facturas", grupo: "Comercial", C: Facturas, i: "ticket", p: ["admin.facturas"] },
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Comercial", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, i: "delivery", p: ["admin.config"] },
@@ -78,7 +80,7 @@ const SECCIONES = [
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
-const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "facturas", "pedidos", "cxc", "caja", "reportes"];
+const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "caja", "reportes"];
 interface CfgMovil { habilitada: boolean; secciones: string[]; aplica: boolean }
 const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
@@ -128,6 +130,7 @@ const DESCRIPCION: Record<string, string> = {
   precios: "Cambiar precios por nivel y por sucursal",
   ofertas: "Promociones, combos y descuentos con tope",
   clientela: "Clientes y el nivel de precio de cada uno",
+  cotizaciones: "Preparar cotizaciones y enviarlas por correo",
   delivery: "Pedidos a domicilio y repartidores",
   cxc: "Clientes a crédito, abonos y estados de cuenta",
   caja: "Retiros, gastos y movimientos de caja",
