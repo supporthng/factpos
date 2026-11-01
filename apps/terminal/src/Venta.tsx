@@ -193,7 +193,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     const r = cot.r;
     publicarCarrito({
       fase: modal === "cobro" ? "cobro" : "venta",
-      cliente: requiereDocumento(tipoComp) && cliente ? cliente.nombre : null,
+      cliente: requiereDocumento(tipoComp) && cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null,
       lineas: r ? lineas.map((l, i) => {
         const c = r.lineas[i]!.calc;
         const cant = Number(l.cantidad) || 1;
