@@ -376,7 +376,7 @@ export async function rutasPortal(app: FastifyInstance) {
               l.id AS "licenciaId", l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado AS "estadoLicencia",
               l.clave_pista AS "clavePista", l.instalacion_id IS NOT NULL AS activada, l.activada_en AS "activadaEn",
               l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso",
-              l.plan_id AS "planId", p.nombre AS plan, l.precio_sucursal AS "precioEspecial", p.periodo,
+              l.respaldo_extra_gb AS "respaldoExtraGb", l.plan_id AS "planId", p.nombre AS plan, l.precio_sucursal AS "precioEspecial", p.periodo,
               COALESCE(l.precio_sucursal, p.precio_sucursal)::float AS "precioSucursal"
          FROM portal_clientes c LEFT JOIN portal_licencias l ON l.cliente_id = c.id LEFT JOIN portal_planes p ON p.id = l.plan_id
         ORDER BY c.nombre`);
@@ -590,6 +590,15 @@ export async function rutasPortal(app: FastifyInstance) {
       if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un rango con el código «${b.codigo}»`, 409);
       throw e;
     }
+    return { ok: true };
+  });
+  /** Espacio extra de respaldos en la nube que contrató el cliente (GB, se suma al tope base). */
+  app.put("/central/portal/clientes/:id/respaldo-extra", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ gb: z.number().int().min(0).max(1000) }).parse(req.body);
+    const r = await pool.query("UPDATE portal_licencias SET respaldo_extra_gb = $2, actualizado_en = now() WHERE cliente_id = $1 RETURNING id", [id, b.gb]);
+    if (!r.rowCount) throw new ErrorNegocio("Ese cliente no tiene licencia", 404);
+    await evento(pool, { clienteId: id, licenciaId: r.rows[0].id, tipo: "RESPALDO_ESPACIO", detalle: b, usuarioId: usuarioDe(req) });
     return { ok: true };
   });
   /** Asigna (o quita) el plan de facturación electrónica de un cliente. */
