@@ -127,7 +127,6 @@ export async function rutasCentralInventario(app: FastifyInstance) {
    */
   app.post("/central/productos-existencia", async (req, rep) => {
     const e = empresaDe(req);
-    await exigirFuncion(e, "agregar_existencia");
     const b = z.object({
       sucursalId: uuid, almacenId: uuid.optional(),
       motivo: z.string().trim().min(3).max(200).default("Existencia agregada desde Productos"),
@@ -136,6 +135,10 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         costoUnitario: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(), nota: z.string().max(200).optional(),
       })).min(1).max(2000),
     }).parse(req.body);
+    // La existencia inicial de un producto recién creado (sin ningún movimiento en el kardex) no necesita la función de Seguridad;
+    // sumarle existencia a un producto que ya tiene historial sí.
+    const conHistorial = await pool.query("SELECT 1 FROM kardex_movimientos WHERE producto_id = ANY($1::uuid[]) LIMIT 1", [[...new Set(b.items.map((i) => i.productoId))]]);
+    if (conHistorial.rowCount) await exigirFuncion(e, "agregar_existencia");
     const usuarioId = uuid.parse(req.headers["x-usuario-id"]);
     const r = await enTransaccion(async (c) => {
       const ok = await c.query<{ n: number }>(

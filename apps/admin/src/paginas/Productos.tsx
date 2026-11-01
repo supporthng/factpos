@@ -873,7 +873,6 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
   const [incluye, setIncluye] = useState(true);
   const [costo, setCosto] = useState("");
   const [minimo, setMinimo] = useState("");
-  const { habilitada: puedeExistencia } = useFuncionSeguridad("agregar_existencia");
   const [existencia, setExistencia] = useState("");
   const [sucExist, setSucExist] = useState("");
   const [nv, setNv] = useState<Record<string, Niv>>(nivVacio);
@@ -960,7 +959,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
         costoReferencia: String(n(f.costoReferencia)),
       };
       const creado = await api<{ id: string }>("/central/productos", { metodo: "POST", cuerpo });
-      if (tipo === "INVENTARIABLE" && puedeExistencia && n(existencia) > 0) {
+      if (tipo === "INVENTARIABLE" && n(existencia) > 0) {
         try {
           await api("/central/productos-existencia", { cuerpo: { sucursalId: sucExist || sucursales[0]?.id, motivo: "Existencia inicial", items: [{ productoId: creado.id, cantidad: String(n(existencia)), costoUnitario: n(costo) > 0 ? String(n(costo)) : undefined }] } });
         } catch (e) {
@@ -1035,8 +1034,8 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
           </div>
 
           <div className="pr-niveles">
-            <div className="pr-nivel pr-nivel-cab"><span>Precios de venta</span><span>% ganancia</span><span>Precio</span><span>Margen</span></div>
-            {NIVELES.map((k) => {
+            <div className="pr-nivel pr-nivel-cab"><span>Precio de venta</span><span>% ganancia</span><span>Precio</span><span>Margen</span></div>
+            {(["1"] as const).map((k) => {
               const x = nv[k];
               const m = x.precio ? margen(n(x.precio), c, tasa, incluye) : null;
               const bajo = x.precio && c > 0 && base(n(x.precio), tasa, incluye) < c;
@@ -1049,7 +1048,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
                 </div>
               );
             })}
-            <small className="suave">Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Si cambia el costo, los precios definidos por % se ajustan solos.</small>
+            <small className="suave">Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Comercial › Precios).</small>
           </div>
         </div>
 
@@ -1057,15 +1056,11 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
           <div className="pr-fila pr-fila-2">
             <label className="campo"><span>Existencia mínima <em className="suave">(alerta de reposición)</em></span>
               <input className="numero" inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => setMinimo(limpiar(e.target.value))} /></label>
-            {puedeExistencia ? (
-              <label className="campo"><span>Existencia actual <em className="suave">(se registra en el kardex)</em></span>
-                <span className="en-linea">
-                  <input className="numero" inputMode="decimal" value={existencia} placeholder="0" onChange={(e) => setExistencia(limpiar(e.target.value))} />
-                  {sucursales.length > 1 && <select value={sucExist || sucursales[0]?.id} onChange={(e) => setSucExist(e.target.value)} aria-label="Sucursal de la existencia">{sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>}
-                </span></label>
-            ) : (
-              <p className="suave pequeno pr-nota">La existencia inicial se carga con una compra o un ajuste. Un administrador puede habilitar «Agregar existencia» en Configuración › Seguridad.</p>
-            )}
+            <label className="campo"><span>Existencia actual <em className="suave">(queda en el kardex como existencia inicial)</em></span>
+              <span className="en-linea">
+                <input className="numero" inputMode="decimal" value={existencia} placeholder="0" onChange={(e) => setExistencia(limpiar(e.target.value))} />
+                {sucursales.length > 1 && <select value={sucExist || sucursales[0]?.id} onChange={(e) => setSucExist(e.target.value)} aria-label="Sucursal de la existencia">{sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>}
+              </span></label>
           </div>
         )}
 
