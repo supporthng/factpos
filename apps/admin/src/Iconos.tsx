@@ -27,6 +27,7 @@ const TRAZOS = {
   venta: <><path d="m3 17 6-6 4 4 8-8" /><path d="M15 7h6v6" /></>,
   ticket: <><path d="M4 4h16v16H4z" /><path d="M8 9h8M8 13h8M8 17h4" /></>,
   salir: <><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
+  atras: <><path d="M15 5 8 12l7 7" /></>,
   menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
   inicio: <><path d="M3.5 10.5 12 3.5l8.5 7" /><path d="M5.5 9v10.5a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9" /></>,
   "menu-lateral": <><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16M5.5 8h1M5.5 11h1M5.5 14h1" /></>,

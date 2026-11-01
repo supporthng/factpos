@@ -273,6 +273,12 @@ function AppInterna() {
         <div className="contenido">
           <header className="barra-superior">
             {forma === "lateral" && <button className="boton-icono solo-movil" aria-label="Menú" onClick={() => setMenu(!menu)}><Icono n="menu" /></button>}
+            {vista !== "inicio" && (
+              <button className="boton-icono" title="Volver" aria-label="Volver"
+                onClick={() => (vista === "seccion" && grupoActual && enGrupo(grupoActual).length > 1 ? setSeccion("g-" + datosGrupo(grupoActual).slug) : setSeccion("inicio"))}>
+                <Icono n="atras" />
+              </button>
+            )}
             {forma === "cuadricula" && <button className="marca-superior" onClick={() => setSeccion("inicio")} title="Inicio">
               {logo ? <img src={logo} alt="Logo" /> : <SimboloFactPOS tamano={34} fondo />}
               {!logo && <span className="nombre">Fact<b>POS</b></span>}
