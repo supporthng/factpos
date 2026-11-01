@@ -253,6 +253,11 @@ export async function rutasRespaldos(app: FastifyInstance) {
     return vista(f);
   });
 
+  app.post("/central/respaldos/solicitar-espacio", async (req) => {
+    const b = z.object({ gb: z.number().int().min(1).max(500) }).parse(req.body);
+    return llamarPortal<{ ok: boolean; yaEnviada: boolean }>("/licencias/respaldo/solicitar-espacio", { ...(await credencialesPortal()), gb: b.gb });
+  });
+
   /** Lo que hay guardado en la nube de FactPOS para esta licencia */
   app.get("/central/respaldos/nube", async () => {
     const cred = await credencialesPortal();

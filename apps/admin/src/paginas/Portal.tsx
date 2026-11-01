@@ -13,7 +13,7 @@ interface Cliente {
   licenciaId: string | null; sucursales: number | null; vence: string | null; estadoLicencia: "ACTIVA" | "SUSPENDIDA" | null;
   clavePista: string | null; activada: boolean; activadaEn: string | null; ultimoContacto: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | null;
-  respaldoExtraGb?: number; lectorCupo?: number; lectorUsadas?: number; respaldoUsadoBytes?: number; respaldoCopias?: number; lectorHistorial?: { mes: string; usadas: number }[]; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
+  respaldoExtraGb?: number; lectorCupo?: number; lectorUsadas?: number; respaldoUsadoBytes?: number; respaldoCopias?: number; espacioSolicitadoGb?: number | null; lectorHistorial?: { mes: string; usadas: number }[]; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
@@ -25,6 +25,8 @@ interface Instalacion {
   correo: string | null; telefono: string | null; contacto: string | null; planId: string | null; plan: string | null; sucursalesSolicitadas: number | null; mensaje: string | null;
 }
 interface Reglas { pruebaActualiza: boolean; plazoHoras: number; contactoNombre: string | null; contactoTelefono: string | null; contactoWhatsapp: string | null; contactoCorreo: string | null }
+/** ¿Ya consumió el 80 % o más? */
+const cerca = (usado: number, tope: number) => tope > 0 && usado / tope >= 0.8;
 const rd = (n: number) => `RD$ ${n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Fecha de vencimiento tras sumar meses (desde hoy o desde el vencimiento si aún no pasa). */
 const masMeses = (meses: number, desde?: string | null) => {
@@ -157,8 +159,9 @@ function Clientes({ planes }: { planes: Plan[] }) {
                       : <span className="suave">Sin activar{c.clavePista ? ` (clave …${c.clavePista})` : ""}</span>}
                   </td>
                   <td className="pequeno">
-                    <div>Respaldos: {((c.respaldoUsadoBytes ?? 0) / 1024 ** 3).toFixed(2)} / {2 + (c.respaldoExtraGb ?? 0)} GB</div>
-                    <div>Facturas IA: {c.lectorUsadas ?? 0} / {c.lectorCupo ?? 0}</div>
+                    <div className={cerca((c.respaldoUsadoBytes ?? 0) / 1024 ** 3, 2 + (c.respaldoExtraGb ?? 0)) ? "texto-alerta" : ""}>Respaldos: {((c.respaldoUsadoBytes ?? 0) / 1024 ** 3).toFixed(2)} / {2 + (c.respaldoExtraGb ?? 0)} GB</div>
+                    <div className={(c.lectorCupo ?? 0) > 0 && cerca(c.lectorUsadas ?? 0, c.lectorCupo ?? 0) ? "texto-alerta" : ""}>Facturas IA: {c.lectorUsadas ?? 0} / {c.lectorCupo ?? 0}</div>
+                    {c.espacioSolicitadoGb ? <div className="texto-alerta"><b>Pide +{c.espacioSolicitadoGb} GB de respaldos</b></div> : null}
                   </td>
                   <td className="der"><button className="enlace" onClick={() => setAbierto(abierto === c.id ? null : c.id)}>{abierto === c.id ? "Cerrar" : "Administrar"}</button></td>
                 </tr>
@@ -263,7 +266,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
 
 const EVENTOS: Record<string, string> = {
   CREADA: "Licencia creada", RENOVADA: "Renovada", ACTIVADA: "Activada por el cliente", LIBERADA: "Instalación liberada", TRASLADO_INICIADO: "Traslado a otro equipo iniciado", TRASLADO_COMPLETADO: "Traslado completado", SUSPENDIDA: "Suspendida",
-  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas", RESPALDO_ESPACIO: "Espacio de respaldos cambiado", LECTOR_CUPO: "Cupo del lector de facturas cambiado",
+  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas", RESPALDO_ESPACIO: "Espacio de respaldos cambiado", ESPACIO_SOLICITADO: "El cliente pidió más espacio de respaldos", LECTOR_CUPO: "Cupo del lector de facturas cambiado",
 };
 
 function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: Plan[]; onCambio: () => void; onClave: (k: string) => void }) {
