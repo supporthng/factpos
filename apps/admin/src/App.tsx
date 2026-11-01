@@ -2,6 +2,7 @@ import { Seguridad } from "./paginas/Seguridad";
 import { Pedidos } from "./paginas/Pedidos";
 import { Facturas } from "./paginas/Facturas";
 import { CertificacionDgii } from "./paginas/CertificacionDgii";
+import { FacturacionElectronica } from "./paginas/FacturacionElectronica";
 import { DosPasos } from "./paginas/DosPasos";
 import { ConfigMovil } from "./paginas/ConfigMovil";
 import { ConexionWeb } from "./paginas/ConexionWeb";
@@ -94,6 +95,7 @@ function useVersionMovil(cfg: CfgMovil | null) {
 const SECCIONES_PORTAL = [
   { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, i: "clientes", p: ["*"] },
   { id: "certificacion", titulo: "Certificación DGII", grupo: "Portal FactPOS", C: CertificacionDgii, i: "fiscal", p: ["*"] },
+  { id: "ecfplanes", titulo: "Facturación electrónica", grupo: "Portal FactPOS", C: FacturacionElectronica, i: "fiscal", p: ["*"] },
   { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];
@@ -101,6 +103,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: No
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
+  ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
   certificacion: "Avance de la certificación de FactPOS como software ante la DGII",
   facturas: "Buscar facturas, reimprimir, modificar y anular (con permiso de supervisor)",
   pedidos: "Pedidos al por mayor: se envían a una caja, se alistan y se facturan",

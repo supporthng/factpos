@@ -73,8 +73,25 @@ export async function verificarCupoSucursal(c: { query: typeof pool.query }, emp
 }
 
 // -------------------------------------------------------------------------------- portal
+/** Comprobantes e-CF emitidos este mes y el anterior (hora de Santo Domingo), para el plan de facturación electrónica del portal. */
+async function usoEcf() {
+  try {
+    const r = await pool.query<{ mes: string; n: number }>(
+      `SELECT to_char(creado_en AT TIME ZONE 'America/Santo_Domingo', 'YYYY-MM') AS mes, COUNT(*)::int AS n
+         FROM ecf_documentos
+        WHERE estado IN ('ENVIADO','ACEPTADO','ACEPTADO_COND')
+          AND creado_en >= date_trunc('month', now() AT TIME ZONE 'America/Santo_Domingo') AT TIME ZONE 'America/Santo_Domingo' - interval '1 month'
+        GROUP BY 1`);
+    return { meses: r.rows.map((x) => ({ mes: x.mes, emitidos: x.n })) };
+  } catch { return undefined; }
+}
+
 async function llamarPortal<T>(ruta: string, cuerpo: unknown): Promise<T> {
   let r: Response;
+  if (ruta === "/licencias/renovar" || ruta === "/licencias/activar") {
+    const ecf = await usoEcf();
+    if (ecf) cuerpo = { ...(cuerpo as object), ecf };
+  }
   try {
     r = await fetch(`${PORTAL_URL()}${ruta}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo), signal: AbortSignal.timeout(20_000),
