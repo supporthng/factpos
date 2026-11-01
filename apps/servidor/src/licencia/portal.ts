@@ -142,6 +142,10 @@ export async function rutasPortal(app: FastifyInstance) {
   app.post("/licencias/renovar", async (req) => {
     const b = contacto.extend({ licenciaId: uuid, secreto: z.string().min(20).max(80) }).parse(req.body);
     const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [b.licenciaId])).rows[0];
+    if (l && l.instalacion_id === b.instalacionId && !igual(l.secreto_hash, huella(b.secreto))) {
+      const t = (await pool.query("SELECT traslado_en FROM portal_licencias WHERE id = $1", [l.id])).rows[0];
+      if (t?.traslado_en) throw new ErrorNegocio("TRASLADADA: esta licencia se movió a otro equipo. Este equipo quedó solo en modo consulta.", 409);
+    }
     if (!l || l.instalacion_id !== b.instalacionId || !igual(l.secreto_hash, huella(b.secreto))) {
       frenar(req.ip ?? "?");
       throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia. Actívela de nuevo con su clave.", 401);
@@ -153,6 +157,55 @@ export async function rutasPortal(app: FastifyInstance) {
     await guardarUsoEcf(l.id, b.ecf).catch(() => undefined);
     if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
     return { licencia: emitir(l, b.instalacionId) };
+  });
+
+  // -------- Traslado a otro equipo: se mueve el servidor completo (licencia + base de datos + configuración).
+  // El equipo viejo pierde su secreto en cuanto se inicia: no puede renovar y queda en modo consulta.
+  const normalizarTraslado = (t: string) => "TRS-" + (t.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^TRS/, "").match(/.{1,4}/g) ?? []).join("-");
+  const MAX_TRASLADOS_ANIO = 3;
+
+  app.post("/licencias/traslado/iniciar", async (req) => {
+    const b = contacto.extend({ licenciaId: uuid, secreto: z.string().min(20).max(80) }).parse(req.body);
+    return enTransaccion(async (c) => {
+      const l = (await c.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1 FOR UPDATE OF l`, [b.licenciaId])).rows[0];
+      if (!l || l.instalacion_id !== b.instalacionId || !igual(l.secreto_hash, huella(b.secreto))) {
+        frenar(req.ip ?? "?");
+        throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia.", 401);
+      }
+      if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
+      const n = (await c.query<{ n: number }>(
+        "SELECT COUNT(*)::int AS n FROM portal_eventos WHERE licencia_id = $1 AND tipo = 'TRASLADO_INICIADO' AND creado_en > now() - interval '365 days'", [l.id])).rows[0].n;
+      if (n >= MAX_TRASLADOS_ANIO) throw new ErrorNegocio(`Esta licencia ya se trasladó ${n} veces en el último año. Comuníquese con su proveedor para autorizar otro traslado.`, 429);
+      const codigo = "TRS-" + Array.from({ length: 3 }, () => Array.from({ length: 4 }, () => ALFABETO[randomInt(ALFABETO.length)]).join("")).join("-");
+      await c.query(
+        "UPDATE portal_licencias SET secreto_hash = $2, traslado_hash = $3, traslado_en = now(), actualizado_en = now() WHERE id = $1",
+        [l.id, huella(randomBytes(24).toString("base64url")), huella(codigo)]);
+      await evento(c, { licenciaId: l.id, clienteId: l.cliente_id, tipo: "TRASLADO_INICIADO", detalle: { instalacion: b.instalacionId, version: b.version } });
+      return { codigo };
+    });
+  });
+
+  app.post("/licencias/traslado/completar", async (req) => {
+    const b = contacto.extend({ licenciaId: uuid, codigo: z.string().trim().min(10).max(30) }).parse(req.body);
+    return enTransaccion(async (c) => {
+      const l = (await c.query<FilaLicencia & { traslado_hash: string | null; traslado_en: string | null }>(
+        `${SELECT_LIC.replace("FROM portal_licencias l", ", l.traslado_hash, l.traslado_en FROM portal_licencias l")} WHERE l.id = $1 FOR UPDATE OF l`, [b.licenciaId])).rows[0];
+      const vigente = !!l?.traslado_en && Date.now() - new Date(l.traslado_en).getTime() < 30 * 86400_000;
+      if (!l || l.instalacion_id !== b.instalacionId || !vigente || !igual(l.traslado_hash, huella(normalizarTraslado(b.codigo)))) {
+        frenar(req.ip ?? "?");
+        throw new ErrorNegocio("Código de traslado no válido o vencido (dura 30 días). Inicie el traslado de nuevo desde el equipo anterior.", 404);
+      }
+      if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
+      const secreto = randomBytes(24).toString("base64url");
+      await c.query(
+        `UPDATE portal_licencias SET secreto_hash = $2, traslado_hash = NULL, traslado_en = NULL, ultimo_contacto = now(),
+                version_app = $3, sucursales_en_uso = $4, actualizado_en = now() WHERE id = $1`,
+        [l.id, huella(secreto), b.version ?? null, b.sucursalesEnUso ?? null]);
+      await c.query("UPDATE portal_instalaciones SET secreto_hash = $2, ultimo_contacto = now() WHERE id = $1", [b.instalacionId, huella(secreto)]);
+      if (b.apiUrl) await c.query("UPDATE portal_clientes SET api_url = $2 WHERE id = $1", [l.cliente_id, b.apiUrl]);
+      await evento(c, { licenciaId: l.id, clienteId: l.cliente_id, tipo: "TRASLADO_COMPLETADO", detalle: { instalacion: b.instalacionId, version: b.version } });
+      return { licencia: emitir(l, b.instalacionId), secreto };
+    });
   });
 
   /** Planes que se pueden pedir (los ve el cliente en su formulario «Solicitar activación»). */

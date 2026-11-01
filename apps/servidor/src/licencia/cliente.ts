@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { hostname } from "node:os";
 import { estadoTunel, pedirTunelFijo, reportarTunel, tunelActivo } from "../tunel.js";
 import path from "node:path";
@@ -42,12 +43,19 @@ export async function filaLicencia(): Promise<FilaLicencia> {
   return (await pool.query<FilaLicencia>("SELECT instalacion_id, token, secreto, prueba_desde, ultimo_contacto, ultimo_error FROM licencia WHERE id = 1")).rows[0];
 }
 
+const trasladada = async () =>
+  !!(await pool.query<{ t: string | null }>("SELECT traslado_en AS t FROM licencia WHERE id = 1").catch(() => ({ rows: [] }))).rows[0]?.t;
 let cache: { r: ResultadoLicencia; t: number } | null = null;
 export const olvidarLicencia = () => { cache = null; };
 export async function estadoLicencia(): Promise<ResultadoLicencia> {
   if (cache && Date.now() - cache.t < 60_000) return cache.r;
   const f = await filaLicencia();
-  const r = evaluarLicencia(f.token, { instalacion: f.instalacion_id, pruebaDesde: f.prueba_desde });
+  let r = evaluarLicencia(f.token, { instalacion: f.instalacion_id, pruebaDesde: f.prueba_desde });
+  if (await trasladada()) {
+    // Este equipo ya se movió a otro: se puede consultar y respaldar, pero no vender.
+    r = { ...r, estado: "VENCIDA", permiteVender: false,
+      mensaje: "Esta licencia se movió a otro equipo. Aquí solo puede consultar. Si acaba de mover el servidor a este equipo, complete el traslado en Administración › Licencia." };
+  }
   cache = { r, t: Date.now() };
   return r;
 }
@@ -148,6 +156,8 @@ export async function renovarLicencia() {
   } catch (err) {
     // Se conserva la licencia que había: sigue valiendo hasta su fecha
     await pool.query("UPDATE licencia SET ultimo_error = $1 WHERE id = 1", [(err as Error).message.slice(0, 300)]);
+    // El portal avisa que la licencia se movió a otro equipo: éste queda solo en modo consulta
+    if ((err as Error).message.startsWith("TRASLADADA")) await pool.query("UPDATE licencia SET traslado_en = COALESCE(traslado_en, now()) WHERE id = 1");
     olvidarLicencia();
     throw err;
   }
@@ -155,6 +165,74 @@ export async function renovarLicencia() {
   return estadoLicencia();
 }
 
+
+// ----------------------------------------------------------------- traslado a otro equipo
+/**
+ * «Mover el servidor a otro equipo»: la licencia no se puede mover sola; viaja con TODA la base de datos y la
+ * configuración (.env). Se crea un paquete (respaldo + entorno) y un código de traslado. En el equipo nuevo se
+ * instala FactPOS, se restaura el paquete y se completa el traslado con el código. El equipo anterior queda
+ * solo en modo consulta: el portal le quitó el permiso de renovar.
+ */
+const raizInstalacion = () => path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+
+export async function iniciarTraslado() {
+  const f = await filaLicencia();
+  if (!f.token || !f.secreto) throw new ErrorNegocio("Esta instalación todavía no tiene licencia activada: no hay nada que trasladar", 409);
+  if (await trasladada()) throw new ErrorNegocio("Este equipo ya fue trasladado", 409);
+  const actual = evaluarLicencia(f.token, { instalacion: f.instalacion_id });
+  if (!actual.datos) throw new ErrorNegocio("La licencia de esta instalación no es válida", 409);
+  const raiz = raizInstalacion();
+  const bd = path.join(raiz, "instalador", "bd.cjs");
+  const url = process.env.DATABASE_URL;
+  if (!existsSync(bd) || !url) throw new ErrorNegocio("Esta instalación no puede crear el paquete de traslado (falta el instalador o la conexión a la base de datos)", 501);
+  // 1) El paquete primero: si falla, no se cambia nada
+  const sello = new Date().toISOString().replace(/[-:]/g, "").slice(0, 13).replace("T", "-");
+  const carpeta = path.join(raiz, "traslado", `FactPOS-traslado-${sello}`);
+  mkdirSync(carpeta, { recursive: true });
+  try {
+    await new Promise<void>((ok, mal) => execFile(process.execPath, [bd, "respaldar", url, path.join(carpeta, "factpos.fpbak")], { timeout: 30 * 60_000 },
+      (e, _o, err) => (e ? mal(new Error(String(err || e.message).slice(0, 300))) : ok())));
+    const env = path.join(raiz, ".env");
+    if (!existsSync(env)) throw new Error("No se encontró el archivo de configuración (.env)");
+    copyFileSync(env, path.join(carpeta, "entorno.env"));
+  } catch (e) {
+    throw new ErrorNegocio(`No se pudo crear el paquete de traslado: ${(e as Error).message}. No se cambió nada.`, 500);
+  }
+  // 2) El portal quita el permiso de este equipo y da el código
+  const r = await llamarPortal<{ codigo: string }>("/licencias/traslado/iniciar", {
+    licenciaId: actual.datos.id, instalacionId: f.instalacion_id, secreto: f.secreto, version: versionApp(),
+  });
+  // 3) Este equipo queda solo en consulta
+  await pool.query("UPDATE licencia SET traslado_en = now(), actualizado_en = now() WHERE id = 1");
+  olvidarLicencia();
+  writeFileSync(path.join(carpeta, "LEEME.txt"),
+    `Paquete de traslado de FactPOS (${new Date().toLocaleString("es-DO")})\r\n\r\n` +
+    `1. Copie esta carpeta completa al equipo nuevo (memoria USB).\r\n` +
+    `2. En el equipo nuevo instale FactPOS (misma versión o más reciente) con el instalador.\r\n` +
+    `3. Ejecute en el equipo nuevo: C:\\FactPOS\\instalador\\restaurar-traslado.ps1 -Paquete "<ruta de esta carpeta>"\r\n` +
+    `4. Abra Administración › Licencia y escriba el código de traslado: ${r.codigo}\r\n\r\n` +
+    `Este equipo quedó solo en modo consulta. Guarde esta carpeta: contiene todos los datos del negocio.\r\n`, "utf8");
+  return { codigo: r.codigo, carpeta };
+}
+
+export async function completarTraslado(codigo: string, apiUrl?: string) {
+  const f = await filaLicencia();
+  const actual = f.token ? evaluarLicencia(f.token, { instalacion: f.instalacion_id }) : null;
+  if (!actual?.datos) throw new ErrorNegocio("Primero restaure el paquete de traslado en este equipo (restaurar-traslado.ps1)", 409);
+  apiUrl = estadoTunel().url ?? apiUrl;
+  const r = await llamarPortal<{ licencia: string; secreto: string }>("/licencias/traslado/completar", {
+    licenciaId: actual.datos.id, instalacionId: f.instalacion_id, codigo, version: versionApp(), sucursalesEnUso: await sucursalesEnUso(), apiUrl,
+  });
+  const e = evaluarLicencia(r.licencia, { instalacion: f.instalacion_id });
+  if (e.error) throw new ErrorNegocio(`El portal devolvió una licencia que no se pudo verificar: ${e.error}`, 502);
+  await pool.query("UPDATE licencia SET token = $1, secreto = $2, portal_url = $3, traslado_en = NULL, ultimo_contacto = now(), ultimo_error = NULL, actualizado_en = now() WHERE id = 1",
+    [r.licencia, r.secreto, PORTAL_URL()]);
+  olvidarLicencia();
+  await reportarTunel(PORTAL_URL()).catch(() => false);
+  const { guardarEnEnv } = await import("../sync/alta.js");
+  pedirTunelFijo(PORTAL_URL(), guardarEnEnv).catch(() => false);
+  return estadoLicencia();
+}
 
 // ----------------------------------------------------------------- solicitud de activación
 /**
@@ -308,6 +386,7 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     return {
       ...publico(e),
       instalacionId: f.instalacion_id, licenciaId: e.datos?.id ?? null, activada: !!f.token, ultimoContacto: f.ultimo_contacto, ultimoError: f.ultimo_error,
+      traslado: await trasladada(),
       clave: (await pool.query<{ c: string | null }>("SELECT clave_activacion AS c FROM licencia WHERE id = 1").catch(() => ({ rows: [] }))).rows[0]?.c ?? null,
       portal: PORTAL_URL(), sucursalesEnUso: await sucursalesEnUso(), politica: await politicaPortal(), solicitud: estadoSolicitud(), solicitudEnviada: await solicitudEnviada(),
       empresa: (await pool.query("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas ORDER BY actualizado_en LIMIT 1").catch(() => ({ rows: [] }))).rows[0] ?? null,
@@ -331,6 +410,18 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
     return { nombre: `licencia-factpos-${slug}.fpslic`, contenido: f.token.trim() + "\n" };
   });
   app.post("/central/licencia/renovar", async () => publico(await renovarLicencia()));
+  /** Mover el servidor a otro equipo (paquete con toda la base de datos + código de traslado). */
+  app.post("/central/licencia/traslado/iniciar", async (req) => {
+    z.object({ confirmar: z.literal("MOVER") }).parse(req.body);
+    return iniciarTraslado();
+  });
+  /** En el equipo nuevo, después de restaurar el paquete: el código reactiva la licencia aquí. */
+  app.post("/central/licencia/traslado/completar", async (req) => {
+    const b = z.object({ codigo: z.string().trim().min(10).max(30) }).parse(req.body);
+    const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+    const apiUrl = host ? `https://${String(host).split(",")[0]}` : undefined;
+    return publico(await completarTraslado(b.codigo, apiUrl?.includes("localhost") ? undefined : apiUrl));
+  });
   /** «Comprobar ahora»: consulta al portal si ya aprobaron la solicitud de activación. */
   app.post("/central/licencia/comprobar", async () => {
     const sol = await sincronizarSolicitud(true).catch((e) => { throw e instanceof ErrorNegocio ? e : new ErrorNegocio((e as Error).message, 502); });
