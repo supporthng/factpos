@@ -68,6 +68,18 @@ export async function rutasPortalRespaldo(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** El cliente pide más espacio: queda como aviso para el proveedor (una solicitud por día) */
+  app.post("/licencias/respaldo/solicitar-espacio", async (req) => {
+    const { l } = await autorizar(req.body);
+    const b = z.object({ gb: z.number().int().min(1).max(500) }).parse(req.body);
+    const ya = await pool.query("SELECT 1 FROM portal_eventos WHERE licencia_id = $1 AND tipo = 'ESPACIO_SOLICITADO' AND creado_en > now() - interval '1 day'", [l.id]);
+    if (ya.rowCount) return { ok: true, yaEnviada: true };
+    const c = await pool.query<{ cliente_id: string }>("SELECT cliente_id FROM portal_licencias WHERE id = $1", [l.id]);
+    await pool.query("INSERT INTO portal_eventos (id, licencia_id, cliente_id, tipo, detalle) VALUES (gen_random_uuid(), $1, $2, 'ESPACIO_SOLICITADO', $3)",
+      [l.id, c.rows[0]?.cliente_id ?? null, JSON.stringify({ gb: b.gb })]);
+    return { ok: true, yaEnviada: false };
+  });
+
   app.post("/licencias/respaldo/lista", async (req) => {
     const { l } = await autorizar(req.body);
     const r = (await pool.query<{ objeto: string; tamano: string; creado_en: string }>(

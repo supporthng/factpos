@@ -159,7 +159,17 @@ export function Respaldos() {
         <div className="panel">
           <h3 style={{ marginTop: 0 }}>Respaldos en la nube de FactPOS</h3>
           {errNube && <p className="texto-alerta">{errNube}</p>}
-          {nube && <p className="suave pequeno" style={{ marginTop: 0 }}>Usa {nube.usadoMb} MB de {nube.maxGb} GB. Se conservan los últimos 30 y uno por mes durante un año.</p>}
+          {nube && <p className={nube.usadoMb / (nube.maxGb * 1024) >= 0.8 ? "texto-alerta pequeno" : "suave pequeno"} style={{ marginTop: 0 }}>
+            Usa {nube.usadoMb} MB de {nube.maxGb} GB{nube.usadoMb / (nube.maxGb * 1024) >= 0.8 ? " · le queda poco espacio" : ""}. Se conservan los últimos 30 y uno por mes durante un año.{" "}
+            <button className="enlace" disabled={!admin} onClick={async () => {
+              const gb = Number(prompt("¿Cuántos GB adicionales necesita? (ej. 5)", "5"));
+              if (!gb || gb < 1) return;
+              try {
+                const r = await api<{ yaEnviada: boolean }>("/central/respaldos/solicitar-espacio", { cuerpo: { gb: Math.round(gb) } });
+                alert(r.yaEnviada ? "Ya enviamos su solicitud hoy. Su proveedor se comunicará con usted." : "Solicitud enviada. Su proveedor se comunicará con usted para activarlo.");
+              } catch (e) { alert((e as Error).message); }
+            }}>Solicitar más espacio</button>
+          </p>}
           {nube?.respaldos.length === 0 && <p className="suave">Todavía no hay copias en la nube.</p>}
           {nube?.respaldos.map((r) => (
             <div key={r.objeto} className="en-linea" style={{ justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid var(--borde)" }}>
