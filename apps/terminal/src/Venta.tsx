@@ -1,4 +1,4 @@
-import { publicarMarca, publicarCarrito, publicarGracias, abrirPantallaCliente } from "./pantalla-cliente";
+import { publicarMarca, publicarCarrito, publicarGracias } from "./pantalla-cliente";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cotizarCarrito, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito,
@@ -657,7 +657,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturas")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
-        <BotonFuncion tono="gris" icono="pantalla" texto="Pantalla del cliente" tecla="" onClick={abrirPantallaCliente} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
         <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
         {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}

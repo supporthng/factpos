@@ -1,3 +1,4 @@
+import { abrirPantallaCliente } from "./pantalla-cliente";
 import { useEffect, useMemo, useState } from "react";
 import { precioPara, type Catalogo, type ProductoCatalogo } from "@factpos/compartido";
 import { api, rd, type Ajustes } from "./api";
@@ -296,6 +297,11 @@ export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCe
     <Modal titulo="Configuración de esta terminal" onCerrar={onCerrar}>
       <p className="suave">{config.nombre} · {config.sucursal}</p>
       <TamanoPantalla />
+      <div className="campo">
+        <span>Pantalla del cliente</span>
+        <div><button className="boton" onClick={abrirPantallaCliente}>Abrir pantalla del cliente</button></div>
+        <small className="suave">Segunda pantalla que muestra al cliente los productos y el total, y las ofertas del negocio mientras no se cobra. Las ofertas se arman en Administración › Configuración › Pantalla del cliente.</small>
+      </div>
       {principal && (
         <label className="campo">
           <span>
