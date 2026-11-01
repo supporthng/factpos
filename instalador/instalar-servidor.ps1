@@ -373,18 +373,23 @@ if (Test-Path (Join-Path $Carpeta 'apps\servidor\dist\index.js')) {
   Stop-ScheduledTask -TaskName 'FactPOS Servidor' -ErrorAction SilentlyContinue
   $limite = (Get-Date).AddSeconds(15)
   do {
+    # Es el servidor de FactPOS si ejecuta apps\servidor\dist\index.js y (está en esta carpeta
+    # o es quien escucha en el puerto de FactPOS, que es justo el que impide actualizar).
+    $escuchan = @(Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $_.OwningProcess })
     $procesos = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {
       $_.CommandLine -match 'apps[\\/]servidor[\\/]dist[\\/]index\.js' -and
-      $_.ExecutablePath -and
-      (($_.CommandLine -match [regex]::Escape($Carpeta)) -or
-       ($_.CommandLine -notmatch '[A-Za-z]:[\\/]' -and (Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | Where-Object OwningProcess -eq $_.ProcessId)))
+      (($_.CommandLine -match [regex]::Escape($Carpeta)) -or ($escuchan -contains $_.ProcessId))
     })
     if ($procesos.Count -eq 0) { break }
     foreach ($proc in $procesos) { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $limite)
   if (Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue) {
-    throw "El puerto $Puerto sigue ocupado. Cierre el servidor anterior antes de actualizar."
+    $quien = Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object {
+      $p = Get-CimInstance Win32_Process -Filter "ProcessId=$($_.OwningProcess)" -ErrorAction SilentlyContinue
+      if ($p) { "$($p.Name) (PID $($p.ProcessId))" } else { "PID $($_.OwningProcess)" }
+    }
+    throw "El puerto $Puerto sigue ocupado por $quien. Ciérrelo (Administrador de tareas > Detalles) o reinicie el equipo y vuelva a ejecutar el instalador."
   }
 }
 # Las ventanas de FactPOS (Caja / Administración) y el túnel de esta carpeta bloquean sus archivos:
