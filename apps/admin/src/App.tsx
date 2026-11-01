@@ -31,6 +31,7 @@ import { Fiscal } from "./paginas/Fiscal";
 import { Sucursales } from "./paginas/Sucursales";
 import { Marca } from "./paginas/Marca";
 import { PantallaCliente } from "./paginas/PantallaCliente";
+import { Respaldos } from "./paginas/Respaldos";
 import { FormatosImpresion } from "./paginas/FormatosImpresion";
 import { Padron } from "./paginas/Padron";
 import { Usuarios } from "./paginas/Usuarios";
@@ -70,6 +71,7 @@ const SECCIONES = [
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
   { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
+  { id: "respaldos", titulo: "Respaldos", grupo: "Configuración", C: Respaldos, i: "actualizaciones", p: ["admin.config"] },
   { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, i: "licencia", p: ["admin.config"] },
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
@@ -135,6 +137,7 @@ const DESCRIPCION: Record<string, string> = {
   correo: "Envío de reportes y facturas por correo",
   marca: "Suba el logo de su empresa; el sistema toma sus colores",
   formatos: "Diseño del ticket: papel, logo, encabezado, pie y datos",
+  respaldos: "Copias de seguridad: en este equipo, USB/OneDrive y la nube",
   licencia: "Plan, vigencia y activación de FactPOS",
   actualizaciones: "Nuevas versiones del sistema",
   clientes: "Empresas, licencias y sus instalaciones",

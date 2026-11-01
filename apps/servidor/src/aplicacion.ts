@@ -4,6 +4,8 @@ import { permitidoPorTunel, tunelActivo, vieneDelTunel } from "./tunel.js";
 import { rutasCentralCorreo } from "./rutas/central-correo.js";
 import { rutasCentralAlta } from "./rutas/central-alta.js";
 import { rutasPortal } from "./licencia/portal.js";
+import { rutasPortalRespaldo } from "./respaldo/portal.js";
+import { rutasRespaldos, rutasRestaurarRespaldo } from "./respaldo/respaldo.js";
 import { rutasInicio } from "./rutas/inicio.js";
 import { rutasLicenciaCentral, rutasLicenciaSucursal } from "./licencia/cliente.js";
 import { rutasAltaLocal } from "./sync/alta.js";
@@ -202,6 +204,7 @@ export async function crearApp() {
     await app.register(rutasInicio);
     await app.register(rutasSesionCentral);
     await app.register(rutasPortal);
+    await app.register(rutasPortalRespaldo);
     return app;
   }
 
@@ -242,7 +245,7 @@ export async function crearApp() {
     await app.register(rutasCentralCorreo);
     if (config.modo === "central") await app.register(rutasCentralAlta);
     // La licencia se activa en la nube; una tienda que trabaja sola la activa aquí mismo
-    if (config.modo === "central" || !syncActiva()) await app.register(rutasLicenciaCentral);
+    if (config.modo === "central" || !syncActiva()) { await app.register(rutasLicenciaCentral); await app.register(rutasRespaldos); await app.register(rutasRestaurarRespaldo); }
     await app.register(rutasPadronCentral);
   }
   await app.register(rutasActualizacion); // el portal ya volvió antes

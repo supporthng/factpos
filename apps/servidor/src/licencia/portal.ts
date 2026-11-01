@@ -28,8 +28,8 @@ import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicenc
  *    /<cliente>/   → administración web del cliente, conectada a SU nube
  */
 const uuid = z.string().uuid();
-const huella = (t: string) => createHash("sha256").update(`factpos:licencia:${t}`).digest("hex");
-const igual = (a: string | null, b: string) => !!a && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+export const huella = (t: string) => createHash("sha256").update(`factpos:licencia:${t}`).digest("hex");
+export const igual = (a: string | null, b: string) => !!a && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const nuevaClave = () => "FPS-" + Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => ALFABETO[randomInt(ALFABETO.length)]).join("")).join("-");
 const normalizarClave = (t: string) => {

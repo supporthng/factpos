@@ -14,6 +14,7 @@ import { renovarSiToca } from "./licencia/cliente.js";
 import { iniciarMaster } from "./master.js";
 import { iniciarAlta } from "./sync/alta.js";
 import { iniciarLatido, iniciarVigilancia } from "./incidentes.js";
+import { iniciarRespaldos } from "./respaldo/respaldo.js";
 
 /**
  * Punto de entrada del servidor FactPOS.
@@ -77,6 +78,8 @@ if (!enVercel && config.modo !== "portal") {
   }
   // Si estuvo apagado, queda registrado; la central avisa a soporte
   await iniciarLatido((m) => app.log.warn(m));
+  // Respaldos: automático a su hora, copia extra (USB/OneDrive), copia cifrada en la nube y aviso si se atrasan
+  if (config.modo === "central" || !syncActiva()) iniciarRespaldos((m) => app.log.info(m));
   // Central fuera de Vercel: vigila cada minuto que las sucursales se comuniquen
   if (config.modo === "central") iniciarVigilancia((m) => app.log.warn(m));
   // Servidor MASTER (central instalado en el negocio): túnel, licencia y aviso al portal
