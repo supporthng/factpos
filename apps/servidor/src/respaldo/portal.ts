@@ -8,9 +8,9 @@ import { destinoDeEntorno, presignar } from "./s3.js";
 /**
  * Portal: guarda los respaldos cifrados de cada licencia en un almacenamiento compatible con S3 (Cloudflare R2, etc.).
  * Las instalaciones nunca ven las llaves: piden direcciones temporales (15 minutos) y el portal valida la licencia y el espacio.
- *   RESPALDO_S3_ENDPOINT / _BUCKET / _KEY_ID / _SECRET / _REGION    RESPALDO_MAX_GB (por licencia, 5 por defecto)
+ *   RESPALDO_S3_ENDPOINT / _BUCKET / _KEY_ID / _SECRET / _REGION    RESPALDO_MAX_GB (por licencia, 2 por defecto)
  */
-const MAX_GB = () => Number(process.env.RESPALDO_MAX_GB ?? 5);
+const MAX_GB = () => Number(process.env.RESPALDO_MAX_GB ?? 2);
 const credenciales = z.object({ licenciaId: z.string().uuid(), instalacionId: z.string().uuid(), secreto: z.string().min(20).max(80) });
 
 async function autorizar(cuerpo: unknown) {
