@@ -16,10 +16,13 @@ const API = process.env.CLOUDFLARE_API_BASE || "https://api.cloudflare.com/clien
 export const cloudflareListo = () => !!(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_ZONE_ID);
 export const dominioClientes = () => (process.env.FACTPOS_DOMINIO || "factpos.app").toLowerCase();
 
+/** El token se pega a veces dos veces o con saltos de línea: se usa solo la primera palabra */
+const tokenCf = () => (process.env.CLOUDFLARE_API_TOKEN ?? "").trim().split(/\s+/)[0] ?? "";
+
 async function cf<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
   const r = await fetch(`${API}${ruta}`, {
     method: metodo,
-    headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, "content-type": "application/json" },
+    headers: { authorization: `Bearer ${tokenCf()}`, "content-type": "application/json" },
     body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
     signal: AbortSignal.timeout(20_000),
   });
