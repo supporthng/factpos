@@ -19,6 +19,40 @@ interface Linea {
   lote: string; vence: string;
 }
 
+/** Lo que devuelve el lector de facturas (borrador por revisar) */
+interface Sugerido { presentacionId: string; nombre: string; presentacion: string; factor: string }
+interface ItemLeido {
+  codigo: string | null; descripcion: string; cantidad: number; costo: number; presentacionId: string | null;
+  confianza: "CODIGO" | "NOMBRE" | "NINGUNA"; sugeridos: Sugerido[];
+}
+interface FacturaLeida {
+  cupo: number; usadas: number; proveedor: { id: string | null; nombreLeido: string | null; rncLeido: string | null };
+  numeroFactura: string | null; ncf: string | null; fecha: string | null; vence: string | null; condicion: "CONTADO" | "CREDITO" | null;
+  total: number | null; items: ItemLeido[];
+}
+const aBase64 = (b: Blob) => new Promise<string>((ok, mal) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).split(",")[1] ?? "");
+  r.onerror = () => mal(new Error("No se pudo leer el archivo."));
+  r.readAsDataURL(b);
+});
+/** Foto → se reduce (lado mayor 1800 px, JPEG) para que suba rápido y cueste menos; PDF → tal cual (máx. 3 MB) */
+async function prepararArchivo(f: File): Promise<{ tipo: string; datos: string }> {
+  if (f.type === "application/pdf") {
+    if (f.size > 3 * 1024 * 1024) throw new Error("El PDF pesa más de 3 MB. Tome una foto de la factura o reduzca el archivo.");
+    return { tipo: f.type, datos: await aBase64(f) };
+  }
+  if (!f.type.startsWith("image/")) throw new Error("Use una foto (JPG, PNG) o un PDF.");
+  const img = await createImageBitmap(f);
+  const k = Math.min(1, 1800 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+  const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/jpeg", 0.85));
+  if (!blob) throw new Error("No se pudo procesar la imagen.");
+  return { tipo: "image/jpeg", datos: await aBase64(blob) };
+}
+
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 const fechaCorta = (f: string) => new Date(f.slice(0, 10) + "T12:00:00").toLocaleDateString("es-DO");
 
@@ -109,6 +143,53 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [provNuevo, setProvNuevo] = useState<string | null>(null);
+  const lector = useDatos<{ cupo: number; usadas: number; disponible: boolean; error?: string }>("/central/compras/lector/estado");
+  const [leyendo, setLeyendo] = useState(false);
+  const [pend, setPend] = useState<ItemLeido[]>([]);
+  const [leidaInfo, setLeidaInfo] = useState<string>("");
+
+  /** Agrega varias líneas de una vez (de la factura leída); si la presentación ya está, suma la cantidad */
+  const agregarLeidas = (items: { presentacionId: string; cantidad: number; costo: number }[]) => {
+    const nuevas: Linea[] = [];
+    setLineas((ls) => {
+      const sig = [...ls];
+      for (const it of items) {
+        const p = productos.find((x) => x.presentaciones.some((pr) => pr.id === it.presentacionId));
+        const pr = p?.presentaciones.find((x) => x.id === it.presentacionId);
+        if (!p || !pr) continue;
+        const ya = sig.findIndex((l) => l.presentacionId === it.presentacionId);
+        if (ya >= 0) { sig[ya] = { ...sig[ya], cantidad: String(n(sig[ya].cantidad) + it.cantidad) }; continue; }
+        const l: Linea = { clave: crypto.randomUUID(), presentacionId: it.presentacionId, nombre: p.nombre, presentacion: pr.nombre, factor: pr.factor,
+          cantidad: String(it.cantidad), costo: String(Math.round(it.costo * 100) / 100), enOferta: false, costoRegular: "", ref: null, lote: "", vence: "" };
+        sig.push(l); nuevas.push(l);
+      }
+      return sig;
+    });
+    // Referencia de compras anteriores (para comparar el costo), sin frenar la pantalla
+    setTimeout(() => nuevas.forEach(async (l) => {
+      try { const ref = await api<Referencia>(`/central/ofertas/referencia/${l.presentacionId}`); setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, ref } : x))); } catch { /* sin referencia */ }
+    }), 0);
+  };
+
+  const leerFactura = async (archivo: File | undefined) => {
+    if (!archivo) return;
+    setLeyendo(true); setMsg(""); setLeidaInfo("");
+    try {
+      const { tipo, datos } = await prepararArchivo(archivo);
+      const r = await api<FacturaLeida>("/central/compras/leer-factura", { cuerpo: { tipo, datos } });
+      setCab((c) => ({
+        ...c, proveedorId: r.proveedor.id ?? c.proveedorId, numeroFactura: r.numeroFactura ?? c.numeroFactura, ncfProveedor: r.ncf ?? c.ncfProveedor,
+        fechaFactura: r.fecha && r.fecha <= hoy() ? r.fecha : c.fechaFactura,
+        condicion: r.condicion ?? c.condicion, venceEn: r.vence ?? c.venceEn,
+      }));
+      if (!r.proveedor.id && r.proveedor.nombreLeido) setProvNuevo(r.proveedor.nombreLeido);
+      agregarLeidas(r.items.filter((i) => i.presentacionId).map((i) => ({ presentacionId: i.presentacionId!, cantidad: i.cantidad, costo: i.costo })));
+      setPend(r.items.filter((i) => !i.presentacionId));
+      setLeidaInfo(`Factura leída: ${r.items.length} líneas${r.total ? ` · total ${rd(r.total)}` : ""}. Revise cada dato antes de registrar. Facturas leídas este mes: ${r.usadas} de ${r.cupo}.`);
+      lector.recargar();
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setLeyendo(false); }
+  };
 
   // Al elegir un producto: si tiene una sola presentación se agrega directo; si no, se elige
   const producto = productos.find((p) => p.id === prodElegido);
@@ -185,9 +266,40 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     <>
       <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La compra no se ha registrado. ¿Salir?")) && onCerrar()}>Compras</button><span>/</span><span>Registrar compra</span></div>
       <Encabezado titulo="Registrar compra" descripcion="Copie la factura del proveedor. Marque las líneas que el proveedor le dio en oferta para saber luego a cuánto las compró.">
+        <label className={"boton" + (!lector.datos?.disponible || leyendo ? " desactivado" : "")}
+          title={lector.datos?.disponible ? `Facturas leídas este mes: ${lector.datos.usadas} de ${lector.datos.cupo}` : "El lector de facturas no está activo en su plan. Pídalo a su proveedor de FactPOS."}>
+          {leyendo ? "Leyendo la factura…" : "📷 Leer factura"}
+          <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={!lector.datos?.disponible || leyendo}
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
+        </label>
         <button className="boton primario" disabled={!completa || guardando} onClick={registrar}>{guardando ? "Registrando…" : `Registrar · ${rd(sub + itb)}`}</button>
       </Encabezado>
       <Aviso texto={msg} />
+      {leidaInfo && <p className="texto-ok">{leidaInfo}</p>}
+      {pend.length > 0 && (
+        <div className="panel">
+          <h3>Líneas de la factura sin emparejar ({pend.length})</h3>
+          <p className="suave">No se encontró el producto en su inventario. Elija el que corresponde (o créelo primero en Productos y vuelva a leer la factura).</p>
+          {pend.map((it, i) => (
+            <div key={i} className="en-linea" style={{ flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
+              <span><b>{it.descripcion}</b> <span className="suave">{it.codigo ? `${it.codigo} · ` : ""}{it.cantidad} × {rd(it.costo)}</span></span>
+              {it.sugeridos.map((sg) => (
+                <button key={sg.presentacionId} className="chip" onClick={() => { agregarLeidas([{ presentacionId: sg.presentacionId, cantidad: it.cantidad, costo: it.costo }]); setPend((p) => p.filter((_, j) => j !== i)); }}>
+                  {sg.nombre}{sg.presentacion !== "Unidad" ? ` · ${sg.presentacion}` : ""}
+                </button>
+              ))}
+              <SelectorProducto valor="" placeholder="Buscar otro producto…" onCambio={(id) => {
+                const p = productos.find((x) => x.id === id);
+                const pr = p?.presentaciones[0];
+                if (!pr) return;
+                agregarLeidas([{ presentacionId: pr.id, cantidad: it.cantidad, costo: it.costo }]);
+                setPend((q) => q.filter((_, j) => j !== i));
+              }} />
+              <button className="boton fantasma" onClick={() => setPend((p) => p.filter((_, j) => j !== i))}>Descartar</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="panel">
         <div className="tres-col">

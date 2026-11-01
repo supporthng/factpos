@@ -13,7 +13,7 @@ interface Cliente {
   licenciaId: string | null; sucursales: number | null; vence: string | null; estadoLicencia: "ACTIVA" | "SUSPENDIDA" | null;
   clavePista: string | null; activada: boolean; activadaEn: string | null; ultimoContacto: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | null;
-  respaldoExtraGb?: number; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
+  respaldoExtraGb?: number; lectorCupo?: number; lectorUsadas?: number; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
@@ -258,7 +258,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
 
 const EVENTOS: Record<string, string> = {
   CREADA: "Licencia creada", RENOVADA: "Renovada", ACTIVADA: "Activada por el cliente", LIBERADA: "Instalación liberada", TRASLADO_INICIADO: "Traslado a otro equipo iniciado", TRASLADO_COMPLETADO: "Traslado completado", SUSPENDIDA: "Suspendida",
-  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas", RESPALDO_ESPACIO: "Espacio de respaldos cambiado",
+  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas", RESPALDO_ESPACIO: "Espacio de respaldos cambiado", LECTOR_CUPO: "Cupo del lector de facturas cambiado",
 };
 
 function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: Plan[]; onCambio: () => void; onClave: (k: string) => void }) {
@@ -270,6 +270,7 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
   const montoSugerido = precio * l.sucursales * (ren.meses / mesesDe(periodo));
   const [api_, setApi] = useState(c.apiUrl ?? "");
   const [extraGb, setExtraGb] = useState(String(c.respaldoExtraGb ?? 0));
+  const [cupoLector, setCupoLector] = useState(String(c.lectorCupo ?? 0));
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const eventos = useDatos<{ tipo: string; detalle: Record<string, unknown> | null; creadoEn: string; usuario: string | null }[]>(`/central/portal/clientes/${c.id}/eventos`);
   const hacer = async (fn: () => Promise<unknown>, ok: string) => {
@@ -329,6 +330,12 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
           <label className="campo" style={{ margin: 0 }}><span>GB extra contratados (se suman a los 2 GB base)</span>
             <input className="numero" inputMode="numeric" value={extraGb} onChange={(e) => setExtraGb(e.target.value.replace(/\D/g, ""))} /></label>
           <button className="boton" onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}/respaldo-extra`, { metodo: "PUT", cuerpo: { gb: Number(extraGb || 0) } }), "Espacio guardado")}>Guardar</button>
+        </div>
+        <h4>Lector de facturas (IA)</h4>
+        <div className="en-linea">
+          <label className="campo" style={{ margin: 0 }}><span>Facturas por mes (0 = apagado) · este mes lleva {c.lectorUsadas ?? 0}</span>
+            <input className="numero" inputMode="numeric" value={cupoLector} onChange={(e) => setCupoLector(e.target.value.replace(/\D/g, ""))} /></label>
+          <button className="boton" onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}/lector`, { metodo: "PUT", cuerpo: { cupo: Number(cupoLector || 0) } }), "Cupo del lector guardado")}>Guardar</button>
         </div>
         <h4>Su servidor (dirección)</h4>
         <div className="en-linea">

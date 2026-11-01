@@ -1038,3 +1038,4 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .vt-linea { border-top: 1px dashed #000; margin: 6px 0; }
 .vt-fila { display: flex; justify-content: space-between; gap: 8px; }
 .vt-qr { width: 30mm; height: 30mm; margin: 6px auto; border: 2px solid #000; display: grid; place-items: center; font-weight: 800; }
+.boton.desactivado { opacity: .45; cursor: not-allowed; pointer-events: none; }

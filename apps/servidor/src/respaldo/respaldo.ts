@@ -106,7 +106,7 @@ function subirArchivo(url: string, archivo: string, tamano: number) {
     createReadStream(archivo).on("error", mal).pipe(req);
   });
 }
-async function credencialesPortal() {
+export async function credencialesPortal() {
   const f = await filaLicencia();
   const e = f.token ? evaluarLicencia(f.token, { instalacion: f.instalacion_id }) : null;
   if (!e?.datos || !f.secreto) throw new ErrorNegocio("La copia en la nube necesita la licencia activada", 409);
