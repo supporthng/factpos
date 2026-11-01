@@ -1,3 +1,4 @@
+import { publicarMarca, publicarCarrito, publicarGracias, abrirPantallaCliente } from "./pantalla-cliente";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cotizarCarrito, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito,
@@ -183,6 +184,28 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setAviso({ texto, tipo });
     setTimeout(() => setAviso((a) => (a?.texto === texto ? null : a)), 3500);
   };
+
+  // Pantalla del cliente (segunda ventana): marca y ofertas, carrito en vivo y el «gracias» al terminar
+  useEffect(() => {
+    publicarMarca({ empresa: config.empresa, logo: config.marca.logo, primario: config.marca.primario, secundario: config.marca.secundario, pantalla: config.marca.pantallaCliente ?? {} });
+  }, [config]);
+  useEffect(() => {
+    const r = cot.r;
+    publicarCarrito({
+      fase: modal === "cobro" ? "cobro" : "venta",
+      lineas: r ? lineas.map((l, i) => {
+        const c = r.lineas[i]!.calc;
+        const cant = Number(l.cantidad) || 1;
+        return { nombre: l.prod.nombre, cantidad: l.cantidad, precio: (Number(c.bruto) / cant).toFixed(2), total: c.total, descuento: c.descuento };
+      }) : [],
+      subtotal: r?.totales.subtotal ?? "0", descuento: r?.totales.descuento ?? "0", itbis: r?.totales.itbis ?? "0", total: r?.totales.total ?? "0",
+    });
+  }, [cot.r, lineas, modal]);
+  const primeraUltima = useRef(true);
+  useEffect(() => {
+    if (primeraUltima.current) { primeraUltima.current = false; return; }   // la última venta que se carga al abrir no es un «gracias»
+    if (ultima) publicarGracias({ total: ultima.total, cambio: ultima.cambio, en: Date.now() });
+  }, [ultima]);
 
   // Ofertas con tope: avisar una vez por venta cuando se acaban
   const avisadas = useRef(new Set<string>());
@@ -633,6 +656,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturas")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
+        <BotonFuncion tono="gris" icono="pantalla" texto="Pantalla del cliente" tecla="" onClick={abrirPantallaCliente} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
         <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
         {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
@@ -1003,6 +1027,7 @@ function Icono({ n }: { n: string }) {
     gaveta: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 12h18M10 16h4" /></>,
     moto: <><circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" /><path d="M9 17h6l-3-6h-4M15 6h3l3 8" /></>,
     cierre: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+    pantalla: <><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></>,
   };
   return (
     <svg className="icono" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

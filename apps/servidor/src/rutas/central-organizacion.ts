@@ -142,6 +142,32 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Pantalla del cliente (segunda pantalla de la caja): bienvenida y ofertas que se muestran mientras no se cobra. */
+  app.get("/central/marca/pantalla-cliente", async (req) =>
+    (await pool.query("SELECT COALESCE(pantalla_cliente, '{}'::jsonb) AS p FROM configuracion_marca WHERE empresa_id = $1", [empresaDe(req)])).rows[0]?.p ?? {});
+  app.put("/central/marca/pantalla-cliente", async (req) => {
+    const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
+    const b = z.object({
+      activa: z.boolean(),
+      bienvenida: z.string().trim().max(80),
+      segundos: z.number().int().min(4).max(60),
+      ofertas: z.array(z.object({
+        id: z.string().min(8).max(60),
+        titulo: z.string().trim().min(1, "Cada oferta necesita un título").max(60),
+        texto: z.string().trim().max(160),
+        precio: z.string().trim().max(30),
+        imagen: z.string().startsWith("data:image/").max(260000, "Una imagen es muy pesada").nullable(),
+        activa: z.boolean(),
+        desde: fecha, hasta: fecha,
+      })).max(10, "Máximo 10 ofertas"),
+    }).parse(req.body);
+    await pool.query(
+      `INSERT INTO configuracion_marca (empresa_id, pantalla_cliente) VALUES ($1, $2::jsonb)
+       ON CONFLICT (empresa_id) DO UPDATE SET pantalla_cliente = $2::jsonb`,
+      [empresaDe(req), JSON.stringify(b)]);
+    return { ok: true };
+  });
+
   app.patch("/central/terminales/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = z.object({ nombre: z.string().trim().min(2).max(40).optional(), activo: z.boolean().optional() }).parse(req.body);
