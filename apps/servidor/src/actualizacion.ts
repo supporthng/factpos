@@ -166,10 +166,13 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     avance(version, "Preparando la instalación", 45);
     log(`Actualización ${version}: instalando (el servidor se reinicia en un momento)…`);
     // Tarea de Windows de una sola vez: sobrevive a que se detenga este servidor
+    // cmd redirige la salida del script a un archivo: si PowerShell ni siquiera logra leerlo (error de sintaxis, bloqueo), queda el motivo.
+    const logScript = path.join(raiz, "logs", "actualizacion-script.log");
     const ps = `$ErrorActionPreference='Stop'; try { ` +
-      `$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "${script}" -Desde "${origen}" -Carpeta "${raiz}"';` +
+      `$a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${script}" -Desde "${origen}" -Carpeta "${raiz}" >> "${logScript}" 2>&1';` +
       `$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;` +
-      `Register-ScheduledTask -TaskName 'FactPOS Actualizar' -Action $a -Principal $p -Force | Out-Null; Start-ScheduledTask -TaskName 'FactPOS Actualizar'; Write-Output 'Tarea de actualizacion iniciada' ` +
+      `$c = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero);` +
+      `Register-ScheduledTask -TaskName 'FactPOS Actualizar' -Action $a -Principal $p -Settings $c -Force | Out-Null; Start-ScheduledTask -TaskName 'FactPOS Actualizar'; Write-Output 'Tarea de actualizacion iniciada' ` +
       `} catch { Write-Output ('ERROR: ' + $_.Exception.Message); exit 1 }`;
     // La salida del lanzador queda en un archivo: si Windows no deja crear la tarea, se ve el motivo
     mkdirSync(path.join(raiz, "logs"), { recursive: true });
@@ -184,12 +187,33 @@ export async function instalarVersion(version: string, log: (m: string) => void 
     });
     closeSync(fd);
     if (codigo !== 0) throw new Error(`Windows no permitió programar la actualización (código ${codigo}). Detalle en ${logLanzador}. Suele pasar si el servidor no corre con permisos de administrador.`);
+    vigilarArranque(version);
     return { ok: true, version };
   } catch (e) {
     proceso = { estado: "ERROR", version, mensaje: (e as Error).message, desde: new Date().toISOString() };
     escribirEstado({ estado: "ERROR", version, paso: "No se pudo actualizar", porcentaje: 0, mensaje: (e as Error).message });
     throw new ErrorNegocio(`No se pudo actualizar: ${(e as Error).message}`, 502);
   }
+}
+
+/** Si 90 s después el script no marcó ningún avance, la tarea de Windows no arrancó: se avisa en vez de quedar «Preparando…» para siempre. */
+function vigilarArranque(version: string) {
+  setTimeout(() => {
+    const f = leerEstado();
+    if (!proceso || proceso.estado !== "INSTALANDO" || proceso.version !== version || !f || f.estado !== "EN_CURSO" || f.porcentaje > 45) return;
+    let salida = "";
+    const hijo = spawn("powershell.exe", ["-NoProfile", "-Command",
+      "$t = Get-ScheduledTask -TaskName 'FactPOS Actualizar' -ErrorAction SilentlyContinue; if (-not $t) { 'la tarea no existe' } else { $i = $t | Get-ScheduledTaskInfo; \"estado $($t.State), último resultado $($i.LastTaskResult)\" }"],
+      { windowsHide: true });
+    hijo.stdout.on("data", (d) => { salida += String(d); });
+    const fin = () => {
+      if (!proceso || proceso.version !== version) return;
+      const mensaje = `La actualización no arrancó (${salida.trim() || "sin detalle de Windows"}). Revise C:\\FactPOS\\logs\\actualizacion-script.log y vuelva a intentar.`;
+      proceso = { estado: "ERROR", version, mensaje, desde: new Date().toISOString() };
+      escribirEstado({ estado: "ERROR", version, paso: "No se pudo actualizar", porcentaje: 0, mensaje });
+    };
+    hijo.on("exit", fin); hijo.on("error", fin);
+  }, 90_000).unref();
 }
 
 /** Sucursal: si el principal ya tiene una versión más nueva, se actualiza en un momento sin ventas. */
