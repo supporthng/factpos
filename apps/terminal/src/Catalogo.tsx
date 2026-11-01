@@ -89,10 +89,9 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
           const stock = Number(p.existencia ?? 0);
           const minimo = Number(p.minimo ?? 0);
           const estado = !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
-          const bloqueado = estado === "agotado" && p.permiteSinExistencia === false;
           return (
             <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
-              style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={(precio === null && !p.precioVariable) || bloqueado}>
+              style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>
               <div className="arte">
                 {p.imagen ? <img src={p.imagen.startsWith("/") ? servidor.replace(/\/$/, "") + p.imagen : p.imagen} alt="" loading="lazy" decoding="async" /> : <Arte icono={p.categoriaIcono} />}
                 {p.categoria && <span className="chip-cat">{p.categoria}</span>}

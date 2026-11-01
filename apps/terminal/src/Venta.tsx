@@ -239,28 +239,33 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   /** Unidades base que pediría la venta de este producto si se suman `extra` unidades de la presentación. */
   const demanda = (ls: Linea[], prod: ProductoCatalogo, extra: number) =>
     ls.filter((l) => l.prod.productoId === prod.productoId).reduce((s, l) => s + Number(l.cantidad) * Number(l.prod.factor), 0) + extra * Number(prod.factor);
-  /** Revisa la existencia: devuelve false si el producto no puede venderse sin existencia y no alcanza. */
-  const hayExistencia = (ls: Linea[], prod: ProductoCatalogo, extra: number) => {
-    if (!prod.controlaStock || prod.existencia === undefined) return true;
-    const pide = demanda(ls, prod, extra);
+  /**
+   * Cuánto de lo pedido se puede agregar según la existencia (en unidades de la línea).
+   * Si alcanza todo → todo; si alcanza solo una parte → esa parte y se avisa; si está agotado → 0 y se avisa.
+   * Con «permitir facturar sin existencia» activo en el producto se agrega todo (con un aviso).
+   */
+  const cantidadPermitida = (ls: Linea[], prod: ProductoCatalogo, extra: number): number => {
+    if (!prod.controlaStock || prod.existencia === undefined) return extra;
+    const factor = Number(prod.factor);
+    const ya = demanda(ls, prod, 0);
+    const pide = ya + extra * factor;
     const cupo = prod.tipo === "COMBO" ? null : disponibleCupo(prod.productoId); // sin servidor: solo su parte
     const hay = cupo ?? Number(prod.existencia);
-    if (pide <= hay) return true;
-    if (cupo !== null) {
-      // Sin servidor y ya usó su parte: se le pide existencia a las demás cajas (la caja principal las comunica)
-      void pedirExistencia(ajustes, prod.productoId, pide - hay);
-      if (prod.permiteSinExistencia === false) {
-        avisar(`${prod.nombre}: a esta caja solo le quedan ${hay}. Se está pidiendo existencia a las otras cajas; intente de nuevo en unos segundos.`);
-        return false;
-      }
+    if (pide <= hay) return extra;
+    if (cupo !== null) void pedirExistencia(ajustes, prod.productoId, pide - hay); // la caja principal pide a las demás
+    if (prod.permiteSinExistencia !== false) {
+      // Se permite vender sin existencia: se agrega todo y se avisa la primera vez que pasa la existencia del sistema
+      if (ya <= hay) avisar(`${prod.nombre}: el sistema no tiene existencia suficiente. Avise al encargado.`);
+      return extra;
     }
-    if (prod.permiteSinExistencia === false) {
-      avisar(hay > 0 ? `${prod.nombre}: solo quedan ${hay} en existencia` : `${prod.nombre} está agotado y no se vende sin existencia`);
-      return false;
+    const quedan = Math.max(0, hay - ya);
+    const caben = prod.esPesable ? Math.floor((quedan / factor) * 1000) / 1000 : Math.floor(quedan / factor + 1e-9);
+    if (caben <= 0) {
+      avisar(ya > 0 ? `${prod.nombre}: ya agregó toda la existencia (${hay})` : `${prod.nombre} está agotado: no se puede facturar sin existencia`);
+      return 0;
     }
-    // Se permite vender, pero se avisa la primera vez que la venta pasa la existencia del sistema
-    if (pide - extra * Number(prod.factor) <= hay) avisar(`${prod.nombre}: el sistema no tiene existencia suficiente. Avise al encargado.`);
-    return true;
+    avisar(`${prod.nombre}: existencia solo ${hay}. Se agregaron ${caben}.`);
+    return caben;
   };
 
   const agregar = (prod: ProductoCatalogo, cantidad: string, precioDado?: string) => {
@@ -271,7 +276,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       setPendiente({ prod, cantidad });
       return setModal("precio");
     }
-    if (!hayExistencia(lineas, prod, Number(cantidad))) return;
+    const permitida = cantidadPermitida(lineas, prod, Number(cantidad));
+    if (permitida <= 0) return;
+    if (permitida < Number(cantidad)) cantidad = String(permitida);
     setLineas((ls) => {
       // Mismo producto no pesable y de precio fijo: suma a la línea existente
       const i = prod.esPesable || prod.precioVariable ? -1 : ls.findIndex((l) => l.prod.presentacionId === prod.presentacionId);
@@ -337,16 +344,22 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [busqueda, setBusqueda] = useState("");
 
   const cambiarCantidad = (i: number, delta: number) => {
-    if (delta > 0 && lineas[i] && !hayExistencia(lineas, lineas[i].prod, delta)) return;
-    setLineas((ls) => ls.map((l, j) => (j === i ? ajustarDescuentoPorPrecio({ ...l, cantidad: String(Math.max(1, Number(l.cantidad) + delta)) }) : l)));
+    let d = delta;
+    if (delta > 0 && lineas[i]) { d = Math.min(delta, cantidadPermitida(lineas, lineas[i].prod, delta)); if (d <= 0) return; }
+    setLineas((ls) => ls.map((l, j) => (j === i ? ajustarDescuentoPorPrecio({ ...l, cantidad: String(Math.max(1, Number(l.cantidad) + d)) }) : l)));
   };
   /** Cantidad escrita a mano en la línea */
   const fijarCantidad = (i: number, valor: string) => {
     const l = lineas[i];
     const n = Number(valor);
     if (!l || !Number.isFinite(n) || n <= 0) return;
-    const entero = l.prod.esPesable ? n : Math.round(n);
-    if (entero > Number(l.cantidad) && !hayExistencia(lineas, l.prod, entero - Number(l.cantidad))) return;
+    let entero = l.prod.esPesable ? n : Math.round(n);
+    if (entero > Number(l.cantidad)) {
+      const extra = entero - Number(l.cantidad);
+      const ok = cantidadPermitida(lineas, l.prod, extra);
+      if (ok <= 0) return;
+      entero = Number(l.cantidad) + Math.min(extra, ok);
+    }
     setLineas((ls) => ls.map((x, j) => (j === i ? ajustarDescuentoPorPrecio({ ...x, cantidad: String(entero) }) : x)));
   };
   /** Si el precio se cambió en caja, la rebaja sigue la cantidad. */
