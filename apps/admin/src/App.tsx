@@ -207,6 +207,10 @@ function AppInterna() {
   }, []);
 
   const vm = useVersionMovil(cfgMovil);
+  const enEntrada = !sesion || (!catalogo && !!error);
+  useEffect(() => {
+    try { (window as unknown as { factpos?: { ventana?: (m: string) => void } }).factpos?.ventana?.(enEntrada ? "entrar" : "app"); } catch { /* fuera de la app de escritorio */ }
+  }, [enEntrada]);
   if (!sesion || !catalogo && error) {
     return <Entrar error={error} onListo={(s) => { fijarSesion(s); setError(""); setSesion(s); }} />;
   }

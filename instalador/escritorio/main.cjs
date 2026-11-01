@@ -373,9 +373,19 @@ function openCustomer() {
 function openMain(onShown) {
   // Nunca dos ventanas principales: si ya hay una, esa es la que se usa
   if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); if (onShown) onShown(); return; }
-  const win = new BrowserWindow({ show: false, icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  const win = new BrowserWindow({ show: false, icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   mainOpened = true;
   mainWindow = win;
+  // La pantalla de entrada del admin es solo el cuadro pequeño; al entrar la ventana vuelve a su tamaño normal
+  win.webContents.on('ipc-message', (_e, canal, modo) => {
+    if (canal !== 'factpos:ventana' || selected !== 'admin' || win.isDestroyed() || win.isKiosk()) return;
+    if (modo === 'entrar') {
+      if (win.isMaximized()) win.unmaximize();
+      win.setMinimumSize(420, 560); win.setResizable(false); win.setMaximizable(false); win.setSize(460, 620); win.center();
+    } else if (modo === 'app') {
+      win.setResizable(true); win.setMaximizable(true); win.setMinimumSize(900, 600); win.setSize(1280, 820); win.center();
+    }
+  });
   win.on('closed', closeCustomer);
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
