@@ -49,7 +49,8 @@ jobs:
       - name: Versión incremental de main
         if: github.ref == 'refs/heads/main'
         shell: bash
-        run: npm pkg set version="0.1.${GITHUB_RUN_NUMBER}"
+        # El número grande (p. ej. 2.1) se cambia a mano en version.txt; el último número sube solo en cada publicación
+        run: npm pkg set version="$(tr -d '[:space:]' < version.txt).${GITHUB_RUN_NUMBER}"
       - run: npm run build
       - run: npm test
       - name: Compilar Electron
