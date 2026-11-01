@@ -20,6 +20,16 @@ export function PanelPedidos({ ajustes, onFacturar, onCerrar }: { ajustes: Ajust
   const [abierto, setAbierto] = useState<PedidoDetalle | null>(null);
   const [msg, setMsg] = useState("");
   const ruta = `/cajas/${ajustes.cajaId}/pedidos`;
+  // Comanda: hoja de alistado para quien prepara el pedido (sin precios)
+  const [paraImprimir, setParaImprimir] = useState<PedidoDetalle | null>(null);
+  useEffect(() => {
+    if (!paraImprimir) return;
+    const fin = () => setParaImprimir(null);
+    window.addEventListener("afterprint", fin, { once: true });
+    const t = setTimeout(() => window.print(), 60);   // espera a que la hoja esté en la página
+    const tope = setTimeout(fin, 120000);
+    return () => { clearTimeout(t); clearTimeout(tope); window.removeEventListener("afterprint", fin); };
+  }, [paraImprimir]);
 
   const recargar = useCallback(async () => {
     try {
@@ -65,10 +75,12 @@ export function PanelPedidos({ ajustes, onFacturar, onCerrar }: { ajustes: Ajust
         <div className="fila-acciones">
           <button className="boton" onClick={() => { setAbierto(null); recargar(); }}>← Pedidos</button>
           <button className="boton" onClick={() => alistar({ todos: true, alistado: !completo })}>{completo ? "Desmarcar todo" : "Marcar todo como alistado"}</button>
+          <button className="boton" onClick={() => setParaImprimir(abierto)}>Imprimir comanda</button>
           <span className="flex" />
           <button className="boton primario" disabled={!completo} title={completo ? "" : "Alistar todo el pedido para poder facturarlo"} onClick={() => onFacturar(abierto)}>Facturar pedido</button>
         </div>
         {!completo && <p className="suave">Cuando todo esté alistado se puede facturar.</p>}
+        {paraImprimir && <HojaComanda pedido={paraImprimir} />}
       </Modal>
     );
   }
@@ -85,5 +97,34 @@ export function PanelPedidos({ ajustes, onFacturar, onCerrar }: { ajustes: Ajust
         ))}
       </div>
     </Modal>
+  );
+}
+
+/** Hoja de alistado: lo que hay que sacar para el pedido, con casilla para marcar. Sin precios. Se imprime en el papel del ticket. */
+function HojaComanda({ pedido }: { pedido: PedidoDetalle }) {
+  const unidades = pedido.items.reduce((a, i) => a + Number(i.cantidad), 0);
+  return (
+    <div id="ticket" className="ticket comanda-impresion">
+      <div className="t-centro t-grande"><b>COMANDA DE PEDIDO</b></div>
+      <div className="t-centro t-grande"><b>{pedido.numero}</b></div>
+      <div className="t-linea" />
+      <div className="t-fila"><span>Cliente</span><b>{pedido.clienteNombre}</b></div>
+      {pedido.telefono && <div className="t-fila"><span>Teléfono</span><span>{pedido.telefono}</span></div>}
+      <div className="t-fila"><span>Caja</span><span>{pedido.caja ?? "Cualquiera"}</span></div>
+      <div className="t-fila"><span>Recibido</span><span>{hora(pedido.creadoEn)}</span></div>
+      {pedido.nota && <><div className="t-linea" /><div><b>Nota:</b> {pedido.nota}</div></>}
+      <div className="t-linea" />
+      {pedido.items.map((i) => (
+        <div key={i.id} className="comanda-item">
+          <span className="comanda-caja">{i.alistado ? "☑" : "☐"}</span>
+          <span className="comanda-cant">{Number(i.cantidad)}</span>
+          <span className="comanda-nombre">{i.producto}{i.presentacion ? ` · ${i.presentacion}` : ""}{i.nota && <em> — {i.nota}</em>}</span>
+        </div>
+      ))}
+      <div className="t-linea" />
+      <div className="t-fila"><span>{pedido.items.length} producto(s)</span><b>{unidades} unidad(es)</b></div>
+      <div className="comanda-firma">Preparó: {pedido.preparadoPor ?? "________________"}</div>
+      <div className="comanda-firma">Revisó: ________________</div>
+    </div>
   );
 }

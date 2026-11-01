@@ -733,3 +733,12 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-estado.lenta i { background: #fde68a; box-shadow: 0 0 0 3px rgba(253,230,138,.3); }
 .pv-estado.muy-lenta { background: #c2410c; }
 .pv-estado.muy-lenta i { background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.3); }
+
+/* Comanda de pedido (hoja de alistado): fuera de la vista en pantalla, visible al imprimir (usa #ticket) */
+.comanda-impresion { position: fixed; left: -9999px; top: 0; width: 72mm; background: #fff; color: #000; padding: 2mm 4mm; font-size: 13px; }
+.comanda-item { display: flex; gap: 6px; align-items: baseline; padding: 3px 0; border-bottom: 1px dotted #999; }
+.comanda-caja { flex: none; font-size: 1.2em; }
+.comanda-cant { flex: none; min-width: 2.2em; font-weight: 800; font-size: 1.15em; text-align: right; }
+.comanda-nombre { flex: 1; min-width: 0; }
+.comanda-nombre em { font-style: normal; opacity: .8; }
+.comanda-firma { margin-top: 14px; }
