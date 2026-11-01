@@ -16,6 +16,18 @@ const clave = (p: string, n: number, s: string | null) => `${p}|${n}|${s ?? ""}`
  */
 export function Precios() {
   const { sucursales, productos } = useCatalogo();
+  const niveles = useDatos<{ listas: { nivel: number; nombre: string; descuentoPct?: number }[] }>("/central/productos-auxiliares");
+  const [pct2, setPct2] = useState<string | null>(null);
+  const [pct3, setPct3] = useState<string | null>(null);
+  const [msgNiv, setMsgNiv] = useState("");
+  const valorNivel = (k: number, local: string | null) => local ?? String(niveles.datos?.listas.find((l) => l.nivel === k)?.descuentoPct ?? 0);
+  const guardarNiveles = async () => {
+    setMsgNiv("");
+    try {
+      await api("/central/niveles-precio", { metodo: "PUT", cuerpo: { nivel2: Number(valorNivel(2, pct2)) || 0, nivel3: Number(valorNivel(3, pct3)) || 0 } });
+      setPct2(null); setPct3(null); niveles.recargar(); setMsgNiv("Guardado. Las cajas lo reciben en la próxima sincronización.");
+    } catch (e) { setMsgNiv((e as Error).message); }
+  };
   const [productoId, setProductoId] = useState(productos[0]?.id ?? "");
   const { datos, recargar } = useDatos<FilaPrecio[]>(productoId ? `/central/precios/${productoId}` : null);
   const [cambios, setCambios] = useState<Record<string, string>>({});
@@ -89,6 +101,18 @@ export function Precios() {
         </label>
         <button className="boton primario" disabled={!Object.keys(cambios).length} onClick={guardar}>Guardar cambios</button>
       </Encabezado>
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Precios 2 y 3: descuento sobre el precio 1</h3>
+        <p className="suave pequeno">Al crear un producto solo se pone el precio 1. Aquí define una sola vez cuánto menos cuestan el precio 2 y el precio 3. En la caja, el cliente con ese nivel paga el precio 1 y la factura muestra el descuento. En 0 % se usan los precios por producto de siempre.</p>
+        <div className="en-linea" style={{ flexWrap: "wrap", gap: 12 }}>
+          <label className="campo" style={{ margin: 0 }}><span>Precio 2 · % menos que el precio 1</span>
+            <span className="con-sufijo"><input className="numero" inputMode="decimal" value={valorNivel(2, pct2)} onChange={(e) => setPct2(e.target.value.replace(/[^\d.]/g, ""))} /><i>%</i></span></label>
+          <label className="campo" style={{ margin: 0 }}><span>Precio 3 · % menos que el precio 1</span>
+            <span className="con-sufijo"><input className="numero" inputMode="decimal" value={valorNivel(3, pct3)} onChange={(e) => setPct3(e.target.value.replace(/[^\d.]/g, ""))} /><i>%</i></span></label>
+          <button className="boton primario" disabled={pct2 === null && pct3 === null} onClick={guardarNiveles}>Guardar</button>
+        </div>
+        {msgNiv && <p className="suave pequeno">{msgNiv}</p>}
+      </div>
       <div className="filtros"><div style={{ width: 380 }}><SelectorProducto valor={productoId} onCambio={(v) => { setProductoId(v); setCambios({}); }} /></div></div>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       {producto?.presentaciones.map((pr) => (

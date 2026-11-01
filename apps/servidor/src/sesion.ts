@@ -118,7 +118,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";
   const mapa: [RegExp, string][] = [
     [/^\/central\/(productos|categorias|proveedores)/, "admin.productos"],
-    [/^\/central\/(precios|ofertas|cupones|empresa\/precios-por-sucursal)/, "admin.precios"],
+    [/^\/central\/(precios|niveles-precio|ofertas|cupones|empresa\/precios-por-sucursal)/, "admin.precios"],
     [/^\/central\/compras/, "admin.compras"],
     [/^\/central\/(inventario|ajustes|conteos|productos-existencia)/, "admin.inventario"],
     [/^\/central\/(traspasos|pedidos-sucursal)/, "admin.traspasos"],

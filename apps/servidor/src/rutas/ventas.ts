@@ -84,10 +84,17 @@ async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito:
     cliente = cl.rows[0];
     listaCliente = cl.rows[0].lista_precio_id;
   }
+  // Precios 2 y 3 definidos como % de descuento sobre el precio 1: se cobra el precio 1 y la línea lleva el descuento
+  let descuentoNivelPct = "0";
+  let listaPrecios = listaCliente;
+  if (listaCliente) {
+    const dl = (await c.query<{ descuento_pct: string; es_predeterminada: boolean }>("SELECT descuento_pct::text, es_predeterminada FROM listas_precio WHERE id = $1", [listaCliente])).rows[0];
+    if (dl && !dl.es_predeterminada && Number(dl.descuento_pct) > 0) { descuentoNivelPct = dl.descuento_pct; listaPrecios = null; }
+  }
 
   const ids = carrito.items.map((i) => i.presentacionId);
   const pres = await c.query<PresentacionVenta>(`${SQL_PRESENTACION} AND pr.id = ANY($5::uuid[])`, [
-    ctx.empresaId, ctx.sucursalId, ctx.almacenId, listaCliente, ids,
+    ctx.empresaId, ctx.sucursalId, ctx.almacenId, listaPrecios, ids,
   ]);
   const mapa = new Map(pres.rows.map((p) => [p.presentacionId, p]));
   const nivelVenta = listaCliente ??
@@ -116,7 +123,7 @@ async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito:
       return { ...p, precio: v.toFixed(2) };
     }
     if (p.precio === null) throw new ErrorNegocio(`${p.nombre} no tiene precio asignado`);
-    return p;
+    return Number(descuentoNivelPct) > 0 ? { ...p, listaPrecioId: listaCliente } : p;
   });
 
   // Productos que no se venden sin existencia
@@ -150,6 +157,7 @@ async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito:
         ofertas: ofertas.get(prods[i].presentacionId) ?? [],
         descuentoManual: it.descuentoManual,
         factor: prods[i].factor,
+        descuentoNivelPct: prods[i].precioVariable ? undefined : descuentoNivelPct,
       })),
       cupon,
     );
@@ -291,17 +299,18 @@ export async function registrarVenta(
   await c.query(
     `INSERT INTO venta_items (id, venta_id, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
                               descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
-                              descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta)
+                              descuento_cupon, lista_precio_id, descuento_manual, unidades_oferta, descuento_nivel)
      SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::smallint[], $4::uuid[], $5::text[], $6::numeric[], $7::numeric[],
                           $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[], $12::numeric[], $13::numeric[],
-                          $14::uuid[], $15::numeric[], $16::numeric[], $17::uuid[], $18::numeric[], $19::numeric[])`,
+                          $14::uuid[], $15::numeric[], $16::numeric[], $17::uuid[], $18::numeric[], $19::numeric[], $20::numeric[])`,
     [L.map(() => uuidv7()), L.map(() => ventaId), L.map((l) => l.linea), L.map((l) => l.prod.presentacionId),
      L.map((l) => `${l.prod.nombre} ${l.prod.presentacion}`.trim()), L.map((l) => l.cantidad), L.map((l) => l.prod.factor),
      L.map((l) => l.prod.precio), L.map((l) => l.calc.descuento), L.map((l) => l.prod.tasaItbis), L.map((l) => l.calc.itbis),
      L.map((l) => l.calc.total), L.map((l) => l.prod.costoPromedio), L.map((l) => l.oferta?.ofertaId ?? null),
      L.map((l) => l.oferta?.descuento ?? "0"), L.map((l) => l.descuentoCupon), L.map((l) => l.prod.listaPrecioId),
      L.map((l) => l.descuentoManual),
-     L.map((l) => (l.oferta ? new Decimal(l.oferta.unidades).mul(l.prod.factor).toString() : "0"))],
+     L.map((l) => (l.oferta ? new Decimal(l.oferta.unidades).mul(l.prod.factor).toString() : "0")),
+     L.map((l) => l.descuentoNivel)],
   );
 
   // Kardex en bloque (el trigger calcula saldo y costo por fila). Los combos descuentan sus componentes.

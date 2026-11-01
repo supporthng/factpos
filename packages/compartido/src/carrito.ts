@@ -19,11 +19,15 @@ export interface LineaCarrito {
   ofertas: Oferta[];            // ofertas que podrían aplicar a esta línea
   descuentoManual?: string;     // reemplaza a la oferta
   factor?: string;              // unidades base por unidad de la línea (para el tope de ofertas)
+  /** % de descuento del nivel de precio del cliente sobre el precio 1 (precios 2 y 3). Solo aplica si la línea no tiene oferta ni descuento manual. */
+  descuentoNivelPct?: string;
 }
 
 export interface LineaCotizada {
   oferta: ResultadoOferta | null;
   descuentoManual: string;
+  /** Descuento por el nivel de precio del cliente (precio 2 o 3) */
+  descuentoNivel: string;
   descuentoCupon: string;
   calc: LineaCalculada;
 }
@@ -62,9 +66,11 @@ export function cotizarCarrito(lineas: LineaCarrito[], cupon: Cupon | null = nul
       // Línea sin oferta porque el tope ya se había acabado
       for (const o of ofertas) if (o.restantes !== null && o.restantes !== undefined && new Decimal(o.restantes).lte(0) && ofertaVigente(o, ahora)) agotadas.set(o.id, o.nombre);
     }
-    const neto = bruto.minus(manual).minus(oferta?.descuento ?? 0);
+    const pctNivel = new Decimal(l.descuentoNivelPct ?? 0);
+    const nivelDesc = !oferta && !manual.gt(0) && pctNivel.gt(0) ? bruto.mul(pctNivel).div(100).toDecimalPlaces(2) : new Decimal(0);
+    const neto = bruto.minus(manual).minus(oferta?.descuento ?? 0).minus(nivelDesc);
     if (neto.lt(0)) throw new ErrorCarrito(`El descuento de ${l.nombre} supera el importe`);
-    return { l, oferta, manual, neto };
+    return { l, oferta, manual, neto, nivelDesc };
   });
 
   let porLinea = parciales.map(() => "0.00");
@@ -82,13 +88,14 @@ export function cotizarCarrito(lineas: LineaCarrito[], cupon: Cupon | null = nul
   const cotizadas = parciales.map((x, i) => ({
     oferta: x.oferta,
     descuentoManual: x.manual.toFixed(2),
+    descuentoNivel: x.nivelDesc.toFixed(2),
     descuentoCupon: porLinea[i],
     calc: calcularLinea({
       cantidad: x.l.cantidad,
       precioUnitario: x.l.precio,
       tasaItbis: x.l.tasaItbis,
       precioIncluyeItbis: x.l.precioIncluyeItbis,
-      descuento: x.manual.plus(x.oferta?.descuento ?? 0).plus(porLinea[i]),
+      descuento: x.manual.plus(x.oferta?.descuento ?? 0).plus(x.nivelDesc).plus(porLinea[i]),
     }),
   }));
   return {
@@ -137,6 +144,8 @@ export interface OfertaCatalogo extends Oferta {
 export interface Catalogo {
   version: string;
   nivelPredeterminado: number;
+  /** nivel ("2", "3") → % de descuento sobre el precio 1. Si un nivel está aquí, sus precios no se leen del producto. */
+  descuentosNivel?: Record<string, string>;
   productos: ProductoCatalogo[];
   ofertas: OfertaCatalogo[];
 }

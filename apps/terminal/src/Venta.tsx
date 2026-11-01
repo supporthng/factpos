@@ -152,13 +152,16 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   }, [ajustes, cargarCatalogo, refrescarExistencias]);
 
   const nivelCliente = cliente?.nivel ?? catalogo?.nivelPredeterminado ?? 1;
+  // Precios 2 y 3 como % de descuento sobre el precio 1: se muestra el precio 1 y el descuento se marca en cada línea
+  const descNivelPct = catalogo?.descuentosNivel?.[String(nivelCliente)] ?? null;
+  const nivelPrecio = descNivelPct && catalogo ? catalogo.nivelPredeterminado : nivelCliente;
 
   // Cotización local, instantánea
   const cot = useMemo((): { r: Cotizacion | null; error: string } => {
     if (!catalogo || !lineas.length) return { r: null, error: "" };
     const motor = lineas.map((l) => ({
       cantidad: l.cantidad,
-      precio: l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo.nivelPredeterminado).precio ?? "0",
+      precio: l.precioVariable ?? precioPara(l.prod, nivelPrecio, catalogo.nivelPredeterminado).precio ?? "0",
       tasaItbis: l.prod.tasaItbis,
       precioIncluyeItbis: l.prod.precioIncluyeItbis,
       esPesable: l.prod.esPesable,
@@ -166,6 +169,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       ofertas: ofertasPara(catalogo, l.prod, nivelCliente),
       factor: l.prod.factor,
       descuentoManual: l.descuentoManual,
+      descuentoNivelPct: descNivelPct && !l.precioVariable ? descNivelPct : undefined,
     }));
     try {
       return { r: cotizarCarrito(motor, cupon), error: "" };
@@ -178,7 +182,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         return { r: null, error: (e2 as Error).message };
       }
     }
-  }, [catalogo, lineas, cupon, nivelCliente]);
+  }, [catalogo, lineas, cupon, nivelCliente, nivelPrecio, descNivelPct]);
 
   const avisar = (texto: string, tipo: "error" | "ok" = "error") => {
     setAviso({ texto, tipo });
@@ -260,7 +264,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   };
 
   const agregar = (prod: ProductoCatalogo, cantidad: string, precioDado?: string) => {
-    if (!prod.precioVariable && precioPara(prod, nivelCliente, catalogo!.nivelPredeterminado).precio === null) {
+    if (!prod.precioVariable && precioPara(prod, nivelPrecio, catalogo!.nivelPredeterminado).precio === null) {
       return avisar(`${prod.nombre} no tiene precio`);
     }
     if (prod.precioVariable && !precioDado) {
@@ -348,10 +352,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   /** Si el precio se cambió en caja, la rebaja sigue la cantidad. */
   const ajustarDescuentoPorPrecio = (l: Linea): Linea => {
     if (!l.precioCambiado) return l;
-    const actual = Number(l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? 0);
+    const actual = Number(l.precioVariable ?? precioPara(l.prod, nivelPrecio, catalogo!.nivelPredeterminado).precio ?? 0);
     return { ...l, descuentoManual: Math.max(0, (actual - Number(l.precioCambiado)) * Number(l.cantidad)).toFixed(2) };
   };
-  const precioDe = (l: Linea) => l.precioVariable ?? precioPara(l.prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? "0";
+  const precioDe = (l: Linea) => l.precioVariable ?? precioPara(l.prod, nivelPrecio, catalogo!.nivelPredeterminado).precio ?? "0";
   const quitar = (i: number) => {
     setLineas((ls) => ls.filter((_, j) => j !== i));
     setSel((s) => Math.min(s, lineas.length - 2));
@@ -540,7 +544,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       <main className="pv-cuerpo">
         {verCatalogo && catalogo && (
           <section className="pv-catalogo" aria-label="Catálogo">
-            <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivelCliente} enCarrito={enCarrito}
+            <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivelPrecio} enCarrito={enCarrito}
               onAgregar={(p) => agregar(p, "1")} onCodigo={procesarCodigo} />
           </section>
         )}
@@ -580,6 +584,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                       {c?.oferta && <em className="t-oferta">{c.oferta.nombre}{c.oferta.agotada && ` · solo ${Number(c.oferta.unidades)} en oferta`}</em>}
                       {l.precioCambiado && <em className="t-desc">Precio cambiado a {rd(l.precioCambiado)}</em>}
                       {l.descuentoManual && !l.precioCambiado && <em className="t-desc">Descuento aprobado</em>}
+                      {c && Number(c.descuentoNivel) > 0 && <em className="t-desc">Precio {nivelCliente} · −{Number(descNivelPct)} % ({rd(c.descuentoNivel)})</em>}
                       {c && Number(c.descuentoCupon) > 0 && <em className="t-cupon">Cupón</em>}
                       {(l.descuentoManual || l.precioCambiado) && (
                         <button className="mini-x" title="Quitar descuento o cambio de precio" onClick={(e) => { e.stopPropagation(); setLineas((ls) => ls.map((x, j) => j === i ? { ...x, descuentoManual: undefined, motivoDescuento: undefined, precioCambiado: undefined } : x)); }}>×</button>
@@ -669,7 +674,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       )}
 
       {modal === "buscar" && catalogo && (
-        <Buscar catalogo={catalogo} inicial={busqueda} nivel={nivelCliente}
+        <Buscar catalogo={catalogo} inicial={busqueda} nivel={nivelPrecio}
           onElegir={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
       )}
       {modal === "cliente" && (
@@ -695,8 +700,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           local={{
             lineas: cot.r.lineas.map((c, i) => ({
               descripcion: `${lineas[i].prod.nombre} ${lineas[i].prod.presentacion}`.trim(), cantidad: lineas[i].cantidad,
-              precio: lineas[i].precioVariable ?? precioPara(lineas[i].prod, nivelCliente, catalogo!.nivelPredeterminado).precio ?? "0",
+              precio: lineas[i].precioVariable ?? precioPara(lineas[i].prod, nivelPrecio, catalogo!.nivelPredeterminado).precio ?? "0",
               total: c.calc.total, oferta: c.oferta?.nombre ?? null, descuentoOferta: c.oferta?.descuento ?? "0.00", descuentoCupon: c.descuentoCupon,
+              descuentoNivel: c.descuentoNivel, nombreNivel: `Precio ${nivelCliente} (−${Number(descNivelPct ?? 0)} %)`,
             })),
             totales: cot.r.totales,
             turnoId: turno.id,
@@ -725,7 +731,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "ticket" && ticketVista && <Ticket venta={ticketVista.venta} copia={ticketVista.copia} config={config} usuario={usuario} onCerrar={() => setModal(null)} />}
       {modal === "precio" && pendiente && (
         <PrecioVariable nombre={pendiente.prod.nombre} min={pendiente.prod.precioVariableMin} max={pendiente.prod.precioVariableMax}
-          sugerido={precioPara(pendiente.prod, nivelCliente, catalogo!.nivelPredeterminado).precio}
+          sugerido={precioPara(pendiente.prod, nivelPrecio, catalogo!.nivelPredeterminado).precio}
           onAceptar={(precio) => { const p = pendiente; setPendiente(null); setModal(null); agregar(p.prod, p.cantidad, precio); }}
           onCerrar={() => { setPendiente(null); setModal(null); }} />
       )}
@@ -771,7 +777,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           onCerrar={() => setModal(null)} />
       )}
       {modal === "existencias" && catalogo && (
-        <Existencias catalogo={catalogo} nivel={nivelCliente} onAgregar={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
+        <Existencias catalogo={catalogo} nivel={nivelPrecio} onAgregar={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
       )}
       {modal === "gaveta" && (
         <AbrirGaveta ajustes={ajustes} usuario={usuario} onListo={(sup) => { setModal(null); avisar(`Gaveta abierta · autorizó ${sup}`, "ok"); }} onCerrar={() => setModal(null)} />

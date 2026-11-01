@@ -30,7 +30,7 @@ interface Auxiliares {
   impuestos: { id: string; nombre: string; tasa: number }[];
   categorias: { id: string; nombre: string; color: string; icono: string | null }[];
   proveedores: { id: string; nombre: string; rnc: string | null }[];
-  listas: { nivel: number; nombre: string }[];
+  listas: { nivel: number; nombre: string; descuentoPct?: number }[];
   preciosPorSucursal: boolean;
 }
 interface FilaLista { id: string; sku: string; nombre: string; marca: string | null; tipo: Tipo; activo: boolean; categoria: string | null; categoriaColor: string | null; precio: string | null; existencia: string; costo: string; presentaciones: string }
@@ -528,7 +528,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
               <table className="tabla tabla-edicion tabla-precios">
                 <thead><tr><th>Nivel</th><th>Definir por</th><th className="der">Valor</th><th className="der">Precio de venta</th><th className="der">Ganancia</th><th className="der">Margen s/venta</th></tr></thead>
                 <tbody>
-                  {NIVELES.map((k) => {
+                  {((["1"]) as readonly string[]).map((k) => {
                     const pct = esPct(p, k);
                     const desc = esDesc(p, k);
                     const v = p.precios[k] ?? "";
@@ -575,6 +575,14 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
                   })}
                 </tbody>
               </table>
+              <p className="suave pequeno" style={{ margin: "6px 0 0" }}>
+                {[2, 3].map((k) => {
+                  const d = aux.listas.find((l) => l.nivel === k)?.descuentoPct ?? 0;
+                  const p1 = n(p.precios["1"]);
+                  return <span key={k} style={{ marginRight: 16 }}>Precio {k}: {d > 0 ? <b>{d} % menos que el precio 1{p1 ? ` = ${rd(Math.round(p1 * (1 - d / 100) * 100) / 100)}` : ""}</b> : "sin descuento definido"}</span>;
+                })}
+                · Se definen una sola vez en Comercial › Precios y en la factura salen como descuento.
+              </p>
               {NIVELES.some((k) => { const pr = n(p.precios[k]); return pr && costoP && base(pr, tasa, f.precioIncluyeItbis) < costoP; }) &&
                 <p className="texto-alerta pequeno">Hay precios por debajo del costo.</p>}
             </div>
@@ -585,7 +593,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
       <div className="panel">
         <div className="encabezado-sub"><h3>Mismo % para todas las presentaciones</h3><span className="suave pequeno">Ganancia sobre el costo de referencia ({rd(costo)} por unidad)</span></div>
         <div className="calculo-margen">
-          {NIVELES.map((k) => (
+          {(["1"] as const).map((k) => (
             <label key={k} className="campo"><span>Precio {k}</span>
               <span className="con-sufijo"><input className="numero" inputMode="decimal" value={porNivel[k]} onChange={(e) => setPorNivel({ ...porNivel, [k]: e.target.value.replace(/[^\d.]/g, "") })} /><i>%</i></span>
             </label>
