@@ -2,6 +2,7 @@ import "./migracion-nombre";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { PantallaCliente } from "./PantallaCliente";
 import "@fontsource-variable/archivo/wdth.css";
 import "./estilos.css";
 import { aplicarTema, iniciarEscala } from "./escala";
@@ -22,6 +23,6 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    {location.hash.startsWith("#/cliente") ? <PantallaCliente /> : <App />}
   </StrictMode>,
 );

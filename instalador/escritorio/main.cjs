@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, shell, ipcMain, screen } = require('electron');
 const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -349,16 +349,41 @@ async function start() {
   watchUpdates();
 }
 
+// Pantalla del cliente: segunda ventana (en el segundo monitor, si hay) con lo que se vende y las ofertas
+let customerWindow = null;
+function closeCustomer() { if (customerWindow && !customerWindow.isDestroyed()) customerWindow.destroy(); customerWindow = null; }
+function openCustomer() {
+  if (customerWindow && !customerWindow.isDestroyed()) { customerWindow.show(); customerWindow.focus(); return; }
+  const pantallas = screen.getAllDisplays();
+  const principal = screen.getPrimaryDisplay();
+  const otra = pantallas.find(d => d.id !== principal.id);
+  const area = (otra || principal).bounds;
+  const url = new URL(endpoint.toString());
+  url.hash = '/cliente';
+  customerWindow = new BrowserWindow({
+    icon: ICON, title: 'FactPOS · Pantalla del cliente', autoHideMenuBar: true, backgroundColor: '#0b1620',
+    ...(otra ? { x: area.x, y: area.y, width: area.width, height: area.height, fullscreen: true } : { width: 1100, height: 700 }),
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+  });
+  customerWindow.removeMenu();
+  customerWindow.on('closed', () => { customerWindow = null; });
+  customerWindow.loadURL(url.toString());
+}
+
 function openMain(onShown) {
   // Nunca dos ventanas principales: si ya hay una, esa es la que se usa
   if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); if (onShown) onShown(); return; }
   const win = new BrowserWindow({ show: false, icon: ICON, width: 1280, height: 820, minWidth: 900, minHeight: 600, title: selected === 'admin' ? 'FactPOS Administración' : 'FactPOS Caja', autoHideMenuBar: true, backgroundColor: '#102b3a', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   mainOpened = true;
   mainWindow = win;
+  win.on('closed', closeCustomer);
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
-  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (kiosko) win.setKiosk(true); win.focus(); win.webContents.focus(); if (onShown) onShown(); };
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (kiosko) win.setKiosk(true); win.focus(); win.webContents.focus(); if (onShown) onShown();
+    // Con un segundo monitor, la pantalla del cliente se abre sola (se puede apagar con pantallaCliente:false en la configuración)
+    if (selected === 'caja' && config.pantallaCliente !== false && screen.getAllDisplays().length > 1) setTimeout(() => { try { openCustomer(); win.focus(); } catch {} }, 1500);
+  };
   // La Caja abre en modo kiosko (pantalla completa, sin barra de ventana). F11 alterna con ventana normal;
   // Ctrl+Mayús+Q cierra la caja (pide confirmación). Para abrirla siempre en ventana: --ventana en el acceso directo.
   const kiosko = selected === 'caja' && !args.includes('--ventana') && config.kiosko !== false;
@@ -377,6 +402,7 @@ function openMain(onShown) {
   win.webContents.on('did-fail-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 500); });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
+    try { const u = new URL(url); if (u.origin === endpoint.origin && u.hash.startsWith('#/cliente')) { openCustomer(); return { action: 'deny' }; } } catch {}
     try { if (new URL(url).origin !== endpoint.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
     return { action: 'deny' };
   });
@@ -428,6 +454,7 @@ function sendMini(msg) { if (miniWindow && !miniWindow.isDestroyed()) miniWindow
 function beginUpdate(state) {
   updating = true; updateStartedAt = Date.now(); versionBefore = state.version;
   mainOpened = false; // cerrar las ventanas no debe cerrar la aplicación
+  closeCustomer();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
   mainWindow = null;
   openMini();

@@ -30,6 +30,7 @@ import { Kardex } from "./paginas/Kardex";
 import { Fiscal } from "./paginas/Fiscal";
 import { Sucursales } from "./paginas/Sucursales";
 import { Marca } from "./paginas/Marca";
+import { PantallaCliente } from "./paginas/PantallaCliente";
 import { FormatosImpresion } from "./paginas/FormatosImpresion";
 import { Padron } from "./paginas/Padron";
 import { Usuarios } from "./paginas/Usuarios";
@@ -64,6 +65,7 @@ const SECCIONES = [
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
   { id: "marca", titulo: "Logo y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
   { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
@@ -104,6 +106,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: No
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
   ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
+  pantallacliente: "Segunda pantalla de la caja: productos, total y ofertas del negocio",
   certificacion: "Avance de la certificación de FactPOS como software ante la DGII",
   facturas: "Buscar facturas, reimprimir, modificar y anular (con permiso de supervisor)",
   pedidos: "Pedidos al por mayor: se envían a una caja, se alistan y se facturan",
