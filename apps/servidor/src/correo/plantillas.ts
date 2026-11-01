@@ -25,7 +25,7 @@ function colorLegible(hex: string) {
 
 const COLOR = { texto: "#1f2933", suave: "#5b6b7c", borde: "#e3e8ee", fondo: "#f4f6f8", rojo: "#b42318", verde: "#067647", ambar: "#b54708" };
 
-function base(m: Marca, titulo: string, subtitulo: string, cuerpo: string, pie: string) {
+function base(m: Marca, titulo: string, subtitulo: string, cuerpo: string, pie: string, paraCliente = false) {
   const acento = colorLegible(m.color);
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(titulo)}</title></head>
 <body style="margin:0;padding:0;background:${COLOR.fondo};font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${COLOR.texto}">
@@ -38,7 +38,7 @@ function base(m: Marca, titulo: string, subtitulo: string, cuerpo: string, pie: 
   <div style="font-size:14px;color:${COLOR.suave}">${subtitulo}</div>
 </td></tr>
 <tr><td style="padding:12px 24px 22px">${cuerpo}</td></tr>
-<tr><td style="padding:14px 24px;border-top:1px solid ${COLOR.borde};font-size:12px;color:${COLOR.suave};line-height:1.5">${pie}<br>Enviado por FactPOS · <span style="color:${acento}">Administración › Correo y envíos</span> para cambiar quién lo recibe.</td></tr>
+<tr><td style="padding:14px 24px;border-top:1px solid ${COLOR.borde};font-size:12px;color:${COLOR.suave};line-height:1.5">${pie}${paraCliente ? "" : `<br>Enviado por FactPOS · <span style="color:${acento}">Administración › Correo y envíos</span> para cambiar quién lo recibe.`}</td></tr>
 </table></td></tr></table></body></html>`;
 }
 
@@ -189,6 +189,42 @@ export function correoIncidente(m: Marca, texto: string) {
   return {
     asunto: primera.replace(/^[^\p{L}\p{N}]+/u, "").slice(0, 150),
     html: base(m, primera.replace(/^[^\p{L}\p{N}]+/u, ""), "Aviso para el servicio técnico", `<p style="font-size:15px;line-height:1.7;margin:0">${resto.map(esc).join("<br>")}</p>`, ""),
+    texto,
+  };
+}
+
+
+// ------------------------------------------------------------------ COTIZACIÓN (para el cliente)
+interface CotizacionCorreo {
+  numero: number; clienteNombre: string; fecha: string; vence: string; notas: string | null; condiciones: string | null;
+  subtotal: number; descuento: number; itbis: number; total: number;
+  lineas: { descripcion: string; cantidad: number; precio: number; incluyeItbis: boolean; tasaItbis: number; total: number }[];
+}
+const fechaCorta = (aaaammdd: string) => new Date(`${aaaammdd}T12:00:00-04:00`).toLocaleDateString("es-DO", { ...zona, day: "numeric", month: "long", year: "numeric" });
+
+export function correoCotizacion(m: Marca, c: CotizacionCorreo, mensaje?: string) {
+  const numero = `COT-${String(c.numero).padStart(4, "0")}`;
+  const filas = c.lineas.map((l) => [esc(l.descripcion), num(l.cantidad), rd(l.incluyeItbis ? l.precio / (1 + l.tasaItbis) : l.precio), rd(l.total)]);
+  const cuerpo = `
+${mensaje ? `<p style="font-size:15px;line-height:1.6;margin:0 0 14px">${esc(mensaje).replace(/\n/g, "<br>")}</p>` : `<p style="font-size:15px;line-height:1.6;margin:0 0 14px">Estimado(a) ${esc(c.clienteNombre)}, le enviamos nuestra cotización.</p>`}
+${tabla(["Descripción", "Cant.", "Precio (sin ITBIS)", "Total"], filas, 1)}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin:0 0 14px">
+  <tr><td align="right" style="padding:3px 6px;color:${COLOR.suave}">Subtotal</td><td align="right" style="padding:3px 6px;width:130px">${rd(c.subtotal)}</td></tr>
+  ${c.descuento > 0 ? `<tr><td align="right" style="padding:3px 6px;color:${COLOR.suave}">Descuento incluido</td><td align="right" style="padding:3px 6px">${rd(c.descuento)}</td></tr>` : ""}
+  <tr><td align="right" style="padding:3px 6px;color:${COLOR.suave}">ITBIS</td><td align="right" style="padding:3px 6px">${rd(c.itbis)}</td></tr>
+  <tr><td align="right" style="padding:6px;font-weight:700;font-size:16px">Total</td><td align="right" style="padding:6px;font-weight:700;font-size:16px">${rd(c.total)}</td></tr>
+</table>
+<p style="font-size:14px;margin:0 0 6px"><b>Válida hasta:</b> ${esc(fechaCorta(c.vence))}</p>
+${c.notas ? `<p style="font-size:14px;line-height:1.5;margin:0 0 6px"><b>Notas:</b> ${esc(c.notas)}</p>` : ""}
+${c.condiciones ? `<p style="font-size:13px;line-height:1.5;margin:0;color:${COLOR.suave}">${esc(c.condiciones).replace(/\n/g, "<br>")}</p>` : ""}`;
+  const texto = [
+    `${m.empresa} · Cotización ${numero}`, `Para: ${c.clienteNombre}`, `Fecha: ${fechaCorta(c.fecha)} · Válida hasta: ${fechaCorta(c.vence)}`, "",
+    ...c.lineas.map((l) => `- ${l.descripcion}: ${num(l.cantidad)} x ${rd(l.precio)} = ${rd(l.total)}`), "",
+    `Subtotal ${rd(c.subtotal)} · ITBIS ${rd(c.itbis)} · TOTAL ${rd(c.total)}`, c.notas ?? "", c.condiciones ?? "",
+  ].filter((x) => x !== undefined).join("\n");
+  return {
+    asunto: `Cotización ${numero} de ${m.empresa}`,
+    html: base(m, `Cotización ${numero}`, `Fecha ${esc(fechaCorta(c.fecha))}`, cuerpo, `Si tiene alguna pregunta, responda a este correo.`, true),
     texto,
   };
 }
