@@ -155,7 +155,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
                   <td><Uso en={c.sucursalesEnUso} max={c.sucursales} /></td>
                   <td>
                     {c.activada
-                      ? <>Activada<div className={"pequeno " + (sinContacto(c) ? "texto-alerta" : "suave")}>Contacto {hace(c.ultimoContacto)}{c.versionApp ? ` · v${c.versionApp}` : ""}</div></>
+                      ? <>Activada<div className={"pequeno " + (sinContacto(c) ? "texto-alerta" : "suave")}>Contacto {hace(c.ultimoContacto)}{c.versionApp ? ` · v${c.versionApp.replace(/\.0$/, "")}` : ""}</div></>
                       : <span className="suave">Sin activar{c.clavePista ? ` (clave …${c.clavePista})` : ""}</span>}
                   </td>
                   <td className="pequeno">
@@ -543,7 +543,7 @@ function Instalaciones({ planes, onCambio }: { planes: Plan[]; onCambio: () => v
                   <td><b>{i.empresa || "Empresa sin nombre"}</b>
                     <div className="suave pequeno">{[i.rnc && `RNC ${i.rnc}`, i.equipo && `Equipo ${i.equipo}`].filter(Boolean).join(" · ")}</div>
                     {i.cliente && <div className="pequeno">Cliente: <a href={`/${i.slug}/`} target="_blank" rel="noreferrer">{i.cliente}</a></div>}
-                    <div className="suave pequeno">{i.versionApp ? `v${i.versionApp}` : ""}</div></td>
+                    <div className="suave pequeno">{i.versionApp ? `v${i.versionApp.replace(/\.0$/, "")}` : ""}</div></td>
                   <td>{i.contacto && <div>{i.contacto}</div>}
                     {i.telefono && <div><a href={`tel:${i.telefono}`}>{i.telefono}</a></div>}
                     {i.correo && <div className="pequeno"><a href={`mailto:${i.correo}`}>{i.correo}</a></div>}
