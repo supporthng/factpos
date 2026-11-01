@@ -33,9 +33,10 @@ export interface EstadoConexion {
   aviso: string | null;     // mensaje de "conexión restablecida…"
   reserva: number;          // e-NCF apartados que quedan
   cupoVersion: number;      // sube cuando otra caja le pasa existencia
+  latenciaMs: number | null; // qué tan rápido responde el servidor (mediana de las últimas revisiones)
 }
 
-let estado: EstadoConexion = { enLinea: true, desde: null, pendientes: 0, enviando: false, errores: 0, aviso: null, reserva: 0, cupoVersion: 0 };
+let estado: EstadoConexion = { enLinea: true, desde: null, pendientes: 0, enviando: false, errores: 0, aviso: null, reserva: 0, cupoVersion: 0, latenciaMs: null };
 const oyentes = new Set<(e: EstadoConexion) => void>();
 const cambiar = (p: Partial<EstadoConexion>) => { estado = { ...estado, ...p }; oyentes.forEach((f) => f(estado)); };
 export const estadoConexion = () => estado;
@@ -275,8 +276,9 @@ export async function iniciarVigilancia(ajustes: Ajustes) {
   cambiar({ pendientes: pend.length, reserva, errores: pend.filter((p) => p.error).length, ...(corte ? { enLinea: false, desde: corte.desde } : {}) });
   alPerderConexion(() => { void sinServidor(); });
   const vuelta = async () => {
-    const ok = await responde(ajustes.servidor);
-    if (ok) {
+    const ms = await responde(ajustes.servidor);
+    if (ms !== null) {
+      registrarLatencia(ms);
       fallosSeguidos = 0;
       if (!estado.enLinea || estado.pendientes > 0) await volvioServidor(ajustes);
       else if (estado.reserva < 10) await refrescarReserva(ajustes);
@@ -290,11 +292,22 @@ export async function iniciarVigilancia(ajustes: Ajustes) {
   setInterval(() => { void atenderRed(ajustes); }, 3000);
 }
 
-async function responde(servidor: string) {
+/** Revisa si el servidor responde y cuánto tarda (en ms); null si no responde. */
+async function responde(servidor: string): Promise<number | null> {
+  const t = performance.now();
   try {
     const r = await fetch(`${servidor.replace(/\/$/, "")}/descubrir`, { signal: AbortSignal.timeout(3000), cache: "no-store" });
-    return r.ok;
-  } catch { return false; }
+    return r.ok ? Math.max(1, Math.round(performance.now() - t)) : null;
+  } catch { return null; }
+}
+
+/** Mediana de las últimas revisiones: un solo pico no cambia el indicador. */
+const muestras: number[] = [];
+function registrarLatencia(ms: number) {
+  muestras.push(ms);
+  if (muestras.length > 5) muestras.shift();
+  const orden = [...muestras].sort((a, b) => a - b);
+  cambiar({ latenciaMs: orden[Math.floor(orden.length / 2)]! });
 }
 
 async function sinServidor() {

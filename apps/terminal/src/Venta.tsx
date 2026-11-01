@@ -956,9 +956,13 @@ function useReloj() {
 /** Punto de estado del servidor de la tienda, siempre a la vista. */
 function EstadoServidor() {
   const c = useConexion();
+  const ms = c.enLinea ? c.latenciaMs : null;
+  const calidad = ms === null ? "" : ms < 250 ? "" : ms < 800 ? " lenta" : " muy-lenta";
+  const texto = !c.enLinea ? "Sin servidor" : ms === null ? "En línea" : ms < 250 ? "En línea" : ms < 800 ? "Conexión lenta" : "Conexión muy lenta";
   return (
-    <span className={"pv-estado" + (c.enLinea ? "" : " sin")} role="status" title={c.enLinea ? "Conectada al servidor de la tienda" : "Sin servidor: solo factura de consumo al contado"}>
-      <i aria-hidden="true" />{c.enLinea ? "En línea" : "Sin servidor"}
+    <span className={"pv-estado" + (c.enLinea ? calidad : " sin")} role="status"
+      title={c.enLinea ? `Conectada al servidor de la tienda${ms !== null ? ` · responde en ${ms} ms` : ""}${calidad ? ". Si se pone peor, la caja sigue vendiendo y envía las ventas al volver." : ""}` : "Sin servidor: solo factura de consumo al contado"}>
+      <i aria-hidden="true" />{texto}{ms !== null && <small> · {ms} ms</small>}
     </span>
   );
 }
