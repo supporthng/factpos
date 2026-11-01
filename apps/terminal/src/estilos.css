@@ -700,7 +700,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pc-centro .pc-logo { max-height: 160px; max-width: 420px; }
 .pc-sub { opacity: .7; font-size: 22px; margin: 0; }
 .pc-monto { font-size: clamp(28px, 4vw, 56px); font-weight: 700; margin: 0; }
-.pc-monto.grande { font-size: clamp(54px, 9vw, 140px); color: var(--acento-marca, #2dd4bf); line-height: 1; }
+.pc-monto.grande { font-size: clamp(32px, 13cqw, 140px); white-space: nowrap; color: var(--acento-marca, #2dd4bf); line-height: 1; }
 .pc-cambio { font-size: clamp(28px, 4vw, 56px); margin: 0; color: var(--acento-marca, #2dd4bf); }
 .pc-venta { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); grid-template-rows: auto 1fr; }
 .pc-cab { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 14px 28px; background: var(--barra-marca, #123); font-size: 24px; }
@@ -712,7 +712,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pc-linea span { opacity: .7; font-size: .65em; }
 .pc-linea em { font-style: normal; color: var(--acento-marca, #2dd4bf); }
 .pc-linea.nueva { background: #ffffff10; border-radius: 10px; padding-left: 12px; padding-right: 12px; }
-.pc-total { background: #10202c; padding: 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; text-align: right; }
+.pc-total { container-type: inline-size; background: #10202c; padding: 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; text-align: right; }
 .pc-fila { display: flex; justify-content: space-between; font-size: clamp(18px, 2.2vw, 28px); opacity: .8; }
 .pc-pagar { font-size: clamp(22px, 3vw, 40px); margin-top: 12px; opacity: .85; }
 .pc-oferta { flex-direction: row; align-items: stretch; }
