@@ -9,7 +9,7 @@ import { sucursalesDe } from "../sesion.js";
  * los permisos de cada rol siguen valiendo igual en el servidor.
  * Lectura: cualquier sesión (la pantalla la necesita). Cambio: solo administradores.
  */
-export const OPCIONES_MOVIL = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "delivery", "cxc", "caja", "reportes"] as const;
+export const OPCIONES_MOVIL = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "facturas", "pedidos", "delivery", "cxc", "caja", "fiscal", "padron", "reportes"] as const;
 const POR_DEFECTO = ["resumen", "productos", "compras", "inventario", "precios", "cxc", "caja", "reportes"];
 
 interface Fila { habilitada: boolean; secciones: string[]; todos_usuarios: boolean; usuarios: string[]; con_sucursales: boolean; actualizado_en: string | null; quien: string | null }
