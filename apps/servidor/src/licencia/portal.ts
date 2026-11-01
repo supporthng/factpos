@@ -96,7 +96,16 @@ const contacto = z.object({
   version: z.string().max(40).optional(),
   sucursalesEnUso: z.number().int().min(0).max(9999).optional(),
   apiUrl: z.string().url().max(200).optional(),
+  /** Comprobantes e-CF emitidos por mes (la nube del cliente reporta el mes actual y el anterior) */
+  ecf: z.object({ meses: z.array(z.object({ mes: z.string().regex(/^\d{4}-\d{2}$/), emitidos: z.number().int().min(0).max(10_000_000) })).max(3) }).optional(),
 });
+
+async function guardarUsoEcf(licenciaId: string, ecf: z.infer<typeof contacto>["ecf"]) {
+  for (const m of ecf?.meses ?? [])
+    await pool.query(
+      `INSERT INTO portal_ecf_uso (licencia_id, mes, emitidos) VALUES ($1,$2,$3)
+       ON CONFLICT (licencia_id, mes) DO UPDATE SET emitidos = EXCLUDED.emitidos, actualizado_en = now()`, [licenciaId, m.mes, m.emitidos]);
+}
 
 export async function rutasPortal(app: FastifyInstance) {
   // ================================================================ PÚBLICAS (nube de cada cliente)
@@ -123,6 +132,9 @@ export async function rutasPortal(app: FastifyInstance) {
          VALUES ($1,'ASIGNADA',$2,$3,$4,$5,$6,now())
          ON CONFLICT (id) DO UPDATE SET estado = 'ASIGNADA', secreto_hash = $2, version_app = $3, sucursales_en_uso = $4, licencia_id = $6, resuelta_en = now(), ultimo_contacto = now()`,
         [b.instalacionId, huella(secreto), b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null, l.id]);
+      for (const m of b.ecf?.meses ?? [])
+        await c.query(`INSERT INTO portal_ecf_uso (licencia_id, mes, emitidos) VALUES ($1,$2,$3)
+                       ON CONFLICT (licencia_id, mes) DO UPDATE SET emitidos = EXCLUDED.emitidos, actualizado_en = now()`, [l.id, m.mes, m.emitidos]);
       return { licencia: emitir(l, b.instalacionId), secreto, cliente: { nombre: l.nombre, slug: l.slug } };
     });
   });
@@ -138,6 +150,7 @@ export async function rutasPortal(app: FastifyInstance) {
       [l.id, b.version ?? null, b.sucursalesEnUso ?? null]);
     await pool.query("UPDATE portal_instalaciones SET ultimo_contacto = now(), version_app = $2, sucursales_en_uso = $3 WHERE id = $1",
       [b.instalacionId, b.version ?? null, b.sucursalesEnUso ?? null]);
+    await guardarUsoEcf(l.id, b.ecf).catch(() => undefined);
     if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
     return { licencia: emitir(l, b.instalacionId) };
   });
@@ -484,6 +497,110 @@ export async function rutasPortal(app: FastifyInstance) {
     return { ok: true };
   });
 
+
+  // ---- Facturación electrónica como complemento: planes por rango, plan de cada cliente, uso mensual y margen
+  const esquemaPlanEcf = z.object({
+    codigo: z.string().trim().toLowerCase().regex(/^[a-z0-9-]{2,30}$/, "Código: 2 a 30 letras minúsculas, números o guiones"),
+    nombre: z.string().trim().min(2).max(60),
+    maxMes: z.number().int().min(1).max(10_000_000),
+    costoUsd: z.number().min(0).max(1_000_000),
+    precioUsd: z.number().min(0).max(1_000_000),
+    activo: z.boolean().default(true),
+    orden: z.number().int().min(0).max(999).default(0),
+  });
+  app.get("/central/portal/ecf-planes", async () => (await pool.query(
+    `SELECT p.id, p.codigo, p.nombre, p.max_mes AS "maxMes", p.costo_usd::float AS "costoUsd", p.precio_usd::float AS "precioUsd", p.activo, p.orden,
+            (SELECT COUNT(*)::int FROM portal_licencias l WHERE l.ecf_plan_id = p.id) AS clientes
+       FROM portal_ecf_planes p ORDER BY p.orden, p.max_mes`)).rows);
+  app.post("/central/portal/ecf-planes", async (req, rep) => {
+    const b = esquemaPlanEcf.parse(req.body);
+    try {
+      const id = uuidv7();
+      await pool.query("INSERT INTO portal_ecf_planes (id, codigo, nombre, max_mes, costo_usd, precio_usd, activo, orden) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        [id, b.codigo, b.nombre, b.maxMes, b.costoUsd, b.precioUsd, b.activo, b.orden]);
+      rep.code(201);
+      return { id };
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un rango con el código «${b.codigo}»`, 409);
+      throw e;
+    }
+  });
+  app.put("/central/portal/ecf-planes/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = esquemaPlanEcf.parse(req.body);
+    try {
+      const r = await pool.query(
+        "UPDATE portal_ecf_planes SET codigo = $2, nombre = $3, max_mes = $4, costo_usd = $5, precio_usd = $6, activo = $7, orden = $8 WHERE id = $1 RETURNING id",
+        [id, b.codigo, b.nombre, b.maxMes, b.costoUsd, b.precioUsd, b.activo, b.orden]);
+      if (!r.rowCount) throw new ErrorNegocio("Rango no encontrado", 404);
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un rango con el código «${b.codigo}»`, 409);
+      throw e;
+    }
+    return { ok: true };
+  });
+  /** Asigna (o quita) el plan de facturación electrónica de un cliente. */
+  app.put("/central/portal/clientes/:id/ecf", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ planId: uuid.nullable(), precioUsd: z.number().min(0).max(1_000_000).nullable().optional() }).parse(req.body);
+    const r = await pool.query("UPDATE portal_licencias SET ecf_plan_id = $2, ecf_precio_usd = $3, actualizado_en = now() WHERE cliente_id = $1 RETURNING id",
+      [id, b.planId, b.planId ? b.precioUsd ?? null : null]);
+    if (!r.rowCount) throw new ErrorNegocio("Ese cliente no tiene licencia", 404);
+    await evento(pool, { clienteId: id, licenciaId: r.rows[0].id, tipo: "PLAN_ECF", detalle: b, usuarioId: usuarioDe(req) });
+    return { ok: true };
+  });
+  app.put("/central/portal/ecf-tasa", async (req) => {
+    const b = z.object({ tasa: z.number().min(1).max(10_000).nullable() }).parse(req.body);
+    await pool.query("UPDATE portal_config SET ecf_tasa_dop = $1, actualizado_en = now() WHERE id = 1", [b.tasa]);
+    return { ok: true };
+  });
+  /** Resumen del mes: uso de cada cliente contra su rango, alertas, ingreso, costo y margen (USD). */
+  app.get("/central/portal/ecf-resumen", async () => {
+    const mes = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 7);
+    const [y, m] = mes.split("-").map(Number);
+    const anterior = m === 1 ? `${y! - 1}-12` : `${y}-${String(m! - 1).padStart(2, "0")}`;
+    const planes = (await pool.query<{ id: string; nombre: string; maxMes: number; costoUsd: number; precioUsd: number }>(
+      `SELECT id, nombre, max_mes AS "maxMes", costo_usd::float AS "costoUsd", precio_usd::float AS "precioUsd" FROM portal_ecf_planes WHERE activo ORDER BY max_mes`)).rows;
+    const filas = (await pool.query<{
+      clienteId: string; slug: string; cliente: string; planId: string | null; plan: string | null; maxMes: number | null; costoUsd: number | null;
+      precioPlan: number | null; precioEspecial: number | null; actual: number | null; previo: number | null; ultimo: string | null;
+    }>(
+      `SELECT c.id AS "clienteId", c.slug, c.nombre AS cliente, l.ecf_plan_id AS "planId", p.nombre AS plan, p.max_mes AS "maxMes",
+              p.costo_usd::float AS "costoUsd", p.precio_usd::float AS "precioPlan", l.ecf_precio_usd::float AS "precioEspecial",
+              (SELECT emitidos FROM portal_ecf_uso u WHERE u.licencia_id = l.id AND u.mes = $1) AS actual,
+              (SELECT emitidos FROM portal_ecf_uso u WHERE u.licencia_id = l.id AND u.mes = $2) AS previo,
+              (SELECT MAX(actualizado_en) FROM portal_ecf_uso u WHERE u.licencia_id = l.id) AS ultimo
+         FROM portal_clientes c JOIN portal_licencias l ON l.cliente_id = c.id LEFT JOIN portal_ecf_planes p ON p.id = l.ecf_plan_id
+        WHERE c.activo ORDER BY c.nombre`, [mes, anterior])).rows;
+    const clientes = filas.map((f) => {
+      const actual = f.actual ?? 0, previo = f.previo ?? 0;
+      const precio = f.planId ? f.precioEspecial ?? f.precioPlan ?? 0 : 0;
+      const costo = f.planId ? f.costoUsd ?? 0 : 0;
+      let estado: "sin-plan" | "ok" | "cerca" | "excedido" | "sin-datos" = "ok";
+      if (!f.planId) estado = actual > 0 || previo > 0 ? "sin-plan" : "sin-datos";
+      else if (f.maxMes && actual > f.maxMes) estado = "excedido";
+      else if (f.maxMes && actual >= f.maxMes * 0.8) estado = "cerca";
+      // Dos meses seguidos pasado de su rango (o ya pasado este mes con gran margen): se sugiere el rango que le corresponde
+      const sugerir = f.planId && f.maxMes && actual > f.maxMes && previo > f.maxMes;
+      const siguiente = sugerir || (f.planId && f.maxMes && actual > f.maxMes) ? planes.find((x) => x.maxMes >= Math.max(actual, previo)) ?? null : null;
+      return {
+        clienteId: f.clienteId, slug: f.slug, cliente: f.cliente, planId: f.planId, plan: f.plan, maxMes: f.maxMes,
+        precioEspecial: f.precioEspecial, precioUsd: precio, costoUsd: costo, margenUsd: Math.round((precio - costo) * 100) / 100,
+        actual, anterior: previo, pct: f.maxMes ? Math.round((actual / f.maxMes) * 100) : null, estado,
+        dosMesesExcedido: !!sugerir, sugerido: siguiente ? { id: siguiente.id, nombre: siguiente.nombre } : null,
+        ultimoReporte: f.ultimo,
+      };
+    });
+    const activos = clientes.filter((x) => x.planId);
+    const ingresoUsd = activos.reduce((a, x) => a + x.precioUsd, 0), costoUsd = activos.reduce((a, x) => a + x.costoUsd, 0);
+    const tasa = (await pool.query<{ t: number | null }>("SELECT ecf_tasa_dop::float AS t FROM portal_config WHERE id = 1")).rows[0]?.t ?? null;
+    return {
+      mes, tasaDop: tasa, clientes,
+      totales: { conPlan: activos.length, ingresoUsd, costoUsd, margenUsd: Math.round((ingresoUsd - costoUsd) * 100) / 100,
+                 excedidos: clientes.filter((x) => x.estado === "excedido").length, cerca: clientes.filter((x) => x.estado === "cerca").length,
+                 sinPlan: clientes.filter((x) => x.estado === "sin-plan").length },
+    };
+  });
 
   // ---- Certificación del software ante la DGII (una sola para todo FactPOS) ----
   /** ¿Puede FactPOS facturar con e-CF? Requisito por requisito, con lo que falta paso a paso. */
