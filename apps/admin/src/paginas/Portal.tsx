@@ -45,7 +45,7 @@ const hace = (iso: string | null) => {
   return m < 60 ? `hace ${Math.max(m, 1)} min` : m < 2880 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
 };
 
-type Vista = "clientes" | "instalaciones" | "invitaciones" | "planes" | "reglas";
+type Vista = "clientes" | "instalaciones" | "invitaciones" | "planes" | "gastos" | "reglas";
 type Filtro = "todos" | "atencion" | "vigentes" | "sin_activar" | "suspendidos";
 
 export function Portal() {
@@ -58,7 +58,7 @@ export function Portal() {
       <Encabezado titulo="Clientes y licencias"
         descripcion="Cada cliente instala su propio FactPOS con su propia nube. Aquí se manejan sus planes, licencias y cobros; sus datos nunca pasan por el portal." />
       <div className="pestanas">
-        {([["clientes", "Clientes"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["planes", "Planes y precios"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
+        {([["clientes", "Clientes"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["planes", "Planes y precios"], ["gastos", "Gastos y costos"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
           <button key={v} className={vista === v ? "activa" : ""} onClick={() => { setVista(v); pendientes.recargar(); }}>
             {t}{v === "instalaciones" && nPend > 0 && <span className="insignia">{nPend}</span>}
           </button>
@@ -74,6 +74,7 @@ export function Portal() {
       {vista === "instalaciones" && <Instalaciones planes={planes.datos ?? []} onCambio={pendientes.recargar} />}
       {vista === "invitaciones" && <Invitaciones />}
       {vista === "planes" && <Planes planes={planes.datos ?? []} recargar={planes.recargar} />}
+      {vista === "gastos" && <Gastos />}
       {vista === "reglas" && <ReglasPortal />}
     </>
   );
@@ -696,6 +697,90 @@ function Invitaciones() {
                 <td className="der"><button className="enlace" onClick={() => reenviar(i)}>Reenviar</button> · <button className="enlace" onClick={() => quitar(i)}>Quitar</button></td>
               </tr>); })}
             {datos && datos.lista.length === 0 && <tr><td colSpan={7} className="suave">Todavía no ha invitado a nadie.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+
+/* ---------- Apps de pago y costo por licencia ---------- */
+interface GastoFila { id: string; servicio: string; para: string | null; monto: number; moneda: "USD" | "DOP"; tasa: number; activo: boolean; notas: string | null; montoDop: number }
+interface ResumenGastos {
+  gastos: GastoFila[]; totalMensualDop: number; licencias: number; sucursales: number; ingresoMensualDop: number;
+  costoPorLicencia: number | null; costoPorSucursal: number | null; margenDop: number;
+}
+const gastoVacio = { id: "", servicio: "", para: "", monto: 0, moneda: "USD" as "USD" | "DOP", tasa: 60, activo: true, notas: "" };
+
+function Gastos() {
+  const { datos, recargar } = useDatos<ResumenGastos>("/central/portal/gastos");
+  const [edit, setEdit] = useState<typeof gastoVacio | null>(null);
+  const [msg, setMsg] = useState("");
+  const guardar = async () => {
+    if (!edit) return;
+    setMsg("");
+    try {
+      const { id, ...cuerpo } = edit;
+      await api(id ? `/central/portal/gastos/${id}` : "/central/portal/gastos", { metodo: id ? "PUT" : "POST", cuerpo: { ...cuerpo, para: cuerpo.para || null, notas: cuerpo.notas || null } });
+      setEdit(null); recargar();
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <>
+      <div className="fila-acciones" style={{ marginBottom: 12 }}>
+        <span className="suave pequeno" style={{ maxWidth: 640 }}>
+          Anote cada app de pago que usa para dar el servicio (Vercel, Cloudflare, Claude API…) con lo que paga al mes. Con eso se calcula cuánto le cuesta cada licencia y cuánto le queda.
+        </span>
+        <span className="flex" />
+        <button className="boton primario" onClick={() => setEdit({ ...gastoVacio })}>Agregar app de pago</button>
+      </div>
+      <Aviso texto={msg} />
+      {datos && (
+        <div className="panel">
+          <table className="tabla"><tbody>
+            <tr><td>Total pagado al mes</td><td className="der"><b>{rd(datos.totalMensualDop)}</b></td></tr>
+            <tr><td>Licencias vigentes · sucursales</td><td className="der">{datos.licencias} · {datos.sucursales}</td></tr>
+            <tr><td>Costo por licencia (al mes)</td><td className="der"><b>{datos.costoPorLicencia != null ? rd(datos.costoPorLicencia) : "—"}</b></td></tr>
+            <tr><td>Costo por sucursal (al mes)</td><td className="der">{datos.costoPorSucursal != null ? rd(datos.costoPorSucursal) : "—"}</td></tr>
+            <tr><td>Ingreso mensual por licencias</td><td className="der">{rd(datos.ingresoMensualDop)}</td></tr>
+            <tr><td>Margen mensual</td><td className={"der " + (datos.margenDop < 0 ? "texto-alerta" : "texto-ok")}><b>{rd(datos.margenDop)}</b></td></tr>
+          </tbody></table>
+        </div>
+      )}
+      {edit && (
+        <div className="panel">
+          <div className="encabezado-sub"><h3>{edit.id ? "Editar app de pago" : "Nueva app de pago"}</h3><button className="enlace" onClick={() => setEdit(null)}>Cancelar</button></div>
+          <div className="tres-col">
+            <label className="campo"><span>App o servicio</span><input autoFocus value={edit.servicio} onChange={(e) => setEdit({ ...edit, servicio: e.target.value })} placeholder="Vercel, Cloudflare R2, Claude API…" /></label>
+            <label className="campo"><span>Para qué se usa</span><input value={edit.para ?? ""} onChange={(e) => setEdit({ ...edit, para: e.target.value })} /></label>
+            <label className="campo"><span>Monto pagado al mes</span><input className="numero" inputMode="decimal" value={edit.monto || ""} placeholder="0.00" onChange={(e) => setEdit({ ...edit, monto: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} /></label>
+            <label className="campo"><span>Moneda</span>
+              <select value={edit.moneda} onChange={(e) => setEdit({ ...edit, moneda: e.target.value as "USD" | "DOP" })}><option value="USD">Dólares (US$)</option><option value="DOP">Pesos (RD$)</option></select></label>
+            {edit.moneda === "USD" && <label className="campo"><span>RD$ por cada dólar</span><input className="numero" inputMode="decimal" value={edit.tasa || ""} onChange={(e) => setEdit({ ...edit, tasa: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} /></label>}
+            <label className="check"><input type="checkbox" checked={edit.activo} onChange={(e) => setEdit({ ...edit, activo: e.target.checked })} /> Lo estoy pagando</label>
+          </div>
+          <button className="boton primario" disabled={edit.servicio.trim().length < 2 || (edit.moneda === "USD" && !edit.tasa)} onClick={guardar}>Guardar</button>
+        </div>
+      )}
+      <div className="tabla-contenedor">
+        <table className="tabla">
+          <thead><tr><th>App</th><th>Para qué</th><th className="der">Monto mensual</th><th className="der">En RD$</th><th></th></tr></thead>
+          <tbody>
+            {datos?.gastos.map((g) => (
+              <tr key={g.id} className={g.activo ? "" : "inactiva"}>
+                <td><b>{g.servicio}</b>{!g.activo && <span className="suave pequeno"> · sin pagar</span>}</td>
+                <td className="suave">{g.para ?? ""}</td>
+                <td className="der">{g.moneda === "USD" ? `US$ ${g.monto.toFixed(2)}` : rd(g.monto)}</td>
+                <td className="der">{rd(g.montoDop)}</td>
+                <td className="der">
+                  <button className="enlace" onClick={() => setEdit({ ...g, para: g.para ?? "", notas: g.notas ?? "" })}>Editar</button>{" "}
+                  <button className="enlace" onClick={async () => { if (confirm(`¿Quitar ${g.servicio}?`)) { await api(`/central/portal/gastos/${g.id}`, { metodo: "DELETE" }); recargar(); } }}>Quitar</button>
+                </td>
+              </tr>
+            ))}
+            {datos && !datos.gastos.length && <tr><td colSpan={5} className="suave">Todavía no ha anotado ninguna app de pago.</td></tr>}
+            {!datos && <tr><td colSpan={5} className="suave">Cargando…</td></tr>}
           </tbody>
         </table>
       </div>
