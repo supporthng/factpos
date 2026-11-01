@@ -33,6 +33,39 @@ const PASOS: [string, string, string][] = [
 ];
 const ROT: Record<Estado, string> = { PENDIENTE: "Pendiente", EN_CURSO: "En curso", HECHO: "Hecho" };
 
+interface Req { id: string; titulo: string; exige: string; estado: "ok" | "falta" | "parcial"; detalle: string; pasos: string[] }
+interface Verif { puedeFacturar: boolean; resumen: string; requisitos: Req[]; revisadoEn: string }
+
+/** ¿Puede FactPOS facturar con e-CF? Cada requisito de la DGII, con lo que falta paso a paso. */
+function VerificacionEcf() {
+  const [n, setN] = useState(0);
+  const { datos, error, cargando } = useDatos<Verif>("/central/portal/verificacion-ecf", [n]);
+  const marca = { ok: "✓", falta: "✕", parcial: "!" } as const;
+  const clase = { ok: "ok", falta: "alerta", parcial: "" } as const;
+  const pendientes = (datos?.requisitos ?? []).filter((r) => r.estado !== "ok");
+  return (
+    <div className="panel">
+      <div className="fila-acciones" style={{ marginTop: 0 }}>
+        <h3 style={{ margin: 0 }}>¿Puede FactPOS facturar con e-CF?</h3><span className="flex" />
+        <button className="boton" disabled={cargando} onClick={() => setN((x) => x + 1)}>{cargando ? "Revisando…" : "Volver a revisar"}</button>
+      </div>
+      <Aviso texto={error} />
+      {datos && <Aviso tipo={datos.puedeFacturar ? "ok" : "error"} texto={datos.resumen} />}
+      {(datos?.requisitos ?? []).map((r) => (
+        <div key={r.id} className="seg-fila">
+          <div style={{ flex: 1 }}>
+            <b><span className={"pastilla " + clase[r.estado]} style={{ marginRight: 8 }}>{marca[r.estado]}</span>{r.titulo}</b>
+            <p className="suave pequeno" style={{ margin: "4px 0 0", maxWidth: "80ch" }}>La DGII exige: {r.exige}</p>
+            <p className="pequeno" style={{ margin: "4px 0 0", maxWidth: "80ch" }}>{r.detalle}</p>
+            {r.pasos.length > 0 && <ol className="pequeno" style={{ margin: "6px 0 0", paddingLeft: 20, maxWidth: "80ch" }}>{r.pasos.map((p, i) => <li key={i}>{p}</li>)}</ol>}
+          </div>
+        </div>
+      ))}
+      {pendientes.length > 0 && <p className="suave pequeno" style={{ marginBottom: 0 }}>Pendientes: {pendientes.map((r) => r.titulo).join(" · ")}.</p>}
+    </div>
+  );
+}
+
 export function CertificacionDgii() {
   const { datos, error, recargar } = useDatos<Datos>("/central/portal/certificacion-dgii");
   const [f, setF] = useState<Datos | null>(null);
@@ -57,6 +90,7 @@ export function CertificacionDgii() {
         <button className="boton primario" disabled={guardando} onClick={guardar}>Guardar</button>
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <VerificacionEcf />
       <Aviso tipo={f.autorizado ? "ok" : "info"} texto={f.autorizado ? `FactPOS está autorizado por la DGII${f.autorizadoFecha ? ` desde el ${new Date(f.autorizadoFecha + "T12:00:00").toLocaleDateString("es-DO")}` : ""}.` : `FactPOS aún no está autorizado por la DGII para emitir e-CF · ${hechos} de ${PASOS.length} pasos hechos.`} />
 
       <div className="panel">
