@@ -25,13 +25,13 @@
 }
 /* Tema oscuro (opcional por terminal): azul tinta, descansa la vista en turnos largos */
 :root[data-tema="oscuro"] {
-  --fondo: #0f1923;
-  --panel: #152230;
-  --panel-2: #1c2d3d;
-  --borde: #273b4e;
-  --texto: #eef4f8;
-  --suave: #8ea5b8;
-  --tinta: #08121a;
+  --fondo: #101a1f;
+  --panel: #17252c;
+  --panel-2: #132127;
+  --borde: #25363f;
+  --texto: #e8f1f2;
+  --suave: #8fa7ad;
+  --tinta: #0b1317;
   --primario: #2dd4bf;
   --info: #60a5fa;
   --ok: #a3e635;
@@ -481,7 +481,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .icono { flex: none; }
 
 /* Barra superior con el color de la marca */
-.pv-barra { display: flex; align-items: center; gap: 18px; padding: 8px 14px; background: var(--barra-marca, #12324a); color: #fff; min-height: 58px; }
+.pv-barra { display: flex; align-items: center; gap: 18px; padding: 6px 14px; background: var(--barra-marca, #12324a); color: #fff; min-height: 52px; }
 .pv-marca { flex: none; display: flex; align-items: center; }
 .pv-marca .marca, .pv-marca .marca > span { color: #fff; }
 .pv-marca .marca > span > span { color: color-mix(in srgb, #fff 55%, var(--primario)); }
@@ -503,10 +503,10 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-icono:focus-visible, .pv-funcion:focus-visible, .pv-metodo:focus-visible, .pv-cliente:focus-visible { outline: 3px solid var(--info); outline-offset: 2px; }
 
 /* Escáner + cliente */
-.pv-entrada { display: grid; grid-template-columns: minmax(0, 1fr) 400px auto; gap: 10px; padding: 12px 14px 10px; align-items: stretch; }
+.pv-entrada { display: grid; grid-template-columns: minmax(0, 1fr) 330px auto; gap: 10px; padding: 10px 14px 8px; align-items: stretch; }
 .pv-escaner { display: flex; align-items: center; background: var(--panel); border: 2px solid var(--primario); border-radius: 12px; padding-left: 14px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--primario) 14%, transparent); }
 .pv-escaner > .icono { width: 28px; height: 28px; color: var(--texto); }
-.pv-escaner input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none !important; font-size: 21px; padding: 13px 12px; }
+.pv-escaner input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none !important; font-size: 18px; padding: 9px 12px; }
 .pv-buscar { display: flex; align-items: center; gap: 4px; align-self: stretch; padding: 0 16px; border: 0; border-radius: 0 9px 9px 0; background: var(--primario); color: var(--texto-sobre-cobrar, #fff); }
 .pv-buscar .icono { width: 24px; height: 24px; }
 .pv-buscar kbd { background: rgba(255,255,255,.2); color: inherit; border-color: transparent; }
@@ -521,7 +521,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-cliente-accion { flex: none; font-size: 12px; font-weight: 700; color: var(--primario); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; }
 .pv-quitar-cliente { width: 40px; border: 1px solid var(--borde); background: var(--panel); color: var(--suave); border-radius: 12px; font-size: 24px; }
 .pv-quitar-cliente:hover { color: var(--error); border-color: var(--error); }
-.pv-entrada:not(:has(.pv-quitar-cliente)) { grid-template-columns: minmax(0, 1fr) 400px; }
+.pv-entrada:not(:has(.pv-quitar-cliente)) { grid-template-columns: minmax(0, 1fr) 330px; }
 
 /* Cuerpo: [catálogo] · venta · cobro */
 .pv-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; padding: 0 14px 10px; min-height: 0; }
@@ -540,7 +540,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .flex { flex: 1; }
 
 .pv-tabla { flex: 1; min-height: 0; overflow: auto; }
-.pv-fila { display: grid; grid-template-columns: 30px minmax(0, 1fr) 124px 92px 84px 104px 38px; gap: 8px; align-items: center; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--borde); font-size: 16px; cursor: default; }
+.pv-fila { display: grid; grid-template-columns: 30px minmax(0, 1fr) 124px 92px 84px 104px 38px; gap: 8px; align-items: center; padding: 5px 10px 5px 14px; min-height: 46px; border-bottom: 1px solid var(--borde); font-size: 16px; cursor: default; }
 .pv-fila.pv-cabeza { position: sticky; top: 0; z-index: 1; background: var(--panel-2); color: var(--suave); font-size: 12px; font-weight: 700; padding-top: 7px; padding-bottom: 7px; }
 .pv-fila.seleccionada { background: color-mix(in srgb, var(--info) 9%, var(--panel)); box-shadow: inset 4px 0 0 var(--info); }
 .pv-fila .centro, .centro { text-align: center; }
@@ -590,7 +590,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-cobro { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
 .pv-total { background: var(--tinta); color: #fff; border-radius: 14px; padding: 14px 16px 12px; border-top: 5px solid var(--primario); display: flex; flex-direction: column; gap: 2px; }
 .pv-total > span { font-size: 13px; font-weight: 700; color: rgba(255,255,255,.7); letter-spacing: .02em; }
-.pv-total > b { font-size: 44px; line-height: 1.05; font-weight: 800; font-stretch: 112%; letter-spacing: -1px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pv-total > b { font-size: 38px; line-height: 1.05; font-weight: 800; font-stretch: 112%; letter-spacing: -1px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .pv-total > small { font-size: 13px; color: rgba(255,255,255,.72); }
 .con-catalogo .pv-total > b { font-size: 38px; }
 .pv-desglose { margin: 0; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 6px 14px; }
@@ -604,16 +604,16 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-metodo .icono { color: var(--primario); width: 22px; height: 22px; }
 .pv-metodo:hover:not(:disabled) { border-color: var(--primario); background: color-mix(in srgb, var(--primario) 7%, var(--panel)); }
 .pv-metodo:disabled { opacity: .5; cursor: not-allowed; }
-.pv-cobro .boton.cobrar { margin: 2px 0 0; padding: 16px; font-size: 24px; }
+.pv-cobro .boton.cobrar { margin: 2px 0 0; padding: 13px; font-size: 22px; }
 .pv-cobro .boton.cobrar kbd { background: rgba(255,255,255,.2); color: inherit; border-color: transparent; }
 .pv-ultima { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--suave); background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 7px 10px; }
 .pv-ultima .cambio { color: var(--ok); }
 
 /* Funciones con su tecla */
-.pv-funciones { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; padding: 0 14px 12px; }
-.pv-funcion { --c: var(--suave); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 62px; padding: 7px 6px 6px; border-radius: 12px;
+.pv-funciones { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; padding: 0 14px 10px; }
+.pv-funcion { --c: var(--suave); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 50px; padding: 5px 4px; border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--c) 35%, var(--borde)); background: color-mix(in srgb, var(--c) 9%, var(--panel)); color: var(--texto); font-size: 13px; font-weight: 700; line-height: 1.15; text-align: center; }
-.pv-funcion .icono { color: var(--c); width: 22px; height: 22px; }
+.pv-funcion .icono { display: none; }
 .pv-funcion kbd { margin: 0; font-size: 10px; padding: 0 5px; background: transparent; border-color: color-mix(in srgb, var(--c) 40%, var(--borde)); color: var(--suave); }
 .pv-funcion:hover:not(:disabled) { background: color-mix(in srgb, var(--c) 16%, var(--panel)); border-color: var(--c); }
 .pv-funcion:active:not(:disabled) { transform: translateY(1px); }
