@@ -94,7 +94,8 @@ jobs:
           gh release upload ultima paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
           # Quitar los archivos de versiones anteriores: el portal solo debe ver la última
           VERSION=$(node -p "require('./package.json').version")
-          gh release view ultima --json assets -q '.assets[].name' | grep -v -F "$VERSION" | while read -r a; do gh release delete-asset ultima "$a" -y || true; done
+          # grep devuelve 1 cuando no queda nada que borrar: no es un error
+          gh release view ultima --json assets -q '.assets[].name' | { grep -v -F "$VERSION" || true; } | while read -r a; do gh release delete-asset ultima "$a" -y || true; done
       - name: Publicar versión numerada
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
