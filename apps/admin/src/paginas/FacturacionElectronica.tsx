@@ -53,14 +53,14 @@ function Planes({ planes, recargar }: { planes: PlanEcf[]; recargar: () => void 
         <h3 style={{ margin: 0 }}>Rangos de facturación electrónica</h3><span className="flex" />
         <button className="boton" onClick={agregar}>Agregar rango</button>
       </div>
-      <p className="suave pequeno" style={{ marginTop: 4 }}>Costo = lo que te cobra el proveedor por mes. Precio = lo que cobras al cliente por mes. Ambos en dólares.</p>
+      <p className="suave pequeno" style={{ marginTop: 4 }}>Costo = lo que te cobra el proveedor por mes (lo pagas por año adelantado). Incluido en el plan = la parte del plan del cliente que cubre este e-CF; el plan debe ser como mínimo ese valor. Ambos en dólares.</p>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <Tabla filas={filas} clave={(f) => f.id} columnas={[
         { titulo: "Nombre", valor: (f) => <input style={{ width: 150 }} value={f.nombre} onChange={(e) => cambiar(f.id, { nombre: e.target.value })} /> },
         { titulo: "Comprobantes/mes", valor: (f) => campo(f, "maxMes") },
         { titulo: "Costo US$/mes", valor: (f) => campo(f, "costoUsd") },
-        { titulo: "Precio US$/mes", valor: (f) => campo(f, "precioUsd") },
-        { titulo: "Margen", valor: (f) => <b>{usd(f.precioUsd - f.costoUsd)}</b>, der: true },
+        { titulo: "Incluido en el plan US$/mes", valor: (f) => campo(f, "precioUsd") },
+        { titulo: "Sobre el costo", valor: (f) => <b>{usd(f.precioUsd - f.costoUsd)}</b>, der: true },
         { titulo: "Clientes", valor: (f) => f.clientes, der: true },
         { titulo: "Orden", valor: (f) => campo(f, "orden", 60) },
         { titulo: "Activo", valor: (f) => <input type="checkbox" checked={f.activo} onChange={(e) => cambiar(f.id, { activo: e.target.checked })} /> },
@@ -95,16 +95,16 @@ export function FacturacionElectronica() {
 
   return (
     <>
-      <Encabezado titulo="Facturación electrónica" descripcion="Complemento por cliente: rango de comprobantes al mes, lo que cuesta, lo que se cobra y cuánto usa cada uno. El cliente no configura nada; el sistema de cada cliente reporta su conteo solo.">
+      <Encabezado titulo="Facturación electrónica" descripcion="La facturación electrónica va incluida en el plan mensual o anual del cliente. Aquí defines su rango de comprobantes al mes, lo que te cuesta, qué parte del plan la cubre y cuánto usa. El cliente no configura nada; su sistema reporta el conteo solo.">
         <button className="boton" onClick={recargar}>Actualizar</button>
       </Encabezado>
       <Aviso texto={resumen.error || planes.error} />
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       {t && (
         <div className="tres-col" style={{ marginBottom: 12 }}>
-          <Kpi titulo="Ingreso al mes" valor={usd(t.ingresoUsd)} detalle={`${t.conPlan} cliente(s) con plan${dop(t.ingresoUsd)}`} />
-          <Kpi titulo="Costo del proveedor" valor={usd(t.costoUsd)} detalle={dop(t.costoUsd).replace(/^ · /, "") || undefined} />
-          <Kpi titulo="Margen" valor={usd(t.margenUsd)} tono={t.margenUsd >= 0 ? "ok" : "alerta"} detalle={dop(t.margenUsd).replace(/^ · /, "") || undefined} />
+          <Kpi titulo="Cubierto por los planes (mes)" valor={usd(t.ingresoUsd)} detalle={`${t.conPlan} cliente(s) · ${usd(t.ingresoUsd * 12)} al año${dop(t.ingresoUsd)}`} />
+          <Kpi titulo="Costo del proveedor (mes)" valor={usd(t.costoUsd)} detalle={`${usd(t.costoUsd * 12)} al año${dop(t.costoUsd)}`} />
+          <Kpi titulo="Margen sobre el costo (mes)" valor={usd(t.margenUsd)} tono={t.margenUsd >= 0 ? "ok" : "alerta"} detalle={`${usd(t.margenUsd * 12)} al año${dop(t.margenUsd)}`} />
         </div>
       )}
       {t && (t.excedidos > 0 || t.cerca > 0 || t.sinPlan > 0) && (
@@ -124,7 +124,7 @@ export function FacturacionElectronica() {
               <option value="">Sin facturación electrónica</option>
               {(planes.datos ?? []).filter((p) => p.activo || p.id === c.planId).map((p) => <option key={p.id} value={p.id}>{p.nombre} · {usd(p.precioUsd)}</option>)}
             </select>) },
-          { titulo: "Precio especial", valor: (c) => c.planId ? (
+          { titulo: "Incluido (especial)", valor: (c) => c.planId ? (
             <input type="number" min={0} step={0.01} style={{ width: 90 }} placeholder="del rango" defaultValue={c.precioEspecial ?? ""}
               onBlur={(e) => { const v = e.target.value.trim() === "" ? null : Number(e.target.value); if (v !== c.precioEspecial) asignar(c, c.planId, v); }} />) : "—" },
           { titulo: "Este mes", valor: (c) => c.maxMes ? `${num(c.actual)} de ${num(c.maxMes)} (${c.pct}%)` : num(c.actual), der: true },
@@ -135,7 +135,7 @@ export function FacturacionElectronica() {
               {c.sugerido && <div className="suave pequeno">{c.dosMesesExcedido ? "Dos meses seguidos pasado. " : ""}Sugerido: {c.sugerido.nombre}{" "}
                 <button className="boton" onClick={() => asignar(c, c.sugerido!.id, null)}>Pasar</button></div>}
             </>) },
-          { titulo: "Margen", valor: (c) => c.planId ? usd(c.margenUsd) : "—", der: true },
+          { titulo: "Sobre el costo", valor: (c) => c.planId ? usd(c.margenUsd) : "—", der: true },
         ]} />
         <p className="suave pequeno" style={{ marginBottom: 0 }}>El conteo se actualiza cuando el sistema del cliente renueva su licencia (cada vez que se conecta al portal). Cuenta los e-CF enviados o aceptados, no los rechazados.</p>
       </div>
@@ -144,7 +144,7 @@ export function FacturacionElectronica() {
 
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Tasa del dólar</h3>
-        <p className="suave pequeno">Solo sirve para mostrar el ingreso, el costo y el margen también en pesos.</p>
+        <p className="suave pequeno">Solo sirve para mostrar los valores también en pesos.</p>
         <div className="fila-acciones" style={{ marginTop: 0 }}>
           <label className="campo" style={{ maxWidth: 200, margin: 0 }}><span>RD$ por US$ 1</span><input type="number" min={0} step={0.01} value={tasa} onChange={(e) => setTasa(e.target.value)} /></label>
           <button className="boton" onClick={guardarTasa}>Guardar tasa</button>
