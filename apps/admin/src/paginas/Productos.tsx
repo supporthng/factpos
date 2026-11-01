@@ -379,8 +379,6 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
               <label className="campo"><span>Máximo</span><input className="numero" inputMode="decimal" value={f.precioVariableMax ?? ""} onChange={(e) => cambiar({ precioVariableMax: e.target.value.replace(/[^\d.]/g, "") })} /></label>
             </div>
           )}
-          {f.tipo !== "SERVICIO" && (
-          )}
           {f.tipo === "INVENTARIABLE" && (
             <Regla v={f.controlaLotes} on={(v) => cambiar({ controlaLotes: v })} t="Controla lotes y vencimiento" d="Lácteos, embutidos, medicinas." />
           )}
