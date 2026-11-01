@@ -53,9 +53,12 @@ jobs:
         # version.txt guarda "<versión inicial> <número de ejecución de esa publicación>" (p. ej. "2.1 113"); para saltar
         # a otra versión se cambian esos dos números. Internamente se escribe 2.1.0 (el instalador exige tres números).
         run: |
-          read base corrida < version.txt
+          # En Windows el archivo puede traer fin de línea CRLF: se quita para que la cuenta no falle
+          read -r base corrida < <(tr -d '\r' < version.txt)
           k=$(( ${base%%.*} * 10 + ${base##*.} + GITHUB_RUN_NUMBER - corrida ))
+          if [ "$k" -lt 1 ]; then echo "Versión calculada no válida ($k): revise version.txt"; exit 1; fi
           npm pkg set version="$(( k / 10 )).$(( k % 10 )).0"
+          node -p "'Versión: ' + require('./package.json').version"
       - run: npm run build
       - run: npm test
       - name: Compilar Electron
