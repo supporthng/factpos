@@ -293,6 +293,8 @@ function CertificadoDigital() {
 
   const subir = async () => {
     if (!archivo) return;
+    if (!/\.(p12|pfx)$/i.test(archivo.name)) { setMsg({ t: "El archivo debe ser el certificado con extensión .p12 o .pfx (un .cer o .crt no sirve: no trae la llave).", tipo: "error" }); return; }
+    if (!clave) { setMsg({ t: "Escriba la contraseña del certificado.", tipo: "error" }); return; }
     setEnviando(true); setMsg(null);
     try {
       const base64 = await new Promise<string>((ok, mal) => {
@@ -302,7 +304,7 @@ function CertificadoDigital() {
         r.readAsDataURL(archivo);
       });
       const r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave } });
-      setMsg({ t: `Certificado de ${r.titular} guardado. Las sucursales activadas lo cargan solas en su próxima sincronización; active abajo las que deben usarlo.`, tipo: "ok" });
+      setMsg({ t: `Certificado de ${r.titular} guardado. Quedó activo en todas las sucursales y lo cargan solas en su próxima sincronización.`, tipo: "ok" });
       setArchivo(null); setClave(""); setReemplazar(false);
       recargar();
     } catch (e) {
