@@ -167,7 +167,12 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     });
     // Referencia de compras anteriores (para comparar el costo), sin frenar la pantalla
     setTimeout(() => nuevas.forEach(async (l) => {
-      try { const ref = await api<Referencia>(`/central/ofertas/referencia/${l.presentacionId}`); setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, ref } : x))); } catch { /* sin referencia */ }
+      try { const ref = await api<Referencia>(`/central/ofertas/referencia/${l.presentacionId}`); setLineas((ls) => ls.map((x) => {
+        if (x.clave !== l.clave) return x;
+        // Si la factura no trajo costo, se propone el de la última compra o el registrado en el sistema
+        const porUnidad = n(ref.ultimaCompraNormal?.costoUnidad) || n(ref.ultimaCompraOferta?.costoRegularUnidad) || n(ref.ultimaCompraOferta?.costoUnidad) || n(ref.costoPromedioUnidad);
+        return { ...x, ref, costo: n(x.costo) > 0 ? x.costo : porUnidad > 0 ? (porUnidad * n(x.factor)).toFixed(2) : x.costo };
+      })); } catch { /* sin referencia */ }
     }), 0);
   };
 
@@ -208,7 +213,9 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     try {
       const ref = await api<Referencia>(`/central/ofertas/referencia/${presentacionId}`);
       // Se propone el último costo normal (por presentación) como punto de partida
-      const ultimo = ref.ultimaCompraNormal ? (n(ref.ultimaCompraNormal.costoUnidad) * n(pr.factor)).toFixed(2) : "";
+      // Última compra a precio normal; si no hay, el costo normal de la última en oferta; si tampoco, el costo registrado en el sistema (promedio)
+      const porUnidad = n(ref.ultimaCompraNormal?.costoUnidad) || n(ref.ultimaCompraOferta?.costoRegularUnidad) || n(ref.ultimaCompraOferta?.costoUnidad) || n(ref.costoPromedioUnidad);
+      const ultimo = porUnidad > 0 ? (porUnidad * n(pr.factor)).toFixed(2) : "";
       setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, ref, costo: l.costo || ultimo } : l)));
     } catch { /* sin referencia: se escribe el costo a mano */ }
   };
