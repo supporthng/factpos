@@ -28,7 +28,7 @@ export function PantallaCliente() {
   useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => {
     if (!marca) return;
-    for (const [k, v] of Object.entries(temaTerminal({ logo: marca.logo, primario: marca.primario, secundario: marca.secundario, logoEnTicket: true }, "oscuro"))) document.documentElement.style.setProperty(k, v);
+    for (const [k, v] of Object.entries(temaTerminal({ primario: marca.primario, secundario: marca.secundario }, "oscuro"))) document.documentElement.style.setProperty(k, v);
   }, [marca]);
 
   const dia = hoy();   // cambia al pasar la medianoche, para que venzan las ofertas
