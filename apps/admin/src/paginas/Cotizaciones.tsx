@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, puede, rd, num, hoy } from "../api";
-import { Aviso, Encabezado, SelectorProducto, useCatalogo, useDatos } from "../ui";
+import { Aviso, Encabezado, SelectorProducto, SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
 /**
  * Cotizaciones: se preparan con los precios del nivel del cliente, se envían por correo
@@ -12,7 +12,7 @@ interface LineaC { presentacionId: string | null; descripcion: string; cantidad:
 interface Detalle {
   id: string; numero: number; clienteId: string | null; clienteNombre: string; clienteDocumento: string | null; clienteCorreo: string | null; clienteTelefono: string | null;
   fecha: string; vence: string; estado: Estado; notas: string | null; condiciones: string | null; subtotal: number; descuento: number; itbis: number; total: number;
-  enviadaEn: string | null; enviadaA: string[] | null; lineas: LineaC[];
+  enviadaEn: string | null; enviadaA: string[] | null; pedidoId: string | null; pedidoNumero: string | null; lineas: LineaC[];
 }
 interface ClienteB { id: string; nombre: string; documento: string | null; correo: string | null; telefono: string | null; nivel: number | null }
 
@@ -79,6 +79,8 @@ function Editor({ id, onCerrar }: { id: string | null; onCerrar: () => void }) {
   const [msg, setMsg] = useState("");
   const [ok, setOk] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [aPedido, setAPedido] = useState<{ sucursalId: string } | null>(null);
+  const { sucursales } = useCatalogo();
   const [correo, setCorreo] = useState<{ para: string; mensaje: string } | null>(null);
   const bloqueada = estado === "ACEPTADA" || !edita;
 
@@ -150,6 +152,17 @@ function Editor({ id, onCerrar }: { id: string | null; onCerrar: () => void }) {
       if (!(await guardar())) return;
       await api(`/central/cotizaciones/${id}/enviar`, { cuerpo: { para: correo.para.split(/[,;\s]+/).filter(Boolean), mensaje: correo.mensaje || undefined } });
       setCorreo(null); setOk("Cotización enviada."); det.recargar();
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  const convertir = async () => {
+    if (!id || !aPedido) return;
+    setMsg("");
+    try {
+      if (!(await guardar())) return;
+      const r = await api<{ numero: string; lineasSinProducto: number }>(`/central/cotizaciones/${id}/pedido`, { cuerpo: { sucursalId: aPedido.sucursalId } });
+      setAPedido(null);
+      setOk(`Pedido ${r.numero} creado. Ya aparece en Pedidos de clientes para alistarlo y facturarlo desde la caja.${r.lineasSinProducto ? ` ${r.lineasSinProducto} línea(s) sin producto del inventario no se incluyeron.` : ""}`);
+      det.recargar();
     } catch (e) { setMsg((e as Error).message); }
   };
   const cambiarEstado = async (e: Estado) => { try { await api(`/central/cotizaciones/${id}/estado`, { metodo: "PUT", cuerpo: { estado: e } }); det.recargar(); } catch (x) { setMsg((x as Error).message); } };
@@ -246,10 +259,25 @@ ${cab.notas ? `<p><b>Notas:</b> ${esc(cab.notas)}</p>` : ""}<p class="s">${esc(c
           {estado !== "ACEPTADA" && <button className="boton" onClick={() => cambiarEstado("ACEPTADA")}>Marcar aceptada</button>}
           {estado !== "RECHAZADA" && estado !== "ACEPTADA" && <button className="boton" onClick={() => cambiarEstado("RECHAZADA")}>Marcar rechazada</button>}
           {(estado === "RECHAZADA" || estado === "ACEPTADA") && <button className="boton" onClick={() => cambiarEstado("BORRADOR")}>Reabrir como borrador</button>}
+          {!det.datos?.pedidoId && estado !== "RECHAZADA" && <button className="boton primario" onClick={() => setAPedido({ sucursalId: sucursales[0]?.id ?? "" })}>Convertir en pedido</button>}
+          {det.datos?.pedidoId && <span className="suave">Convertida en el pedido <b>{det.datos.pedidoNumero}</b> · <a href="#pedidos">ver pedidos</a></span>}
           {estado === "BORRADOR" && <button className="enlace texto-alerta" onClick={async () => { if (confirm("¿Borrar este borrador?")) { await api(`/central/cotizaciones/${id}`, { metodo: "DELETE" }); onCerrar(); } }}>Borrar borrador</button>}
         </div>
       )}
 
+      {aPedido && (
+        <div className="fondo-modal" onClick={() => setAPedido(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Convertir en pedido de cliente</h3>
+            <p className="suave">Se crea el pedido con los productos y cantidades de esta cotización y se marca como aceptada. Los precios se cobran al facturar en la caja, con los precios de ese momento.</p>
+            <label className="campo"><span>Sucursal que lo prepara</span><SelectorSucursal valor={aPedido.sucursalId} onCambio={(v) => setAPedido({ sucursalId: v })} todas={false} /></label>
+            <div className="acciones-modal">
+              <button className="boton" onClick={() => setAPedido(null)}>Cancelar</button>
+              <button className="boton primario" disabled={!aPedido.sucursalId} onClick={convertir}>Crear pedido</button>
+            </div>
+          </div>
+        </div>
+      )}
       {correo && (
         <div className="fondo-modal" onClick={() => setCorreo(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

@@ -56,8 +56,9 @@ export async function rutasCentralCotizaciones(app: FastifyInstance) {
       `SELECT c.id, c.numero, c.cliente_id AS "clienteId", c.cliente_nombre AS "clienteNombre", c.cliente_documento AS "clienteDocumento",
               c.cliente_correo AS "clienteCorreo", c.cliente_telefono AS "clienteTelefono", to_char(c.fecha,'YYYY-MM-DD') AS fecha, to_char(c.vence,'YYYY-MM-DD') AS vence,
               c.estado, c.notas, c.condiciones, c.subtotal::float, c.descuento::float, c.itbis::float, c.total::float,
-              c.creado_en AS "creadoEn", c.enviada_en AS "enviadaEn", c.enviada_a AS "enviadaA", u.nombre AS "creadoPor"
-         FROM cotizaciones c LEFT JOIN usuarios u ON u.id = c.creado_por WHERE c.empresa_id = $1 AND c.id = $2`, [empresaId, id])).rows[0];
+              c.creado_en AS "creadoEn", c.enviada_en AS "enviadaEn", c.enviada_a AS "enviadaA", u.nombre AS "creadoPor",
+              c.pedido_id AS "pedidoId", 'PM-' || lpad(pc.numero::text, 5, '0') AS "pedidoNumero"
+         FROM cotizaciones c LEFT JOIN usuarios u ON u.id = c.creado_por LEFT JOIN pedidos_clientes pc ON pc.id = c.pedido_id WHERE c.empresa_id = $1 AND c.id = $2`, [empresaId, id])).rows[0];
     if (!c) throw new ErrorNegocio("No existe esa cotización", 404);
     c.lineas = (await pool.query(
       `SELECT presentacion_id AS "presentacionId", descripcion, cantidad::float, precio::float, incluye_itbis AS "incluyeItbis", tasa_itbis::float AS "tasaItbis",
@@ -177,5 +178,44 @@ export async function rutasCentralCotizaciones(app: FastifyInstance) {
               cliente_correo = COALESCE(cliente_correo, $4), actualizado_en = now() WHERE id = $1 AND empresa_id = $2`,
       [id, empresaId, b.para, b.para[0]]);
     return { ok: true };
+  });
+
+  /** Convierte la cotización en un pedido de cliente (se alista y se factura desde la caja con los precios de ese momento) */
+  app.post("/central/cotizaciones/:id/pedido", async (req) => {
+    const id = uuid.parse((req.params as { id: string }).id);
+    const empresaId = empresaDe(req);
+    const b = z.object({ sucursalId: uuid, cajaId: uuid.nullable().optional() }).parse(req.body);
+    const usuario = usuarioDe(req);
+    if (!usuario) throw new ErrorNegocio("Falta el usuario");
+    const cot = await cargar(empresaId, id);
+    if (cot.pedidoId) throw new ErrorNegocio(`Esta cotización ya se convirtió en el pedido ${cot.pedidoNumero}`, 409);
+    if (cot.estado === "RECHAZADA") throw new ErrorNegocio("Una cotización rechazada no se convierte en pedido. Reábrala primero.");
+    const juntas = new Map<string, number>();
+    let sinProducto = 0;
+    for (const l of cot.lineas as { presentacionId: string | null; cantidad: number }[]) {
+      if (!l.presentacionId) { sinProducto++; continue; }
+      juntas.set(l.presentacionId, (juntas.get(l.presentacionId) ?? 0) + l.cantidad);
+    }
+    if (!juntas.size) throw new ErrorNegocio("La cotización no tiene productos del inventario para convertir");
+    const s = await pool.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2 AND activo", [b.sucursalId, empresaId]);
+    if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    if (b.cajaId) {
+      const c = await pool.query("SELECT 1 FROM cajas WHERE id = $1 AND sucursal_id = $2 AND activo", [b.cajaId, b.sucursalId]);
+      if (!c.rowCount) throw new ErrorNegocio("Esa caja no es de la sucursal elegida");
+    }
+    const pedidoId = uuidv7();
+    const numero = await enTransaccion(async (c) => {
+      await c.query(
+        `INSERT INTO pedidos_clientes (id, empresa_id, sucursal_id, caja_id, cliente_id, cliente_nombre, telefono, nota, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [pedidoId, empresaId, b.sucursalId, b.cajaId ?? null, cot.clienteId, cot.clienteNombre, cot.clienteTelefono, `Cotización COT-${String(cot.numero).padStart(4, "0")}`, usuario]);
+      let orden = 0;
+      for (const [presentacionId, cantidad] of juntas) {
+        await c.query("INSERT INTO pedidos_clientes_items (id, pedido_id, presentacion_id, cantidad, orden) VALUES ($1,$2,$3,$4,$5)", [uuidv7(), pedidoId, presentacionId, Math.round(cantidad * 1000) / 1000, orden++]);
+      }
+      await c.query("UPDATE cotizaciones SET pedido_id = $3, estado = 'ACEPTADA', actualizado_en = now() WHERE id = $1 AND empresa_id = $2", [id, empresaId, pedidoId]);
+      return (await c.query<{ numero: string }>("SELECT 'PM-' || lpad(numero::text, 5, '0') AS numero FROM pedidos_clientes WHERE id = $1", [pedidoId])).rows[0]!.numero;
+    });
+    return { ok: true, pedidoId, numero, lineasSinProducto: sinProducto };
   });
 }
