@@ -123,18 +123,19 @@ export function Vacio({ texto }: { texto: string }) {
 }
 
 /** Tabla genérica a partir de filas y columnas. */
-export interface Columna<T> { titulo: string; valor: (f: T) => React.ReactNode; der?: boolean; ancho?: string }
-export function Tabla<T>({ filas, columnas, clave, vacio = "Sin datos" }: { filas: T[]; columnas: Columna<T>[]; clave: (f: T, i: number) => string; vacio?: string }) {
+export interface Columna<T> { titulo: string; valor: (f: T) => React.ReactNode; der?: boolean; ancho?: string; /** En el celular (modo tarjetas) no se muestra */ ocultoMovil?: boolean }
+/** `tarjetas`: en el celular cada fila se vuelve una tarjeta (primera columna arriba, las demás en cuadrícula) y no hay que desplazarse de lado. */
+export function Tabla<T>({ filas, columnas, clave, vacio = "Sin datos", tarjetas = false }: { filas: T[]; columnas: Columna<T>[]; clave: (f: T, i: number) => string; vacio?: string; tarjetas?: boolean }) {
   if (!filas.length) return <Vacio texto={vacio} />;
   return (
     <div className="tabla-contenedor">
-      <table className="tabla">
+      <table className={"tabla" + (tarjetas ? " tabla-tarjetas" : "")}>
         <thead>
-          <tr>{columnas.map((c) => <th key={c.titulo} className={c.der ? "der" : ""} style={c.ancho ? { width: c.ancho } : undefined}>{c.titulo}</th>)}</tr>
+          <tr>{columnas.map((c) => <th key={c.titulo} className={(c.der ? "der" : "") + (c.ocultoMovil ? " oculto-movil" : "")} style={c.ancho ? { width: c.ancho } : undefined}>{c.titulo}</th>)}</tr>
         </thead>
         <tbody>
           {filas.map((f, i) => (
-            <tr key={clave(f, i)}>{columnas.map((c) => <td key={c.titulo} className={c.der ? "der" : ""}>{c.valor(f)}</td>)}</tr>
+            <tr key={clave(f, i)}>{columnas.map((c) => <td key={c.titulo} data-etiqueta={c.titulo} className={(c.der ? "der" : "") + (c.ocultoMovil ? " oculto-movil" : "")}>{c.valor(f)}</td>)}</tr>
           ))}
         </tbody>
       </table>

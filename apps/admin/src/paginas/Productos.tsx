@@ -149,6 +149,7 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
       {creado && <Aviso texto={`Producto “${creado}” creado. Las terminales lo reciben en la próxima sincronización.`} tipo="ok" />}
       {datos && (
         <Tabla
+          tarjetas
           filas={datos}
           clave={(f) => f.id}
           vacio={buscar ? `Ningún producto coincide con “${buscar}”.` : "Todavía no hay productos. Cree el primero con “Nuevo producto”."}
@@ -159,11 +160,11 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
                 <span><b>{f.nombre}</b><small className="suave">{[f.sku, f.marca, f.categoria].filter(Boolean).join("  ·  ")}</small></span>
               </button>
             ) },
-            { titulo: "Tipo", valor: (f) => <span className={"pastilla t-" + f.tipo.toLowerCase()}>{TIPOS.find((t) => t.v === f.tipo)?.t}</span> },
-            { titulo: "Precio detalle", der: true, valor: (f) => (f.precio ? rd(f.precio) : <span className="texto-alerta">Sin precio</span>) },
+            { titulo: "Tipo", ocultoMovil: true, valor: (f) => <span className={"pastilla t-" + f.tipo.toLowerCase()}>{TIPOS.find((t) => t.v === f.tipo)?.t}</span> },
+            { titulo: "Venta", der: true, valor: (f) => (f.precio ? rd(f.precio) : <span className="texto-alerta">Sin precio</span>) },
             { titulo: "Costo", der: true, valor: (f) => rd(f.costo) },
-            { titulo: "Existencia total", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
-            { titulo: "Estado", valor: (f) => (f.activo ? <span className="texto-ok">Activo</span> : <span className="suave">Inactivo</span>) },
+            { titulo: "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
+            { titulo: "Estado", ocultoMovil: true, valor: (f) => (f.activo ? <span className="texto-ok">Activo</span> : <span className="suave">Inactivo</span>) },
           ]}
         />
       )}
