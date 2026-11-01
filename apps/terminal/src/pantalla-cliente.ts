@@ -7,7 +7,7 @@ export interface OfertaPantalla { id: string; titulo: string; texto: string; pre
 export interface ConfigPantalla { activa: boolean; bienvenida: string; segundos: number; ofertas: OfertaPantalla[] }
 export interface DatosMarca { empresa: string; logo: string | null; primario: string; secundario: string | null; pantalla: Partial<ConfigPantalla> }
 export interface LineaPantalla { nombre: string; cantidad: string; precio: string; total: string; descuento: string }
-export interface Carrito { fase: "venta" | "cobro"; /** Solo con comprobante fiscal (a nombre del cliente); si no, nunca se muestra */ cliente?: string | null; lineas: LineaPantalla[]; subtotal: string; descuento: string; itbis: string; total: string }
+export interface Carrito { fase: "venta" | "cobro"; /** Solo con comprobante fiscal (a nombre del cliente); si no, nunca se muestra */ cliente?: { nombre: string; documento: string | null } | null; lineas: LineaPantalla[]; subtotal: string; descuento: string; itbis: string; total: string }
 export interface Gracias { total: string; cambio: string; en: number }
 
 const CANAL = "factpos-pantalla-cliente";
