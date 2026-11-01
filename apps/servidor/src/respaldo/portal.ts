@@ -13,14 +13,20 @@ import { destinoDeEntorno, presignar } from "./s3.js";
 const MAX_GB = () => Number(process.env.RESPALDO_MAX_GB ?? 2);
 const credenciales = z.object({ licenciaId: z.string().uuid(), instalacionId: z.string().uuid(), secreto: z.string().min(20).max(80) });
 
-async function autorizar(cuerpo: unknown) {
+/** Valida que la petición venga de la instalación activada de una licencia vigente. */
+export async function autorizarLicencia(cuerpo: unknown) {
   const b = credenciales.parse(cuerpo);
-  const l = (await pool.query<{ id: string; instalacion_id: string | null; secreto_hash: string | null; estado: string; cliente_activo: boolean; slug: string; extra_gb: number }>(
-    `SELECT l.id, l.instalacion_id, l.secreto_hash, l.estado, l.respaldo_extra_gb AS extra_gb, c.activo AS cliente_activo, c.slug
+  const l = (await pool.query<{ id: string; instalacion_id: string | null; secreto_hash: string | null; estado: string; cliente_activo: boolean; slug: string; extra_gb: number; lector_cupo: number }>(
+    `SELECT l.id, l.instalacion_id, l.secreto_hash, l.estado, l.respaldo_extra_gb AS extra_gb, l.lector_cupo, c.activo AS cliente_activo, c.slug
        FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id WHERE l.id = $1`, [b.licenciaId])).rows[0];
   if (!l || l.instalacion_id !== b.instalacionId || !igual(l.secreto_hash, huella(b.secreto)))
     throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia.", 401);
   if (l.estado !== "ACTIVA" || !l.cliente_activo) throw new ErrorNegocio("Esta licencia está suspendida. Comuníquese con su proveedor.", 403);
+  return l;
+}
+
+async function autorizar(cuerpo: unknown) {
+  const l = await autorizarLicencia(cuerpo);
   const destino = destinoDeEntorno();
   if (!destino) throw new ErrorNegocio("La copia en la nube todavía no está disponible. Su proveedor la activará pronto.", 503);
   return { l, destino };

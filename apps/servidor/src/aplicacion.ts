@@ -5,6 +5,8 @@ import { rutasCentralCorreo } from "./rutas/central-correo.js";
 import { rutasCentralAlta } from "./rutas/central-alta.js";
 import { rutasPortal } from "./licencia/portal.js";
 import { rutasPortalRespaldo } from "./respaldo/portal.js";
+import { rutasPortalLector } from "./lector/portal.js";
+import { rutasLectorFacturas } from "./lector/central.js";
 import { rutasRespaldos, rutasRestaurarRespaldo } from "./respaldo/respaldo.js";
 import { rutasInicio } from "./rutas/inicio.js";
 import { rutasLicenciaCentral, rutasLicenciaSucursal } from "./licencia/cliente.js";
@@ -206,6 +208,7 @@ export async function crearApp() {
     await app.register(rutasSesionCentral);
     await app.register(rutasPortal);
     await app.register(rutasPortalRespaldo);
+    await app.register(rutasPortalLector);
     return app;
   }
 
@@ -239,6 +242,7 @@ export async function crearApp() {
     await app.register(rutasCentralOrganizacion);
     await app.register(rutasCentralProductos);
     await app.register(rutasCentralCompras);
+    await app.register(rutasLectorFacturas);
     if (config.modo === "central") await app.register(rutasCentralSync);
     await app.register(rutasCentralTraspasos);
     await app.register(rutasCentralCxc);

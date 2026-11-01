@@ -94,7 +94,7 @@ async function usoEcf() {
   } catch { return undefined; }
 }
 
-export async function llamarPortal<T>(ruta: string, cuerpo: unknown): Promise<T> {
+export async function llamarPortal<T>(ruta: string, cuerpo: unknown, tiempoMs = 20_000): Promise<T> {
   let r: Response;
   if (ruta === "/licencias/renovar" || ruta === "/licencias/activar") {
     const ecf = await usoEcf();
@@ -102,7 +102,7 @@ export async function llamarPortal<T>(ruta: string, cuerpo: unknown): Promise<T>
   }
   try {
     r = await fetch(`${PORTAL_URL()}${ruta}`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo), signal: AbortSignal.timeout(20_000),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo), signal: AbortSignal.timeout(tiempoMs),
     });
   } catch {
     throw new ErrorNegocio("No hay conexión con el portal de licencias de FactPOS. Revise el internet e intente de nuevo.", 502);
