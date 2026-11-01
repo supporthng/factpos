@@ -29,7 +29,7 @@ const ProductoSchema = z
     precioIncluyeItbis: z.boolean().default(true),
     esPesable: z.boolean().default(false),
     costoReferencia: montoCosto.default("0"),
-    permiteSinExistencia: z.boolean().default(true),
+    permiteSinExistencia: z.boolean().default(false),
     precioVariable: z.boolean().default(false),
     precioVariableMin: monto.nullable().default(null),
     precioVariableMax: monto.nullable().default(null),
