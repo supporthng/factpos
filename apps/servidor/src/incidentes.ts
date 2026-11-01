@@ -221,7 +221,7 @@ export async function iniciarLatido(log: (m: string) => void) {
     if (previo && Date.now() - new Date(previo.ultimo).getTime() > 3 * 60_000) {
       const s = (await pool.query<{ id: string; empresa_id: string; nombre: string }>(
         "SELECT id, empresa_id, nombre FROM sucursales WHERE id = $1",
-        [process.env.SUCURSAL_ID ?? null],
+        [process.env.SUCURSAL_ID || null],
       )).rows[0];
       await registrarIncidente(pool, {
         empresa_id: s?.empresa_id ?? null, sucursal_id: s?.id ?? null, caja_id: null, tipo: "SERVIDOR_APAGADO", gravedad: "MEDIA",
