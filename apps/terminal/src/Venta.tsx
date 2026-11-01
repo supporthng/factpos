@@ -193,6 +193,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     const r = cot.r;
     publicarCarrito({
       fase: modal === "cobro" ? "cobro" : "venta",
+      cliente: requiereDocumento(tipoComp) && cliente ? cliente.nombre : null,
       lineas: r ? lineas.map((l, i) => {
         const c = r.lineas[i]!.calc;
         const cant = Number(l.cantidad) || 1;
@@ -200,7 +201,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       }) : [],
       subtotal: r?.totales.subtotal ?? "0", descuento: r?.totales.descuento ?? "0", itbis: r?.totales.itbis ?? "0", total: r?.totales.total ?? "0",
     });
-  }, [cot.r, lineas, modal]);
+  }, [cot.r, lineas, modal, tipoComp, cliente]);
   const primeraUltima = useRef(true);
   useEffect(() => {
     if (primeraUltima.current) { primeraUltima.current = false; return; }   // la última venta que se carga al abrir no es un «gracias»

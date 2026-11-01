@@ -727,3 +727,4 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pc-puntos i.on { background: var(--acento-marca, #2dd4bf); }
 @keyframes pc-entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (max-width: 800px) { .pc-venta { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; } .pc-oferta { flex-direction: column; } .pc-oferta-img { width: 100%; height: 45%; } }
+.pc-cliente { margin-left: auto; font-size: .8em; opacity: .85; }
