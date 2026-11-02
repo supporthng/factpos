@@ -57,7 +57,8 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
   };
 
   const filas = () => datos.map((r, i) => {
-    const cant = mapa.cantidad != null ? aNumero(r[mapa.cantidad] ?? "") : null;
+    // Una cantidad vacía o 0 también cuenta: el producto queda (o se crea) con existencia 0
+    const cant = mapa.cantidad != null ? (aNumero(r[mapa.cantidad] ?? "") ?? 0) : null;
     return { fila: i + 2, sku: mapa.sku != null ? (r[mapa.sku] ?? "").trim() || undefined : undefined, codigo: mapa.codigo != null ? (r[mapa.codigo] ?? "").trim() || undefined : undefined,
       cantidad: cant, costo: mapa.costo != null ? aNumero(r[mapa.costo] ?? "") ?? undefined : undefined,
       precio: mapa.precio != null ? aNumero(r[mapa.precio] ?? "") ?? undefined : undefined };
