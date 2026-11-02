@@ -186,7 +186,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
   const avisar = (texto: string, tipo: "error" | "ok" = "error") => {
     setAviso({ texto, tipo });
-    setTimeout(() => setAviso((a) => (a?.texto === texto ? null : a)), 3500);
+    setTimeout(() => setAviso((a) => (a?.texto === texto ? null : a)), 5000);
   };
 
   // Pantalla del cliente (segunda ventana): marca y ofertas, carrito en vivo y el «gracias» al terminar
