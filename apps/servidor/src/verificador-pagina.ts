@@ -69,7 +69,8 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .s-nombre { font-size:clamp(34px,6.4vw,84px); font-weight:800; line-height:1; letter-spacing:-.025em; }
   .slide .t { display:inline-block; background:var(--tinta); color:var(--hondo); border-radius:999px; padding:.3em 1em; font-weight:700; font-size:clamp(16px,2.4vw,30px); }
   .ahorra { color:var(--destello); font-weight:800; font-size:clamp(20px,3.2vw,40px); }
-  .s-prods { color:var(--tinta-suave); font-size:clamp(14px,1.9vw,22px); max-width:34em; }
+  .s-prods { color:var(--tinta); font-weight:800; font-size:clamp(18px,2.6vw,32px); line-height:1.15; max-width:26em; text-wrap:balance; }
+  .s-prods small { display:block; margin-top:4px; font-weight:500; font-size:.6em; color:var(--tinta-suave); }
   .s-fin { font-weight:600; font-size:clamp(14px,1.8vw,20px); }
   .s-ver { color:var(--tinta-suave); font-size:clamp(12px,1.5vw,17px); }
   .flecha { position:absolute; top:50%; transform:translateY(-50%); width:48px; height:48px; border-radius:50%; border:1px solid var(--borde); background:rgba(0,0,0,.28); font-size:28px; line-height:1; cursor:pointer; z-index:2; padding:0 0 4px; }
@@ -251,7 +252,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       (imgs.length ? '<div class="fotos">' + imgs.map((p) => '<img src="' + esc(p.imagen) + '" alt="">').join("") + '</div>' : "") +
       '<div class="s-nombre">' + esc(o.nombre) + '</div><span class="t">' + esc(o.texto) + '</span>' +
       (a > 0 ? '<div class="ahorra">Ahorra hasta ' + rd(a) + '</div>' : "") +
-      '<div class="s-prods">' + esc(o.productos.slice(0, 3).map((p) => p.nombre).join(" · ")) + (o.productos.length > 3 ? " y " + (o.productos.length - 3) + " más" : "") + '</div>' +
+      '<div class="s-prods">' + esc(o.productos.slice(0, 3).map((p) => p.nombre).join(" · ")) + (o.productos.length > 3 ? '<small>y ' + (o.productos.length - 3) + ' más</small>' : "") + '</div>' +
       '<div class="s-fin">' + esc(finDe(o)) + '</div><div class="s-ver">Toca para ver los productos</div></div>';
   }
   function mostrarSlide(n) {
