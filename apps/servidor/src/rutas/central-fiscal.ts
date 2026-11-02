@@ -314,7 +314,7 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     else if (n(["CONTINGENCIA", "SIN_FIRMA"]) > 0) poner("envios", "Comprobantes de los últimos 7 días", "aviso", `${n(["CONTINGENCIA", "SIN_FIRMA"])} sin enviar (contingencia o sin firma).`, "Revíselos en Fiscal › Envíos a la DGII y reintente.");
     else poner("envios", "Comprobantes de los últimos 7 días", "ok", n(["ACEPTADO", "ACEPTADO_COND"]) ? `${n(["ACEPTADO", "ACEPTADO_COND"])} aceptado(s), sin rechazos.` : "Sin envíos recientes.");
 
-    poner("tipos", "Tipos de e-CF que emite FactPOS", "info", "E31 (crédito fiscal), E32 (consumo) y E34 (nota de crédito). Otros tipos (E41, E43, E44, E45, E46, E47) todavía no se emiten.");
+    poner("tipos", "Tipos de e-CF que emite FactPOS", "info", "FactPOS genera los 10 tipos (E31, E32, E33, E34, E41, E43, E44, E45, E46, E47) según los esquemas oficiales de la DGII. En caja hoy se emiten E31, E32 y E34; los demás tipos se habilitan al conectarlos a su módulo.");
 
     const faltas = items.filter((i) => i.estado === "falta");
     const avisos = items.filter((i) => i.estado === "aviso");
