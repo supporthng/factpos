@@ -33,7 +33,7 @@ export function CambiarPrecio({ ajustes, nombre, cantidad, precioActual, onAplic
   const descuento = Math.max(0, (actual - n) * Number(cantidad));
   const problema = !nuevo ? "" : n <= 0 ? "El precio debe ser mayor que cero"
     : n >= actual ? "Desde la caja solo se puede bajar el precio. Para subirlo, cámbielo en la Administración." : "";
-  const valido = !!nuevo && !problema && motivo.trim().length >= 3;
+  const valido = !!nuevo && !problema;
   return (
     <Modal titulo="Cambiar precio" onCerrar={onCerrar}>
       <p className="suave">{nombre} · {cantidad} × {rd(precioActual)}</p>
@@ -42,14 +42,14 @@ export function CambiarPrecio({ ajustes, nombre, cantidad, precioActual, onAplic
           <input autoFocus className="entrada-grande" inputMode="decimal" value={nuevo} placeholder={precioActual}
             onChange={(e) => setNuevo(e.target.value.replace(/[^\d.]/g, ""))} />
         </label>
-        <label className="campo"><span>Motivo</span>
+        <label className="campo"><span>Motivo (opcional)</span>
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. precio de la góndola" />
         </label>
       </div>
       {problema ? <p className="error">{problema}</p> : nuevo && <p>Rebaja en la línea: <b>{rd(descuento.toFixed(2))}</b></p>}
       {valido && (
         <PinSupervisor ajustes={ajustes} permiso="venta.descuento" textoBoton="Aprobar precio"
-          onAprobado={(a) => onAplicar(n.toFixed(2), descuento.toFixed(2), `Precio cambiado de ${rd(precioActual)} a ${rd(n.toFixed(2))}: ${motivo.trim()}`, a)} />
+          onAprobado={(a) => onAplicar(n.toFixed(2), descuento.toFixed(2), `Precio cambiado de ${rd(precioActual)} a ${rd(n.toFixed(2))}${motivo.trim() ? `: ${motivo.trim()}` : ""}`, a)} />
       )}
     </Modal>
   );
@@ -70,7 +70,7 @@ export function DescuentoVenta({ ajustes, linea, importeLinea, importeFactura, i
   const [motivo, setMotivo] = useState("");
   const importe = Number(alcance === "linea" ? importeLinea : importeFactura);
   const monto = tipo === "%" ? (importe * Number(valor || 0)) / 100 : Number(valor || 0);
-  const valido = monto > 0 && monto <= importe && motivo.trim().length >= 3;
+  const valido = monto > 0 && monto <= importe;
   return (
     <Modal titulo="Descuento con aprobación" onCerrar={onCerrar}>
       <div className="selector-modo ancho-completo" role="tablist" aria-label="A qué se aplica">
@@ -90,7 +90,7 @@ export function DescuentoVenta({ ajustes, linea, importeLinea, importeFactura, i
           <input autoFocus inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value.replace(/[^\d.]/g, ""))} />
         </label>
       </div>
-      <label className="campo"><span>Motivo</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. cliente frecuente, empaque dañado" /></label>
+      <label className="campo"><span>Motivo (opcional)</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. cliente frecuente, empaque dañado" /></label>
       <p>Descuento: <b>{rd(monto.toFixed(2))}</b>{monto > importe && <span className="error"> · mayor que el importe</span>}</p>
       {valido && (
         <PinSupervisor ajustes={ajustes} permiso="venta.descuento" textoBoton="Aprobar descuento"
