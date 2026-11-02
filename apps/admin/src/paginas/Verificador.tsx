@@ -73,9 +73,9 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
 function AjustesVerificador() {
-  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; wifi?: string; autoActualizar: boolean }>("/central/verificador/ajustes");
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; wifi?: string; autoActualizar: boolean; segundosOferta?: number }>("/central/verificador/ajustes");
   const [msg, setMsg] = useState("");
-  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; wifi?: string; autoActualizar?: boolean }) => {
+  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; wifi?: string; autoActualizar?: boolean; segundosOferta?: number }) => {
     setMsg("");
     try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: cambio }); recargar(); }
     catch (e) { setMsg((e as Error).message); }
@@ -101,6 +101,11 @@ function AjustesVerificador() {
         Apagado: la pantalla solo dice «Consulta de precios» y el producto que se pase por el lector. Encendido: además muestra las ofertas vigentes
         (en Comercial › Ofertas se elige cuáles). Las ofertas se siguen aplicando en la caja en ambos casos.
       </p>
+      <label className="campo" style={{ marginTop: 14, maxWidth: 260 }}>
+        <span>Segundos que se ve cada oferta (si hay varias)</span>
+        <input type="number" min={3} max={120} disabled={!datos} defaultValue={datos?.segundosOferta ?? 7} key={datos?.segundosOferta ?? 7}
+          onBlur={(e) => { const v = Math.min(120, Math.max(3, Math.round(Number(e.target.value) || 7))); if (v !== (datos?.segundosOferta ?? 7)) cambiar({ segundosOferta: v }); }} />
+      </label>
       <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
         <input type="checkbox" disabled={!datos} checked={datos?.mostrarQr ?? true} onChange={(e) => cambiar({ mostrarQr: e.target.checked })} />
         {" "}Mostrar el QR para consultar desde el celular
