@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { uuidv7, rncValido, cedulaValida } from "@factpos/compartido";
+import { uuidv7, rncValido, cedulaValida, formatoRD } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
 import { verificarAutorizacion } from "../autorizacion.js";
@@ -52,7 +52,7 @@ export async function rutasTurnos(app: FastifyInstance) {
                                  'secundario', CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END, 'logoEnTicket', COALESCE(m.logo_en_ticket, true),
                                  'formato', COALESCE(m.formato_ticket, '{}'::jsonb),
                                  'pantallaCliente', COALESCE(m.pantalla_cliente, '{}'::jsonb)) AS marca,
-              s.direccion, s.telefono
+              s.direccion, s.telefono, e.id AS "empresaId"
          FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id JOIN empresas e ON e.id = s.empresa_id
          LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id
          LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
@@ -61,7 +61,30 @@ export async function rutasTurnos(app: FastifyInstance) {
     );
     if (!r.rowCount) throw new ErrorNegocio("Caja no encontrada", 404);
     const c = r.rows[0];
-    return { ...c, modulos: { delivery: { activo: Boolean(c.modulos?.delivery?.activo) } } };
+    // La pantalla del cliente también presenta las ofertas creadas en Ofertas (las vigentes de esta sucursal), tras las que armó a mano
+    const creadas = await pool.query(
+      `SELECT o.id, o.nombre, o.tipo, o.valor::text, o.lleva, o.paga, o.cantidad_minima::text AS "cantidadMinima",
+              to_char(o.inicia_en AT TIME ZONE 'America/Santo_Domingo', 'YYYY-MM-DD') AS desde,
+              to_char((o.termina_en - interval '1 second') AT TIME ZONE 'America/Santo_Domingo', 'YYYY-MM-DD') AS hasta
+         FROM ofertas o
+        WHERE o.empresa_id = $1 AND o.activo AND now() >= o.inicia_en AND now() < o.termina_en
+          AND (o.sucursales IS NULL OR $2::uuid = ANY(o.sucursales))
+          AND (o.dias_semana IS NULL OR extract(dow FROM now() AT TIME ZONE 'America/Santo_Domingo')::int = ANY(o.dias_semana))
+          AND (o.hora_desde IS NULL OR o.hora_hasta IS NULL OR (CASE WHEN o.hora_desde <= o.hora_hasta
+                 THEN (now() AT TIME ZONE 'America/Santo_Domingo')::time >= o.hora_desde AND (now() AT TIME ZONE 'America/Santo_Domingo')::time < o.hora_hasta
+                 ELSE (now() AT TIME ZONE 'America/Santo_Domingo')::time >= o.hora_desde OR (now() AT TIME ZONE 'America/Santo_Domingo')::time < o.hora_hasta END))
+        ORDER BY o.prioridad DESC, o.termina_en LIMIT 10`, [c.empresaId, c.sucursalId]);
+    const texto = (o: any) =>
+      o.tipo === "PORCENTAJE" ? `${Number(o.valor)}% de descuento`
+      : o.tipo === "PRECIO_ESPECIAL" ? `Precio especial ${formatoRD(o.valor)}`
+      : o.tipo === "LLEVA_PAGA" ? `Lleve ${o.lleva}, pague ${o.paga}`
+      : `Desde ${Number(o.cantidadMinima)} unidades a ${formatoRD(o.valor)} c/u`;
+    const pc = c.marca?.pantallaCliente ?? {};
+    const marca = { ...c.marca, pantallaCliente: { ...pc, ofertas: [
+      ...(pc.ofertas ?? []),
+      ...creadas.rows.map((o) => ({ id: o.id, titulo: o.nombre, texto: texto(o), precio: "", imagen: null, activa: true, desde: o.desde, hasta: o.hasta })),
+    ] } };
+    return { ...c, marca, modulos: { delivery: { activo: Boolean(c.modulos?.delivery?.activo) } } };
   });
 
   app.get("/cajas/:cajaId/usuarios", async (req) => {
