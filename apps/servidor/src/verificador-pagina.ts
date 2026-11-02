@@ -200,10 +200,11 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   }
   estadoActualizacion();
   let arranque = null;   // identifica la versión del servidor: si cambia, la pantalla se recarga sola
+  let wifiTienda = "";
   let qrActivo = true;   // lo decide el interruptor de Administración › Verificador
   function qrMovil() {
     if (!qrActivo) return "";
-    return '<div class="qrmovil"><img src="/verificador/movil/qr.svg' + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "") + '" alt=""><span>Consulta el precio<br>desde tu celular<br><small style="font-weight:400">Escanea este código</small></span></div>';
+    return '<div class="qrmovil"><img src="/verificador/movil/qr.svg' + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "") + '" alt=""><span>Consulta el precio<br>desde tu celular<br><small style="font-weight:400">Conéctate al WiFi' + (wifiTienda ? ' «' + esc(wifiTienda) + '»' : ' de la tienda') + '<br>y escanea este código</small></span></div>';
   }
   function espera() {
     clearTimeout(inactivo);
@@ -281,6 +282,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       sucursal = sucursal || c.sucursalId;
       qrActivo = c.mostrarQr !== false;
       arranque = c.arranque;
+      wifiTienda = c.wifi || "";
       logo = c.logo ? await quitarFondo(c.logo) : null;
       if (c.secundario) document.documentElement.style.setProperty("--fondo", c.secundario);
       if (c.primario) document.documentElement.style.setProperty("--acento", c.primario);
