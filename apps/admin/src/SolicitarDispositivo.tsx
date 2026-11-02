@@ -38,7 +38,10 @@ export function SolicitarDispositivo({ servidor, estado }: { servidor: string; e
       if (!r.ok) throw new Error(d.error ?? "No se pudo pedir el acceso");
       fijarDispositivo(d.dispositivo);
       setEspera("PENDIENTE");
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) {
+      const t = (e as Error).message;
+      setError(/load failed|failed to fetch|networkerror/i.test(t) ? `No se pudo conectar con el servidor (${base.replace(/^https?:\/\//, "")}). Revisa tu internet y vuelve a intentar.` : t);
+    }
   };
 
   const tarjeta: React.CSSProperties = { maxWidth: 460, margin: "12vh auto", padding: 28, background: "#fff", borderRadius: 16, boxShadow: "0 10px 40px rgba(0,0,0,.15)", color: "#10202e", fontFamily: "system-ui, sans-serif" };
