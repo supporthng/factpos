@@ -5,6 +5,7 @@ import { pool, ErrorNegocio } from "../db.js";
 import { SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
 import { tienePermiso, type SesionAdmin } from "../sesion.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
+import { supervisorPorPin } from "../autorizacion.js";
 import { ofertasPara } from "../promociones.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 
@@ -76,6 +77,30 @@ export async function rutasVerificador(app: FastifyInstance) {
       productos: pr.rows.filter((x) => x.ofertaId === o.id).slice(0, 30)
         .map((x) => ({ nombre: x.nombre, imagen: x.imagen, precio: x.precio, precioOferta: precioOferta(o, x.precio) })),
     })).filter((o) => o.productos.length);
+  });
+
+  /**
+   * Las apps del verificador (Android y Windows) piden el PIN de un supervisor o administrador para cerrarse
+   * o cambiar de servidor. La comprobación es aquí: la clave es la misma de FactPOS, no una aparte.
+   * Máximo 10 PIN equivocados cada 10 minutos por equipo.
+   */
+  const fallos = new Map<string, { n: number; hasta: number }>();
+  app.post("/verificador/autorizar-salida", async (req) => {
+    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos") }).parse(req.body);
+    const f = fallos.get(req.ip);
+    if (f && f.hasta > Date.now() && f.n >= 10) throw new ErrorNegocio("Demasiados intentos: espere unos minutos", 429);
+    const emp = await pool.query<{ id: string }>("SELECT id FROM empresas ORDER BY id LIMIT 2");
+    if (emp.rowCount !== 1) throw new ErrorNegocio("Este servidor atiende varias empresas: no se puede validar el PIN", 409);
+    try {
+      const supervisor = await supervisorPorPin(pool, emp.rows[0].id, b.pin);
+      fallos.delete(req.ip);
+      return { ok: true, supervisor };
+    } catch (e) {
+      const ahora = Date.now();
+      const previo = f && f.hasta > ahora ? f : { n: 0, hasta: ahora + 10 * 60_000 };
+      fallos.set(req.ip, { n: previo.n + 1, hasta: previo.hasta });
+      throw e;
+    }
   });
 
   /** Descarga de las apps del verificador: este servidor no las tiene; las pide al portal, que las entrega desde GitHub. */

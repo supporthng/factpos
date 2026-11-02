@@ -31,8 +31,9 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .espera { color:#cfd8e0; font-size:clamp(22px,4vw,32px); text-align:center; }
   .error { color:var(--acento); font-size:24px; font-weight:700; }
   .logo { max-width:min(260px,60vw); max-height:120px; margin-bottom:20px; object-fit:contain; }
-  .barra { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px; background:rgba(0,0,0,.25); }
-  .barra input { width:min(420px,90vw); font-size:20px; padding:12px 16px; border-radius:12px; border:0; text-align:center; }
+  /* El campo del lector sigue activo (recibe lo que escribe el escáner), pero no se ve ni abre el teclado */
+  .barra { position:fixed; left:0; bottom:0; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
+  .barra input { width:1px; height:1px; border:0; padding:0; background:transparent; color:transparent; caret-color:transparent; }
   .ofertas-titulo { color:#fff; font-size:clamp(22px,4vw,34px); font-weight:800; margin-bottom:6px; }
   .ofertas-sub { color:#cfd8e0; margin-bottom:18px; font-size:clamp(14px,2.4vw,20px); }
   .rejilla { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; width:min(1100px,100%); }
@@ -64,7 +65,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
 <body>
   <div id="vista" class="espera">Pase el producto por el lector<br>para ver su precio</div>
   <div class="sin-conexion" id="sinconexion">Sin conexión con el servidor</div>
-  <div class="barra"><input id="codigo" autocomplete="off" inputmode="numeric" autofocus placeholder="Escanee o escriba el código"></div>
+  <div class="barra"><input id="codigo" autocomplete="off" inputmode="none" autofocus aria-label="Código de barras"></div>
 <script>
   const params = new URLSearchParams(location.search);
   let sucursal = params.get("sucursal");

@@ -47,6 +47,24 @@ export async function autorizarConPin(c: Pick<PoolClient, "query">, empresaId: s
   return { token: `${cuerpo}.${firmar(cuerpo)}`, supervisor: u.nombre, expira: new Date(a.expira).toISOString() };
 }
 
+/**
+ * ¿Este PIN es de un administrador o supervisor? (quien puede aprobar «caja.salir»: administrador, permiso propio o anular ventas).
+ * Devuelve su nombre; lo usan las apps del verificador para cerrarse o cambiar de servidor.
+ */
+export async function supervisorPorPin(c: Pick<PoolClient, "query">, empresaId: string, pin: string): Promise<string> {
+  const r = await c.query<{ nombre: string; permisos: string[] }>(
+    `SELECT u.nombre, ro.permisos FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
+      WHERE u.empresa_id = $1 AND u.pin_hash = $2 AND u.activo`,
+    [empresaId, hashPin(empresaId, pin)],
+  );
+  const u = r.rows[0];
+  if (!u) throw new ErrorNegocio("PIN incorrecto", 401);
+  if (!(u.permisos.includes("*") || u.permisos.includes("caja.salir") || u.permisos.includes("venta.anular"))) {
+    throw new ErrorNegocio(`${u.nombre} no es administrador ni supervisor`, 403);
+  }
+  return u.nombre;
+}
+
 /** Autorización firmada para un usuario ya autenticado con el permiso (p. ej. el administrador que corrige una factura). */
 export function autorizacionDirecta(supervisorId: string, supervisor: string, permiso: Permiso, cajaId: string): string {
   const a: Autorizacion = { supervisorId, supervisor, permiso, cajaId, expira: Date.now() + VIGENCIA_MS };

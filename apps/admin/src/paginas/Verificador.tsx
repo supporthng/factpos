@@ -98,8 +98,8 @@ export function Verificador() {
           <ol className="pequeno" style={{ paddingLeft: 20 }}>
             <li>Conecte el equipo a la misma red Wi-Fi o cable que el servidor de la sucursal.</li>
             <li>Desde el equipo, descargue e instale <a href={descarga("android")}>FactPOS-Verificador.apk</a> (Android pide permitir «instalar apps desconocidas» una sola vez).</li>
-            <li>Al abrirla, escriba la dirección del servidor (la de arriba) y una <b>clave de salida</b>. Solo se hace una vez.</li>
-            <li>Queda a pantalla completa, arranca al encender el equipo y no se puede cerrar sin la clave (esquina superior izquierda ⓘ).</li>
+            <li>Al abrirla, busca sola el servidor de la tienda (o escriba la dirección de arriba). Solo se hace una vez.</li>
+            <li>Queda a pantalla completa, arranca al encender el equipo y no se puede cerrar sin el <b>PIN de un supervisor o administrador</b> de FactPOS (botones ✕ y ⓘ, abajo).</li>
             <li>Para bloqueo total, conecte el equipo a la PC y ejecute: <span className="mono">adb shell dpm set-device-owner com.factpos.verificador/.AdminReceiver</span> (con el equipo sin cuentas).</li>
             <li>El lector integrado debe estar en modo «teclado» (escribe el código y envía Enter), que es lo normal.</li>
           </ol>
@@ -109,8 +109,8 @@ export function Verificador() {
           <ol className="pequeno" style={{ paddingLeft: 20 }}>
             <li>Conecte la PC a la red del servidor de la sucursal.</li>
             <li>Descargue y ejecute <a href={descarga("windows")}>Instalador_Verificador_FactPOS.exe</a> (no pide administrador). Deje marcado «abrir al iniciar Windows».</li>
-            <li>Al abrirla, escriba la dirección del servidor (la de arriba) y una <b>clave de salida</b>.</li>
-            <li>Queda a pantalla completa, bloquea Alt+Tab y la tecla Windows, y solo se cierra con la clave (esquina superior izquierda ⓘ).</li>
+            <li>Al abrirla, busca sola el servidor de la tienda (o escriba la dirección de arriba).</li>
+            <li>Queda a pantalla completa, bloquea Alt+Tab y la tecla Windows, y solo se cierra con el <b>PIN de un supervisor o administrador</b> de FactPOS (botones ✕ y ⓘ, abajo).</li>
           </ol>
           <p className="suave pequeno">¿Prefiere no instalar nada? Edge en modo kiosco también funciona, con este destino del acceso directo:</p>
           <Fila k="win" titulo="" texto={windows} />

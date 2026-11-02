@@ -36,23 +36,23 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
  * Verificador FactPOS: abre la pantalla /verificador del servidor de la sucursal (red local) a pantalla
- * completa, como quiosco. La primera vez pide la dirección del servidor y una clave de salida.
+ * completa, como quiosco. La primera vez busca (o pide) la dirección del servidor.
  * - Pantalla siempre encendida, sin barras de Android, sin botón Atrás.
  * - Es también pantalla de inicio (HOME): el botón Inicio vuelve aquí; arranca al encender el equipo.
  * - Con Device Owner (adb shell dpm set-device-owner com.factpos.verificador/.AdminReceiver) bloquea el equipo (lock task).
  * - Sin Device Owner: si alguien sale, vuelve sola al frente (permiso "Mostrar sobre otras apps").
- * - Cambiar el servidor o salir de la app: solo con la clave de salida (esquina de la pantalla › ⓘ).
+ * - Cambiar el servidor o salir de la app: solo con el PIN de un supervisor o administrador de FactPOS (✕ / ⓘ abajo).
  */
 public class MainActivity extends Activity {
 
     static final String CONFIG = "file:///android_asset/config.html";
-    private static final int VUELTAS = 20000;
-
+    
     private WebView web;
     private FrameLayout raiz;
     private final Handler hilo = new Handler(Looper.getMainLooper());
@@ -64,25 +64,28 @@ public class MainActivity extends Activity {
     private String direccion() { String s = servidor(); return s.isEmpty() ? CONFIG : s; }
     private boolean vigilar() { return !saliendo; }
 
-    // ------------------------------------------------------------ clave de salida (SHA-256 con sal)
-    private static String hex(byte[] b) {
-        StringBuilder s = new StringBuilder();
-        for (byte x : b) s.append(String.format("%02x", x));
-        return s.toString();
-    }
-    private static String huella(String sal, String clave) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        byte[] h = (sal + ":" + clave).getBytes(StandardCharsets.UTF_8);
-        for (int i = 0; i < VUELTAS; i++) h = md.digest(h);
-        return hex(h);
-    }
-    private boolean claveOk(String clave) {
+    // ------------------------------------------------------------ clave de salida = PIN de un supervisor o administrador
+    /** "ok" | "incorrecta" | "sin_conexion" | texto del servidor (p. ej. demasiados intentos). Se llama desde el hilo del puente, no de la pantalla. */
+    private String comprobarPin(String pin) {
+        String sv = servidor();
+        if (sv.isEmpty() || pin == null || !pin.matches("\\d{4,8}")) return "incorrecta";
         try {
-            String sal = prefs().getString("sal", ""), hash = prefs().getString("hash", "");
-            return !hash.isEmpty() && clave != null && huella(sal, clave).equals(hash);
-        } catch (Exception e) { return false; }
+            Uri u = Uri.parse(sv);
+            HttpURLConnection c = (HttpURLConnection) new URL(u.getScheme() + "://" + u.getAuthority() + "/verificador/autorizar-salida").openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(8000);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream o = c.getOutputStream()) { o.write(new JSONObject().put("pin", pin).toString().getBytes(StandardCharsets.UTF_8)); }
+            int codigo = c.getResponseCode();
+            if (codigo == 200) return "ok";
+            if (codigo == 401 || codigo == 403) return "incorrecta";
+            if (codigo == 429) return "Demasiados intentos: espere unos minutos.";
+            return "sin_conexion";
+        } catch (Exception e) { return "sin_conexion"; }
     }
-    private boolean hayClave() { return !prefs().getString("hash", "").isEmpty(); }
+    private boolean claveOk(String pin) { return "ok".equals(comprobarPin(pin)); }
 
     @Override
     protected void onCreate(Bundle guardado) {
@@ -264,7 +267,7 @@ public class MainActivity extends Activity {
         /** {"servidor":"…","tieneClave":true,"bloqueoTotal":false,"botonesBloqueados":true} */
         @JavascriptInterface public String estado() {
             try {
-                return new JSONObject().put("servidor", servidor()).put("tieneClave", hayClave())
+                return new JSONObject().put("servidor", servidor())
                         .put("bloqueoTotal", esDeviceOwner()).put("botonesBloqueados", esDeviceOwner() || puedeVolverAlFrente()).toString();
             } catch (Exception e) { return "{}"; }
         }
@@ -286,25 +289,19 @@ public class MainActivity extends Activity {
             return a.toString();
         }
 
-        @JavascriptInterface public boolean verificarClave(String clave) { return claveOk(clave); }
+        @JavascriptInterface public String verificarClave(String pin) { return comprobarPin(pin); }
 
-        /** Guarda servidor y clave de salida; si ya había clave, hace falta la actual. Devuelve "" si salió bien o el motivo. */
-        @JavascriptInterface public String guardar(String url, String clave, String claveActual) {
+        /** Guarda la dirección del servidor. Solo se puede mientras no haya uno (para cambiarlo, antes «cambiarServidor» con el PIN). */
+        @JavascriptInterface public String guardar(String url) {
             String v = url == null ? "" : url.trim();
             if (!v.matches("^https?://[^\\s/]+(/\\S*)?$")) return "Escriba una dirección válida, por ejemplo http://192.168.1.10:3000/verificador";
-            if (hayClave() && !claveOk(claveActual)) return "La clave de salida actual no es correcta.";
-            if (clave == null || clave.length() < 4) return "La clave de salida debe tener al menos 4 caracteres.";
-            try {
-                byte[] r = new byte[12];
-                new SecureRandom().nextBytes(r);
-                String sal = hex(r);
-                prefs().edit().putString("servidor", v).putString("sal", sal).putString("hash", huella(sal, clave)).apply();
-            } catch (Exception e) { return "No se pudo guardar."; }
+            if (!servidor().isEmpty()) return "Este equipo ya tiene un servidor: para cambiarlo use ⓘ › Cambiar de servidor.";
+            prefs().edit().putString("servidor", v).apply();
             hilo.post(() -> { if (web != null) web.loadUrl(direccion()); });
             return "";
         }
 
-        /** Con la clave: olvida el servidor y vuelve a la pantalla de configuración. */
+        /** Con el PIN de un supervisor o administrador: olvida el servidor y vuelve a la pantalla de configuración. */
         @JavascriptInterface public boolean cambiarServidor(String clave) {
             if (!claveOk(clave)) return false;
             prefs().edit().remove("servidor").apply();
@@ -312,7 +309,7 @@ public class MainActivity extends Activity {
             return true;
         }
 
-        /** Con la clave: quita el bloqueo y cierra la app. */
+        /** Con el PIN de un supervisor o administrador: quita el bloqueo y cierra la app. */
         @JavascriptInterface public boolean salir(String clave) {
             if (!claveOk(clave)) return false;
             hilo.post(() -> {

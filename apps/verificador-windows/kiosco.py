@@ -1,24 +1,25 @@
 """Verificador FactPOS para Windows: verificador de precios tipo quiosco.
 
 - Abre el verificador del servidor de la sucursal (http://IP:3000/verificador) a pantalla completa,
-  siempre encima, sin bordes. La primera vez pide la dirección del servidor y una clave de salida.
+  siempre encima, sin bordes. La primera vez busca (o pide) la dirección del servidor.
 - Usa WebView2 (el motor de Microsoft Edge, ya incluido en Windows 10/11).
 - Bloquea Alt+Tab, Alt+Esc, Ctrl+Esc, Ctrl+Shift+Esc, Alt+F4, Alt+Espacio y la tecla Windows.
 - Oculta la barra de tareas mientras está abierta; vuelve a aparecer al cerrar la app.
-- No se puede cerrar ni minimizar: se sale SOLO desde la esquina de la pantalla (ⓘ) con la clave de salida.
+- No se puede cerrar ni minimizar: se sale SOLO desde los botones de abajo (✕ / ⓘ) con el PIN de un supervisor o administrador de FactPOS.
 - Una sola copia abierta a la vez.
 
 Ctrl+Alt+Supr no se puede bloquear desde un programa (es una protección de Windows). Para un
 bloqueo total, usar además "Acceso asignado" de Windows.
 """
 import ctypes
-import hashlib
 import json
 import os
 import http.server
 import re
-import secrets
 import socket
+import urllib.error
+import urllib.parse
+import urllib.request
 import sys
 import threading
 import time
@@ -28,7 +29,6 @@ import webview
 
 # La compilación (GitHub Actions) reemplaza este valor.
 VERSION = "1.0.0"
-VUELTAS = 20000
 DATOS = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "FactPOS Verificador")
 CONFIG_JSON = os.path.join(DATOS, "config.json")
 WEBVIEW = os.path.join(DATOS, "WebView")
@@ -234,13 +234,6 @@ def guardar_config(cfg):
         json.dump(cfg, f)
 
 
-def huella(sal, clave):
-    h = (sal + ":" + clave).encode("utf-8")
-    for _ in range(VUELTAS):
-        h = hashlib.sha256(h).digest()
-    return h.hex()
-
-
 # --------------------------------------------------------------------------- puente con las páginas
 class Kiosco:
     """Lo que las páginas (configuración y /verificador) pueden pedir (window.pywebview.api.*).
@@ -264,8 +257,7 @@ class Kiosco:
 
     def estado(self):
         c = leer_config()
-        return json.dumps({"servidor": c.get("servidor", ""), "tieneClave": bool(c.get("hash")),
-                           "bloqueoTotal": False, "botonesBloqueados": True})
+        return json.dumps({"servidor": c.get("servidor", ""), "bloqueoTotal": False, "botonesBloqueados": True})
 
     def redes(self):
         """Redes /24 a las que está conectado este equipo (["192.168.1", …]), para buscar el servidor."""
@@ -284,26 +276,45 @@ class Kiosco:
         return json.dumps(sorted({ip.rsplit(".", 1)[0] for ip in ips
                                   if ip.count(".") == 3 and not ip.startswith(("127.", "169.254."))}))
 
-    def verificarClave(self, clave):
-        c = leer_config()
-        return bool(c.get("hash")) and isinstance(clave, str) and huella(c.get("sal", ""), clave) == c["hash"]
+    def _comprobar_pin(self, pin):
+        """El PIN de un supervisor o administrador de FactPOS, validado por el servidor de la sucursal.
+        Devuelve "ok", "incorrecta", "sin_conexion" o el texto que mande el servidor."""
+        sv = leer_config().get("servidor") or ""
+        if not sv or not isinstance(pin, str) or not re.match(r"^\d{4,8}$", pin):
+            return "incorrecta"
+        try:
+            u = urllib.parse.urlparse(sv)
+            pedido = urllib.request.Request(f"{u.scheme}://{u.netloc}/verificador/autorizar-salida",
+                                            data=json.dumps({"pin": pin}).encode("utf-8"),
+                                            headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(pedido, timeout=8) as r:
+                return "ok" if r.status == 200 else "sin_conexion"
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return "incorrecta"
+            if e.code == 429:
+                return "Demasiados intentos: espere unos minutos."
+            return "sin_conexion"
+        except Exception:
+            return "sin_conexion"
 
-    def guardar(self, url, clave, claveActual):
+    def verificarClave(self, pin):
+        return self._comprobar_pin(pin)
+
+    def guardar(self, url):
+        """Guarda la dirección del servidor. Solo mientras no haya uno (para cambiarlo: ⓘ › Cambiar de servidor, con PIN)."""
         v = (url or "").strip()
         if not re.match(r"^https?://[^\s/]+(/\S*)?$", v):
             return "Escriba una dirección válida, por ejemplo http://192.168.1.10:3000/verificador"
-        if leer_config().get("hash") and not self.verificarClave(claveActual):
-            return "La clave de salida actual no es correcta."
-        if not isinstance(clave, str) or len(clave) < 4:
-            return "La clave de salida debe tener al menos 4 caracteres."
-        sal = secrets.token_hex(12)
-        guardar_config({"servidor": v, "sal": sal, "hash": huella(sal, clave)})
+        if leer_config().get("servidor"):
+            return "Este equipo ya tiene un servidor: para cambiarlo use ⓘ › Cambiar de servidor."
+        guardar_config({"servidor": v})
         if self._ventana:
             self._ventana.load_url(v)
         return ""
 
     def cambiarServidor(self, clave):
-        if not self.verificarClave(clave):
+        if self._comprobar_pin(clave) != "ok":
             return False
         c = leer_config()
         c.pop("servidor", None)
@@ -313,7 +324,7 @@ class Kiosco:
         return True
 
     def salir(self, clave):
-        if not self.verificarClave(clave):
+        if self._comprobar_pin(clave) != "ok":
             return False
         self._cerrar()
         return True
