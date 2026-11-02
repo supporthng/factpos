@@ -73,12 +73,22 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
 function AjustesVerificador() {
-  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; wifi?: string }>("/central/verificador/ajustes");
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; wifi?: string; autoActualizar: boolean }>("/central/verificador/ajustes");
   const [msg, setMsg] = useState("");
-  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; wifi?: string }) => {
+  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; wifi?: string; autoActualizar?: boolean }) => {
     setMsg("");
     try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: cambio }); recargar(); }
     catch (e) { setMsg((e as Error).message); }
+  };
+  const [enviando, setEnviando] = useState(false);
+  const [okOrden, setOkOrden] = useState("");
+  const actualizarAhora = async () => {
+    setMsg(""); setOkOrden(""); setEnviando(true);
+    try {
+      await api("/central/verificador/actualizar-ahora", { metodo: "PUT", cuerpo: {} });
+      setOkOrden("Orden enviada. Los verificadores con versión nueva disponible se actualizan en menos de 2 minutos y se reabren solos.");
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setEnviando(false); }
   };
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
@@ -98,6 +108,17 @@ function AjustesVerificador() {
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
         Muestra en la pantalla del verificador un código QR (abajo al centro) para que el cliente consulte precios desde su celular, conectado al WiFi de la tienda.
       </p>
+      <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
+        <input type="checkbox" disabled={!datos} checked={datos?.autoActualizar ?? true} onChange={(e) => cambiar({ autoActualizar: e.target.checked })} />
+        {" "}Actualizar las apps de los verificadores automáticamente
+      </label>
+      <p className="suave pequeno" style={{ marginBottom: 8 }}>
+        Encendido: cada app instala sola la versión nueva cuando sale. Apagado: solo se actualizan cuando pulsas «Actualizar verificadores ahora».
+      </p>
+      <div className="fila-acciones">
+        <button className="boton primario" disabled={enviando} onClick={actualizarAhora}>{enviando ? "Enviando…" : "Actualizar verificadores ahora"}</button>
+      </div>
+      {okOrden && <p className="suave pequeno" style={{ marginBottom: 0 }}>{okOrden}</p>}
       <Aviso texto={error || msg} />
     </div>
   );

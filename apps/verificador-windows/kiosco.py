@@ -339,7 +339,7 @@ class Kiosco:
 
 
 # --------------------------------------------------------------------------- actualización automática
-INTERVALO_ACTUALIZAR = 30 * 60   # segundos entre consultas al servidor de la sucursal
+INTERVALO_ACTUALIZAR = 60   # segundos entre consultas (livianas) al servidor de la sucursal
 
 
 def _compilacion():
@@ -360,11 +360,18 @@ def _buscar_actualizacion():
     u = urllib.parse.urlparse(sv)
     base = f"{u.scheme}://{u.netloc}"
     with urllib.request.urlopen(f"{base}/verificador/actualizacion/windows", timeout=15) as r:
-        vigente = int(json.loads(r.read().decode("utf-8")).get("version") or 0)
+        info = json.loads(r.read().decode("utf-8"))
+    vigente, orden, auto = int(info.get("version") or 0), int(info.get("orden") or 0), info.get("auto", True) is not False
+    cfg = leer_config()
+    por_orden = orden > int(cfg.get("act_orden") or 0)      # botón «Actualizar verificadores ahora» de la administración
+    if por_orden:
+        cfg["act_orden"] = orden
+        guardar_config(cfg)
     if vigente <= propia:
         return
-    cfg = leer_config()
-    if cfg.get("act_intento") == vigente and time.time() - float(cfg.get("act_hora") or 0) < 6 * 3600:
+    if not por_orden and not auto:
+        return                      # actualización automática apagada: solo por orden
+    if not por_orden and cfg.get("act_intento") == vigente and time.time() - float(cfg.get("act_hora") or 0) < 6 * 3600:
         return                      # ya se intentó esta versión hace poco: no insistir en bucle
     cfg["act_intento"], cfg["act_hora"] = vigente, time.time()
     guardar_config(cfg)
@@ -391,7 +398,7 @@ def _buscar_actualizacion():
 
 
 def _bucle_actualizar():
-    time.sleep(60)                  # primero que arranque y cargue la pantalla
+    time.sleep(20)                  # primero que arranque y cargue la pantalla
     while True:
         try:
             _buscar_actualizacion()
