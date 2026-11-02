@@ -88,6 +88,7 @@ export function Verificador() {
   const params = [sucursalId ? `sucursal=${sucursalId}` : "", niveles ? "niveles=1" : ""].filter(Boolean).join("&");
   const pagina = `${base}/verificador${params ? `?${params}` : ""}`;
   const api = `${base}/verificador/${sucursalId || "ID_SUCURSAL"}/CODIGO_DE_BARRAS`;
+  const movil = `${base}/verificador/movil${sucursalId ? `?sucursal=${sucursalId}` : ""}`;
   const windows = `msedge --kiosk "${pagina}" --edge-kiosk-type=fullscreen --no-first-run`;
 
   const Fila = ({ k, titulo, texto }: { k: string; titulo: string; texto: string }) => (
@@ -113,6 +114,7 @@ export function Verificador() {
         </div>
         <p className="suave pequeno">Si el servidor atiende una sola sucursal no hace falta elegirla: la página la detecta sola.</p>
         <Fila k="pagina" titulo="Para equipos con navegador o pantalla web (Android y Windows)" texto={pagina} />
+        <Fila k="movil" titulo="Consulta desde el celular del cliente (genere un QR con esta dirección y péguelo en la tienda; solo funciona dentro del WiFi de la sucursal)" texto={movil} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
 

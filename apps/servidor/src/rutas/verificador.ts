@@ -7,6 +7,7 @@ import { tienePermiso, type SesionAdmin } from "../sesion.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
 import { supervisorPorPin } from "../autorizacion.js";
 import { ofertasPara } from "../promociones.js";
+import { PAGINA_CONSULTA_MOVIL } from "../consulta-movil-pagina.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 
 /**
@@ -20,6 +21,12 @@ import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
  * Funciona desde el servidor local, así sigue funcionando sin internet.
  */
 export async function rutasVerificador(app: FastifyInstance) {
+  /** Consulta desde el celular del cliente (QR en la tienda, dentro del WiFi de la sucursal). */
+  app.get("/verificador/movil", async (_req, rep) => {
+    rep.type("text/html; charset=utf-8");
+    return PAGINA_CONSULTA_MOVIL;
+  });
+
   app.get("/verificador", async (_req, rep) => {
     rep.type("text/html; charset=utf-8");
     return PAGINA_VERIFICADOR;
@@ -177,6 +184,7 @@ export async function rutasVerificador(app: FastifyInstance) {
     const { sucursalId, codigo } = z
       .object({ sucursalId: z.string().uuid(), codigo: z.string().trim().min(1).max(30) })
       .parse(req.params);
+    const canal = (req.query as { canal?: string }).canal === "movil" ? "movil" : "lector";
 
     const s = await pool.query<{ empresa_id: string; almacen_id: string }>(
       `SELECT s.empresa_id, a.id AS almacen_id FROM sucursales s
@@ -197,8 +205,8 @@ export async function rutasVerificador(app: FastifyInstance) {
 
     /** Anota la consulta (qué se consulta y qué códigos no tenían precio). Nunca estorba al cliente. */
     const anotar = (encontrado: boolean, descripcion: string | null) => {
-      pool.query("INSERT INTO verificador_consultas (sucursal_id, codigo, encontrado, descripcion) VALUES ($1, $2, $3, $4)",
-        [sucursalId, codigo, encontrado, descripcion]).catch(() => {});
+      pool.query("INSERT INTO verificador_consultas (sucursal_id, codigo, encontrado, descripcion, canal) VALUES ($1, $2, $3, $4, $5)",
+        [sucursalId, codigo, encontrado, descripcion, canal]).catch(() => {});
       if (Math.random() < 0.005) pool.query("DELETE FROM verificador_consultas WHERE creado_en < now() - interval '13 months'").catch(() => {});
     };
 
