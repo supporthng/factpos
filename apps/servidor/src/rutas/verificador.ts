@@ -37,7 +37,7 @@ export async function rutasVerificador(app: FastifyInstance) {
     const of = await pool.query(
       `SELECT o.id, o.nombre, o.tipo, o.valor::text, o.lleva, o.paga, o.cantidad_minima::text AS "cantidadMinima", o.termina_en AS "terminaEn", o.prioridad
          FROM ofertas o
-        WHERE o.empresa_id = $1 AND o.activo AND now() >= o.inicia_en AND now() < o.termina_en
+        WHERE o.empresa_id = $1 AND o.activo AND o.mostrar_en_verificador AND now() >= o.inicia_en AND now() < o.termina_en
           AND (o.sucursales IS NULL OR $2::uuid = ANY(o.sucursales))
           AND (o.lista_precio_id IS NULL OR o.lista_precio_id = (SELECT lp.id FROM listas_precio lp WHERE lp.empresa_id = $1 AND lp.es_predeterminada))
           AND (o.dias_semana IS NULL OR extract(dow FROM now() AT TIME ZONE 'America/Santo_Domingo')::int = ANY(o.dias_semana))

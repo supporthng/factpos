@@ -14,11 +14,17 @@ export function Ofertas() {
   const [filtro, setFiltro] = useState("");
   const [vigentes, setVigentes] = useState(true);
   const [nueva, setNueva] = useState(false);
+  const [editando, setEditando] = useState<any | null>(null);
   const ruta = `/central/ofertas?${new URLSearchParams({ ...(filtro ? { sucursalId: filtro } : {}), ...(vigentes ? { vigentes: "1" } : {}) })}`;
   const { datos, recargar, error } = useDatos<any[]>(ruta);
 
   const alternar = async (id: string, activo: boolean) => {
     await api(`/central/ofertas/${id}`, { metodo: "PATCH", cuerpo: { activo } });
+    recargar();
+  };
+
+  const mostrarEnVerificador = async (id: string, mostrar: boolean) => {
+    await api(`/central/ofertas/${id}`, { metodo: "PATCH", cuerpo: { mostrarEnVerificador: mostrar } });
     recargar();
   };
 
@@ -57,9 +63,12 @@ export function Ofertas() {
           { titulo: "Tope", valor: (o) => <Tope o={o} /> },
           { titulo: "Descuento dado", valor: (o) => rd(o.descuentoOtorgado), der: true },
           { titulo: "Activa", valor: (o) => <input type="checkbox" checked={o.activo} onChange={(e) => alternar(o.id, e.target.checked)} /> },
+          { titulo: "En el verificador", valor: (o) => <input type="checkbox" title="Mostrar esta oferta en la pantalla del verificador de precios" checked={o.mostrarEnVerificador} onChange={(e) => mostrarEnVerificador(o.id, e.target.checked)} /> },
+          { titulo: "", valor: (o) => <button className="boton chico" onClick={() => setEditando(o)}>Editar</button> },
         ]}
       />
       {nueva && <NuevaOferta onCerrar={() => setNueva(false)} onCreada={() => { setNueva(false); recargar(); }} />}
+      {editando && <NuevaOferta editar={editando} onCerrar={() => setEditando(null)} onCreada={() => { setEditando(null); recargar(); }} />}
     </>
   );
 }
@@ -115,19 +124,27 @@ interface Referencia {
   ultimaCompraOferta: { costoUnidad: string; costoRegularUnidad: string | null; fecha: string; proveedor: string; unidades: string } | null;
 }
 
-function NuevaOferta({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: () => void }) {
+function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onCreada: () => void; editar?: any }) {
   const { sucursales, categorias } = useCatalogo();
   const { productos } = useCatalogo();
-  const [o, setO] = useState({
+  const al = editar?.alcance?.[0];
+  const [o, setO] = useState(editar ? {
+    nombre: editar.nombre as string, tipo: editar.tipo as string, valor: editar.valor ? String(Number(editar.valor)) : "",
+    lleva: String(editar.lleva ?? "2"), paga: String(editar.paga ?? "1"), cantidadMinima: String(Number(editar.cantidadMinima ?? 1)),
+    inicia: fechaRD(new Date(editar.iniciaEn)), termina: fechaRD(new Date(editar.terminaEn)),
+    horaDesde: editar.horaDesde ? String(editar.horaDesde).slice(0, 5) : "", horaHasta: editar.horaHasta ? String(editar.horaHasta).slice(0, 5) : "",
+    nivel: editar.nivel ? String(editar.nivel) : "", tope: editar.unidadesMaximas ? String(Number(editar.unidadesMaximas)) : "",
+  } : {
     nombre: "", tipo: "PRECIO_ESPECIAL", valor: "", lleva: "2", paga: "1", cantidadMinima: "1",
     ...vigencia("semana"), horaDesde: "", horaHasta: "", nivel: "", tope: "",
   });
-  const [presentacionId, setPresentacionId] = useState("");
+  const [mostrar, setMostrar] = useState<boolean>(editar ? editar.mostrarEnVerificador : true);
+  const [presentacionId, setPresentacionId] = useState<string>(al?.presentacionId ?? "");
   const [ref, setRef] = useState<Referencia | null>(null);
-  const [dias, setDias] = useState<number[]>([]);
-  const [suc, setSuc] = useState<string[]>([]);
-  const [productoId, setProductoId] = useState("");
-  const [categoriaId, setCategoriaId] = useState("");
+  const [dias, setDias] = useState<number[]>(editar?.diasSemana ?? []);
+  const [suc, setSuc] = useState<string[]>(editar?.sucursalesIds ?? []);
+  const [productoId, setProductoId] = useState<string>(al?.categoriaId ? "" : al?.productoId ?? "");
+  const [categoriaId, setCategoriaId] = useState<string>(al?.categoriaId ?? "");
   const [msg, setMsg] = useState("");
   const set = (k: keyof typeof o) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setO({ ...o, [k]: e.target.value });
   const producto = productos.find((p) => p.id === productoId);
@@ -167,12 +184,15 @@ function NuevaOferta({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (
     }
     if (!presentacionId && !productoId && !categoriaId) return setMsg("Elija el producto (o la categoría) de la oferta.");
     try {
-      await api("/central/ofertas", {
+      await api(editar ? `/central/ofertas/${editar.id}` : "/central/ofertas", {
+        metodo: editar ? "PUT" : "POST",
         cuerpo: {
           nombre: o.nombre, tipo: o.tipo,
           ...(o.tipo === "LLEVA_PAGA" ? { lleva: Number(o.lleva), paga: Number(o.paga) } : { valor }),
           cantidadMinima: o.tipo === "POR_VOLUMEN" ? o.cantidadMinima : "1",
-          iniciaEn: o.inicia === hoy() ? new Date().toISOString() : `${o.inicia}T00:00:00-04:00`, terminaEn: `${o.termina}T23:59:59-04:00`,
+          iniciaEn: editar && o.inicia === fechaRD(new Date(editar.iniciaEn)) ? editar.iniciaEn
+            : o.inicia === hoy() ? new Date().toISOString() : `${o.inicia}T00:00:00-04:00`,
+          mostrarEnVerificador: mostrar, prioridad: editar?.prioridad ?? 0, terminaEn: `${o.termina}T23:59:59-04:00`,
           unidadesMaximas: o.tope ? o.tope : null,
           diasSemana: dias.length ? dias : undefined,
           horaDesde: o.horaDesde || undefined, horaHasta: o.horaHasta || undefined,
@@ -190,7 +210,7 @@ function NuevaOferta({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (
   return (
     <div className="fondo-modal" onMouseDown={onCerrar}>
       <div className="modal ancho" onMouseDown={(e) => e.stopPropagation()}>
-        <h3>Nueva oferta</h3>
+        <h3>{editar ? "Editar oferta" : "Nueva oferta"}</h3>
         <label className="campo"><span>Nombre (lo verá el cliente en el ticket y el verificador)</span><input value={o.nombre} onChange={set("nombre")} placeholder="Ej. 2x1 en refrescos" /></label>
         <div className="tres-col">
           <label className="campo"><span>Tipo</span><select value={o.tipo} onChange={set("tipo")}>{Object.entries(TIPOS).map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label>
@@ -281,10 +301,11 @@ function NuevaOferta({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (
         <label className="campo"><span>Solo para clientes de nivel</span>
           <select value={o.nivel} onChange={set("nivel")}><option value="">Todos</option><option value="1">Precio 1</option><option value="2">Precio 2</option><option value="3">Precio 3</option></select>
         </label>
+        <label className="check"><input type="checkbox" checked={mostrar} onChange={(e) => setMostrar(e.target.checked)} /> Mostrar esta oferta en la pantalla del verificador de precios</label>
         <Aviso texto={msg} />
         <div className="acciones-modal">
           <button className="boton fantasma" onClick={onCerrar}>Cancelar</button>
-          <button className="boton primario" disabled={o.nombre.trim().length < 3 || (!productoId && !categoriaId)} onClick={crear}>Crear oferta</button>
+          <button className="boton primario" disabled={o.nombre.trim().length < 3 || (!productoId && !categoriaId)} onClick={crear}>{editar ? "Guardar cambios" : "Crear oferta"}</button>
         </div>
       </div>
     </div>
