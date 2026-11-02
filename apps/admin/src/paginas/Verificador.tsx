@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { CONFIG, api, esLocal } from "../api";
 import { Aviso, Encabezado, SelectorSucursal, useDatos } from "../ui";
 
@@ -7,6 +8,46 @@ interface Consultas {
   masConsultados: { codigo: string; descripcion: string | null; veces: number }[];
   /** Códigos que se pasaron por el lector y no tenían precio. */
   sinPrecioLista: { codigo: string; veces: number; ultima: string }[];
+}
+
+/** QR para que el cliente consulte precios desde su celular (dentro del WiFi de la tienda). Se puede imprimir o descargar. */
+function QrConsultaMovil({ inicial }: { inicial: string }) {
+  const [url, setUrl] = useState(inicial);
+  const [img, setImg] = useState("");
+  useEffect(() => setUrl(inicial), [inicial]);
+  useEffect(() => {
+    let vivo = true;
+    QRCode.toDataURL(url, { margin: 2, width: 480, errorCorrectionLevel: "M" }).then((d) => { if (vivo) setImg(d); }).catch(() => { if (vivo) setImg(""); });
+    return () => { vivo = false; };
+  }, [url]);
+  const imprimir = () => {
+    const w = window.open("", "_blank", "width=700,height=900");
+    if (!w) return;
+    const img_ = document.createElement("img");
+    img_.src = img; img_.style.width = "360px";
+    w.document.title = "Consulta de precios";
+    w.document.body.style.cssText = "font-family:system-ui,sans-serif;text-align:center;padding:40px";
+    const h = w.document.createElement("h1"); h.textContent = "Consulta el precio desde tu celular";
+    const t = w.document.createElement("p"); t.textContent = "Conéctate al WiFi de la tienda, escanea este código y escribe o escanea el código de barras del producto."; t.style.fontSize = "20px";
+    w.document.body.append(h, img_, t);
+    img_.onload = () => w.print();
+  };
+  return (
+    <div className="panel" style={{ marginTop: 16 }}>
+      <h3 style={{ marginTop: 0 }}>QR para consultar desde el celular</h3>
+      <p className="suave pequeno">El cliente se conecta al WiFi de la tienda, escanea este QR y consulta el precio de cualquier producto. Imprímelo y pégalo en el local. Si la dirección no es la del servidor de la sucursal (por ejemplo http://192.168.1.10:3000/verificador/movil), corrígela abajo.</p>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
+        {img ? <img src={img} alt="QR de la consulta de precios" width={200} height={200} style={{ border: "1px solid #dde3e8", borderRadius: 8 }} /> : <div style={{ width: 200, height: 200 }} />}
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <label className="campo"><span>Dirección que abre el QR</span><input value={url} onChange={(e) => setUrl(e.target.value)} /></label>
+          <div className="fila-acciones" style={{ marginTop: 10 }}>
+            <button className="boton" disabled={!img} onClick={imprimir}>Imprimir</button>
+            <a className="boton" style={{ textDecoration: "none" }} href={img} download="qr-consulta-precios.png" aria-disabled={!img}>Descargar imagen</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
@@ -117,6 +158,8 @@ export function Verificador() {
         <Fila k="movil" titulo="Consulta desde el celular del cliente (genere un QR con esta dirección y péguelo en la tienda; solo funciona dentro del WiFi de la sucursal)" texto={movil} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
+
+      <QrConsultaMovil inicial={movil} />
 
       <ConsultasRecientes sucursalId={sucursalId} />
 
