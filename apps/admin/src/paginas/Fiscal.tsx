@@ -29,7 +29,6 @@ export function Fiscal() {
       {vista === "envios" && <Envios />}
       {vista === "secuencias" && <Secuencias />}
       {vista === "ncf" && <RangosNCF />}
-      {vista === "ncf" && <RangosNcf />}
       {vista === "certificado" && <CertificadoDigital />}
       {vista === "config" && <Configuracion />}
     </>
