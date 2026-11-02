@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CONFIG, esLocal } from "../api";
+import { CONFIG, api, esLocal } from "../api";
 import { Aviso, Encabezado, SelectorSucursal, useDatos } from "../ui";
 
 interface Consultas {
@@ -7,6 +7,31 @@ interface Consultas {
   masConsultados: { codigo: string; descripcion: string | null; veces: number }[];
   /** Códigos que se pasaron por el lector y no tenían precio. */
   sinPrecioLista: { codigo: string; veces: number; ultima: string }[];
+}
+
+/** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
+function AjustesVerificador() {
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean }>("/central/verificador/ajustes");
+  const [msg, setMsg] = useState("");
+  const cambiar = async (mostrarOfertas: boolean) => {
+    setMsg("");
+    try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: { mostrarOfertas } }); recargar(); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <h3 style={{ marginTop: 0 }}>Configuración del verificador</h3>
+      <label className="check" style={{ fontSize: 16 }}>
+        <input type="checkbox" disabled={!datos} checked={datos?.mostrarOfertas ?? true} onChange={(e) => cambiar(e.target.checked)} />
+        {" "}Mostrar las ofertas en la pantalla del verificador
+      </label>
+      <p className="suave pequeno" style={{ marginBottom: 0 }}>
+        Apagado: la pantalla solo dice «Consulta de precios» y el producto que se pase por el lector. Encendido: además muestra las ofertas vigentes
+        (en Comercial › Ofertas se elige cuáles). Las ofertas se siguen aplicando en la caja en ambos casos.
+      </p>
+      <Aviso texto={error || msg} />
+    </div>
+  );
 }
 
 /** Lo que consultan los clientes: sirve para completar precios y códigos de barras que faltan. */
@@ -78,6 +103,7 @@ export function Verificador() {
   return (
     <>
       <Encabezado titulo="Verificador de precios" descripcion="El cliente pasa el producto por el lector del equipo y ve su precio, la oferta vigente y si el precio incluye ITBIS. Funciona desde el servidor de la sucursal, también sin internet." />
+      <AjustesVerificador />
       {!esLocal() && <Aviso tipo="info" texto="Esta dirección es la del servidor donde está abierta la administración. Los verificadores se conectan al servidor de la sucursal (en su red local): abra esta pantalla desde allí, o use la dirección IP de ese servidor en lugar de la que aparece abajo." />}
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Dirección del verificador</h3>

@@ -34,6 +34,9 @@ export async function rutasVerificador(app: FastifyInstance) {
     const s = await pool.query<{ empresa_id: string }>("SELECT empresa_id FROM sucursales WHERE id = $1 AND activo", [sucursal]);
     if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
     const empresaId = s.rows[0].empresa_id;
+    // Interruptor general (Administración › Verificador): apagado = la pantalla de espera no muestra ofertas
+    const ajuste = await pool.query<{ v: unknown }>("SELECT verificador->'mostrarOfertas' AS v FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    if (ajuste.rows[0]?.v === false) return [];
     const of = await pool.query(
       `SELECT o.id, o.nombre, o.tipo, o.valor::text, o.lleva, o.paga, o.cantidad_minima::text AS "cantidadMinima", o.termina_en AS "terminaEn", o.prioridad
          FROM ofertas o
@@ -121,6 +124,28 @@ export async function rutasVerificador(app: FastifyInstance) {
     // Con varias sucursales y sin indicar cuál, no se adivina
     if (!sucursal && r.rowCount > 1) throw new ErrorNegocio("Este servidor atiende varias sucursales: abra el verificador con ?sucursal=ID", 409);
     return r.rows[0];
+  });
+
+  /** Ajustes del verificador de la empresa (hoy: mostrar u ocultar las ofertas). */
+  const permisoPrecios = (req: unknown) => {
+    const sesion = (req as { sesion?: SesionAdmin }).sesion;
+    if (!sesion || !tienePermiso(sesion.p, "admin.precios")) throw new ErrorNegocio("Sin permiso", 403);
+  };
+  app.get("/central/verificador/ajustes", async (req) => {
+    permisoPrecios(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const r = await pool.query<{ v: unknown }>("SELECT verificador->'mostrarOfertas' AS v FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    return { mostrarOfertas: r.rows[0]?.v !== false };
+  });
+  app.put("/central/verificador/ajustes", async (req) => {
+    permisoPrecios(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const { mostrarOfertas } = z.object({ mostrarOfertas: z.boolean() }).parse(req.body);
+    await pool.query(
+      `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, jsonb_build_object('mostrarOfertas', $2::boolean))
+       ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || jsonb_build_object('mostrarOfertas', $2::boolean)`,
+      [empresaId, mostrarOfertas]);
+    return { mostrarOfertas };
   });
 
   /** Qué se consultó en los últimos días y qué códigos no tenían precio (para la administración). */
