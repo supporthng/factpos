@@ -71,6 +71,12 @@ export function estadoPublico() {
     f = { ...f, estado: "OK", paso: "Listo", porcentaje: 100, mensaje: null, en: new Date().toISOString() };
     escribirEstado({ estado: "OK", version: f.version, paso: "Listo", porcentaje: 100, mensaje: null });
   }
+  // El script anota cada paso: si lleva 6 minutos sin avanzar y no hay proceso, la actualización se quedó a medias
+  // (se cerró el equipo, falló la tarea…). Se da por terminada con error para que las pantallas no queden tapadas.
+  if (f && f.estado === "EN_CURSO" && !proceso && Date.now() - new Date(f.en).getTime() > 6 * 60_000) {
+    f = { ...f, estado: "ERROR", paso: "La actualización no terminó", porcentaje: 100, mensaje: "La actualización se interrumpió antes de terminar. El sistema sigue en la versión anterior; vuelva a intentarlo desde Administración › Actualizaciones.", en: new Date().toISOString() };
+    escribirEstado({ estado: "ERROR", version: f.version, paso: f.paso ?? "", porcentaje: 100, mensaje: f.mensaje });
+  }
   const fresco = !!f && Date.now() - new Date(f.en).getTime() < 20 * 60_000;
   const enMemoria = proceso && proceso.estado !== "ERROR" ? proceso : null;
   const archivoEnCurso = fresco && f!.estado === "EN_CURSO" ? f : null;

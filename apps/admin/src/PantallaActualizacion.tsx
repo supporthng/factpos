@@ -27,7 +27,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
     let vivo = true;
     let t: ReturnType<typeof setTimeout>;
     const consultar = async () => {
-      let proximo = visto.current ? 2500 : 15_000;
+      let proximo = visto.current ? 2500 : 5_000;
       try {
         const r = await fetch(`${servidor().replace(/\/$/, "")}/actualizacion/estado`, { cache: "no-store" });
         if (!r.ok) throw new Error(String(r.status));
@@ -51,7 +51,12 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
       if (vivo) t = setTimeout(consultar, proximo);
     };
     consultar();
-    return () => { vivo = false; clearTimeout(t); };
+    // El celular congela los temporizadores con la pantalla apagada o la app en segundo plano: al volver, consulta de inmediato
+    const alVolver = () => { if (document.visibilityState === "visible") { clearTimeout(t); consultar(); } };
+    document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener("focus", alVolver);
+    window.addEventListener("online", alVolver);
+    return () => { vivo = false; clearTimeout(t); document.removeEventListener("visibilitychange", alVolver); window.removeEventListener("focus", alVolver); window.removeEventListener("online", alVolver); };
   }, [servidor, alCambiarVersion]);
 
   const activa = (e?.actualizando || (visto.current && sinConexion)) && !ocultar;
@@ -77,7 +82,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
         <p>{sinConexion ? "Reiniciando el servidor…" : e?.paso ?? "Preparando…"}</p>
         <div className={"actualizando-barra" + (pct == null || sinConexion ? " indeterminada" : "")}><b style={{ width: pct != null && !sinConexion ? `${Math.max(4, pct)}%` : undefined }} /></div>
         <p className="suave pequeno">No apague el equipo. Al terminar, el sistema se abrirá solo y le pedirá su usuario y contraseña.</p>
-        {pasados >= 10 && <button className="enlace" onClick={() => setOcultar(true)}>Está tardando demasiado: cerrar este aviso</button>}
+        {pasados >= 3 && <button className="enlace" onClick={() => setOcultar(true)}>Está tardando demasiado: cerrar este aviso</button>}
       </div>
     </div>
   );
