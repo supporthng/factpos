@@ -24,9 +24,9 @@
     function abrir(accion) {
       caja.innerHTML = "";
       caja.appendChild(el("h2", "margin:0 0 8px;font-size:24px", accion === "cerrar" ? "Cerrar la app" : "Opciones del equipo"));
-      caja.appendChild(el("div", "color:#5d6d7e", "Escriba la clave de salida"));
+      caja.appendChild(el("div", "color:#5d6d7e", "Escriba el PIN de un supervisor o administrador"));
       var inp = el("input", "width:100%;font-size:24px;padding:12px;border:2px solid #cfd8e0;border-radius:12px;text-align:center;margin:12px 0;box-sizing:border-box");
-      inp.type = "password"; inp.autocomplete = "off";
+      inp.type = "password"; inp.autocomplete = "off"; inp.inputMode = "numeric"; inp.maxLength = 8;
       // Versiones viejas de la página devuelven el foco al lector cada segundo: aquí se recupera mientras se escribe la clave
       inp.onblur = function () { setTimeout(function () { if (velo.style.display === "flex" && caja.contains(inp)) inp.focus(); }, 0); };
       var err = el("div", "color:#c0362c;font-weight:700;min-height:1.3em");
@@ -35,8 +35,9 @@
       no.onclick = function () { velo.style.display = "none"; };
       ok.onclick = function () {
         var c = inp.value;
+        err.textContent = "Comprobando…";
         llamar("verificarClave", c).then(function (v) {
-          if (!v) { err.textContent = "Clave incorrecta."; inp.value = ""; return; }
+          if (v !== "ok") { err.textContent = v === "incorrecta" ? "PIN incorrecto, o no es de un supervisor o administrador." : v === "sin_conexion" ? "No hay conexión con el servidor." : String(v); inp.value = ""; return; }
           if (accion === "cerrar") { llamar("salir", c); return; }
           caja.innerHTML = "";
           caja.appendChild(el("h2", "margin:0 0 4px;font-size:24px", "Opciones del equipo"));

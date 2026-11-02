@@ -26,7 +26,7 @@
 <body>
 <form id="f" autocomplete="off">
   <h1>Verificador FactPOS</h1>
-  <p>Se conecta solo con el servidor de la tienda. Solo falta una clave de salida.</p>
+  <p>Se conecta solo con el servidor de la tienda. Para cerrar la app se usa el PIN de un supervisor o administrador de FactPOS.</p>
   <div id="buscando" class="busca">Buscando el servidor de la tienda en la red…</div>
   <div id="hallados"></div>
   <button type="button" class="aparte" id="otra" hidden>Buscar de nuevo</button>
@@ -36,16 +36,8 @@
     <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
   </div>
   <a href="#" id="verman" hidden class="enlace">Escribir la dirección a mano</a>
-  <div id="actual" hidden>
-    <label for="ca">Clave de salida actual</label>
-    <input id="ca" type="password" autocomplete="off">
-  </div>
-  <label for="c1">Clave de salida (para cambiar el servidor o cerrar la app)</label>
-  <input id="c1" type="password" autocomplete="off" minlength="4">
-  <label for="c2">Repita la clave</label>
-  <input id="c2" type="password" autocomplete="off" minlength="4">
   <div id="error" role="alert"></div>
-  <button type="submit">Guardar y abrir el verificador</button>
+  <button type="submit">Conectar y abrir el verificador</button>
   <button type="button" class="aparte" id="botones" hidden>Bloquear los botones de Android (permiso una sola vez)</button>
 </form>
 <script>
@@ -111,7 +103,6 @@
     for (let i = 0; i < 60 && !puente(); i++) await new Promise((r) => setTimeout(r, 250));
     try {
       const e = JSON.parse(await llamar("estado"));
-      if (e.tieneClave) $("actual").hidden = false;
       if (!e.botonesBloqueados && typeof (window.FactPOSApp && window.FactPOSApp.bloquearBotones) !== "undefined") $("botones").hidden = false;
     } catch { error("Esperando a la app…"); }
     buscar();
@@ -120,11 +111,10 @@
   $("f").onsubmit = async (ev) => {
     ev.preventDefault();
     error("");
-    if ($("c1").value !== $("c2").value) return error("Las dos claves no coinciden.");
     let url;
     try { url = elegido || normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
     try {
-      const r = await llamar("guardar", url, $("c1").value, $("ca").value);
+      const r = await llamar("guardar", url);
       if (r) error(r);   // "" = guardado: la app abre el verificador sola
     } catch (e) { error(e.message || "No se pudo guardar"); }
   };
