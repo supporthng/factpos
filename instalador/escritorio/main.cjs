@@ -378,6 +378,7 @@ function openMain(onShown) {
   mainWindow = win;
   // La pantalla de entrada del admin es solo el cuadro pequeño; al entrar la ventana vuelve a su tamaño normal
   win.webContents.on('ipc-message', (_e, canal, modo) => {
+    if (canal === 'factpos:cerrar') { app.quit(); return; }
     if (canal !== 'factpos:ventana' || selected !== 'admin' || win.isDestroyed() || win.isKiosk()) return;
     if (modo === 'entrar') {
       if (win.isMaximized()) win.unmaximize();
