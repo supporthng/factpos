@@ -119,6 +119,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   let inactivo;
   function espera() {
     clearTimeout(inactivo);
+    cargarOfertas();
     vista.className = "espera";
     const cab = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "");
     if (!ofertas.length) { vista.innerHTML = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub">Pase el producto por el lector para ver su precio</div>'; return; }
@@ -146,10 +147,15 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     if (!sucursal) return;
     try {
       const r = await fetch("/verificador/ofertas?sucursal=" + encodeURIComponent(sucursal));
-      if (r.ok) { ofertas = await r.json(); if (vista.className === "espera") espera(); }
+      if (r.ok) {
+        const nuevas = await r.json();
+        const cambio = JSON.stringify(nuevas) !== JSON.stringify(ofertas);
+        ofertas = nuevas;
+        if (cambio && vista.className === "espera") espera();   // solo se redibuja si cambió algo
+      }
     } catch {}
   }
-  setInterval(cargarOfertas, 5 * 60 * 1000);
+  setInterval(cargarOfertas, 30 * 1000); // las ofertas nuevas aparecen en menos de 30 segundos
   // Sin ?sucursal=: el servidor dice cuál es (un servidor de sucursal atiende una sola) y entrega la marca de la empresa
   async function cargarConfig() {
     try {
