@@ -49,7 +49,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .ofertas-titulo { color:#fff; font-size:clamp(22px,4vw,34px); font-weight:800; margin-bottom:6px; }
   .ofertas-sub { color:#cfd8e0; margin-bottom:18px; font-size:clamp(14px,2.4vw,20px); }
   .rejilla { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; width:min(1100px,100%); }
-  .oferta-card { background:#fff; color:var(--texto); border:0; border-radius:18px; padding:20px; text-align:left; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,.3); }
+  .oferta-card { background:#fff; color:var(--texto); border:0; border-radius:18px; padding:20px; text-align:center; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,.3); }
   .oferta-card:active { transform:scale(.98); }
   .oferta-card b { display:block; font-size:20px; margin-bottom:6px; }
   .oferta-card .t { display:inline-block; background:var(--oferta); color:#fff; border-radius:999px; padding:4px 12px; font-weight:700; font-size:16px; }
@@ -72,7 +72,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .tarjeta { position:relative; overflow:hidden; }
   .codigo-leido { color:var(--suave); font-size:16px; margin-top:6px; }
   .carrusel { position:relative; width:min(1000px,100%); margin:18px auto 8px; touch-action:pan-y; user-select:none; }
-  .slide { display:none; background:#fff; color:var(--texto); border-radius:24px; padding:26px; gap:24px; align-items:center; text-align:left; box-shadow:0 14px 40px rgba(0,0,0,.35); cursor:pointer; }
+  .slide { display:none; background:#fff; color:var(--texto); border-radius:24px; padding:26px; gap:24px; align-items:center; text-align:center;justify-content:center; box-shadow:0 14px 40px rgba(0,0,0,.35); cursor:pointer; }
   .slide.on { display:flex; animation:entra .5s ease; }
   @keyframes entra { from { opacity:0; transform:translateX(34px); } to { opacity:1; transform:none; } }
   .fotos { display:flex; gap:10px; }
