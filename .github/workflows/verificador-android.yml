@@ -1,0 +1,57 @@
+name: Verificador Android
+# Compila FactPOS-Verificador.apk (quiosco de consulta de precios) y lo publica en Releases › «verificador-android».
+# Firma: secretos ANDROID_KEYSTORE_B64 y ANDROID_KEYSTORE_PASSWORD (Settings › Secrets and variables › Actions).
+# Con ellos, cada APK nuevo se instala ENCIMA del anterior. Sin ellos se firma con una llave de prueba:
+# el APK se instala igual, pero para actualizar hay que desinstalar el anterior.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["apps/verificador-android/**", ".github/workflows/verificador-android.yml"]
+  pull_request:
+    paths: ["apps/verificador-android/**", ".github/workflows/verificador-android.yml"]
+permissions:
+  contents: write
+concurrency: { group: verificador-android, cancel-in-progress: false }
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.9" }
+      - name: Llave de firma
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/firma.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/firma.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Falta el secreto ANDROID_KEYSTORE_B64: el APK se firma con una llave de prueba (instalable, pero no se actualiza encima)."
+          fi
+      - name: Compilar
+        working-directory: apps/verificador-android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then
+            gradle --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk ../../FactPOS-Verificador.apk
+          else
+            gradle --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../../FactPOS-Verificador.apk
+          fi
+      - uses: actions/upload-artifact@v4
+        with: { name: FactPOS-Verificador-Android, path: FactPOS-Verificador.apk }
+      - name: Publicar en Releases
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view verificador-android >/dev/null 2>&1 || gh release create verificador-android --title "Verificador FactPOS para Android" --notes "Descargue FactPOS-Verificador.apk en la tableta o pantalla Android y ábralo para instalarlo (Android pide permitir «instalar apps desconocidas» una vez)." --latest=false
+          gh release upload verificador-android FactPOS-Verificador.apk --clobber

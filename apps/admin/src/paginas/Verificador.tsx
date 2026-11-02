@@ -49,6 +49,9 @@ function ConsultasRecientes({ sucursalId }: { sucursalId: string }) {
   );
 }
 
+const DESCARGA_ANDROID = "https://github.com/supporthng/factpos/releases/download/verificador-android/FactPOS-Verificador.apk";
+const DESCARGA_WINDOWS = "https://github.com/supporthng/factpos/releases/download/verificador-windows/Instalador_Verificador_FactPOS.exe";
+
 /** Verificadores de precios (Android y Windows): la dirección que se configura en cada equipo y cómo dejarlo en pantalla completa. */
 export function Verificador() {
   const [sucursalId, setSucursalId] = useState("");
@@ -91,23 +94,26 @@ export function Verificador() {
 
       <div className="dos-col" style={{ marginTop: 16 }}>
         <div className="panel">
-          <h3 style={{ marginTop: 0 }}>Verificador Android</h3>
+          <h3 style={{ marginTop: 0 }}>App para Android (tableta o pantalla)</h3>
           <ol className="pequeno" style={{ paddingLeft: 20 }}>
             <li>Conecte el equipo a la misma red Wi-Fi o cable que el servidor de la sucursal.</li>
-            <li>Si trae una aplicación de verificación, ponga como dirección del servidor la de arriba (la <b>primera</b> si pide una página, la <b>segunda</b> si consulta por API con el código de barras).</li>
-            <li>Si no, abra la dirección en Chrome, menú ⋮ › <b>Añadir a la pantalla de inicio</b> (o «Instalar aplicación»). Se abre en pantalla completa y mantiene la pantalla encendida.</li>
-            <li>Para dejarlo fijo, use el modo kiosco del equipo o una app como Fully Kiosk con esa dirección de inicio.</li>
+            <li>Desde el equipo, descargue e instale <a href={DESCARGA_ANDROID}>FactPOS-Verificador.apk</a> (Android pide permitir «instalar apps desconocidas» una sola vez).</li>
+            <li>Al abrirla, escriba la dirección del servidor (la de arriba) y una <b>clave de salida</b>. Solo se hace una vez.</li>
+            <li>Queda a pantalla completa, arranca al encender el equipo y no se puede cerrar sin la clave (esquina superior izquierda ⓘ).</li>
+            <li>Para bloqueo total, conecte el equipo a la PC y ejecute: <span className="mono">adb shell dpm set-device-owner com.factpos.verificador/.AdminReceiver</span> (con el equipo sin cuentas).</li>
             <li>El lector integrado debe estar en modo «teclado» (escribe el código y envía Enter), que es lo normal.</li>
           </ol>
         </div>
         <div className="panel">
-          <h3 style={{ marginTop: 0 }}>Verificador Windows</h3>
+          <h3 style={{ marginTop: 0 }}>App para Windows</h3>
           <ol className="pequeno" style={{ paddingLeft: 20 }}>
-            <li>Conecte el equipo a la red del servidor de la sucursal.</li>
-            <li>Cree un acceso directo de Microsoft Edge con este destino (pantalla completa, sin barras):</li>
+            <li>Conecte la PC a la red del servidor de la sucursal.</li>
+            <li>Descargue y ejecute <a href={DESCARGA_WINDOWS}>Instalador_Verificador_FactPOS.exe</a> (no pide administrador). Deje marcado «abrir al iniciar Windows».</li>
+            <li>Al abrirla, escriba la dirección del servidor (la de arriba) y una <b>clave de salida</b>.</li>
+            <li>Queda a pantalla completa, bloquea Alt+Tab y la tecla Windows, y solo se cierra con la clave (esquina superior izquierda ⓘ).</li>
           </ol>
+          <p className="suave pequeno">¿Prefiere no instalar nada? Edge en modo kiosco también funciona, con este destino del acceso directo:</p>
           <Fila k="win" titulo="" texto={windows} />
-          <p className="suave pequeno">Para que arranque con Windows, copie el acceso directo en la carpeta de inicio (<span className="mono">shell:startup</span>). Si el equipo ya trae su software de verificación, use la dirección de la izquierda en él.</p>
         </div>
       </div>
     </>

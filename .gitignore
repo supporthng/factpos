@@ -1,1 +1,9 @@
 node_modules/
+apps/verificador-android/.gradle/
+apps/verificador-android/app/build/
+apps/verificador-android/build/
+apps/verificador-windows/.venv/
+apps/verificador-windows/build/
+apps/verificador-windows/dist/
+apps/verificador-windows/*.spec
+dist_instalador/

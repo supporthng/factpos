@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verificador FactPOS · Configuración</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:#10202e; color:#10202e; font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+         display:flex; align-items:center; justify-content:center; padding:20px; }
+  form { background:#fff; border-radius:20px; width:min(560px,100%); padding:32px; box-shadow:0 20px 50px rgba(0,0,0,.35); }
+  h1 { margin:0 0 4px; font-size:28px; } p { color:#5d6d7e; margin:4px 0 18px; }
+  label { display:block; font-weight:700; margin:14px 0 4px; }
+  input { width:100%; font-size:20px; padding:12px 14px; border:2px solid #cfd8e0; border-radius:12px; }
+  input:focus { outline:none; border-color:#c0362c; }
+  small { color:#5d6d7e; display:block; margin-top:4px; }
+  button { margin-top:22px; width:100%; font-size:22px; font-weight:700; padding:14px; border:0; border-radius:999px; background:#c0362c; color:#fff; }
+  #error { color:#c0362c; font-weight:700; margin-top:14px; min-height:1.2em; }
+  .aparte { background:#eef1f4; color:#10202e; margin-top:10px; font-size:16px; }
+</style>
+</head>
+<body>
+<form id="f" autocomplete="off">
+  <h1>Verificador FactPOS</h1>
+  <p>Conecte este equipo con el servidor de la tienda. Solo se hace una vez.</p>
+  <label for="srv">Dirección del servidor de la sucursal</label>
+  <input id="srv" inputmode="url" placeholder="192.168.1.10:3000" required>
+  <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
+  <div id="actual" hidden>
+    <label for="ca">Clave de salida actual</label>
+    <input id="ca" type="password" autocomplete="off">
+  </div>
+  <label for="c1">Clave de salida (para cambiar el servidor o cerrar la app)</label>
+  <input id="c1" type="password" autocomplete="off" required minlength="4">
+  <label for="c2">Repita la clave</label>
+  <input id="c2" type="password" autocomplete="off" required minlength="4">
+  <div id="error" role="alert"></div>
+  <button type="submit">Guardar y abrir el verificador</button>
+  <button type="button" class="aparte" id="botones" hidden>Bloquear los botones de Android (permiso una sola vez)</button>
+</form>
+<script>
+  // Android: window.FactPOSApp (síncrono). Windows: window.pywebview.api (asíncrono, disponible tras «pywebviewready»).
+  const puente = () => window.FactPOSApp || (window.pywebview && window.pywebview.api) || null;
+  async function llamar(nombre, ...args) { const p = puente(); if (!p) throw new Error("La app no está lista"); return await p[nombre](...args); }
+  const $ = (id) => document.getElementById(id);
+  const error = (t) => { $("error").textContent = t; };
+
+  function normalizar(t) {
+    let v = t.trim().replace(/\s+/g, "");
+    if (!/^https?:\/\//i.test(v)) v = "http://" + v;
+    const u = new URL(v);
+    if (u.pathname === "/" ) u.pathname = "/verificador";
+    return u.toString();
+  }
+
+  async function iniciar() {
+    for (let i = 0; i < 60 && !puente(); i++) await new Promise((r) => setTimeout(r, 250));
+    try {
+      const e = JSON.parse(await llamar("estado"));
+      if (e.tieneClave) $("actual").hidden = false;
+      if (!e.botonesBloqueados && typeof (window.FactPOSApp && window.FactPOSApp.bloquearBotones) !== "undefined") $("botones").hidden = false;
+    } catch { error("Esperando a la app…"); }
+  }
+  $("botones").onclick = () => llamar("bloquearBotones");
+  $("f").onsubmit = async (ev) => {
+    ev.preventDefault();
+    error("");
+    if ($("c1").value !== $("c2").value) return error("Las dos claves no coinciden.");
+    let url;
+    try { url = normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
+    try {
+      const r = await llamar("guardar", url, $("c1").value, $("ca").value);
+      if (r) error(r);   // "" = guardado: la app abre el verificador sola
+    } catch (e) { error(e.message || "No se pudo guardar"); }
+  };
+  window.addEventListener("pywebviewready", iniciar);
+  iniciar();
+</script>
+</body>
+</html>
