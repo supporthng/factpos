@@ -76,7 +76,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   /** Pedido de cliente cargado en la venta: al cobrar, queda facturado */
   /** Tipo de comprobante de esta venta (Consumo por defecto) */
-  const [tipoComp, setTipoComp] = useState<TipoComprobante>("E32");
+  const [tipoComp, setTipoComp] = useState<TipoComprobante>("SIN");
   const volverACobro = useRef(false);
   const [pedidoActivo, setPedidoActivo] = useState<{ id: string; numero: string } | null>(null);
   const [cupon, setCupon] = useState<Cupon | null>(null);
@@ -374,7 +374,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setSel((s) => Math.min(s, lineas.length - 2));
   };
   const nuevaVenta = () => {
-    setPedidoActivo(null); setTipoComp("E32");
+    setPedidoActivo(null); setTipoComp("SIN");
     setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); setNotas(""); setMetodo("EFECTIVO"); avisadas.current = new Set();
   };
 
