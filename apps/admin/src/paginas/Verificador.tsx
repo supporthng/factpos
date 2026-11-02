@@ -14,6 +14,15 @@ interface Consultas {
 function QrConsultaMovil({ inicial }: { inicial: string }) {
   const [url, setUrl] = useState(inicial);
   const [img, setImg] = useState("");
+  const { datos: ajustes, recargar } = useDatos<{ wifi?: string }>("/central/verificador/ajustes");
+  const [wifi, setWifi] = useState("");
+  const [msgWifi, setMsgWifi] = useState("");
+  useEffect(() => { if (ajustes) setWifi(ajustes.wifi ?? ""); }, [ajustes]);
+  const guardarWifi = async () => {
+    setMsgWifi("");
+    try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: { wifi } }); recargar(); setMsgWifi("Guardado"); setTimeout(() => setMsgWifi(""), 2000); }
+    catch (e) { setMsgWifi((e as Error).message); }
+  };
   useEffect(() => setUrl(inicial), [inicial]);
   useEffect(() => {
     let vivo = true;
@@ -23,22 +32,34 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
   const imprimir = () => {
     const w = window.open("", "_blank", "width=700,height=900");
     if (!w) return;
+    const pasos = [
+      wifi.trim() ? `Conéctate al WiFi «${wifi.trim()}» de la tienda` : "Conéctate al WiFi de la tienda",
+      "Escanea este código con la cámara del celular",
+      "Escanea o escribe el código de barras del producto y mira su precio",
+    ];
     const img_ = document.createElement("img");
-    img_.src = img; img_.style.width = "360px";
+    img_.src = img; img_.style.cssText = "width:340px;margin:10px auto;display:block";
     w.document.title = "Consulta de precios";
-    w.document.body.style.cssText = "font-family:system-ui,sans-serif;text-align:center;padding:40px";
+    w.document.body.style.cssText = "font-family:system-ui,sans-serif;text-align:center;padding:36px;color:#10202e";
     const h = w.document.createElement("h1"); h.textContent = "Consulta el precio desde tu celular";
-    const t = w.document.createElement("p"); t.textContent = "Conéctate al WiFi de la tienda, escanea este código y escribe o escanea el código de barras del producto."; t.style.fontSize = "20px";
-    w.document.body.append(h, img_, t);
+    const lista = w.document.createElement("ol");
+    lista.style.cssText = "display:inline-block;text-align:left;font-size:22px;line-height:1.5;margin:10px 0 0;padding-left:30px";
+    for (const t of pasos) { const li = w.document.createElement("li"); li.textContent = t; lista.append(li); }
+    const nota = w.document.createElement("p"); nota.textContent = "Solo funciona dentro del WiFi de la tienda: no uses datos móviles."; nota.style.cssText = "font-size:18px;color:#5b6b7a";
+    w.document.body.append(h, lista, img_, nota);
     img_.onload = () => w.print();
   };
   return (
     <div className="panel" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>QR para consultar desde el celular</h3>
-      <p className="suave pequeno">El cliente se conecta al WiFi de la tienda, escanea este QR y consulta el precio de cualquier producto. Imprímelo y pégalo en el local. Si la dirección no es la del servidor de la sucursal (por ejemplo http://192.168.1.10:3000/verificador/movil), corrígela abajo.</p>
+      <p className="suave pequeno">El cliente se conecta al WiFi de la tienda, escanea este QR y consulta el precio de cualquier producto. Imprime el cartel (lleva los 3 pasos: WiFi, QR y producto) y pégalo en el local. Si la dirección no es la del servidor de la sucursal (por ejemplo http://192.168.1.10:3000/verificador/movil), corrígela abajo.</p>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
         {img ? <img src={img} alt="QR de la consulta de precios" width={200} height={200} style={{ border: "1px solid #dde3e8", borderRadius: 8 }} /> : <div style={{ width: 200, height: 200 }} />}
         <div style={{ flex: 1, minWidth: 240 }}>
+          <label className="campo"><span>Nombre del WiFi de la tienda (sale en el cartel impreso)</span>
+            <input value={wifi} maxLength={40} placeholder="Ej.: Tienda_Clientes" onChange={(e) => setWifi(e.target.value)} onBlur={() => { if (ajustes && wifi !== (ajustes.wifi ?? "")) void guardarWifi(); }} />
+          </label>
+          {msgWifi && <p className="suave pequeno" style={{ margin: "4px 0" }}>{msgWifi}</p>}
           <label className="campo"><span>Dirección que abre el QR</span><input value={url} onChange={(e) => setUrl(e.target.value)} /></label>
           <div className="fila-acciones" style={{ marginTop: 10 }}>
             <button className="boton" disabled={!img} onClick={imprimir}>Imprimir</button>
@@ -52,9 +73,9 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
 function AjustesVerificador() {
-  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean }>("/central/verificador/ajustes");
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; wifi?: string }>("/central/verificador/ajustes");
   const [msg, setMsg] = useState("");
-  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean }) => {
+  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; wifi?: string }) => {
     setMsg("");
     try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: cambio }); recargar(); }
     catch (e) { setMsg((e as Error).message); }
