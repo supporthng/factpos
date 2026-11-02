@@ -8,6 +8,7 @@ import { ConfigMovil } from "./paginas/ConfigMovil";
 import { ConexionWeb } from "./paginas/ConexionWeb";
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { Correo } from "./paginas/Correo";
+import { SelectorEmpresa } from "./paginas/Empresas";
 import { useEffect, useState, type ComponentType } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 import { Portal } from "./paginas/Portal";
@@ -304,6 +305,7 @@ function AppInterna() {
               <button className={forma === "lateral" ? "activo" : ""} aria-pressed={forma === "lateral"} title="Menú lateral" onClick={() => cambiarForma("lateral")}><Icono n="menu-lateral" tamano={17} /></button>
             </div>
             <span className="empresa-superior">{sesion.empresa}</span>
+            {!enPortal && !esLocal() && <SelectorEmpresa />}
             <button className="chip-usuario" title="Cambiar mi contraseña" onClick={() => setCambiarClave(true)}>
               <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>
             </button>
