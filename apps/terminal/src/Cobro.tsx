@@ -48,7 +48,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   onBuscarCliente: () => void;
 }) {
   const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
-  const [verOtros, setVerOtros] = useState(metodo !== "EFECTIVO");
+  const [forma, setForma] = useState<MetodoPago>(metodo);
   const [refTarjeta, setRefTarjeta] = useState("");
   const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
   const [credito, setCredito] = useState("");
@@ -62,6 +62,12 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const sinServidor = !conexion.enLinea;
 
   const n = (v: string) => new Decimal(v || 0);
+  const elegirForma = (f: MetodoPago) => {
+    setForma(f); setRecibido("");
+    if (f === "EFECTIVO") { setTarjeta(""); setTransferencia(""); setCredito(""); }
+    if (f === "TARJETA") { setTarjeta(total); setTransferencia(""); setCredito(""); }
+    if (f === "TRANSFERENCIA") { setTransferencia(total); setTarjeta(""); setCredito(""); }
+  };
   const otros = n(tarjeta).plus(n(transferencia)).plus(n(credito));
   const efectivo = Decimal.max(new Decimal(total).minus(otros), 0);
   const cambio = recibido ? n(recibido).minus(efectivo) : new Decimal(0);
@@ -150,50 +156,65 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
           <b> consumo (E32) en contingencia</b>. Solo efectivo, tarjeta o transferencia.
         </div>
       )}
-      <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>
-
-      <div className="cobro-efectivo">
-        <label className="campo">
-          <span>Efectivo recibido {efectivo.gt(0) && <em>· a cobrar en efectivo {rd(efectivo.toFixed(2))}</em>}</span>
-          <input autoFocus={metodo === "EFECTIVO" || metodo === "MIXTO"} className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
-            onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
-        </label>
-        <div className="billetes">
-          <button className="boton fantasma" onClick={() => setRecibido(efectivo.toFixed(2))}>Exacto</button>
-          {BILLETES.filter((b) => b >= efectivo.toNumber()).slice(0, 4).map((b) => (
-            <button key={b} className="boton fantasma" onClick={() => setRecibido(String(b))}>{rd(b)}</button>
-          ))}
+      <div className="cobro2">
+        <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>
+        <div className="cobro2-grid">
+          <div className="cobro2-col">
+            <div className="formas" role="radiogroup" aria-label="Forma de pago">
+              {(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "MIXTO"] as MetodoPago[]).map((f) => (
+                <button key={f} role="radio" aria-checked={forma === f} className={"forma" + (forma === f ? " activo" : "")} onClick={() => elegirForma(f)}>
+                  {f === "EFECTIVO" ? "Efectivo" : f === "TARJETA" ? "Tarjeta" : f === "TRANSFERENCIA" ? "Transferencia" : "Mixto"}
+                </button>
+              ))}
+            </div>
+            {(forma === "EFECTIVO" || forma === "MIXTO") && (
+              <div className="cobro2-bloque">
+                <label className="campo">
+                  <span>Efectivo recibido {efectivo.gt(0) && <em>· a cobrar {rd(efectivo.toFixed(2))}</em>}</span>
+                  <input autoFocus className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
+                    onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+                </label>
+                <div className="billetes">
+                  <button className="boton fantasma chico" onClick={() => setRecibido(efectivo.toFixed(2))}>Exacto</button>
+                  {BILLETES.filter((x) => x >= efectivo.toNumber()).slice(0, 4).map((x) => (
+                    <button key={x} className="boton fantasma chico" onClick={() => setRecibido(String(x))}>{rd(x)}</button>
+                  ))}
+                </div>
+                {recibido && cambio.gte(0) && <div className="cambio-grande">Cambio: {rd(cambio.toFixed(2))}</div>}
+              </div>
+            )}
+            {(forma === "TARJETA" || forma === "MIXTO") && (
+              <div className="cobro2-bloque">
+                {forma === "MIXTO" && campo("Tarjeta", tarjeta, setTarjeta)}
+                <input autoFocus={forma === "TARJETA"} className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
+                  value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+              </div>
+            )}
+            {forma === "MIXTO" && (
+              <div className="cobro2-bloque">
+                {campo("Transferencia", transferencia, setTransferencia)}
+                {cliente && Number(cliente.limiteCredito) > 0 && campo(`Crédito (disp. ${rd(disponibleCredito.toFixed(2))})`, credito, setCredito)}
+              </div>
+            )}
+            {forma === "TRANSFERENCIA" && <p className="suave">Se cobra el total por transferencia.</p>}
+          </div>
+          <div className="cobro2-col">
+            <div className="cobro-seccion">
+              <span className="cobro-etiqueta">Comprobante</span>
+              <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} compacto />
+            </div>
+            <div className="cobro-seccion">
+              <span className="cobro-etiqueta">Cliente</span>
+              <div className="cobro-cliente">
+                <span>{cliente ? <><b>{cliente.nombre}</b>{cliente.documento && <> · {cliente.documento}</>}</> : <><b>Mostrador</b> <span className="suave">(consumidor final)</span></>}</span>
+                {!sinServidor && <button className="boton chico" onClick={onBuscarCliente}>{cliente ? "Cambiar" : "Buscar / crear"}</button>}
+              </div>
+              {!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente) && (
+                <ClienteFiscalRapido ajustes={ajustes} usuario={usuario} onCliente={onCliente} onManual={onBuscarCliente} />
+              )}
+            </div>
+          </div>
         </div>
-        {recibido && cambio.gte(0) && <div className="cambio-grande">Cambio: {rd(cambio.toFixed(2))}</div>}
-      </div>
-
-      <details className="otros-pagos" open={verOtros} onToggle={(e) => setVerOtros((e.target as HTMLDetailsElement).open)}>
-        <summary>Tarjeta, transferencia o crédito (pago mixto)</summary>
-        {campo("Tarjeta", tarjeta, setTarjeta, (
-          <input autoFocus={metodo === "TARJETA"} className={"ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación" aria-label="Número de aprobación del voucher"
-            value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
-        ))}
-        <div className="billetes">
-          <button className="boton fantasma" onClick={() => { setTarjeta(new Decimal(total).minus(n(transferencia)).minus(n(credito)).toFixed(2)); setRecibido(""); }}>Todo con tarjeta</button>
-        </div>
-        {campo("Transferencia", transferencia, setTransferencia)}
-        {cliente && Number(cliente.limiteCredito) > 0 && campo(`Crédito (disp. ${rd(disponibleCredito.toFixed(2))})`, credito, setCredito)}
-      </details>
-
-      <div className="cobro-seccion">
-        <span className="cobro-etiqueta">Comprobante</span>
-        <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} />
-        <small className="suave">La numeración se asigna al confirmar. Los NCF de serie B requieren rangos autorizados vigentes.</small>
-      </div>
-      <div className="cobro-seccion">
-        <span className="cobro-etiqueta">Cliente</span>
-        <div className="cobro-cliente">
-          <span>{cliente ? <><b>{cliente.nombre}</b>{cliente.documento && <> · {cliente.documento}</>}</> : <><b>Cliente mostrador</b> <span className="suave">(consumidor final)</span></>}</span>
-          {!sinServidor && <button className="boton chico" onClick={onBuscarCliente}>{cliente ? "Cambiar" : "Buscar o crear cliente"}</button>}
-        </div>
-        {!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente) && (
-          <ClienteFiscalRapido ajustes={ajustes} usuario={usuario} onCliente={onCliente} onManual={onBuscarCliente} />
-        )}
       </div>
 
       {(error || msg) && <p className="error">{error || msg}</p>}
