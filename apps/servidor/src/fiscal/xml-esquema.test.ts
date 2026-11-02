@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { construirEcf, construirRfce, type DatosEcf } from "./xml.js";
+import { construirEcf, construirRfce, TIPOS_ECF_SOPORTADOS, type DatosEcf, type TipoEcf } from "./xml.js";
 
-const base = (tipo: "E31" | "E32"): DatosEcf => ({
+const base = (tipo: TipoEcf): DatosEcf => ({
   tipo, encf: `E${tipo.slice(1)}0000000001`, venceSecuencia: "2027-12-31", fechaEmision: new Date("2026-11-02T14:00:00Z"),
   emisor: { rnc: "131000001", razonSocial: "Empresa SRL", direccion: "Calle 1" },
   comprador: null, condicion: "CONTADO", pagos: [{ formaPago: "EFECTIVO", monto: "1180.00" }],
@@ -22,5 +22,29 @@ describe("XML según los esquemas de la DGII", () => {
   });
   it("el e-CF completo sí conserva ITBIS1", () => {
     expect(construirEcf(base("E31"), new Date())).toContain("<ITBIS1>18</ITBIS1>");
+  });
+  it("soporta los 10 tipos", () => {
+    expect([...TIPOS_ECF_SOPORTADOS]).toEqual(["E31", "E32", "E33", "E34", "E41", "E43", "E44", "E45", "E46", "E47"]);
+  });
+  it("E34 lleva TipoPago y referencia obligatoria", () => {
+    const d = { ...base("E34"), referencia: { encf: "E310000000009", fecha: new Date("2026-10-20T14:00:00Z"), codigoModificacion: "1", razon: "Anulación" } };
+    const x = construirEcf(d, new Date());
+    expect(x).toContain("<TipoPago>1</TipoPago>");
+    expect(x).toContain("<NCFModificado>E310000000009</NCFModificado>");
+    expect(x).not.toContain("FechaVencimientoSecuencia");
+  });
+  it("E43 y E47 van sin ITBIS (exentos) y E47 con retención por línea", () => {
+    const l = { nombre: "Gasto", cantidad: "1", precioUnitario: "500.00", descuento: "0", tasaItbis: "0", base: "500.00", itbis: "0.00", total: "500.00", retencion: { isr: "50.00" } };
+    const e43 = construirEcf({ ...base("E43"), lineas: [l] }, new Date());
+    expect(e43).toContain("<IndicadorFacturacion>4</IndicadorFacturacion>");
+    expect(e43).not.toContain("<Comprador");
+    const e47 = construirEcf({ ...base("E47"), lineas: [l] }, new Date());
+    expect(e47).toContain("<MontoISRRetenido>50.00</MontoISRRetenido>");
+    expect(e47).toContain("<TotalISRRetencion>50.00</TotalISRRetencion>");
+  });
+  it("E46 (exportación) factura gravado a tasa 0", () => {
+    const x = construirEcf(base("E46"), new Date());
+    expect(x).toContain("<IndicadorFacturacion>3</IndicadorFacturacion>");
+    expect(x).toContain("<MontoGravadoI3>");
   });
 });
