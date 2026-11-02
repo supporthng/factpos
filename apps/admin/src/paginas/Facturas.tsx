@@ -102,6 +102,32 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
   const [msg, setMsg] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const interna = d?.tipoDocumento === "SIN";
+  // Edición de líneas (solo facturas sin comprobante): al guardar se corrige la factura (nueva con los cambios, la original queda anulada)
+  type LineaEd = { presentacionId: string; descripcion: string; cantidad: string; descuento: string };
+  const [lineas, setLineas] = useState<LineaEd[] | null>(null);
+  const [qp, setQp] = useState("");
+  const [resP, setResP] = useState<{ presentacionId: string; nombre: string; precio: string | null }[]>([]);
+  const empezarEdicion = () => {
+    setMsg(""); setModo("modificar");
+    setLineas((d?.lineas ?? []).map((l: any) => ({ presentacionId: l.presentacionId, descripcion: l.descripcion, cantidad: String(Number(l.cantidad)), descuento: String(Number(l.descuentoManual ?? 0)) })));
+  };
+  const buscarProducto = async (v: string) => {
+    setQp(v);
+    if (v.trim().length < 2) return setResP([]);
+    try { setResP(await api(`/central/facturas/buscar-producto?q=${encodeURIComponent(v.trim())}`)); } catch { setResP([]); }
+  };
+  const cambioLineas = !!lineas && JSON.stringify(lineas.map((l) => [l.presentacionId, Number(l.cantidad), Number(l.descuento)])) !==
+    JSON.stringify((d?.lineas ?? []).map((l: any) => [l.presentacionId, Number(l.cantidad), Number(l.descuentoManual ?? 0)]));
+  const corregir = () => ejecutar(async () => {
+    const r: any = await api(`/central/facturas/${id}/corregir`, {
+      metodo: "POST", cuerpo: {
+        motivo, items: lineas!.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad, ...(Number(l.descuento) > 0 ? { descuentoManual: Number(l.descuento).toFixed(2) } : {}) })),
+        ...(notas !== null ? { notas: notas.trim() || null } : {}), ...(cliente ? { clienteId: cliente.id } : {}),
+      },
+    });
+    setLineas(null);
+    return r;
+  }, "Factura corregida: la original quedó anulada y se emitió una nueva con los cambios");
 
   const buscar = async (v: string) => {
     setQ(v);
@@ -126,7 +152,7 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
           {d && <button className="boton chico" onClick={() => imprimir(d)}>Imprimir</button>}
         </div>
         <Aviso texto={error} />
-        {msg && <Aviso texto={msg} tipo={/modificada|anulada$/.test(msg) ? "ok" : "error"} />}
+        {msg && <Aviso texto={msg} tipo={/modificada|anulada$|corregida/.test(msg) ? "ok" : "error"} />}
         {d && <>
           <p><b>{NOMBRE[d.tipoDocumento] ?? d.tipoDocumento}</b> <span className="pastilla">{prefijo(d.tipoDocumento)}</span> {d.anulada && <span className="pastilla alerta">Anulada</span>}<br />
             <span className="suave">{d.sucursal}{d.caja ? ` · ${d.caja}` : ""} · {fecha(d.fecha)}{d.cajero ? ` · ${d.cajero}` : ""}</span><br />
@@ -145,21 +171,36 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
           {modo === "ver" && !d.anulada && (
             <div className="fila-acciones">
               <span className="flex" />
-              {puede("admin.facturas") && <button className="boton" onClick={() => { setMsg(""); setModo("modificar"); }}>Modificar</button>}
+              {puede("admin.facturas") && <button className="boton" onClick={() => { if (interna) empezarEdicion(); else { setMsg(""); setModo("modificar"); } }}>Modificar</button>}
               {puede("venta.anular") && <button className="boton peligro" onClick={() => { setMsg(""); setModo("anular"); }}>Anular</button>}
             </div>
           )}
           {modo === "modificar" && <>
-            <p className="suave">{interna ? "Puede cambiar la nota y el cliente." : "Esta factura tiene comprobante fiscal: solo se puede cambiar la nota. Para corregir otros datos, anúlela y emita una nueva."}</p>
+            <p className="suave">{interna ? "Puede cambiar los productos, cantidades, descuentos, la nota y el cliente. Si cambia productos o montos, la factura original queda anulada («Corregida») y se emite una nueva con los cambios, siempre que su turno siga abierto." : "Esta factura tiene comprobante fiscal: solo se puede cambiar la nota. Para corregir otros datos, anúlela y emita una nueva."}</p>
             <label className="campo"><span>Nota de la factura</span><textarea maxLength={300} value={notas ?? d.notas ?? ""} onChange={(e) => setNotas(e.target.value)} /></label>
+            {interna && lineas && <>
+              <table className="tabla" style={{ width: "100%" }}><thead><tr><th>Producto</th><th style={{ textAlign: "right" }}>Cant.</th><th style={{ textAlign: "right" }}>Descuento RD$</th><th /></tr></thead><tbody>
+                {lineas.map((l, i) => (
+                  <tr key={i}>
+                    <td>{l.descripcion}</td>
+                    <td style={{ textAlign: "right" }}><input inputMode="decimal" style={{ width: 80, textAlign: "right" }} value={l.cantidad} onChange={(e) => setLineas(lineas.map((x, j) => j === i ? { ...x, cantidad: e.target.value.replace(/[^\d.]/g, "") } : x))} /></td>
+                    <td style={{ textAlign: "right" }}><input inputMode="decimal" style={{ width: 90, textAlign: "right" }} value={l.descuento} onChange={(e) => setLineas(lineas.map((x, j) => j === i ? { ...x, descuento: e.target.value.replace(/[^\d.]/g, "") } : x))} /></td>
+                    <td><button className="enlace" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</button></td>
+                  </tr>
+                ))}
+              </tbody></table>
+              <label className="campo"><span>Agregar producto</span><input placeholder="Buscar producto por nombre, SKU o código" value={qp} onChange={(e) => buscarProducto(e.target.value)} /></label>
+              {resP.map((p) => <button key={p.presentacionId} className="enlace" style={{ display: "block" }} onClick={() => { setLineas([...lineas, { presentacionId: p.presentacionId, descripcion: p.nombre, cantidad: "1", descuento: "0" }]); setResP([]); setQp(""); }}>{p.nombre}{p.precio ? ` · ${rd(p.precio)}` : ""}</button>)}
+              <p className="suave pequeno">El precio de cada producto es el vigente; para cobrar menos use el descuento. Se mantiene la misma forma de pago por el nuevo total.</p>
+            </>}
             {interna && <>
               <label className="campo"><span>Cliente{cliente ? `: ${cliente.nombre}` : ""}</span><input placeholder="Buscar cliente por nombre o documento" value={q} onChange={(e) => buscar(e.target.value)} /></label>
               {res.map((c) => <button key={c.clienteId} className="enlace" style={{ display: "block" }} onClick={() => { setCliente({ id: c.clienteId, nombre: c.nombre }); setRes([]); setQ(""); }}>{c.nombre}{c.documento ? ` · ${c.documento}` : ""}</button>)}
               <button className="enlace" onClick={() => setCliente({ id: null, nombre: "Mostrador" })}>Dejar como cliente mostrador</button>
             </>}
-            <label className="campo"><span>Motivo del cambio (obligatorio)</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Mínimo 10 caracteres" /></label>
-            <div className="fila-acciones"><span className="flex" /><button className="boton" onClick={() => setModo("ver")}>Cancelar</button>
-              <button className="boton primario" disabled={ocupado || motivo.trim().length < 10} onClick={guardar}>Guardar cambios</button></div>
+            <label className="campo"><span>Motivo del cambio (obligatorio)</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Mínimo 10 caracteres" /><small className="suave">{motivo.trim().length < 10 ? `Faltan ${10 - motivo.trim().length} caracteres para poder guardar` : "Listo"}</small></label>
+            <div className="fila-acciones"><span className="flex" /><button className="boton" onClick={() => { setModo("ver"); setLineas(null); }}>Cancelar</button>
+              <button className="boton primario" disabled={ocupado || motivo.trim().length < 10 || (!!lineas && lineas.length === 0)} onClick={cambioLineas ? corregir : guardar}>{cambioLineas ? "Corregir factura" : "Guardar cambios"}</button></div>
           </>}
           {modo === "anular" && <>
             <p className="suave">Se emite la nota de crédito (o anulación interna), la mercancía regresa al inventario y la devolución se registra en un turno abierto de la sucursal.
