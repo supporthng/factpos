@@ -155,11 +155,22 @@ function NuevaOferta({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (
 
   const crear = async () => {
     setMsg("");
+    // Mensajes claros antes de llamar al servidor (el servidor solo diría «valor: Invalid»)
+    const valor = o.valor.replace(/RD\$|\s/gi, "").replace(",", ".");
+    if (!o.nombre.trim()) return setMsg("Escriba el nombre de la oferta.");
+    if (o.tipo === "LLEVA_PAGA") {
+      if (!(Number(o.lleva) > 0) || !(Number(o.paga) > 0) || Number(o.paga) >= Number(o.lleva)) return setMsg("En «Lleva / Paga», lo que paga debe ser menos de lo que lleva (por ejemplo lleva 2, paga 1).");
+    } else if (!/^\d+(\.\d{1,4})?$/.test(valor) || Number(valor) <= 0) {
+      return setMsg(o.tipo === "PORCENTAJE" ? "Escriba el porcentaje de descuento (por ejemplo 15)." : "Escriba el precio de la oferta (por ejemplo 899.00).");
+    } else if (o.tipo === "PORCENTAJE" && Number(valor) > 100) {
+      return setMsg("El porcentaje no puede pasar de 100.");
+    }
+    if (!presentacionId && !productoId && !categoriaId) return setMsg("Elija el producto (o la categoría) de la oferta.");
     try {
       await api("/central/ofertas", {
         cuerpo: {
           nombre: o.nombre, tipo: o.tipo,
-          ...(o.tipo === "LLEVA_PAGA" ? { lleva: Number(o.lleva), paga: Number(o.paga) } : { valor: o.valor }),
+          ...(o.tipo === "LLEVA_PAGA" ? { lleva: Number(o.lleva), paga: Number(o.paga) } : { valor }),
           cantidadMinima: o.tipo === "POR_VOLUMEN" ? o.cantidadMinima : "1",
           iniciaEn: o.inicia === hoy() ? new Date().toISOString() : `${o.inicia}T00:00:00-04:00`, terminaEn: `${o.termina}T23:59:59-04:00`,
           unidadesMaximas: o.tope ? o.tope : null,
