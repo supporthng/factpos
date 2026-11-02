@@ -72,8 +72,9 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     clearTimeout(inactivo);
     vista.className = "espera";
     const cab = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "");
-    if (!ofertas.length) { vista.innerHTML = cab + "Pase el producto por el lector<br>para ver su precio"; return; }
-    vista.innerHTML = cab + '<div class="ofertas-titulo">Ofertas de hoy</div><div class="ofertas-sub">Toque una oferta para ver sus productos · o pase un producto por el lector</div>' +
+    if (!ofertas.length) { vista.innerHTML = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub">Pase el producto por el lector para ver su precio</div>'; return; }
+    vista.innerHTML = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub">Pase el producto por el lector para ver su precio</div>' +
+      '<div class="ofertas-sub" style="color:#fff;font-weight:700;margin-top:6px">Ofertas de hoy · toque una para ver sus productos</div>' +
       '<div class="rejilla">' + ofertas.map((o, i) => '<button class="oferta-card" data-oferta="' + i + '"><b>' + esc(o.nombre) + '</b><span class="t">' + esc(o.texto) + '</span>' +
         '<small>' + o.productos.length + (o.productos.length === 1 ? " producto" : " productos") + ' · hasta el ' + new Date(o.hasta).toLocaleDateString("es-DO", { day: "numeric", month: "short" }) + '</small></button>').join("") + '</div>';
   }
