@@ -11,9 +11,9 @@
     var llamar = function (n) { var a = [].slice.call(arguments, 1); return Promise.resolve(P()[n].apply(P(), a)); };
     var css = "position:fixed;z-index:2147483647;font-family:system-ui,sans-serif;";
     var el = function (t, estilo, txt) { var e = document.createElement(t); e.style.cssText = estilo; if (txt) e.textContent = txt; return e; };
-    var raiz = el("div", css + "top:10px;left:10px;display:flex;gap:10px");
+    var raiz = el("div", css + "bottom:10px;left:10px;right:10px;display:flex;justify-content:space-between;pointer-events:none");
     var boton = function (txt, titulo) {
-      var b = el("button", "width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(16,32,46,.75);color:#fff;font-size:24px;cursor:pointer;opacity:.7", txt);
+      var b = el("button", "width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(16,32,46,.75);color:#fff;font-size:24px;cursor:pointer;opacity:.7;pointer-events:auto", txt);
       b.type = "button"; b.title = titulo; b.setAttribute("aria-label", titulo); return b;
     };
     var cerrar = boton("✕", "Cerrar la app"), info = boton("ⓘ", "Opciones del equipo");
