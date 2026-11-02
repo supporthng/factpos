@@ -22,6 +22,8 @@ export interface Transmisor {
   consultar(trackId: string, d: DocumentoEnvio): Promise<Respuesta>;
   /** Prueba de conexión y autenticación (solo el envío directo a la DGII). Lanza si falla. */
   probar?(): Promise<void>;
+  /** Anulación de rangos de e-NCF (ANECF). Solo el envío directo a la DGII. */
+  anularRango?(xmlFirmado: string, rncEmisor: string): Promise<{ aceptada: boolean; respuesta: string }>;
 }
 
 /** Error de red/servicio: el documento queda en contingencia y se reintenta. */
@@ -100,6 +102,13 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
 
   return {
     async probar() { token = null; await autenticar(); },
+    async anularRango(xml, rnc) {
+      const r = await conToken((t) => http(`${base}/anulacionrangos/api/Operaciones/AnularRango`, {
+        method: "POST", headers: { authorization: `Bearer ${t}` }, body: archivo(xml, `${rnc}ANECF.xml`),
+      }));
+      const texto = typeof r.cuerpo.texto === "string" ? r.cuerpo.texto : JSON.stringify(r.cuerpo);
+      return { aceptada: r.status < 400, respuesta: texto };
+    },
     async enviar(d) {
       const url = d.modo === "RFCE" ? `${baseFc}/recepcionfc/api/recepcion/ecf` : `${base}/recepcion/api/FacturasElectronicas`;
       const r = await conToken((t) => http(url, {
