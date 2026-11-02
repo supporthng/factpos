@@ -20,6 +20,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Enlace «Abrir y conectar» de la página de instalación: factpos-admin://conectar/<empresa> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="factpos-admin" android:host="conectar" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

@@ -6,6 +6,7 @@ completa que se le indique. La empresa se guarda en %APPDATA%\\FactPOSAdmin\\con
 """
 import json
 import os
+import re
 import sys
 
 import webview
@@ -84,8 +85,23 @@ def salir():
     api.ventana.destroy()
 
 
+def empresa_del_enlace():
+    """factpos-admin://conectar/<empresa> (enlace «Abrir y conectar» de la página de instalación)."""
+    for a in sys.argv[1:]:
+        if a.lower().startswith("factpos-admin:"):
+            e = a.rstrip("/").split("/")[-1].strip().lower()
+            if re.fullmatch(r"[a-z0-9.-]{2,60}", e):
+                return e
+    return ""
+
+
 def main():
     os.makedirs(WEBVIEW, exist_ok=True)
+    nueva = empresa_del_enlace()
+    if nueva:
+        os.makedirs(CARPETA, exist_ok=True)
+        with open(CONFIG, "w", encoding="utf-8") as f:
+            json.dump({"empresa": nueva}, f)
     empresa = leer_empresa()
     url = direccion(empresa)
     ventana = webview.create_window(
