@@ -24,7 +24,7 @@ export function Inventario() {
   return (
     <>
       <Encabezado titulo="Inventario" descripcion={`Existencia por sucursal · valor total al costo ${rd(total)}`}>
-        {puede("admin.inventario") && <button className="boton" onClick={() => setExcel(true)}>Actualizar con Excel</button>}
+        {puede("admin.inventario") && <button className="boton" onClick={() => setExcel(true)}>Importar inventario (Excel)</button>}
         <button className="boton fantasma" onClick={() => descargarCsv("/central/reportes/valorizacion", "valorizacion-inventario")}>Exportar valorización</button>
       </Encabezado>
       <div className="filtros">

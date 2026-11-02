@@ -105,20 +105,27 @@ export async function rutasCentral(app: FastifyInstance) {
     const f = z
       .object({ q: z.string().trim().max(60).optional(), categoriaId: uuid.optional(), soloBajoMinimo: z.enum(["1"]).optional() })
       .parse(req.query);
+    // Todos los productos que llevan inventario, aunque todavía no tengan existencia (aparecen en 0)
     const r = await pool.query(
-      `SELECT producto_id AS "productoId", sku, nombre,
-              SUM(cantidad) AS "existenciaTotal", SUM(valor) AS "valorTotal",
-              jsonb_object_agg(sucursal, jsonb_build_object(
-                  'sucursalId', sucursal_id, 'cantidad', cantidad, 'valor', valor,
-                  'minimo', stock_minimo, 'bajoMinimo', bajo_minimo)) AS sucursales
-         FROM rpt_inventario_sucursales
-        WHERE empresa_id = $1
-          AND ($2::text IS NULL OR nombre ILIKE '%' || $2 || '%' OR sku ILIKE $2 || '%')
-          AND ($3::uuid IS NULL OR categoria_id = $3)
-          AND ($5::uuid[] IS NULL OR sucursal_id = ANY($5))
-        GROUP BY producto_id, sku, nombre
-       HAVING $4::boolean IS NOT TRUE OR BOOL_OR(bajo_minimo)
-        ORDER BY nombre LIMIT 500`,
+      `SELECT p.id AS "productoId", p.sku, p.nombre,
+              SUM(x.cantidad) AS "existenciaTotal", SUM(x.valor) AS "valorTotal",
+              jsonb_object_agg(s.nombre, jsonb_build_object(
+                  'sucursalId', s.id, 'cantidad', x.cantidad, 'valor', x.valor,
+                  'minimo', ps.stock_minimo, 'bajoMinimo', x.cantidad <= COALESCE(ps.stock_minimo, 0))) AS sucursales
+         FROM productos p
+         CROSS JOIN sucursales s
+         LEFT JOIN producto_sucursal ps ON ps.producto_id = p.id AND ps.sucursal_id = s.id
+         CROSS JOIN LATERAL (
+           SELECT COALESCE(SUM(e.cantidad), 0) AS cantidad, COALESCE(ROUND(SUM(e.cantidad * e.costo_promedio), 2), 0) AS valor
+             FROM existencias e JOIN almacenes a ON a.id = e.almacen_id
+            WHERE e.producto_id = p.id AND a.sucursal_id = s.id) x
+        WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock AND s.empresa_id = $1 AND s.activo
+          AND ($2::text IS NULL OR p.nombre ILIKE '%' || $2 || '%' OR p.sku ILIKE $2 || '%')
+          AND ($3::uuid IS NULL OR p.categoria_id = $3)
+          AND ($5::uuid[] IS NULL OR s.id = ANY($5))
+        GROUP BY p.id, p.sku, p.nombre
+       HAVING $4::boolean IS NOT TRUE OR BOOL_OR(x.cantidad <= COALESCE(ps.stock_minimo, 0))
+        ORDER BY p.nombre LIMIT 500`,
       [empresaDe(req), f.q ?? null, f.categoriaId ?? null, f.soloBajoMinimo === "1", sucursalesDe(req)],
     );
     return r.rows;
