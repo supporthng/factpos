@@ -41,6 +41,31 @@ export async function rutasCentral(app: FastifyInstance) {
    * diferencia, comprobantes rechazados, certificado, secuencias, correos
    * que no salieron. Más la venta de ayer y la del mismo día de la semana pasada.
    */
+  /** Venta de un periodo (hoy, ayer, esta semana, semana pasada, este mes) y la del periodo equivalente anterior. */
+  app.get("/central/resumen/periodo", async (req) => {
+    const { periodo } = z.object({ periodo: z.enum(["hoy", "ayer", "semana", "semanaPasada", "mes"]).default("hoy") }).parse(req.query);
+    const r = await pool.query(
+      `WITH h AS (SELECT (now() AT TIME ZONE 'America/Santo_Domingo')::date AS hoy),
+            r AS (SELECT hoy,
+                    CASE $3 WHEN 'hoy' THEN hoy WHEN 'ayer' THEN hoy - 1 WHEN 'semana' THEN date_trunc('week', hoy)::date
+                            WHEN 'semanaPasada' THEN date_trunc('week', hoy)::date - 7 ELSE date_trunc('month', hoy)::date END AS desde,
+                    CASE $3 WHEN 'hoy' THEN hoy WHEN 'ayer' THEN hoy - 1 WHEN 'semana' THEN hoy
+                            WHEN 'semanaPasada' THEN date_trunc('week', hoy)::date - 1 ELSE hoy END AS hasta FROM h),
+            a AS (SELECT desde, hasta,
+                    CASE WHEN $3 = 'mes' THEN (desde - interval '1 month')::date WHEN $3 IN ('semana','semanaPasada') THEN desde - 7 ELSE desde - 1 END AS pdesde,
+                    CASE WHEN $3 = 'mes' THEN LEAST((hasta - interval '1 month')::date, (desde - 1)) WHEN $3 IN ('semana','semanaPasada') THEN hasta - 7 ELSE hasta - 1 END AS phasta FROM r)
+       SELECT a.desde::text, a.hasta::text, a.pdesde::text, a.phasta::text,
+              COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.desde AND a.hasta), 0)::text AS venta,
+              COALESCE(SUM(v.transacciones) FILTER (WHERE v.fecha BETWEEN a.desde AND a.hasta), 0)::text AS transacciones,
+              COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.pdesde AND a.phasta), 0)::text AS "ventaAnterior"
+         FROM a LEFT JOIN rpt_ventas_sucursal v ON v.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)))
+                                              AND v.fecha >= a.pdesde
+        GROUP BY a.desde, a.hasta, a.pdesde, a.phasta`,
+      [empresaDe(req), sucursalesDe(req), periodo],
+    );
+    return { periodo, ...r.rows[0] };
+  });
+
   app.get("/central/resumen/atencion", async (req) => {
     const e = empresaDe(req);
     const suc = sucursalesDe(req);
