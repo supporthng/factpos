@@ -66,7 +66,7 @@ export async function rutasVerificador(app: FastifyInstance) {
           AND (o.sucursales IS NULL OR $2::uuid = ANY(o.sucursales))
           AND (o.lista_precio_id IS NULL OR o.lista_precio_id = (SELECT lp.id FROM listas_precio lp WHERE lp.empresa_id = $1 AND lp.es_predeterminada))
           AND (o.dias_semana IS NULL OR extract(dow FROM now() AT TIME ZONE 'America/Santo_Domingo')::int = ANY(o.dias_semana))
-          AND (o.hora_desde IS NULL OR o.hora_hasta IS NULL OR (CASE WHEN o.hora_desde <= o.hora_hasta
+          AND (o.hora_desde IS NULL OR o.hora_hasta IS NULL OR date_trunc('minute', o.hora_desde) = date_trunc('minute', o.hora_hasta) OR (CASE WHEN o.hora_desde <= o.hora_hasta
                  THEN (now() AT TIME ZONE 'America/Santo_Domingo')::time >= o.hora_desde AND (now() AT TIME ZONE 'America/Santo_Domingo')::time < o.hora_hasta
                  ELSE (now() AT TIME ZONE 'America/Santo_Domingo')::time >= o.hora_desde OR (now() AT TIME ZONE 'America/Santo_Domingo')::time < o.hora_hasta END))
           AND (o.unidades_maximas IS NULL OR o.unidades_maximas > COALESCE((SELECT vv.unidades FROM v_oferta_vendidas vv WHERE vv.oferta_id = o.id AND vv.sucursal_id = $2), 0))
@@ -165,7 +165,7 @@ export async function rutasVerificador(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT s.id AS "sucursalId", s.nombre, COALESCE(e.nombre_comercial, e.razon_social) AS empresa, m.logo,
               COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario,
-              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr", COALESCE(m.verificador->>'wifi', '') AS wifi, $2::text AS arranque
+              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr", COALESCE(m.verificador->>'wifi', '') AS wifi, COALESCE((m.verificador->>'segundosOferta')::int, 7) AS "segundosOferta", $2::text AS arranque
          FROM sucursales s JOIN empresas e ON e.id = s.empresa_id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
         WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null, ARRANQUE]);
     if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
@@ -182,13 +182,13 @@ export async function rutasVerificador(app: FastifyInstance) {
   app.get("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const r = await pool.query<{ o: unknown; q: unknown; w: string | null; a: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'autoActualizar' AS a FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
-    return { mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false };
+    const r = await pool.query<{ o: unknown; q: unknown; w: string | null; a: unknown; s: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    return { mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
+    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional(), segundosOferta: z.number().int().min(3).max(120).optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
     await pool.query(
       `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, $2::jsonb)
        ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || $2::jsonb`,

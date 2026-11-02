@@ -69,7 +69,8 @@ export function ofertaVigente(o: Oferta, ahora: Date): boolean {
   if (ahora < new Date(o.iniciaEn) || ahora >= new Date(o.terminaEn)) return false;
   const { dia, hhmmss } = horaLocalRD(ahora);
   if (o.diasSemana && o.diasSemana.length && !o.diasSemana.includes(dia)) return false;
-  if (o.horaDesde && o.horaHasta) {
+  // Misma hora de inicio y fin (ej. 17:04–17:04) = todo el día
+  if (o.horaDesde && o.horaHasta && o.horaDesde.slice(0, 5) !== o.horaHasta.slice(0, 5)) {
     const dentro = o.horaDesde <= o.horaHasta
       ? hhmmss >= o.horaDesde && hhmmss < o.horaHasta
       : hhmmss >= o.horaDesde || hhmmss < o.horaHasta; // cruza medianoche (ej. 22:00–02:00)

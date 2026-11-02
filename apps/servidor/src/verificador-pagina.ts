@@ -260,9 +260,10 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     document.querySelectorAll(".slide").forEach((el, i) => el.classList.toggle("on", i === idx));
     document.querySelectorAll(".punto").forEach((el, i) => el.classList.toggle("on", i === idx));
   }
+  let segOferta = 7;
   function girar() {
     clearTimeout(rot);
-    if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, 7000);
+    if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, segOferta * 1000);
   }
   // Cuadro con el avance cuando el servidor se está actualizando (el mismo estado que muestran la administración y la caja)
   let vioActualizar = false;
@@ -352,6 +353,8 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       if (!r.ok) return;
       const c = await r.json();
       if (arranque && c.arranque && c.arranque !== arranque) { location.reload(); return; }
+      const seg = c.segundosOferta || 7;
+      if (seg !== segOferta) { segOferta = seg; girar(); }
       const nuevo = c.mostrarQr !== false;
       if (nuevo !== qrActivo) { qrActivo = nuevo; if (vista.className === "espera") espera(); }
     } catch {}
@@ -365,6 +368,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       const c = await r.json();
       sucursal = sucursal || c.sucursalId;
       qrActivo = c.mostrarQr !== false;
+      segOferta = c.segundosOferta || 7;
       arranque = c.arranque;
       wifiTienda = c.wifi || "";
       logo = c.logo ? await quitarFondo(c.logo) : null;
