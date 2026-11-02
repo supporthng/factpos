@@ -85,6 +85,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "venta.corregir", grupo: "Caja", nombre: "Aprobar correcciones de factura" },
   { id: "cliente.precio", grupo: "Caja", nombre: "Cambiar el nivel de precio de un cliente" },
   { id: "caja.retiro", grupo: "Caja", nombre: "Aprobar retiros de efectivo" },
+  { id: "caja.salir", grupo: "Caja", nombre: "Aprobar que se cierre la caja con el turno abierto" },
   { id: "caja.gasto", grupo: "Caja", nombre: "Aprobar gastos pagados desde la caja" },
   { id: "cxc.abono", grupo: "Caja", nombre: "Cobrar abonos de clientes a crédito" },
   { id: "admin.productos", grupo: "Administración", nombre: "Productos, categorías y proveedores" },

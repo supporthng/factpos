@@ -1,10 +1,11 @@
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
 import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
-import { Venta } from "./Venta";
+import { Venta, Modal } from "./Venta";
+import { PinSupervisor } from "./Operaciones";
 import { temaTerminal } from "@factpos/compartido";
 import { SimboloFactPOS } from "./Logo";
 
@@ -52,6 +53,20 @@ function AppInterna() {
   const [turno, setTurno] = useState<Turno | null | undefined>(undefined);
   const [error, setError] = useState("");
 
+  // Seguridad de la caja: con el turno abierto, salir de FactPOS necesita la aprobación de un supervisor
+  const [saliendo, setSaliendo] = useState(false);
+  const electron = (window as unknown as { factpos?: { turno?: (v: boolean) => void; alIntentarCerrar?: (f: () => void) => void; cerrar?: () => void } }).factpos;
+  useEffect(() => { if (turno !== undefined) electron?.turno?.(!!turno); }, [turno]); // eslint-disable-line react-hooks/exhaustive-deps
+  const turnoRef = useRef<Turno | null | undefined>(undefined);
+  turnoRef.current = turno;
+  useEffect(() => {
+    electron?.alIntentarCerrar?.(() => setSaliendo(true)); // Alt+F4, cerrar la ventana o Ctrl+Mayús+Q con el turno abierto
+    const f = () => { if (turnoRef.current) setSaliendo(true); else if (confirm("¿Cerrar FactPOS?")) electron?.cerrar?.(); };
+    window.addEventListener("factpos:salir-sistema", f);
+    return () => window.removeEventListener("factpos:salir-sistema", f);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const aprobadoSalir = () => { window.dispatchEvent(new Event("factpos:antes-salir")); setTimeout(() => electron?.cerrar?.(), 200); };
+
   // Configuración de la caja. Si el servidor no responde, la última guardada en esta caja
   // (así se puede seguir vendiendo en contingencia).
   useEffect(() => {
@@ -75,15 +90,22 @@ function AppInterna() {
       });
   }, [ajustes, usuario]);
 
+  const ventanaSalir = saliendo && ajustes ? (
+    <Modal titulo="Hay un turno abierto" onCerrar={() => setSaliendo(false)}>
+      <p>No se puede cerrar FactPOS con el turno abierto. Cierre el turno en <b>Turno y cierre</b>, o pida a un supervisor que autorice la salida.</p>
+      <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar FactPOS" onAprobado={aprobadoSalir} />
+      <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
+    </Modal>
+  ) : null;
   if (!ajustes || (error && !config)) {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
-  if (!usuario) return <ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />;
+  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />{ventanaSalir}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={() => setTurno(undefined)} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
 
-  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} /></>;
+  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}</>;
 }
 
 function Pantalla({ children }: { children: React.ReactNode }) {

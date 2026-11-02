@@ -119,12 +119,13 @@ function CerrarTurno({ ajustes, usuario, pausadas, onCerrado }: { ajustes: Ajust
   };
 
   const conexion = useConexion();
+  // Seguridad de la caja: un turno no se cierra con ventas en pausa (se terminan o se cancelan antes)
+  if (pausadas > 0) return <p className="error">No se puede cerrar el turno: hay {pausadas} venta(s) en pausa. Termínelas o cancélelas (botón «En pausa») y vuelva a intentarlo.</p>;
   if (!conexion.enLinea) return <p className="error">Sin conexión con el servidor no se puede cerrar el turno. Siga vendiendo; cierre cuando vuelva el servidor.</p>;
   if (conexion.pendientes > 0) return <p className="error">Antes de cerrar deben enviarse {conexion.pendientes} venta(s) guardadas en esta caja{conexion.errores ? " (algunas tienen error: llame al servicio técnico)" : ""}.</p>;
   return (
     <div className="cierre">
       <p className="suave">Cuente el dinero de la gaveta. Lo que el sistema espera se muestra después de cerrar.</p>
-      {pausadas > 0 && <p className="aviso-pausadas">Hay {pausadas} venta(s) en pausa. Quedarán guardadas para el próximo turno.</p>}
       <div className="cierre-columnas">
         <div className="conteo">
           <div className="conteo-titulo"><span>Billetes y monedas</span><span>Cantidad</span><span>Total</span></div>

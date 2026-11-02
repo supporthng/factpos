@@ -4,7 +4,7 @@ import type { Usuario } from "./App";
 import { Modal } from "./Venta";
 import type { VentaRegistrada } from "./Ticket";
 
-export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto";
+export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto" | "caja.salir";
 export interface Aprobacion { token: string; supervisor: string }
 
 /** Campo de PIN del supervisor. Devuelve la aprobación firmada por el servidor. */
