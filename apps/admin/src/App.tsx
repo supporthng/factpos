@@ -1,4 +1,6 @@
 import { Seguridad } from "./paginas/Seguridad";
+import { DispositivosRemotos } from "./paginas/DispositivosRemotos";
+import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { Pedidos } from "./paginas/Pedidos";
 import { Facturas } from "./paginas/Facturas";
 import { CertificacionDgii } from "./paginas/CertificacionDgii";
@@ -79,6 +81,7 @@ const SECCIONES = [
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
+  { id: "dispositivos", titulo: "Dispositivos remotos", grupo: "Configuración", C: DispositivosRemotos, i: "llave", p: ["*"] },
   { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
   { id: "respaldos", titulo: "Respaldos", grupo: "Configuración", C: Respaldos, i: "actualizaciones", p: ["admin.config"] },
@@ -127,6 +130,7 @@ const DESCRIPCION: Record<string, string> = {
   conexionweb: "Enlace de acceso desde internet y su activación",
   movil: "Qué se ve y quién entra desde el celular",
   seguridad: "Habilitar o deshabilitar funciones sensibles",
+  dispositivos: "Celulares y PC que entran desde internet: autorizar o negar",
   compras: "Entrada de mercancía de los proveedores",
   inventario: "Existencia de cada producto por sucursal",
   ajustes: "Corregir existencias: mermas, daños, sobrantes",
@@ -607,6 +611,13 @@ export function App() {
   useTablasApiladas();
   const servidor = () => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin);
   const listo = usePreparado(servidor, () => fijarSesion(null));
+  const [dispositivo, setDispositivo] = useState<string | null>(null);
+  useEffect(() => {
+    const f = (e: Event) => setDispositivo(String((e as CustomEvent).detail ?? "DESCONOCIDO"));
+    window.addEventListener("factpos:dispositivo", f);
+    return () => window.removeEventListener("factpos:dispositivo", f);
+  }, []);
+  if (dispositivo) return <SolicitarDispositivo servidor={servidor()} estado={dispositivo} />;
   return (
     <>
       {listo ? <AppInterna /> : <div className="cargando">Iniciando…</div>}

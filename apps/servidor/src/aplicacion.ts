@@ -36,6 +36,7 @@ import { rutasCentral } from "./rutas/central.js";
 import { rutasCentralInventario } from "./rutas/central-inventario.js";
 import { rutasCentralMovil } from "./rutas/central-movil.js";
 import { rutasCentralSeguridad, accesoWebPermitido } from "./rutas/central-seguridad.js";
+import { rutasDispositivos, dispositivoExigido, estadoDispositivo, rutaDeAltaDispositivo } from "./rutas/dispositivos.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
 import { rutasCentralProductos } from "./rutas/central-productos.js";
@@ -108,6 +109,11 @@ export async function crearApp() {
       if (ruta.startsWith("/fe/")) return; // la DGII llama aquí (recepción, aprobación comercial y autenticación)
       if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
       if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Configuración › Conexión web, desde la red local." });
+      // Con «Exigir dispositivo autorizado» solo entran los equipos que un administrador autorizó (la web de la app sí carga: pide el acceso)
+      if (ruta !== "/salud" && ruta !== "/actualizacion/estado" && !ruta.startsWith("/admin") && !rutaDeAltaDispositivo(ruta) && (await dispositivoExigido())) {
+        const est = await estadoDispositivo(req.headers["x-dispositivo"]);
+        if (est !== "AUTORIZADO") return rep.code(403).send({ error: "Este dispositivo no está autorizado", dispositivo: est });
+      }
     });
   }
 
@@ -124,7 +130,7 @@ export async function crearApp() {
         return rep.code(409).send({ error: "Esto se hace en la Administración en la nube (necesita internet): afecta a otras sucursales o a la facturación de toda la empresa." });
       }
       if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
-        || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/inicio") return;
+        || ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado" || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/inicio") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
       // Si lo desactivaron o le cambiaron el rol, aplica de inmediato (no espera a que venza la sesión)
@@ -244,6 +250,7 @@ export async function crearApp() {
     await app.register(rutasCentral);
     await app.register(rutasCentralInventario);
     await app.register(rutasCentralSeguridad);
+    await app.register(rutasDispositivos);
   await app.register(rutasCentralMovil);
     await app.register(rutasCentralFiscal);
     await app.register(rutasCentralOrganizacion);
