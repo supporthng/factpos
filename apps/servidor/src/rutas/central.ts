@@ -43,7 +43,7 @@ export async function rutasCentral(app: FastifyInstance) {
    */
   /** Venta de un periodo (hoy, ayer, esta semana, semana pasada, este mes) y la del periodo equivalente anterior. */
   app.get("/central/resumen/periodo", async (req) => {
-    const { periodo } = z.object({ periodo: z.enum(["hoy", "ayer", "semana", "semanaPasada", "mes"]).default("hoy") }).parse(req.query);
+    const { periodo, sucursalId } = z.object({ periodo: z.enum(["hoy", "ayer", "semana", "semanaPasada", "mes"]).default("hoy"), sucursalId: z.string().uuid().optional() }).parse(req.query);
     const r = await pool.query(
       `WITH h AS (SELECT (now() AT TIME ZONE 'America/Santo_Domingo')::date AS hoy),
             r AS (SELECT hoy,
@@ -58,10 +58,10 @@ export async function rutasCentral(app: FastifyInstance) {
               COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.desde AND a.hasta), 0)::text AS venta,
               COALESCE(SUM(v.transacciones) FILTER (WHERE v.fecha BETWEEN a.desde AND a.hasta), 0)::text AS transacciones,
               COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.pdesde AND a.phasta), 0)::text AS "ventaAnterior"
-         FROM a LEFT JOIN rpt_ventas_sucursal v ON v.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)))
+         FROM a LEFT JOIN rpt_ventas_sucursal v ON v.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))
                                               AND v.fecha >= a.pdesde
         GROUP BY a.desde, a.hasta, a.pdesde, a.phasta`,
-      [empresaDe(req), sucursalesDe(req), periodo],
+      [empresaDe(req), sucursalesDe(req), periodo, sucursalId ?? null],
     );
     return { periodo, ...r.rows[0] };
   });
