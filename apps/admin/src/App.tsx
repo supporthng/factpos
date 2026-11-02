@@ -31,6 +31,7 @@ import { Traspasos } from "./paginas/Traspasos";
 import { Delivery } from "./paginas/Delivery";
 import { Reportes } from "./paginas/Reportes";
 import { Kardex } from "./paginas/Kardex";
+import { Verificador } from "./paginas/Verificador";
 import { ComprobantesNcf, Fiscal } from "./paginas/Fiscal";
 import { Sucursales } from "./paginas/Sucursales";
 import { Marca } from "./paginas/Marca";
@@ -56,6 +57,7 @@ const SECCIONES = [
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", C: Traspasos, i: "traspasos", p: ["admin.traspasos", "admin.recibir"] },
   { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, i: "kardex", p: ["admin.inventario"] },
   { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, i: "precios", p: ["admin.precios"] },
+  { id: "verificador", titulo: "Verificador de precios", grupo: "Comercial", C: Verificador, i: "precios", p: ["admin.precios"] },
   { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
   { id: "clientela", titulo: "Clientes", grupo: "Comercial", C: Clientes, i: "clientes", p: ["admin.clientes", "admin.cxc"] },
   { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Comercial", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
@@ -132,6 +134,7 @@ const DESCRIPCION: Record<string, string> = {
   traspasos: "Mover mercancía entre sucursales y almacenes",
   kardex: "Historial de entradas y salidas de un producto",
   precios: "Cambiar precios por nivel y por sucursal",
+  verificador: "Dirección y pasos para los verificadores Android y Windows",
   ofertas: "Promociones, combos y descuentos con tope",
   clientela: "Clientes y el nivel de precio de cada uno",
   cotizaciones: "Preparar cotizaciones y enviarlas por correo",
