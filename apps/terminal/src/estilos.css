@@ -747,3 +747,24 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Logo oscuro sobre la pantalla oscura del cliente: resplandor claro para que se lea */
 .pc-logo.logo-oscuro { filter: drop-shadow(0 0 1px rgba(255,255,255,.95)) drop-shadow(0 0 8px rgba(255,255,255,.55)); }
+
+/* Cobro compacto: dos columnas, forma de pago en pestañas */
+.modal:has(.cobro2) { width: min(820px, 100%); padding: 16px 18px; }
+.cobro2 .cobro-total { margin-bottom: 8px; }
+.cobro2 .cobro-total b { font-size: 30px; }
+.cobro2-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 760px) { .cobro2-grid { grid-template-columns: 1fr; } }
+.cobro2-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cobro2 .cobro-seccion { margin: 0 0 6px; }
+.formas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.forma { padding: 10px 4px; border: 1px solid var(--borde); border-radius: var(--radio); background: var(--panel-2); color: var(--texto); font-weight: 600; font-size: 14px; }
+.forma.activo { border-color: var(--primario); background: color-mix(in srgb, var(--primario) 16%, var(--panel-2)); box-shadow: inset 0 0 0 1px var(--primario); }
+.cobro2-bloque { display: flex; flex-direction: column; gap: 6px; }
+.cobro2 .entrada-grande { font-size: 18px; padding: 10px 12px; }
+.cobro2 .billetes { margin-bottom: 0; gap: 6px; }
+.cobro2 .boton.chico { padding: 6px 10px; font-size: 13px; }
+.cobro2 .fila-campo > span { width: 110px; }
+.cobro2 .comprobantes.compacto { margin-bottom: 6px; }
+.cobro2 .cliente-fiscal .entrada-grande { font-size: 16px; }
+.modal:has(.cobro2) .boton.cobrar { padding: 13px; font-size: 20px; margin: 10px 0 2px; }
+.modal:has(.cobro2) .modal-titulo { margin-bottom: 6px; }
