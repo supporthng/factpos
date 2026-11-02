@@ -334,6 +334,12 @@ export async function rutasPortal(app: FastifyInstance) {
     return rep.redirect(await urlDescargaVerificador(so));
   });
 
+  /** Versión vigente de la app del verificador (la consultan los servidores de sucursal para avisar a las apps). */
+  app.get("/licencias/version-verificador/:so", async (req) => {
+    const { so } = req.params as { so: string };
+    return { version: await versionVerificador(so) };
+  });
+
   /** Reglas y contacto que ven las instalaciones (públicas: no llevan nada sensible). */
   app.get("/licencias/politica", async () => {
     const c = (await pool.query(
@@ -870,6 +876,19 @@ export async function urlDescargaVerificador(so: string) {
   const a = rel.assets.find((x) => app.nombre.test(x.name));
   if (!a) throw new ErrorNegocio("Todavía no hay una versión publicada", 404);
   return urlDescarga({ url: a.url, descarga: a.browser_download_url });
+}
+
+/** Número de compilación vigente de una app del verificador (el CI lo anota en las notas de la release como «build=N»). */
+export async function versionVerificador(so: string): Promise<number> {
+  const app = APPS_VERIFICADOR[so as keyof typeof APPS_VERIFICADOR];
+  if (!app) throw new ErrorNegocio("Plataforma no válida", 404);
+  const repo = process.env.FACTPOS_REPO || "supporthng/factpos";
+  const r = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${app.tag}`, { headers: encabezadosGitHub(), signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new ErrorNegocio(`Todavía no hay una versión publicada (GitHub ${r.status})`, 404);
+  const rel = (await r.json()) as { body?: string };
+  const m = /build=(\d+)/.exec(rel.body ?? "");
+  if (!m) throw new ErrorNegocio("La versión publicada no indica su número de compilación", 404);
+  return Number(m[1]);
 }
 
 /** Estado por fecha (para la lista del portal). */

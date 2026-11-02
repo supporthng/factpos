@@ -55,3 +55,5 @@ jobs:
         run: |
           gh release view verificador-android >/dev/null 2>&1 || gh release create verificador-android --title "Verificador FactPOS para Android" --notes "Descargue FactPOS-Verificador.apk en la tableta o pantalla Android y ábralo para instalarlo (Android pide permitir «instalar apps desconocidas» una vez)." --latest=false
           gh release upload verificador-android FactPOS-Verificador.apk --clobber
+          # Número de compilación vigente: lo leen las apps para actualizarse solas
+          gh release edit verificador-android --notes "Descargue FactPOS-Verificador.apk en la tableta o pantalla Android y ábralo para instalarlo (Android pide permitir «instalar apps desconocidas» una vez). build=${{ github.run_number }}"

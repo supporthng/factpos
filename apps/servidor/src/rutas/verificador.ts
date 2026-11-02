@@ -21,6 +21,10 @@ import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
  *
  * Funciona desde el servidor local, así sigue funcionando sin internet.
  */
+/** Cambia cada vez que el servidor arranca (p. ej. al actualizarse): las pantallas abiertas se recargan solas al notarlo. */
+const ARRANQUE = String(Date.now());
+const versionApps = new Map<string, { version: number; hasta: number }>();
+
 export async function rutasVerificador(app: FastifyInstance) {
   /** Consulta desde el celular del cliente (QR en la tienda, dentro del WiFi de la sucursal). */
   app.get("/verificador/movil", async (_req, rep) => {
@@ -131,14 +135,34 @@ export async function rutasVerificador(app: FastifyInstance) {
   });
 
   /** Qué sucursal atiende este servidor y la marca de la empresa (la página la usa para no necesitar ?sucursal=). */
+  /**
+   * Última versión publicada de las apps (Android / Windows). Las apps la comparan con la suya y se actualizan solas;
+   * la descarga sale de este mismo servidor (/verificador/descarga/:so). Se consulta al portal como máximo cada 10 min.
+   */
+  app.get("/verificador/actualizacion/:so", async (req) => {
+    const { so } = z.object({ so: z.enum(["android", "windows"]) }).parse(req.params);
+    const c = versionApps.get(so);
+    if (c && c.hasta > Date.now()) return { version: c.version, url: `/verificador/descarga/${so}` };
+    try {
+      const r = await fetch(`${PORTAL_URL()}/licencias/version-verificador/${so}`, { signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) throw new Error(String(r.status));
+      const { version } = (await r.json()) as { version: number };
+      versionApps.set(so, { version, hasta: Date.now() + 10 * 60_000 });
+      return { version, url: `/verificador/descarga/${so}` };
+    } catch {
+      if (c) return { version: c.version, url: `/verificador/descarga/${so}` };   // sin internet: la última conocida
+      throw new ErrorNegocio("No se pudo consultar la versión de la app", 503);
+    }
+  });
+
   app.get("/verificador/config", async (req) => {
     const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
     const r = await pool.query(
       `SELECT s.id AS "sucursalId", s.nombre, COALESCE(e.nombre_comercial, e.razon_social) AS empresa, m.logo,
               COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario,
-              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr"
+              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr", $2::text AS arranque
          FROM sucursales s JOIN empresas e ON e.id = s.empresa_id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
-        WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null]);
+        WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null, ARRANQUE]);
     if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
     // Con varias sucursales y sin indicar cuál, no se adivina
     if (!sucursal && r.rowCount > 1) throw new ErrorNegocio("Este servidor atiende varias sucursales: abra el verificador con ?sucursal=ID", 409);

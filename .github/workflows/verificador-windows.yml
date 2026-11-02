@@ -48,3 +48,5 @@ jobs:
         run: |
           gh release view verificador-windows >/dev/null 2>&1 || gh release create verificador-windows --title "Verificador FactPOS para Windows" --notes "Descargue Instalador_Verificador_FactPOS.exe y ejecútelo en la PC del verificador." --latest=false
           gh release upload verificador-windows dist_instalador/Instalador_Verificador_FactPOS.exe --clobber
+          # Número de compilación vigente: lo leen las apps para actualizarse solas
+          gh release edit verificador-windows --notes "Descargue Instalador_Verificador_FactPOS.exe y ejecútelo en la PC del verificador. build=${{ github.run_number }}"

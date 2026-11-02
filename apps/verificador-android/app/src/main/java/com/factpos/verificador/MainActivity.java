@@ -2,12 +2,14 @@ package com.factpos.verificador;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -36,6 +38,10 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -102,6 +108,7 @@ public class MainActivity extends Activity {
         web.loadUrl(direccion());
         ocultarBarras();
         activarBloqueo();
+        if (!actualizacionProgramada) { actualizacionProgramada = true; programarActualizacion(60 * 1000L); }
     }
 
     private void crearWeb() {
@@ -246,6 +253,99 @@ public class MainActivity extends Activity {
             if (!enModoBloqueo()) startLockTask();
         } catch (RuntimeException e) {
             // Si falla, la app sigue funcionando como pantalla de inicio.
+        }
+    }
+
+    // ------------------------------------------------------------ actualización automática
+    // El servidor de la sucursal dice cuál es la versión vigente (/verificador/actualizacion/android); si es mayor que la de esta
+    // app, la descarga de ese mismo servidor (/verificador/descarga/android) y la instala. Con Device Owner es silenciosa;
+    // sin él Android pide confirmar una vez. El APK nuevo debe estar firmado con la misma llave (secretos ANDROID_KEYSTORE_*).
+    private static boolean actualizacionProgramada = false;   // un solo reloj aunque la actividad se vuelva a crear
+    private static final long CADA_ACTUALIZACION = 30 * 60 * 1000L;
+
+    private void programarActualizacion(long espera) {
+        hilo.postDelayed(() -> {
+            if (!saliendo) new Thread(this::actualizar, "actualizar").start();
+            programarActualizacion(CADA_ACTUALIZACION);
+        }, espera);
+    }
+
+    private long codigoVersion() {
+        try {
+            PackageInfo p = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= 28 ? p.getLongVersionCode() : p.versionCode;
+        } catch (Exception e) { return 0; }
+    }
+
+    /** Abre la URL siguiendo redirecciones (incluso de http a https, que HttpURLConnection no hace solo). */
+    private HttpURLConnection abrirUrl(String url) throws Exception {
+        for (int i = 0; i < 6; i++) {
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c.setInstanceFollowRedirects(false);
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(60000);
+            int codigo = c.getResponseCode();
+            if (codigo == 301 || codigo == 302 || codigo == 303 || codigo == 307 || codigo == 308) {
+                String destino = c.getHeaderField("Location");
+                c.disconnect();
+                if (destino == null) throw new Exception("redirección sin destino");
+                url = new URL(new URL(url), destino).toString();
+                continue;
+            }
+            if (codigo != 200) { c.disconnect(); throw new Exception("HTTP " + codigo); }
+            return c;
+        }
+        throw new Exception("demasiadas redirecciones");
+    }
+
+    private void actualizar() {
+        try {
+            String sv = servidor();
+            if (sv.isEmpty()) return;
+            Uri u = Uri.parse(sv);
+            String base = u.getScheme() + "://" + u.getAuthority();
+            long vigente;
+            HttpURLConnection c = abrirUrl(base + "/verificador/actualizacion/android");
+            try (InputStream in = c.getInputStream()) {
+                java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+                byte[] t = new byte[4096]; int n;
+                while ((n = in.read(t)) > 0) b.write(t, 0, n);
+                vigente = new JSONObject(b.toString("UTF-8")).optLong("version", 0);
+            } finally { c.disconnect(); }
+            if (vigente <= codigoVersion()) return;
+            SharedPreferences p = prefs();
+            if (p.getLong("act_intento", 0) == vigente && System.currentTimeMillis() - p.getLong("act_hora", 0) < 6 * 3600 * 1000L) return;   // no insistir en bucle
+            p.edit().putLong("act_intento", vigente).putLong("act_hora", System.currentTimeMillis()).apply();
+            File apk = new File(getCacheDir(), "actualizacion.apk");
+            HttpURLConnection d = abrirUrl(base + "/verificador/descarga/android");
+            try (InputStream in = d.getInputStream(); OutputStream out = new FileOutputStream(apk)) {
+                byte[] t = new byte[65536]; int n;
+                while ((n = in.read(t)) > 0) out.write(t, 0, n);
+            } finally { d.disconnect(); }
+            boolean zip = false;
+            if (apk.length() > 1_000_000) {
+                try (InputStream in = new FileInputStream(apk)) { zip = in.read() == 'P' && in.read() == 'K'; }
+            }
+            if (!zip) { apk.delete(); return; }   // no es un APK
+            instalarApk(apk);
+        } catch (Exception e) { /* sin red o sin servidor: se intenta más tarde */ }
+    }
+
+    private void instalarApk(File apk) throws Exception {
+        PackageInstaller instalador = getPackageManager().getPackageInstaller();
+        PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        params.setAppPackageName(getPackageName());
+        if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+        int id = instalador.createSession(params);
+        try (PackageInstaller.Session sesion = instalador.openSession(id)) {
+            try (InputStream in = new FileInputStream(apk); OutputStream out = sesion.openWrite("verificador", 0, apk.length())) {
+                byte[] t = new byte[65536]; int n;
+                while ((n = in.read(t)) > 0) out.write(t, 0, n);
+                sesion.fsync(out);
+            }
+            Intent resultado = new Intent(this, InstalacionReceiver.class);
+            int banderas = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+            sesion.commit(PendingIntent.getBroadcast(this, id, resultado, banderas).getIntentSender());
         }
     }
 
