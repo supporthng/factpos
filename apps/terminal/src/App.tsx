@@ -117,7 +117,7 @@ function AppInterna() {
 
   // El turno es de quien lo abrió: otro cajero no vende dentro de un turno ajeno (el cuadre sería de dos personas)
   if (turno.usuarioId !== usuario.id) {
-    return <><TurnoAjeno ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} onCerrado={() => setTurno(undefined)} />{ventanaSalir}</>;
+    return <><TurnoAjeno ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} onCerrado={() => { guardarCache(ajustes, "turno", null); setTurno(null); }} />{ventanaSalir}</>;
   }
   return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}</>;
 }
