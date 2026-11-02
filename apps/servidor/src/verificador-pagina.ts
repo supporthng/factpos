@@ -89,6 +89,32 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     const caja = e.parentElement, disponible = caja.clientWidth - 2 * parseFloat(getComputedStyle(caja).paddingLeft);
     if (e.scrollWidth > disponible && disponible > 0) e.style.transform = "scale(" + Math.max(0.35, (disponible / e.scrollWidth) * 0.97) + ")";
   }
+  // Si el logo trae fondo blanco, se vuelve transparente (solo el blanco conectado con los bordes: el blanco de adentro del dibujo se queda)
+  function quitarFondo(src) {
+    return new Promise((res) => {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const w = im.naturalWidth, h = im.naturalHeight;
+          if (!w || !h || w * h > 4000000) return res(src);
+          const c = document.createElement("canvas"); c.width = w; c.height = h;
+          const x = c.getContext("2d"); x.drawImage(im, 0, 0);
+          const d = x.getImageData(0, 0, w, h), p = d.data;
+          const claro = (k) => p[k * 4 + 3] > 0 && p[k * 4] > 232 && p[k * 4 + 1] > 232 && p[k * 4 + 2] > 232;
+          if (!claro(0)) return res(src);   // ya es transparente o no tiene fondo blanco
+          const visto = new Uint8Array(w * h), pila = [];
+          const meter = (px, py) => { if (px < 0 || py < 0 || px >= w || py >= h) return; const k = py * w + px; if (visto[k]) return; visto[k] = 1; if (claro(k)) pila.push(k); };
+          for (let i = 0; i < w; i++) { meter(i, 0); meter(i, h - 1); }
+          for (let j = 0; j < h; j++) { meter(0, j); meter(w - 1, j); }
+          while (pila.length) { const k = pila.pop(); p[k * 4 + 3] = 0; const px = k % w, py = (k - px) / w; meter(px + 1, py); meter(px - 1, py); meter(px, py + 1); meter(px, py - 1); }
+          x.putImageData(d, 0, 0);
+          res(c.toDataURL("image/png"));
+        } catch (e) { res(src); }
+      };
+      im.onerror = () => res(src);
+      im.src = src;
+    });
+  }
   let ofertas = [];
   let inactivo;
   function espera() {
@@ -131,7 +157,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       if (!r.ok) return;
       const c = await r.json();
       sucursal = sucursal || c.sucursalId;
-      logo = c.logo || null;
+      logo = c.logo ? await quitarFondo(c.logo) : null;
       if (c.secundario) document.documentElement.style.setProperty("--fondo", c.secundario);
       if (c.primario) document.documentElement.style.setProperty("--acento", c.primario);
       await cargarOfertas();
