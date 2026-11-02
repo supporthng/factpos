@@ -1043,7 +1043,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
           </div>
 
           <div className="pr-niveles">
-            <div className="pr-nivel pr-nivel-cab"><span>Precio de venta</span><span>% ganancia</span><span>Precio</span><span>Margen</span></div>
+            <div className="pr-nivel pr-nivel-cab"><span>Precio de venta</span><span>% ganancia sobre el costo</span><span>Precio</span><span>Margen sobre la venta</span></div>
             {(["1"] as const).map((k) => {
               const x = nv[k];
               const m = x.precio ? margen(n(x.precio), c, tasa, incluye) : null;
@@ -1057,7 +1057,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
                 </div>
               );
             })}
-            <small className="suave">Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Comercial › Precios).</small>
+            <small className="suave">El % de ganancia se aplica sobre el costo (costo 100 + 26 % = 126 sin ITBIS); el margen es esa misma ganancia vista como parte de la venta, por eso sale menor (26 % sobre el costo = 20.6 % de la venta). Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Comercial › Precios).</small>
           </div>
         </div>
 
