@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Actualizarse sola: instala el APK nuevo que descarga del servidor de la sucursal. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Volver sola al frente si alguien sale sin la clave (Android 10+: "Mostrar sobre otras apps", una vez). -->
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -48,6 +50,9 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+
+        <!-- Resultado de las actualizaciones automáticas. -->
+        <receiver android:name=".InstalacionReceiver" android:exported="false" />
 
         <!-- Abrir la app al encender el equipo. -->
         <receiver android:name=".BootReceiver" android:exported="true">

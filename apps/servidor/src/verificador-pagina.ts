@@ -168,6 +168,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     clearTimeout(rot);
     if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, 7000);
   }
+  let arranque = null;   // identifica la versión del servidor: si cambia, la pantalla se recarga sola
   let qrActivo = true;   // lo decide el interruptor de Administración › Verificador
   function qrMovil() {
     if (!qrActivo) return "";
@@ -234,6 +235,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       const r = await fetch("/verificador/config" + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : ""));
       if (!r.ok) return;
       const c = await r.json();
+      if (arranque && c.arranque && c.arranque !== arranque) { location.reload(); return; }
       const nuevo = c.mostrarQr !== false;
       if (nuevo !== qrActivo) { qrActivo = nuevo; if (vista.className === "espera") espera(); }
     } catch {}
@@ -247,6 +249,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       const c = await r.json();
       sucursal = sucursal || c.sucursalId;
       qrActivo = c.mostrarQr !== false;
+      arranque = c.arranque;
       logo = c.logo ? await quitarFondo(c.logo) : null;
       if (c.secundario) document.documentElement.style.setProperty("--fondo", c.secundario);
       if (c.primario) document.documentElement.style.setProperty("--acento", c.primario);

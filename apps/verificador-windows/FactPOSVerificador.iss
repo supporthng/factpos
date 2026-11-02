@@ -38,3 +38,5 @@ Name: "{userdesktop}\Verificador FactPOS"; Filename: "{app}\{#MyAppExeName}"; Ta
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FactPOSVerificador"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: inicio
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir el verificador ahora"; Flags: postinstall nowait skipifsilent
+; Actualización automática (instalación silenciosa): la app vuelve a abrirse sola
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent

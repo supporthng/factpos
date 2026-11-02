@@ -20,6 +20,7 @@ import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+import subprocess
 import sys
 import threading
 import time
@@ -337,11 +338,74 @@ class Kiosco:
             self._ventana.destroy()
 
 
+# --------------------------------------------------------------------------- actualización automática
+INTERVALO_ACTUALIZAR = 30 * 60   # segundos entre consultas al servidor de la sucursal
+
+
+def _compilacion():
+    """Número de compilación de esta app (lo escribe GitHub Actions en VERSION = «1.0.N»; 0 si no es una compilación oficial)."""
+    try:
+        return int(VERSION.rsplit(".", 1)[1])
+    except Exception:
+        return 0
+
+
+def _buscar_actualizacion():
+    """Pregunta al servidor de la sucursal cuál es la versión vigente; si hay una nueva, la descarga y la instala en silencio.
+    Todo pasa por el servidor de la sucursal (no hay otra conexión). Sin servidor o sin internet no hace nada."""
+    propia = _compilacion()
+    sv = leer_config().get("servidor") or ""
+    if not propia or not sv:
+        return
+    u = urllib.parse.urlparse(sv)
+    base = f"{u.scheme}://{u.netloc}"
+    with urllib.request.urlopen(f"{base}/verificador/actualizacion/windows", timeout=15) as r:
+        vigente = int(json.loads(r.read().decode("utf-8")).get("version") or 0)
+    if vigente <= propia:
+        return
+    cfg = leer_config()
+    if cfg.get("act_intento") == vigente and time.time() - float(cfg.get("act_hora") or 0) < 6 * 3600:
+        return                      # ya se intentó esta versión hace poco: no insistir en bucle
+    cfg["act_intento"], cfg["act_hora"] = vigente, time.time()
+    guardar_config(cfg)
+    os.makedirs(DATOS, exist_ok=True)
+    destino = os.path.join(DATOS, "Actualizacion_Verificador_FactPOS.exe")
+    with urllib.request.urlopen(f"{base}/verificador/descarga/windows", timeout=60) as r, open(destino, "wb") as f:
+        while True:
+            trozo = r.read(1 << 20)
+            if not trozo:
+                break
+            f.write(trozo)
+    if os.path.getsize(destino) < (1 << 20) or open(destino, "rb").read(2) != b"MZ":
+        os.remove(destino)
+        return                      # no es un instalador
+    # El instalador cierra esta app, copia los archivos nuevos y la vuelve a abrir (instalación silenciosa, sin administrador)
+    try:
+        teclado.quitar()
+        barra.mostrar()
+    except Exception:
+        pass
+    subprocess.Popen([destino, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
+                     creationflags=0x00000008 | 0x00000200, close_fds=True)   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    os._exit(0)
+
+
+def _bucle_actualizar():
+    time.sleep(60)                  # primero que arranque y cargue la pantalla
+    while True:
+        try:
+            _buscar_actualizacion()
+        except Exception:
+            pass                    # sin red o sin servidor: se intenta de nuevo más tarde
+        time.sleep(INTERVALO_ACTUALIZAR)
+
+
 def main():
     if ya_abierta():
         sys.exit(0)
     os.makedirs(WEBVIEW, exist_ok=True)
     api = Kiosco()
+    threading.Thread(target=_bucle_actualizar, name="actualizar", daemon=True).start()
     ventana = webview.create_window(
         "Verificador FactPOS", api._direccion(), js_api=api,
         fullscreen=True, frameless=True, on_top=True, easy_drag=False,
