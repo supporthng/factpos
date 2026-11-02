@@ -20,13 +20,13 @@ interface Enviado { id: string; tipo: Tipo; asunto: string | null; destinatarios
 /** Ajustes conocidos: el usuario solo elige su proveedor y escribe correo y contraseña. */
 const PASOS_CLAVE: Record<string, string[]> = {
   gmail: [
-    "Entre a myaccount.google.com con la cuenta que enviará los correos.",
-    "Abra «Seguridad» (menú izquierdo).",
-    "En «Cómo inicia sesión en Google», active la «Verificación en 2 pasos» si no la tiene (pide su teléfono).",
-    "Vuelva a «Seguridad», busque «Contraseñas de aplicaciones» (o escríbalo en el buscador de la cuenta).",
-    "Ponga un nombre, por ejemplo «FactPOS», y pulse «Crear».",
-    "Google muestra una clave de 16 letras. Cópiela y péguela en el campo «Contraseña» de aquí.",
-    "Pulse «Guardar cuenta» y luego «Enviar prueba».",
+    "Abra myaccount.google.com/apppasswords con la cuenta que enviará los correos (es la vía más directa: en el buscador de la cuenta la opción a veces no aparece).",
+    "Requiere la «Verificación en 2 pasos» activa. Si no la tiene: Seguridad › «Verificación en 2 pasos» (pide su teléfono) y vuelva a abrir el enlace.",
+    "Si Google pide su contraseña, escríbala. Ponga el nombre «FactPOS» y pulse «Crear».",
+    "Google muestra una clave de 16 letras. Cópiela ahora: no se vuelve a mostrar.",
+    "Aquí: servidor smtp.gmail.com, usuario su correo completo, y en «Contraseña» pegue la clave de 16 letras (no su contraseña normal).",
+    "Pulse «Guardar cuenta», luego «Probar conexión» y «Enviar prueba».",
+    "Si la opción no aparece: en cuentas de trabajo o escuela (Workspace) el administrador debe permitirla, y con la Protección Avanzada de Google no existe.",
   ],
   zoho: [
     "Entre a accounts.zoho.com › Seguridad › Contraseñas específicas de aplicación.",
@@ -61,7 +61,7 @@ const PASOS_CLAVE: Record<string, string[]> = {
 
 const PROVEEDORES: { id: string; nombre: string; servidor?: string; puerto?: number; seguridad?: Seguridad; ayuda: string }[] = [
   { id: "gmail", nombre: "Gmail / Google Workspace", servidor: "smtp.gmail.com", puerto: 465, seguridad: "SSL",
-    ayuda: "Escriba la contraseña de su correo. Si Google la rechaza (la mayoría de las cuentas lo hacen por seguridad), cree una contraseña de aplicación: Cuenta de Google › Seguridad › Verificación en 2 pasos › Contraseñas de aplicaciones." },
+    ayuda: "Escriba la contraseña de su correo. Si Google la rechaza (la mayoría de las cuentas lo hacen por seguridad), cree una contraseña de aplicación: abra myaccount.google.com/apppasswords (requiere la verificación en 2 pasos activa)." },
   { id: "outlook", nombre: "Outlook / Microsoft 365", servidor: "smtp.office365.com", puerto: 587, seguridad: "STARTTLS",
     ayuda: "La cuenta debe tener activado «SMTP autenticado» (Centro de administración de Microsoft 365 › Usuarios › Correo)." },
   { id: "zoho", nombre: "Zoho Mail", servidor: "smtp.zoho.com", puerto: 465, seguridad: "SSL", ayuda: "Si tiene verificación en 2 pasos, cree una contraseña específica de aplicación." },
