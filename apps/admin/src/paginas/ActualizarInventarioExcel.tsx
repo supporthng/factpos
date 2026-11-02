@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, descargarCsv, num } from "../api";
 import { Aviso, SelectorSucursal, useCatalogo } from "../ui";
 import { aNumero, leerTabla, type Tabla } from "../leerTabla";
@@ -15,6 +15,7 @@ const CAMPOS = [
   { id: "codigo", t: "Código de barras", re: /barra|ean|upc|gtin|barcode/i },
   { id: "cantidad", t: "Cantidad", re: /exist|stock|cantidad|qty|conteo|contad|saldo/i },
   { id: "costo", t: "Costo (solo entradas, opcional)", re: /costo|cost/i },
+  { id: "precio", t: "Precio de venta (solo para productos nuevos)", re: /precio|detalle|venta|pvp/i },
   { id: "nombre", t: "Nombre o descripción (solo para ver el producto)", re: /nombre|descrip|producto|art[ií]culo|detalle/i },
 ] as const;
 type Campo = (typeof CAMPOS)[number]["id"];
@@ -30,6 +31,13 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
   const [vista, setVista] = useState<Resuelta[] | null>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  // Productos del archivo que todavía no existen: se crean con su nombre y precio (la existencia se carga igual)
+  const [crearNuevos, setCrearNuevos] = useState(true);
+  const [impuestoId, setImpuestoId] = useState("");
+  useEffect(() => {
+    api<{ impuestos: { id: string; tasa: number }[] }>("/central/productos-auxiliares")
+      .then((a) => setImpuestoId(a.impuestos.find((i) => i.tasa === 0.18)?.id ?? a.impuestos[0]?.id ?? "")).catch(() => {});
+  }, []);
   const entrada = useRef<HTMLInputElement>(null);
 
   const titulos = tabla[0] ?? [];
@@ -71,13 +79,33 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     setOcupado(false);
   };
+  const datosFila = (fila: number) => {
+    const r = datos[fila - 2] ?? [];
+    const v = (c: Campo) => (mapa[c] != null ? (r[mapa[c]!] ?? "").trim() : "");
+    const codigo = v("codigo") || v("sku");
+    return { codigo, sku: (v("sku") || v("codigo")).toUpperCase().slice(0, 30), nombre: v("nombre").slice(0, 120), precio: aNumero(v("precio")) ?? 0, costo: aNumero(v("costo")) ?? 0, cantidad: aNumero(v("cantidad")) ?? 0 };
+  };
   const cambios = (vista ?? []).filter((f) => !f.error && f.diferencia !== 0);
   const errores = (vista ?? []).filter((f) => f.error);
+  const esNuevo = (f: Resuelta) => !!f.error && /^No se encontró/.test(f.error) && (() => { const d = datosFila(f.fila); return !!d.sku && d.nombre.length >= 2 && d.precio > 0; })();
+  const nuevos = crearNuevos && impuestoId ? errores.filter(esNuevo) : [];
   const aplicar = async () => {
     setOcupado(true); setMsg(null);
     try {
+      let creados = 0, fallidos = 0;
+      for (const f of nuevos) {
+        const d = datosFila(f.fila);
+        try {
+          await api("/central/productos", { metodo: "POST", cuerpo: {
+            sku: d.sku, nombre: d.nombre, tipo: "INVENTARIABLE", impuestoId, precioIncluyeItbis: true, costoReferencia: String(d.costo),
+            presentaciones: [{ nombre: "Unidad", factor: "1", codigos: d.codigo ? [d.codigo.slice(0, 30)] : [], precios: { "1": d.precio.toFixed(2), "2": null, "3": null }, porcentajes: {} }],
+            sucursales: sucursales.map((s) => ({ sucursalId: s.id, stockMinimo: "0", stockMaximo: null, ubicacion: null, activo: true })),
+          } });
+          creados++;
+        } catch { fallidos++; }
+      }
       const r = await api<{ numero: string; productos: number }>("/central/inventario/excel/aplicar", { metodo: "POST", cuerpo: { ...cuerpo().cuerpo, motivo: motivo.trim() } });
-      setMsg({ t: `Listo: ajuste Nº ${r.numero} con ${r.productos} producto(s) actualizados.`, tipo: "ok" });
+      setMsg({ t: `Listo: ajuste Nº ${r.numero} con ${r.productos} producto(s) actualizados${creados ? `, ${creados} producto(s) nuevo(s) creados` : ""}${fallidos ? `, ${fallidos} no se pudieron crear` : ""}.`, tipo: "ok" });
       setVista(null); setTabla([]); onTerminado();
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     setOcupado(false);
@@ -120,6 +148,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
           </div>
           <div className="fila-acciones"><span className="flex" /><button className="boton primario" disabled={!listo || ocupado} onClick={revisar}>Revisar cambios</button></div>
         </>}
+        {tabla.length > 0 && <label className="pr-check" style={{ margin: "8px 0" }}><input type="checkbox" checked={crearNuevos} onChange={(e) => { setCrearNuevos(e.target.checked); }} /><span>Crear los productos que no existan (con el nombre y el precio de venta del archivo)</span></label>}
         {vista && <>
           <p><b>{cambios.length}</b> producto(s) cambiarían{errores.length ? <> · <span className="texto-alerta"><b>{errores.length}</b> con problemas (se omiten)</span></> : null} · {vista.length - cambios.length - errores.length} sin diferencia</p>
           <div style={{ maxHeight: 260, overflow: "auto" }}>
@@ -128,7 +157,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
               <tbody>
                 {[...errores, ...cambios].slice(0, 300).map((f) => (
                   <tr key={f.fila}>
-                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{f.error && <div className="texto-alerta pequeno">{f.error}</div>}</td>
+                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{f.error && (nuevos.includes(f) ? <div className="pequeno" style={{ color: "var(--ok, #15803d)" }}>No existe: se creará con el nombre y precio del archivo</div> : <div className="texto-alerta pequeno">{f.error}{/^No se encontró/.test(f.error) && crearNuevos && " · para crearlo faltan el nombre o el precio de venta en el archivo"}</div>)}</td>
                     <td className="der">{f.error ? "" : num(f.actual, 3)}</td><td className="der">{f.error ? "" : num(f.nuevo, 3)}</td>
                     <td className="der">{f.error ? "" : `${f.diferencia > 0 ? "+" : ""}${num(f.diferencia, 3)}`}</td>
                   </tr>
@@ -136,9 +165,9 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
               </tbody>
             </table>
           </div>
-          {cambios.length > 0 && <>
+          {(cambios.length > 0 || nuevos.length > 0) && <>
             <label className="campo"><span>Motivo (obligatorio)</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. Conteo físico de octubre" /></label>
-            <div className="fila-acciones"><span className="flex" /><button className="boton primario" disabled={ocupado || motivo.trim().length < 3} onClick={aplicar}>Aplicar {cambios.length} cambio(s)</button></div>
+            <div className="fila-acciones"><span className="flex" /><button className="boton primario" disabled={ocupado || motivo.trim().length < 3} onClick={aplicar}>Aplicar {cambios.length + nuevos.length} cambio(s){nuevos.length ? ` (${nuevos.length} producto(s) nuevo(s))` : ""}</button></div>
           </>}
         </>}
       </div>
