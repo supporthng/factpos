@@ -16,6 +16,11 @@ export const esLocal = () => modo === "sucursal";
 // Cada cliente guarda su sesión aparte (todas las páginas comparten el dominio del portal)
 const CLAVE = CONFIG.slug ? `factpos.admin:${CONFIG.slug}` : enPortal ? "factpos.admin:portal" : "factpos.admin";
 
+// Credencial de este equipo para entrar por internet (la entrega el servidor al pedir acceso; ver SolicitarDispositivo)
+const CLAVE_DISP = CONFIG.slug ? `factpos.dispositivo:${CONFIG.slug}` : "factpos.dispositivo";
+export const leerDispositivo = (): string | null => { try { return localStorage.getItem(CLAVE_DISP); } catch { return null; } };
+export const fijarDispositivo = (d: string | null) => { try { if (d) localStorage.setItem(CLAVE_DISP, d); else localStorage.removeItem(CLAVE_DISP); } catch { /* sin almacenamiento */ } };
+
 export interface Sesion {
   servidor: string;   // URL de la central
   token: string;      // sesión firmada por el servidor (12 horas)
@@ -49,7 +54,7 @@ export const fijarSesion = (s: Sesion | null) => { sesion = s; guardarSesion(s);
 export const sesionActual = () => sesion!;
 export const puede = (permiso: string) => !!sesion && (sesion.permisos.includes("*") || sesion.permisos.includes(permiso));
 /** Encabezados de autenticación para las descargas hechas con fetch directo. */
-export const encabezados = (): Record<string, string> => (sesion ? { authorization: `Bearer ${sesion.token}` } : {});
+export const encabezados = (): Record<string, string> => ({ ...(sesion ? { authorization: `Bearer ${sesion.token}` } : {}), ...(leerDispositivo() ? { "x-dispositivo": leerDispositivo()! } : {}) });
 
 export async function api<T = any>(ruta: string, opciones: { metodo?: string; cuerpo?: unknown; servidor?: string } = {}): Promise<T> {
   const base = (opciones.servidor ?? sesion?.servidor ?? "").replace(/\/$/, "");
@@ -59,6 +64,7 @@ export async function api<T = any>(ruta: string, opciones: { metodo?: string; cu
       method: opciones.metodo ?? (opciones.cuerpo ? "POST" : "GET"),
       headers: {
         ...(opciones.cuerpo ? { "content-type": "application/json" } : {}),
+        ...(leerDispositivo() ? { "x-dispositivo": leerDispositivo()! } : {}),
         ...(sesion && !opciones.servidor ? encabezados() : {}),
       },
       body: opciones.cuerpo ? JSON.stringify(opciones.cuerpo) : undefined,
@@ -68,6 +74,7 @@ export async function api<T = any>(ruta: string, opciones: { metodo?: string; cu
   }
   const datos = await r.json().catch(() => ({}));
   if (!r.ok) {
+    if (r.status === 403 && datos.dispositivo) window.dispatchEvent(new CustomEvent("factpos:dispositivo", { detail: datos.dispositivo }));
     if (r.status === 401 && datos.sesion) window.dispatchEvent(new Event("factpos:sesion-vencida"));
     throw new Error(datos.error ?? `Error ${r.status}`);
   }

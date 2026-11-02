@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
+import { olvidarCacheDispositivos } from "./dispositivos.js";
 
 /**
  * Seguridad: funciones sensibles que un administrador habilita o deshabilita.
@@ -38,6 +39,12 @@ export const FUNCIONES = [
     titulo: "Acceso web desde internet",
     descripcion: "Permite entrar a la administración desde internet con el enlace de «Conexión web». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",
     porDefecto: true,
+  },
+  {
+    clave: "exigir_dispositivo",
+    titulo: "Exigir dispositivo autorizado para entrar desde internet",
+    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Configuración › Dispositivos remotos. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Desactivado: basta el usuario y la clave.",
+    porDefecto: false,
   },
 ] as const;
 export type ClaveFuncion = (typeof FUNCIONES)[number]["clave"];
@@ -85,6 +92,7 @@ export async function rutasCentralSeguridad(app: FastifyInstance) {
        ON CONFLICT (empresa_id, clave) DO UPDATE SET habilitada = $3, usuario_id = $4, actualizado_en = now()`,
       [empresaDe(req), clave, b.habilitada, z.string().uuid().safeParse(req.headers["x-usuario-id"]).data ?? null]);
     cacheWeb = null;
+    olvidarCacheDispositivos();
     return { ok: true };
   });
 }
