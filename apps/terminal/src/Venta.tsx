@@ -441,8 +441,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   // Salir cierra FactPOS. Con el turno abierto pide la aprobación de un supervisor (lo maneja la pantalla principal).
   // En el navegador no se puede cerrar la ventana: ahí vuelve a la pantalla de usuarios.
   const salirDelSistema = () => {
-    const f = (window as unknown as { factpos?: { cerrar?: () => void } }).factpos;
-    if (!f?.cerrar) return onSalir();
     window.dispatchEvent(new Event("factpos:salir-sistema"));
   };
   const bloquear = () => { if (lineas.length) pausar(); onSalir(); };
