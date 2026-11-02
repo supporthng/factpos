@@ -85,7 +85,7 @@ export function explicarError(e: Error & { code?: string; responseCode?: number 
   const m = e.message ?? "";
   if (e.code === "EAUTH" || e.responseCode === 535 || /auth|credentials|Username and Password/i.test(m)) {
     return /gmail|google/i.test(m) || /5\.7\.8/.test(m)
-      ? "Usuario o contraseña rechazados. En Gmail use una «contraseña de aplicación» (Cuenta de Google › Seguridad › Verificación en 2 pasos › Contraseñas de aplicaciones), no su contraseña normal."
+      ? "Usuario o contraseña rechazados. En Gmail use una «contraseña de aplicación» (se crea en myaccount.google.com/apppasswords; requiere la verificación en 2 pasos), no su contraseña normal."
       : "El servidor de correo rechazó el usuario o la contraseña.";
   }
   if (e.code === "ESOCKET" && /wrong version number|ssl/i.test(m)) return "La seguridad no coincide con el puerto: use SSL con el puerto 465, o STARTTLS con el 587.";
