@@ -36,6 +36,67 @@ const ROT: Record<Estado, string> = { PENDIENTE: "Pendiente", EN_CURSO: "En curs
 interface Req { id: string; titulo: string; exige: string; estado: "ok" | "falta" | "parcial"; detalle: string; pasos: string[] }
 interface Verif { puedeFacturar: boolean; resumen: string; requisitos: Req[]; revisadoEn: string }
 
+const CHECKLIST: { grupo: string; items: string[] }[] = [
+  { grupo: "A. Oficina Virtual (OFV)", items: [
+    "Usuario de la OFV del representante legal, con la relación de representante registrada en el RNC de la empresa.",
+    "El representante acepta el rol de Administrador (notificación «Delegación de Rol de Facturación Electrónica»).",
+    "El administrador delega los roles Solicitante, Firmante y Aprobador Comercial (Delegación de e-CF › Delegación de Roles) y descarga el XML.",
+    "Firmar ese XML con la «App Firma Digital» de la DGII y subirlo en «Carga XML Delegaciones».",
+  ] },
+  { grupo: "B. Certificado digital", items: [
+    "Solicitarlo a una entidad certificadora autorizada, a nombre de la empresa o de su representante.",
+    "Guardar el archivo .p12 y su contraseña; anotar la fecha de vencimiento.",
+    "Cargarlo en Fiscal › Certificado digital y habilitarlo en cada sucursal.",
+  ] },
+  { grupo: "C. Formulario de solicitud (Portal de Certificación de FE)", items: [
+    "Tipo de registro: Emisor Electrónico. Tipo de software: desarrollado internamente (FactPOS directo) o adquirido a un proveedor (si certifica con un PSE como Alanube, con los datos del proveedor).",
+    "Nombre y versión del software.",
+    "URL de Recepción: https://<empresa>.factpos.app/fe/recepcion/api/ecf",
+    "URL de Aprobación comercial: https://<empresa>.factpos.app/fe/aprobacioncomercial/api/ecf",
+    "URL de Autenticación: https://<empresa>.factpos.app/fe/autenticacion/api",
+    "«Generar archivo», firmarlo con la App Firma Digital, subirlo y esperar la validación.",
+  ] },
+  { grupo: "D. Con la postulación aprobada", items: [
+    "Descargar el Excel del set de pruebas de e-CF (y, después, el de aprobaciones comerciales).",
+    "Pedir los rangos de e-NCF (E31, E32 y E34 como mínimo) y registrarlos en Fiscal › Comprobantes (NCF).",
+    "Pasar la configuración a TesteCF, CerteCF y, al final, producción (ECF).",
+  ] },
+];
+
+/** Qué debe tener listo el contribuyente para que le aprueben la solicitud (marcas guardadas solo en este navegador). */
+function ChecklistSolicitud() {
+  const [marcas, setMarcas] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("factpos.checklist-solicitud") ?? "{}"); } catch { return {}; }
+  });
+  const alternar = (k: string) => setMarcas((m) => {
+    const n = { ...m, [k]: !m[k] };
+    try { localStorage.setItem("factpos.checklist-solicitud", JSON.stringify(n)); } catch { /* sin almacenamiento */ }
+    return n;
+  });
+  const total = CHECKLIST.reduce((a, g) => a + g.items.length, 0);
+  const hechos = Object.values(marcas).filter(Boolean).length;
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Checklist de la solicitud como emisor electrónico <span className="suave pequeno">({hechos} de {total})</span></h3>
+      <p className="suave pequeno">Lo que debe tener listo el contribuyente en la DGII antes de poder emitir e-CF. Las marcas se guardan solo en este navegador.</p>
+      {CHECKLIST.map((g) => (
+        <div key={g.grupo} style={{ marginTop: 10 }}>
+          <b>{g.grupo}</b>
+          {g.items.map((t, i) => {
+            const k = g.grupo[0] + i;
+            return (
+              <label key={k} className="pequeno" style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "6px 0", maxWidth: "90ch", cursor: "pointer" }}>
+                <input type="checkbox" checked={!!marcas[k]} onChange={() => alternar(k)} style={{ marginTop: 3 }} />
+                <span style={marcas[k] ? { textDecoration: "line-through", opacity: 0.6 } : undefined}>{t}</span>
+              </label>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** ¿Puede FactPOS facturar con e-CF? Cada requisito de la DGII, con lo que falta paso a paso. */
 function VerificacionEcf() {
   const [n, setN] = useState(0);
@@ -91,6 +152,7 @@ export function CertificacionDgii() {
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <VerificacionEcf />
+      <ChecklistSolicitud />
       <Aviso tipo={f.autorizado ? "ok" : "info"} texto={f.autorizado ? `FactPOS está autorizado por la DGII${f.autorizadoFecha ? ` desde el ${new Date(f.autorizadoFecha + "T12:00:00").toLocaleDateString("es-DO")}` : ""}.` : `FactPOS aún no está autorizado por la DGII para emitir e-CF · ${hechos} de ${PASOS.length} pasos hechos.`} />
 
       <div className="panel">
