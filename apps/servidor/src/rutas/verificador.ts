@@ -22,6 +22,26 @@ export async function rutasVerificador(app: FastifyInstance) {
     return PAGINA_VERIFICADOR;
   });
 
+  /** Qué sucursal atiende este servidor y la marca de la empresa (la página la usa para no necesitar ?sucursal=). */
+  app.get("/verificador/config", async (req) => {
+    const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
+    const r = await pool.query(
+      `SELECT s.id AS "sucursalId", s.nombre, COALESCE(e.nombre_comercial, e.razon_social) AS empresa, m.logo,
+              COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario
+         FROM sucursales s JOIN empresas e ON e.id = s.empresa_id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
+        WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null]);
+    if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    // Con varias sucursales y sin indicar cuál, no se adivina
+    if (!sucursal && r.rowCount > 1) throw new ErrorNegocio("Este servidor atiende varias sucursales: abra el verificador con ?sucursal=ID", 409);
+    return r.rows[0];
+  });
+
+  /** Permite instalar el verificador en la pantalla de inicio de Android (pantalla completa, sin barra del navegador). */
+  app.get("/verificador/manifest.webmanifest", async (_req, rep) => {
+    rep.type("application/manifest+json");
+    return { name: "Verificador de precios", short_name: "Precios", start_url: "/verificador", display: "fullscreen", orientation: "any", background_color: "#10202e", theme_color: "#10202e", icons: [] };
+  });
+
   app.get("/verificador/:sucursalId/:codigo", async (req) => {
     const { sucursalId, codigo } = z
       .object({ sucursalId: z.string().uuid(), codigo: z.string().trim().min(1).max(30) })

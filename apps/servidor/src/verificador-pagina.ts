@@ -9,6 +9,10 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verificador de precios</title>
+<link rel="manifest" href="/verificador/manifest.webmanifest">
+<meta name="theme-color" content="#10202e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
   :root { --fondo:#10202e; --tarjeta:#ffffff; --texto:#10202e; --suave:#5d6d7e; --acento:#c0362c; --oferta:#e8833a; }
   * { box-sizing: border-box; }
@@ -26,15 +30,20 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .nivel { background:#eef1f4; border-radius:12px; padding:10px 16px; font-size:16px; }
   .espera { color:#cfd8e0; font-size:clamp(22px,4vw,32px); text-align:center; }
   .error { color:var(--acento); font-size:24px; font-weight:700; }
-  input { position:fixed; opacity:0; pointer-events:none; }
+  .logo { max-width:min(260px,60vw); max-height:120px; margin-bottom:20px; object-fit:contain; }
+  .barra { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px; background:rgba(0,0,0,.25); }
+  .barra input { width:min(420px,90vw); font-size:20px; padding:12px 16px; border-radius:12px; border:0; text-align:center; }
+  .sin-conexion { position:fixed; top:12px; right:16px; background:#c0362c; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; display:none; }
 </style>
 </head>
 <body>
-  <input id="codigo" autocomplete="off" autofocus>
   <div id="vista" class="espera">Pase el producto por el lector<br>para ver su precio</div>
+  <div class="sin-conexion" id="sinconexion">Sin conexión con el servidor</div>
+  <div class="barra"><input id="codigo" autocomplete="off" inputmode="numeric" autofocus placeholder="Escanee o escriba el código"></div>
 <script>
   const params = new URLSearchParams(location.search);
-  const sucursal = params.get("sucursal");
+  let sucursal = params.get("sucursal");
+  let logo = null;
   const mostrarNiveles = params.get("niveles") === "1";
   const input = document.getElementById("codigo");
   const vista = document.getElementById("vista");
@@ -44,24 +53,42 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
 
   function espera() {
     vista.className = "espera";
-    vista.innerHTML = "Pase el producto por el lector<br>para ver su precio";
+    vista.innerHTML = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "") + "Pase el producto por el lector<br>para ver su precio";
   }
+  // Sin ?sucursal=: el servidor dice cuál es (un servidor de sucursal atiende una sola) y entrega la marca de la empresa
+  async function cargarConfig() {
+    try {
+      const r = await fetch("/verificador/config" + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : ""));
+      if (!r.ok) return;
+      const c = await r.json();
+      sucursal = sucursal || c.sucursalId;
+      logo = c.logo || null;
+      if (c.secundario) document.documentElement.style.setProperty("--fondo", c.secundario);
+      if (c.primario) document.documentElement.style.setProperty("--acento", c.primario);
+      espera();
+      document.getElementById("sinconexion").style.display = "none";
+    } catch { document.getElementById("sinconexion").style.display = "block"; setTimeout(cargarConfig, 5000); }
+  }
+  // Pantalla siempre encendida y completa (Android: instale la página en la pantalla de inicio; Windows: Edge en modo kiosco)
+  async function mantenerActiva() { try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {} }
+  mantenerActiva(); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") mantenerActiva(); });
+  document.addEventListener("pointerdown", () => { if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); }, { once: true });
+  cargarConfig();
   function enfocar() { input.focus(); }
   document.addEventListener("click", enfocar);
   setInterval(enfocar, 1000);
 
-  if (!sucursal) {
-    vista.innerHTML = '<div class="tarjeta"><p class="error">Falta configurar la sucursal</p><p class="detalle">Abra esta página con ?sucursal=ID_DE_LA_SUCURSAL</p></div>';
-  }
 
   input.addEventListener("keydown", async (e) => {
     if (e.key !== "Enter") return;
     const codigo = input.value.trim();
     input.value = "";
-    if (!codigo || !sucursal) return;
+    if (!codigo) return;
+    if (!sucursal) { await cargarConfig(); if (!sucursal) { vista.className = ""; vista.innerHTML = '<div class="tarjeta"><p class="error">Falta configurar la sucursal</p><p class="detalle">Abra esta página con ?sucursal=ID_DE_LA_SUCURSAL</p></div>'; return; } }
     clearTimeout(temporizador);
     try {
       const r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(codigo));
+      document.getElementById("sinconexion").style.display = "none";
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Producto no encontrado");
       let html = '<div class="tarjeta"><h1>' + esc(d.descripcion) + '</h1>';
@@ -81,7 +108,8 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       vista.innerHTML = html + '</div>';
     } catch (err) {
       vista.className = "";
-      vista.innerHTML = '<div class="tarjeta"><p class="error">' + esc(err.message) + '</p><p class="detalle">Consulte con un empleado</p></div>';
+      if (err instanceof TypeError) document.getElementById("sinconexion").style.display = "block";
+      vista.innerHTML = '<div class="tarjeta"><p class="error">' + esc(err instanceof TypeError ? "Sin conexión con el servidor" : err.message) + '</p><p class="detalle">Consulte con un empleado</p></div>';
     }
     temporizador = setTimeout(espera, 8000);
   });
