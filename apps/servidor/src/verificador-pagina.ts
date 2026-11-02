@@ -58,11 +58,29 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   @keyframes vaciar { from { transform:scaleX(1); } to { transform:scaleX(0); } }
   .tarjeta { position:relative; overflow:hidden; }
   .codigo-leido { color:var(--suave); font-size:16px; margin-top:6px; }
+  .app-esquina { position:fixed; top:10px; left:10px; display:none; gap:8px; z-index:5; }
+  .app-esquina button { width:44px; height:44px; border-radius:50%; border:0; background:rgba(255,255,255,.14); color:#fff; font-size:20px; cursor:pointer; opacity:.45; }
+  .app-esquina button:hover, .app-esquina button:active { opacity:1; }
+  #app-menu { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:10; }
+  #app-menu .caja { background:#fff; color:var(--texto); border-radius:18px; padding:28px; width:min(420px,92vw); text-align:center; }
+  #app-menu input { width:100%; font-size:22px; padding:12px; border:2px solid #cfd8e0; border-radius:12px; text-align:center; margin:12px 0; }
+  #app-menu button { display:block; width:100%; font-size:19px; font-weight:700; padding:13px; margin-top:10px; border:0; border-radius:999px; background:var(--fondo); color:#fff; cursor:pointer; }
+  #app-menu button.sec { background:#eef1f4; color:var(--texto); }
+  #app-menu .err { color:var(--acento); font-weight:700; min-height:1.2em; }
   .sin-conexion { position:fixed; top:12px; right:16px; background:#c0362c; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; display:none; }
 </style>
 </head>
 <body>
   <div id="vista" class="espera">Pase el producto por el lector<br>para ver su precio</div>
+  <div class="app-esquina" id="app-esquina"><button type="button" id="app-info" aria-label="Opciones del equipo" title="Opciones del equipo">ⓘ</button></div>
+  <div id="app-menu"><div class="caja">
+    <h2 id="app-titulo" style="margin:0 0 4px">Opciones del equipo</h2>
+    <div id="app-clave-caja"><div class="detalle" style="margin:0">Escriba la clave de salida</div>
+      <input id="app-clave" type="password" autocomplete="off"><button type="button" id="app-entrar">Entrar</button></div>
+    <div id="app-acciones" style="display:none"><div class="detalle" id="app-version" style="margin:0 0 6px"></div>
+      <button type="button" id="app-cambiar">Cambiar de servidor</button><button type="button" id="app-salir" class="sec">Cerrar la app</button></div>
+    <div class="err" id="app-err"></div><button type="button" class="sec" id="app-cancelar">Cancelar</button>
+  </div></div>
   <div class="sin-conexion" id="sinconexion">Sin conexión con el servidor</div>
   <div class="barra"><input id="codigo" autocomplete="off" inputmode="numeric" autofocus placeholder="Escanee o escriba el código"></div>
 <script>
@@ -143,7 +161,32 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   mantenerActiva(); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") mantenerActiva(); });
   document.addEventListener("pointerdown", () => { if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); }, { once: true });
   cargarConfig();
-  function enfocar() { input.focus(); }
+  // Dentro de la app Verificador FactPOS (Android o Windows): esquina con opciones protegidas por la clave de salida
+  const puente = () => window.FactPOSApp || (window.pywebview && window.pywebview.api) || null;
+  async function app(nombre, ...a) { return await puente()[nombre](...a); }
+  const ui = (id) => document.getElementById(id);
+  let claveApp = "";
+  function menuApp(mostrar) { ui("app-menu").style.display = mostrar ? "flex" : "none"; if (!mostrar) { claveApp = ""; ui("app-clave").value = ""; ui("app-err").textContent = ""; ui("app-acciones").style.display = "none"; ui("app-clave-caja").style.display = "block"; } else ui("app-clave").focus(); }
+  function iniciarApp() {
+    if (!puente()) return false;
+    ui("app-esquina").style.display = "flex";
+    ui("app-info").onclick = (e) => { e.stopPropagation(); menuApp(true); };
+    ui("app-cancelar").onclick = () => menuApp(false);
+    ui("app-clave").onkeydown = (e) => { if (e.key === "Enter") ui("app-entrar").click(); e.stopPropagation(); };
+    ui("app-entrar").onclick = async () => {
+      const c = ui("app-clave").value;
+      if (await app("verificarClave", c)) {
+        claveApp = c; ui("app-err").textContent = "";
+        ui("app-clave-caja").style.display = "none"; ui("app-acciones").style.display = "block";
+        try { ui("app-version").textContent = "Verificador FactPOS " + (await app("plataforma")) + " " + (await app("version")); } catch {}
+      } else { ui("app-err").textContent = "Clave incorrecta."; ui("app-clave").value = ""; }
+    };
+    ui("app-cambiar").onclick = () => app("cambiarServidor", claveApp);
+    ui("app-salir").onclick = () => app("salir", claveApp);
+    return true;
+  }
+  if (!iniciarApp()) { window.addEventListener("pywebviewready", iniciarApp); }
+  function enfocar() { if (ui("app-menu").style.display === "flex") return; input.focus(); }
   document.addEventListener("click", enfocar);
   setInterval(enfocar, 1000);
 

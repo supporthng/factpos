@@ -1,0 +1,50 @@
+name: Verificador Windows
+# Compila Instalador_Verificador_FactPOS.exe (quiosco de consulta de precios) y lo publica en Releases › «verificador-windows».
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["apps/verificador-windows/**", ".github/workflows/verificador-windows.yml"]
+  pull_request:
+    paths: ["apps/verificador-windows/**", ".github/workflows/verificador-windows.yml"]
+permissions:
+  contents: write
+concurrency: { group: verificador-windows, cancel-in-progress: false }
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", architecture: x64 }
+      - name: Versión
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          $f = "apps/verificador-windows/kiosco.py"
+          $t = Get-Content $f -Raw -Encoding utf8
+          $t = $t -replace 'VERSION = "1\.0\.0"', "VERSION = `"$version`""
+          Set-Content $f $t -Encoding utf8 -NoNewline
+          Select-String -Path $f -Pattern '^VERSION ='
+          "VERSION_APP=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Crear la app
+        shell: pwsh
+        run: ./apps/verificador-windows/build_windows.ps1
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Construir instalador
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION_APP" "apps\verificador-windows\FactPOSVerificador.iss"
+      - uses: actions/upload-artifact@v4
+        with: { name: FactPOS-Verificador-Windows, path: dist_instalador/Instalador_Verificador_FactPOS.exe }
+      - name: Publicar en Releases
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view verificador-windows >/dev/null 2>&1 || gh release create verificador-windows --title "Verificador FactPOS para Windows" --notes "Descargue Instalador_Verificador_FactPOS.exe y ejecútelo en la PC del verificador." --latest=false
+          gh release upload verificador-windows dist_instalador/Instalador_Verificador_FactPOS.exe --clobber
