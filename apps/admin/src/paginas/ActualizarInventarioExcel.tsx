@@ -15,6 +15,7 @@ const CAMPOS = [
   { id: "codigo", t: "Código de barras", re: /barra|ean|upc|gtin|barcode/i },
   { id: "cantidad", t: "Cantidad", re: /exist|stock|cantidad|qty|conteo|contad|saldo/i },
   { id: "costo", t: "Costo (solo entradas, opcional)", re: /costo|cost/i },
+  { id: "nombre", t: "Nombre o descripción (solo para ver el producto)", re: /nombre|descrip|producto|art[ií]culo|detalle/i },
 ] as const;
 type Campo = (typeof CAMPOS)[number]["id"];
 
@@ -127,7 +128,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
               <tbody>
                 {[...errores, ...cambios].slice(0, 300).map((f) => (
                   <tr key={f.fila}>
-                    <td>{f.fila}</td><td>{f.nombre ?? "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{f.error && <div className="texto-alerta pequeno">{f.error}</div>}</td>
+                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{f.error && <div className="texto-alerta pequeno">{f.error}</div>}</td>
                     <td className="der">{f.error ? "" : num(f.actual, 3)}</td><td className="der">{f.error ? "" : num(f.nuevo, 3)}</td>
                     <td className="der">{f.error ? "" : `${f.diferencia > 0 ? "+" : ""}${num(f.diferencia, 3)}`}</td>
                   </tr>
