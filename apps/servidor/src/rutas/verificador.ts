@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { leerCodigoBalanza, mejorOferta, formatoRD } from "@factpos/compartido";
+import { leerCodigoBalanza, mejorOferta, formatoRD, variantesCodigoBarra } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
 import { SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
+import { tienePermiso, type SesionAdmin } from "../sesion.js";
 import { ofertasPara } from "../promociones.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 
@@ -90,6 +91,25 @@ export async function rutasVerificador(app: FastifyInstance) {
     return r.rows[0];
   });
 
+  /** Qué se consultó en los últimos días y qué códigos no tenían precio (para la administración). */
+  app.get("/central/verificador/consultas", async (req) => {
+    const sesion = (req as { sesion?: SesionAdmin }).sesion;
+    if (!sesion || !tienePermiso(sesion.p, "admin.precios")) throw new ErrorNegocio("Sin permiso", 403);
+    const q = z.object({ dias: z.coerce.number().int().min(1).max(90).default(30), sucursal: z.string().uuid().optional() }).parse(req.query);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const base = `FROM verificador_consultas c JOIN sucursales s ON s.id = c.sucursal_id
+                   WHERE s.empresa_id = $1 AND c.creado_en >= now() - make_interval(days => $2) AND ($3::uuid IS NULL OR c.sucursal_id = $3)`;
+    const arg = [empresaId, q.dias, q.sucursal ?? null];
+    const [tot, top, sin] = await Promise.all([
+      pool.query(`SELECT count(*)::int AS total, count(*) FILTER (WHERE NOT c.encontrado)::int AS "sinPrecio" ${base}`, arg),
+      pool.query(`SELECT c.codigo, max(c.descripcion) AS descripcion, count(*)::int AS veces ${base} AND c.encontrado
+                   GROUP BY c.codigo ORDER BY veces DESC LIMIT 15`, arg),
+      pool.query(`SELECT c.codigo, count(*)::int AS veces, max(c.creado_en) AS ultima ${base} AND NOT c.encontrado
+                   GROUP BY c.codigo ORDER BY veces DESC, ultima DESC LIMIT 25`, arg),
+    ]);
+    return { dias: q.dias, ...tot.rows[0], masConsultados: top.rows, sinPrecioLista: sin.rows };
+  });
+
   /** Permite instalar el verificador en la pantalla de inicio de Android (pantalla completa, sin barra del navegador). */
   app.get("/verificador/manifest.webmanifest", async (_req, rep) => {
     rep.type("application/manifest+json");
@@ -113,9 +133,17 @@ export async function rutasVerificador(app: FastifyInstance) {
     const buscar = async (cod: string, soloPesables = false) =>
       (await pool.query<PresentacionVenta>(
         `${SQL_PRESENTACION} ${soloPesables ? "AND p.es_pesable" : ""}
-           AND pr.id = (SELECT presentacion_id FROM codigos_barra WHERE empresa_id = $1 AND codigo = $5 AND activo)`,
-        [empresaId, sucursalId, almacenId, null, cod],
+           AND pr.id = (SELECT presentacion_id FROM codigos_barra WHERE empresa_id = $1 AND codigo = ANY($5::text[]) AND activo
+                         ORDER BY array_position($5::text[], codigo) LIMIT 1)`,
+        [empresaId, sucursalId, almacenId, null, variantesCodigoBarra(cod)],
       )).rows[0];
+
+    /** Anota la consulta (qué se consulta y qué códigos no tenían precio). Nunca estorba al cliente. */
+    const anotar = (encontrado: boolean, descripcion: string | null) => {
+      pool.query("INSERT INTO verificador_consultas (sucursal_id, codigo, encontrado, descripcion) VALUES ($1, $2, $3, $4)",
+        [sucursalId, codigo, encontrado, descripcion]).catch(() => {});
+      if (Math.random() < 0.005) pool.query("DELETE FROM verificador_consultas WHERE creado_en < now() - interval '13 months'").catch(() => {});
+    };
 
     let p = await buscar(codigo);
     let peso: number | null = null;
@@ -126,7 +154,8 @@ export async function rutasVerificador(app: FastifyInstance) {
         peso = b.valor;
       }
     }
-    if (!p || p.precio === null) throw new ErrorNegocio("Producto no encontrado", 404);
+    if (!p || p.precio === null) { anotar(false, null); throw new ErrorNegocio("Producto no encontrado", 404); }
+    anotar(true, `${p.nombre} ${p.presentacion}`.trim());
 
     // Precios por nivel (para clientes por mayor)
     const niveles = await pool.query<{ nivel: number; lista: string; precio: string }>(

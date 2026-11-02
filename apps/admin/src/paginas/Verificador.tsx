@@ -1,6 +1,53 @@
 import { useState } from "react";
 import { esLocal } from "../api";
-import { Aviso, Encabezado, SelectorSucursal } from "../ui";
+import { Aviso, Encabezado, SelectorSucursal, useDatos } from "../ui";
+
+interface Consultas {
+  dias: number; total: number; sinPrecio: number;
+  masConsultados: { codigo: string; descripcion: string | null; veces: number }[];
+  /** Códigos que se pasaron por el lector y no tenían precio. */
+  sinPrecioLista: { codigo: string; veces: number; ultima: string }[];
+}
+
+/** Lo que consultan los clientes: sirve para completar precios y códigos de barras que faltan. */
+function ConsultasRecientes({ sucursalId }: { sucursalId: string }) {
+  const [dias, setDias] = useState(30);
+  const { datos: d, error } = useDatos<Consultas>(`/central/verificador/consultas?dias=${dias}${sucursalId ? `&sucursal=${sucursalId}` : ""}`, [dias, sucursalId]);
+  return (
+    <div className="panel" style={{ marginTop: 16 }}>
+      <div className="fila-acciones" style={{ justifyContent: "space-between" }}>
+        <h3 style={{ margin: 0 }}>Consultas de los clientes</h3>
+        <select value={dias} onChange={(e) => setDias(Number(e.target.value))}>
+          <option value={7}>Últimos 7 días</option><option value={30}>Últimos 30 días</option><option value={90}>Últimos 90 días</option>
+        </select>
+      </div>
+      {error && <Aviso tipo="error" texto={error} />}
+      {d && (
+        <>
+          <p className="suave pequeno">{d.total.toLocaleString("es-DO")} consultas, {d.sinPrecio.toLocaleString("es-DO")} sin precio. Solo cuenta lo consultado en el servidor donde está abierta esta pantalla.</p>
+          <div className="dos-col">
+            <div>
+              <b>Códigos sin precio</b>
+              {d.sinPrecioLista.length === 0 ? <p className="suave pequeno">Ninguno: todo lo que pasaron por el lector tenía precio.</p> : (
+                <table className="tabla"><thead><tr><th>Código</th><th>Veces</th><th>Última</th></tr></thead><tbody>
+                  {d.sinPrecioLista.map((x) => <tr key={x.codigo}><td className="mono">{x.codigo}</td><td>{x.veces}</td><td>{new Date(x.ultima).toLocaleDateString("es-DO")}</td></tr>)}
+                </tbody></table>
+              )}
+            </div>
+            <div>
+              <b>Lo más consultado</b>
+              {d.masConsultados.length === 0 ? <p className="suave pequeno">Todavía no hay consultas.</p> : (
+                <table className="tabla"><thead><tr><th>Producto</th><th>Veces</th></tr></thead><tbody>
+                  {d.masConsultados.map((x) => <tr key={x.codigo}><td>{x.descripcion ?? x.codigo}</td><td>{x.veces}</td></tr>)}
+                </tbody></table>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Verificadores de precios (Android y Windows): la dirección que se configura en cada equipo y cómo dejarlo en pantalla completa. */
 export function Verificador() {
@@ -39,6 +86,8 @@ export function Verificador() {
         <Fila k="pagina" titulo="Para equipos con navegador o pantalla web (Android y Windows)" texto={pagina} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
+
+      <ConsultasRecientes sucursalId={sucursalId} />
 
       <div className="dos-col" style={{ marginTop: 16 }}>
         <div className="panel">

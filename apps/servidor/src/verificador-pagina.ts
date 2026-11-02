@@ -48,6 +48,16 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .prod .p { font-weight:800; font-size:20px; color:var(--acento); text-align:right; }
   .prod .p s { display:block; color:var(--suave); font-weight:600; font-size:14px; }
   .volver { margin-top:18px; font-size:20px; padding:12px 28px; border:0; border-radius:999px; background:var(--fondo); color:#fff; cursor:pointer; }
+  .etiqueta { display:flex; align-items:flex-start; justify-content:center; gap:.08em; color:var(--acento); font-weight:800; line-height:1; margin:14px 0 6px; white-space:nowrap; transform-origin:center; }
+  .etiqueta .mon { font-size:clamp(22px,4vw,40px); margin-top:.25em; }
+  .etiqueta .ent { font-size:clamp(80px,17vw,170px); letter-spacing:-2px; }
+  .etiqueta .cts { font-size:clamp(30px,6.5vw,66px); margin-top:.1em; }
+  .etiqueta .un { font-size:clamp(16px,3vw,28px); align-self:flex-end; color:var(--suave); font-weight:600; margin-left:.4em; }
+  .cuenta { position:absolute; left:0; right:0; top:0; height:8px; background:#e3e8ee; border-radius:20px 20px 0 0; overflow:hidden; }
+  .cuenta span { display:block; height:100%; background:var(--acento); transform-origin:left; animation:vaciar var(--seg,10s) linear forwards; }
+  @keyframes vaciar { from { transform:scaleX(1); } to { transform:scaleX(0); } }
+  .tarjeta { position:relative; overflow:hidden; }
+  .codigo-leido { color:var(--suave); font-size:16px; margin-top:6px; }
   .sin-conexion { position:fixed; top:12px; right:16px; background:#c0362c; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; display:none; }
 </style>
 </head>
@@ -66,6 +76,18 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   const rd = (v) => "RD$" + Number(v).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const SEGUNDOS = 10;
+  // Precio como en la etiqueta de góndola: RD$ pequeño, enteros enormes y centavos arriba; siempre cabe a lo ancho
+  function etiqueta(precio, porLibra) {
+    const [ent, cts] = Number(precio).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).split(".");
+    return '<div class="etiqueta"><span class="mon">RD$</span><span class="ent">' + ent + '</span><span class="cts">' + cts + '</span>' + (porLibra ? '<span class="un">/ lb</span>' : "") + '</div>';
+  }
+  function ajustarPrecio() {
+    const e = vista.querySelector(".etiqueta"); if (!e) return;
+    e.style.transform = "none";
+    const caja = e.parentElement, disponible = caja.clientWidth - 2 * parseFloat(getComputedStyle(caja).paddingLeft);
+    if (e.scrollWidth > disponible && disponible > 0) e.style.transform = "scale(" + Math.max(0.35, (disponible / e.scrollWidth) * 0.97) + ")";
+  }
   let ofertas = [];
   let inactivo;
   function espera() {
@@ -138,12 +160,12 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       document.getElementById("sinconexion").style.display = "none";
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Producto no encontrado");
-      let html = '<div class="tarjeta"><h1>' + esc(d.descripcion) + '</h1>';
+      let html = '<div class="tarjeta"><div class="cuenta"><span style="--seg:' + SEGUNDOS + 's"></span></div><h1>' + esc(d.descripcion) + '</h1><div class="codigo-leido">Código ' + esc(codigo) + '</div>';
       if (d.promocion && d.promocion.precioOferta) {
         html += '<div class="tachado">' + rd(d.precio) + '</div>';
-        html += '<div class="precio">' + rd(d.promocion.precioOferta) + '</div>';
+        html += etiqueta(d.promocion.precioOferta, false);
       } else {
-        html += '<div class="precio">' + rd(d.precio) + (d.pesable ? '<span style="font-size:.35em"> / lb</span>' : '') + '</div>';
+        html += etiqueta(d.precio, d.pesable);
       }
       if (d.promocion) html += '<div class="oferta">' + esc(d.promocion.nombre) + '</div>';
       if (d.peso !== null) html += '<div class="detalle">Peso: ' + d.peso.toFixed(3) + ' — Importe: ' + esc(d.importe) + '</div>';
@@ -153,12 +175,13 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       }
       vista.className = "";
       vista.innerHTML = html + '</div>';
+      ajustarPrecio();
     } catch (err) {
       vista.className = "";
       if (err instanceof TypeError) document.getElementById("sinconexion").style.display = "block";
-      vista.innerHTML = '<div class="tarjeta"><p class="error">' + esc(err instanceof TypeError ? "Sin conexión con el servidor" : err.message) + '</p><p class="detalle">Consulte con un empleado</p></div>';
+      vista.innerHTML = '<div class="tarjeta"><p class="error">' + esc(err instanceof TypeError ? "Sin conexión con el servidor" : "No encontramos este producto") + '</p><p class="detalle">' + (err instanceof TypeError ? "Consulte con un empleado" : "Código " + esc(codigo) + ". Consulte el precio en caja.") + '</p></div>';
     }
-    temporizador = setTimeout(espera, 8000);
+    temporizador = setTimeout(espera, SEGUNDOS * 1000);
   });
 </script>
 </body>

@@ -6,3 +6,4 @@ export * from "./carrito.js";
 export * from "./tema.js";
 export * from "./documentos.js";
 export * from "./formato-ticket.js";
+export * from "./codigos-barra.js";
