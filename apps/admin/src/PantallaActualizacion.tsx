@@ -10,9 +10,11 @@ interface Estado {
   resultado: { estado: "OK" | "ERROR"; version: string; mensaje: string | null; en: string } | null;
 }
 const vcorta = (v: string | null | undefined) => (v ?? "").replace(/\.0$/, "");
+// La versión vista se guarda POR SERVIDOR: si la pantalla habla con dos (p. ej. antes y después de iniciar sesión en otro),
+// comparar entre ellos cerraba la sesión sin motivo en un ciclo.
 const CLAVE_VERSION = "factpos.version-vista";
-const leer = () => { try { return localStorage.getItem(CLAVE_VERSION); } catch { return null; } };
-const guardar = (v: string) => { try { localStorage.setItem(CLAVE_VERSION, v); } catch { /* sin almacenamiento */ } };
+const leer = (base: string) => { try { return localStorage.getItem(`${CLAVE_VERSION}:${base}`); } catch { return null; } };
+const guardar = (base: string, v: string) => { try { localStorage.setItem(`${CLAVE_VERSION}:${base}`, v); } catch { /* sin almacenamiento */ } };
 
 export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor: () => string; alCambiarVersion: () => void }) {
   const [e, setE] = useState<Estado | null>(null);
@@ -22,6 +24,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
   const [ocultar, setOcultar] = useState(false);
   const visto = useRef(false);
   const inicial = useRef<string | null>(null);
+  const baseVista = useRef<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -29,22 +32,24 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
     const consultar = async () => {
       let proximo = visto.current ? 2500 : 5_000;
       try {
-        const r = await fetch(`${servidor().replace(/\/$/, "")}/actualizacion/estado`, { cache: "no-store" });
+        const base = servidor().replace(/\/$/, "");
+        const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store" });
         if (!r.ok) throw new Error(String(r.status));
         const d = (await r.json()) as Estado;
         if (!vivo) return;
         setSinConexion(false); setE(d);
+        if (baseVista.current !== base) { baseVista.current = base; inicial.current = null; }
         inicial.current ??= d.version;
-        const guardada = leer();
+        const guardada = leer(base);
         if (d.actualizando) { if (!visto.current) { visto.current = true; setDesde(Date.now()); setOcultar(false); } proximo = 2500; }
         else if (visto.current) {
           visto.current = false; setDesde(null);
-          if (d.version !== inicial.current || (guardada && guardada !== d.version)) { guardar(d.version); alCambiarVersion(); location.reload(); return; }
+          if (d.version !== inicial.current || (guardada && guardada !== d.version)) { guardar(base, d.version); alCambiarVersion(); location.reload(); return; }
           if (d.resultado?.estado === "ERROR") setAviso(d.resultado.mensaje ?? "No se pudo actualizar; se conservó la versión anterior.");
         } else if (guardada && guardada !== d.version) {
           // Se actualizó mientras esta pantalla estaba cerrada o apagada: nueva versión, nueva sesión
-          guardar(d.version); alCambiarVersion(); location.reload(); return;
-        } else if (!guardada) guardar(d.version);
+          guardar(base, d.version); alCambiarVersion(); location.reload(); return;
+        } else if (!guardada) guardar(base, d.version);
       } catch {
         if (vivo && visto.current) { setSinConexion(true); proximo = 2500; }
       }
@@ -104,9 +109,9 @@ export function usePreparado(servidor: () => string, alCambiarVersion: () => voi
           const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store", signal: AbortSignal.timeout(2500) });
           const d = r.ok ? ((await r.json()) as Estado) : null;
           if (d && !d.actualizando) {
-            const guardada = leer();
-            if (guardada && guardada !== d.version) { guardar(d.version); alCambiarVersion(); location.reload(); return; }
-            if (!guardada) guardar(d.version);
+            const guardada = leer(base);
+            if (guardada && guardada !== d.version) { guardar(base, d.version); alCambiarVersion(); location.reload(); return; }
+            if (!guardada) guardar(base, d.version);
           }
         }
       } catch { /* sin servidor: se abre igual */ }
