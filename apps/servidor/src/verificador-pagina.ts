@@ -59,6 +59,26 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   @keyframes vaciar { from { transform:scaleX(1); } to { transform:scaleX(0); } }
   .tarjeta { position:relative; overflow:hidden; }
   .codigo-leido { color:var(--suave); font-size:16px; margin-top:6px; }
+  .carrusel { position:relative; width:min(1000px,100%); margin:18px auto 8px; touch-action:pan-y; user-select:none; }
+  .slide { display:none; background:#fff; color:var(--texto); border-radius:24px; padding:26px; gap:24px; align-items:center; text-align:left; box-shadow:0 14px 40px rgba(0,0,0,.35); cursor:pointer; }
+  .slide.on { display:flex; animation:entra .5s ease; }
+  @keyframes entra { from { opacity:0; transform:translateX(34px); } to { opacity:1; transform:none; } }
+  .fotos { display:flex; gap:10px; }
+  .fotos img { width:clamp(80px,16vw,170px); height:clamp(80px,16vw,170px); object-fit:cover; border-radius:16px; background:#eef1f4; }
+  .slide .info { flex:1; min-width:0; }
+  .s-nombre { font-size:clamp(26px,5vw,48px); font-weight:800; line-height:1.1; margin-bottom:10px; }
+  .slide .t { display:inline-block; background:var(--oferta); color:#fff; border-radius:999px; padding:6px 18px; font-weight:700; font-size:clamp(16px,2.8vw,26px); }
+  .ahorra { color:var(--acento); font-weight:800; font-size:clamp(20px,3.6vw,34px); margin-top:10px; }
+  .s-prods { color:var(--suave); margin-top:8px; font-size:clamp(14px,2.2vw,20px); }
+  .s-fin { color:var(--suave); margin-top:10px; font-weight:600; font-size:clamp(14px,2vw,18px); }
+  .puntos { display:flex; gap:10px; justify-content:center; margin-top:14px; }
+  .punto { width:14px; height:14px; border-radius:50%; border:0; background:rgba(255,255,255,.4); cursor:pointer; padding:0; transition:transform .2s; }
+  .punto.on { background:#fff; transform:scale(1.3); }
+  .flecha { position:absolute; top:50%; transform:translateY(-50%); width:52px; height:52px; border-radius:50%; border:0; background:rgba(16,32,46,.75); color:#fff; font-size:28px; cursor:pointer; z-index:2; }
+  .flecha.ant { left:-10px; } .flecha.sig { right:-10px; }
+  .pulso { animation:pulso 2.2s ease-in-out infinite; }
+  @keyframes pulso { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+  .prod .ah { display:block; color:#2e8b57; font-size:14px; font-weight:700; }
   .sin-conexion { position:fixed; top:12px; right:16px; background:#c0362c; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; display:none; }
 </style>
 </head>
@@ -116,32 +136,78 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     });
   }
   let ofertas = [];
-  let inactivo;
+  let inactivo, rot, idx = 0, ultimoDeslizar = 0;
+  const ahorro = (o) => { let m = 0; o.productos.forEach((p) => { if (p.precio && p.precioOferta) m = Math.max(m, Number(p.precio) - Number(p.precioOferta)); }); return m; };
+  const finDe = (o) => {
+    const ms = new Date(o.hasta) - Date.now();
+    if (ms <= 0) return "";
+    const h = Math.floor(ms / 3600000);
+    if (h < 24) return h < 1 ? "Termina en " + Math.max(1, Math.round(ms / 60000)) + " min" : "Termina en " + h + " h";
+    return "Hasta el " + new Date(o.hasta).toLocaleDateString("es-DO", { day: "numeric", month: "short" });
+  };
+  function slide(o, i) {
+    const imgs = o.productos.filter((p) => p.imagen).slice(0, 3);
+    const a = ahorro(o);
+    return '<div class="slide' + (i === idx ? " on" : "") + '" data-oferta="' + i + '">' +
+      (imgs.length ? '<div class="fotos">' + imgs.map((p) => '<img src="' + esc(p.imagen) + '" alt="">').join("") + '</div>' : "") +
+      '<div class="info"><div class="s-nombre">' + esc(o.nombre) + '</div><span class="t">' + esc(o.texto) + '</span>' +
+      (a > 0 ? '<div class="ahorra">Ahorra hasta ' + rd(a) + '</div>' : "") +
+      '<div class="s-prods">' + esc(o.productos.slice(0, 3).map((p) => p.nombre).join(" · ")) + (o.productos.length > 3 ? " y " + (o.productos.length - 3) + " más" : "") + '</div>' +
+      '<div class="s-fin">' + esc(finDe(o)) + ' · toque para ver los productos</div></div></div>';
+  }
+  function mostrarSlide(n) {
+    if (!ofertas.length) return;
+    idx = (n + ofertas.length) % ofertas.length;
+    document.querySelectorAll(".slide").forEach((el, i) => el.classList.toggle("on", i === idx));
+    document.querySelectorAll(".punto").forEach((el, i) => el.classList.toggle("on", i === idx));
+  }
+  function girar() {
+    clearTimeout(rot);
+    if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, 7000);
+  }
   function espera() {
     clearTimeout(inactivo);
     cargarOfertas();
     vista.className = "espera";
     const cab = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "");
-    if (!ofertas.length) { vista.innerHTML = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub">Pase el producto por el lector para ver su precio</div>'; return; }
-    vista.innerHTML = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub">Pase el producto por el lector para ver su precio</div>' +
-      '<div class="ofertas-sub" style="color:#fff;font-weight:700;margin-top:6px">Ofertas de hoy · toque una para ver sus productos</div>' +
-      '<div class="rejilla">' + ofertas.map((o, i) => '<button class="oferta-card" data-oferta="' + i + '"><b>' + esc(o.nombre) + '</b><span class="t">' + esc(o.texto) + '</span>' +
-        '<small>' + o.productos.length + (o.productos.length === 1 ? " producto" : " productos") + ' · hasta el ' + new Date(o.hasta).toLocaleDateString("es-DO", { day: "numeric", month: "short" }) + '</small></button>').join("") + '</div>';
+    const titulo = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub pulso">Pase el producto por el lector para ver su precio</div>';
+    if (!ofertas.length) { clearTimeout(rot); vista.innerHTML = titulo; return; }
+    if (idx >= ofertas.length) idx = 0;
+    vista.innerHTML = titulo +
+      '<div class="ofertas-sub" style="color:#fff;font-weight:700;margin-top:6px">Ofertas de hoy · deslice o toque una para ver sus productos</div>' +
+      '<div class="carrusel">' + ofertas.map(slide).join("") +
+        (ofertas.length > 1 ? '<button class="flecha ant" data-paso="-1" aria-label="Anterior">&#8249;</button><button class="flecha sig" data-paso="1" aria-label="Siguiente">&#8250;</button>' : "") + '</div>' +
+      (ofertas.length > 1 ? '<div class="puntos">' + ofertas.map((_, i) => '<button class="punto' + (i === idx ? " on" : "") + '" data-ir="' + i + '" aria-label="Oferta ' + (i + 1) + '"></button>').join("") + '</div>' : "") +
+      (ofertas.length > 1 ? '<div class="ofertas-sub" style="margin-top:18px">Todas las ofertas</div><div class="rejilla">' + ofertas.map((o, i) => '<button class="oferta-card" data-oferta="' + i + '"><b>' + esc(o.nombre) + '</b><span class="t">' + esc(o.texto) + '</span>' +
+        '<small>' + o.productos.length + (o.productos.length === 1 ? " producto" : " productos") + ' · ' + esc(finDe(o)) + '</small></button>').join("") + '</div>' : "");
+    girar();
   }
   function detalleOferta(i) {
     const o = ofertas[i]; if (!o) return;
-    clearTimeout(temporizador); clearTimeout(inactivo);
+    clearTimeout(temporizador); clearTimeout(inactivo); clearTimeout(rot);
     vista.className = "";
     vista.innerHTML = '<div class="tarjeta"><h1>' + esc(o.nombre) + '</h1><div class="oferta">' + esc(o.texto) + '</div><div class="lista">' +
       o.productos.map((p) => '<div class="prod">' + (p.imagen ? '<img src="' + esc(p.imagen) + '" alt="">' : "") + '<div class="n">' + esc(p.nombre) + '</div><div class="p">' +
-        (p.precioOferta ? '<s>' + rd(p.precio) + '</s>' + rd(p.precioOferta) : (p.precio ? rd(p.precio) : "")) + '</div></div>').join("") +
+        (p.precioOferta ? '<s>' + rd(p.precio) + '</s>' + rd(p.precioOferta) + '<span class="ah">Ahorra ' + rd(Number(p.precio) - Number(p.precioOferta)) + '</span>' : (p.precio ? rd(p.precio) : "")) + '</div></div>').join("") +
       '</div><button class="volver" data-volver="1">Volver a las ofertas</button></div>';
     inactivo = setTimeout(espera, 45000); // si nadie lo toca, vuelve solo
   }
   vista.addEventListener("click", (e) => {
-    const t = e.target.closest("[data-oferta],[data-volver]");
+    if (Date.now() - ultimoDeslizar < 400) return;   // fue un deslizamiento, no un toque
+    const t = e.target.closest("[data-oferta],[data-volver],[data-ir],[data-paso]");
     if (!t) return;
-    if (t.dataset.volver) espera(); else detalleOferta(Number(t.dataset.oferta));
+    if (t.dataset.volver) espera();
+    else if (t.dataset.ir !== undefined) { mostrarSlide(Number(t.dataset.ir)); girar(); }
+    else if (t.dataset.paso !== undefined) { mostrarSlide(idx + Number(t.dataset.paso)); girar(); }
+    else detalleOferta(Number(t.dataset.oferta));
+  });
+  // Deslizar el carrusel con el dedo (o el mouse)
+  let x0 = null;
+  vista.addEventListener("pointerdown", (e) => { x0 = e.target.closest(".carrusel") ? e.clientX : null; });
+  vista.addEventListener("pointerup", (e) => {
+    if (x0 === null) return;
+    const dx = e.clientX - x0; x0 = null;
+    if (Math.abs(dx) > 50) { ultimoDeslizar = Date.now(); mostrarSlide(idx + (dx < 0 ? 1 : -1)); girar(); }
   });
   async function cargarOfertas() {
     if (!sucursal) return;
