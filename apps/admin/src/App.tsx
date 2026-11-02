@@ -2,6 +2,7 @@ import { Seguridad } from "./paginas/Seguridad";
 import { DispositivosRemotos } from "./paginas/DispositivosRemotos";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
+import { Instaladores } from "./paginas/Instaladores";
 import { Pedidos } from "./paginas/Pedidos";
 import { Facturas } from "./paginas/Facturas";
 import { CertificacionDgii } from "./paginas/CertificacionDgii";
@@ -82,6 +83,7 @@ const SECCIONES = [
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
+  { id: "instaladores", titulo: "Instaladores", grupo: "Configuración", C: Instaladores, i: "actualizaciones", p: ["admin.config"] },
   { id: "dispositivos", titulo: "Dispositivos remotos", grupo: "Configuración", C: DispositivosRemotos, i: "llave", p: ["*"] },
   { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
@@ -131,6 +133,7 @@ const DESCRIPCION: Record<string, string> = {
   conexionweb: "Enlace de acceso desde internet y su activación",
   movil: "Qué se ve y quién entra desde el celular",
   seguridad: "Habilitar o deshabilitar funciones sensibles",
+  instaladores: "Descargar el servidor, las cajas, el verificador y las apps de administración",
   dispositivos: "Celulares y PC que entran desde internet: autorizar o negar",
   compras: "Entrada de mercancía de los proveedores",
   inventario: "Existencia de cada producto por sucursal",

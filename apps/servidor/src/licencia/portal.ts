@@ -324,6 +324,12 @@ export async function rutasPortal(app: FastifyInstance) {
       await evento(pool, { tipo: "PRUEBA_DESCARGA", detalle: { instalacion: instalacion.data } });
     }
     const v = await ultimaVersion();
+    // tipo=setup: el instalador completo (FactPOS-Setup-*.exe); por omisión, el paquete de actualización (.zip)
+    const tipo = String((req.query as { tipo?: string }).tipo ?? "");
+    if (tipo === "setup") {
+      if (!v?.setup) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
+      return { version: v.version, nombre: v.setup.nombre, url: await urlDescarga(v.setup) };
+    }
     if (!v?.asset) throw new ErrorNegocio("No hay un paquete publicado para descargar", 404);
     return { version: v.version, url: await urlDescarga(v.asset) };
   });
