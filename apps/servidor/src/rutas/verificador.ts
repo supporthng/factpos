@@ -4,6 +4,7 @@ import { leerCodigoBalanza, mejorOferta, formatoRD, variantesCodigoBarra } from 
 import { pool, ErrorNegocio } from "../db.js";
 import { SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
 import { tienePermiso, type SesionAdmin } from "../sesion.js";
+import { PORTAL_URL } from "../licencia/cliente.js";
 import { ofertasPara } from "../promociones.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 
@@ -75,6 +76,12 @@ export async function rutasVerificador(app: FastifyInstance) {
       productos: pr.rows.filter((x) => x.ofertaId === o.id).slice(0, 30)
         .map((x) => ({ nombre: x.nombre, imagen: x.imagen, precio: x.precio, precioOferta: precioOferta(o, x.precio) })),
     })).filter((o) => o.productos.length);
+  });
+
+  /** Descarga de las apps del verificador: este servidor no las tiene; las pide al portal, que las entrega desde GitHub. */
+  app.get("/verificador/descarga/:so", async (req, rep) => {
+    const { so } = z.object({ so: z.enum(["android", "windows"]) }).parse(req.params);
+    return rep.redirect(`${PORTAL_URL()}/licencias/descargar-verificador/${so}`);
   });
 
   /** Qué sucursal atiende este servidor y la marca de la empresa (la página la usa para no necesitar ?sucursal=). */

@@ -92,7 +92,7 @@ export async function crearApp() {
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/fe/") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/verificador/descarga/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/fe/") || ruta.startsWith("/central/")) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
