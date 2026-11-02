@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
         web.loadUrl(direccion());
         ocultarBarras();
         activarBloqueo();
-        if (!actualizacionProgramada) { actualizacionProgramada = true; programarActualizacion(60 * 1000L); }
+        if (!actualizacionProgramada) { actualizacionProgramada = true; programarActualizacion(20 * 1000L); }
     }
 
     private void crearWeb() {
@@ -260,12 +260,16 @@ public class MainActivity extends Activity {
     // El servidor de la sucursal dice cuál es la versión vigente (/verificador/actualizacion/android); si es mayor que la de esta
     // app, la descarga de ese mismo servidor (/verificador/descarga/android) y la instala. Con Device Owner es silenciosa;
     // sin él Android pide confirmar una vez. El APK nuevo debe estar firmado con la misma llave (secretos ANDROID_KEYSTORE_*).
+    private static volatile boolean enActualizacion = false;
     private static boolean actualizacionProgramada = false;   // un solo reloj aunque la actividad se vuelva a crear
-    private static final long CADA_ACTUALIZACION = 30 * 60 * 1000L;
+    private static final long CADA_ACTUALIZACION = 60 * 1000L;   // consulta liviana al servidor de la sucursal; reacciona al botón «Actualizar ahora» en menos de un minuto
 
     private void programarActualizacion(long espera) {
         hilo.postDelayed(() -> {
-            if (!saliendo) new Thread(this::actualizar, "actualizar").start();
+            if (!saliendo && !enActualizacion) {   // una sola a la vez (una descarga puede tardar más de un minuto)
+                enActualizacion = true;
+                new Thread(() -> { try { actualizar(); } finally { enActualizacion = false; } }, "actualizar").start();
+            }
             programarActualizacion(CADA_ACTUALIZACION);
         }, espera);
     }
@@ -304,17 +308,22 @@ public class MainActivity extends Activity {
             if (sv.isEmpty()) return;
             Uri u = Uri.parse(sv);
             String base = u.getScheme() + "://" + u.getAuthority();
-            long vigente;
+            JSONObject j;
             HttpURLConnection c = abrirUrl(base + "/verificador/actualizacion/android");
             try (InputStream in = c.getInputStream()) {
                 java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
                 byte[] t = new byte[4096]; int n;
                 while ((n = in.read(t)) > 0) b.write(t, 0, n);
-                vigente = new JSONObject(b.toString("UTF-8")).optLong("version", 0);
+                j = new JSONObject(b.toString("UTF-8"));
             } finally { c.disconnect(); }
-            if (vigente <= codigoVersion()) return;
+            long vigente = j.optLong("version", 0), orden = j.optLong("orden", 0);
+            boolean auto = j.optBoolean("auto", true);
             SharedPreferences p = prefs();
-            if (p.getLong("act_intento", 0) == vigente && System.currentTimeMillis() - p.getLong("act_hora", 0) < 6 * 3600 * 1000L) return;   // no insistir en bucle
+            boolean porOrden = orden > p.getLong("act_orden", 0);   // botón «Actualizar verificadores ahora» de la administración
+            if (porOrden) p.edit().putLong("act_orden", orden).apply();
+            if (vigente <= codigoVersion()) return;
+            if (!porOrden && !auto) return;   // actualización automática apagada: solo por orden
+            if (!porOrden && p.getLong("act_intento", 0) == vigente && System.currentTimeMillis() - p.getLong("act_hora", 0) < 6 * 3600 * 1000L) return;   // no insistir en bucle
             p.edit().putLong("act_intento", vigente).putLong("act_hora", System.currentTimeMillis()).apply();
             File apk = new File(getCacheDir(), "actualizacion.apk");
             HttpURLConnection d = abrirUrl(base + "/verificador/descarga/android");

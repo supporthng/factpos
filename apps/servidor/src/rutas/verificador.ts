@@ -141,16 +141,21 @@ export async function rutasVerificador(app: FastifyInstance) {
    */
   app.get("/verificador/actualizacion/:so", async (req) => {
     const { so } = z.object({ so: z.enum(["android", "windows"]) }).parse(req.params);
+    // «auto»: si las apps se actualizan solas; «orden»: marca de tiempo del último botón «Actualizar ahora» de la administración
+    const aj = await pool.query<{ auto: unknown; orden: string | null }>(
+      `SELECT m.verificador->'autoActualizar' AS auto, m.verificador->>'ordenActualizar' AS orden
+         FROM configuracion_marca m JOIN sucursales s ON s.empresa_id = m.empresa_id WHERE s.activo ORDER BY s.nombre LIMIT 1`);
+    const extra = { url: `/verificador/descarga/${so}`, auto: aj.rows[0]?.auto !== false, orden: Number(aj.rows[0]?.orden ?? 0) || 0 };
     const c = versionApps.get(so);
-    if (c && c.hasta > Date.now()) return { version: c.version, url: `/verificador/descarga/${so}` };
+    if (c && c.hasta > Date.now()) return { version: c.version, ...extra };
     try {
       const r = await fetch(`${PORTAL_URL()}/licencias/version-verificador/${so}`, { signal: AbortSignal.timeout(10_000) });
       if (!r.ok) throw new Error(String(r.status));
       const { version } = (await r.json()) as { version: number };
       versionApps.set(so, { version, hasta: Date.now() + 10 * 60_000 });
-      return { version, url: `/verificador/descarga/${so}` };
+      return { version, ...extra };
     } catch {
-      if (c) return { version: c.version, url: `/verificador/descarga/${so}` };   // sin internet: la última conocida
+      if (c) return { version: c.version, ...extra };   // sin internet: la última conocida
       throw new ErrorNegocio("No se pudo consultar la versión de la app", 503);
     }
   });
@@ -177,18 +182,31 @@ export async function rutasVerificador(app: FastifyInstance) {
   app.get("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const r = await pool.query<{ o: unknown; q: unknown; w: string | null }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
-    return { mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "" };
+    const r = await pool.query<{ o: unknown; q: unknown; w: string | null; a: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'autoActualizar' AS a FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    return { mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional() }).refine((x) => x.mostrarOfertas !== undefined || x.mostrarQr !== undefined || x.wifi !== undefined, "Nada que cambiar").parse(req.body);
+    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
     await pool.query(
       `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, $2::jsonb)
        ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || $2::jsonb`,
       [empresaId, JSON.stringify(b)]);
     return b;
+  });
+
+  /** Botón «Actualizar verificadores ahora»: las apps lo ven en menos de un minuto y se actualizan (si hay una versión nueva). */
+  app.put("/central/verificador/actualizar-ahora", async (req) => {
+    permisoPrecios(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const orden = Date.now();
+    await pool.query(
+      `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, jsonb_build_object('ordenActualizar', $2::bigint))
+       ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || jsonb_build_object('ordenActualizar', $2::bigint)`,
+      [empresaId, orden]);
+    versionApps.clear();   // vuelve a preguntar al portal cuál es la versión vigente
+    return { orden };
   });
 
   /** Qué se consultó en los últimos días y qué códigos no tenían precio (para la administración). */
