@@ -328,6 +328,12 @@ export async function rutasPortal(app: FastifyInstance) {
     return { version: v.version, url: await urlDescarga(v.asset) };
   });
 
+  /** Descarga de las apps del verificador (sin licencia: son iguales para todos). Repositorio privado: lo resuelve el portal. */
+  app.get("/licencias/descargar-verificador/:so", async (req, rep) => {
+    const { so } = req.params as { so: string };
+    return rep.redirect(await urlDescargaVerificador(so));
+  });
+
   /** Reglas y contacto que ven las instalaciones (públicas: no llevan nada sensible). */
   app.get("/licencias/politica", async () => {
     const c = (await pool.query(
@@ -847,6 +853,23 @@ export async function urlDescarga(a: { url: string; descarga: string }) {
   const lugar = r.headers.get("location");
   if (!lugar) throw new ErrorNegocio(`No se pudo preparar la descarga (GitHub ${r.status})`, 502);
   return lugar;
+}
+
+/** Apps del verificador (Android / Windows): la última publicada en su etiqueta de Releases. */
+const APPS_VERIFICADOR = {
+  android: { tag: "verificador-android", nombre: /^FactPOS-Verificador\.apk$/i },
+  windows: { tag: "verificador-windows", nombre: /^Instalador_Verificador_FactPOS\.exe$/i },
+} as const;
+export async function urlDescargaVerificador(so: string) {
+  const app = APPS_VERIFICADOR[so as keyof typeof APPS_VERIFICADOR];
+  if (!app) throw new ErrorNegocio("Plataforma no válida", 404);
+  const repo = process.env.FACTPOS_REPO || "supporthng/factpos";
+  const r = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${app.tag}`, { headers: encabezadosGitHub(), signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new ErrorNegocio(`Todavía no hay una versión publicada (GitHub ${r.status})`, 404);
+  const rel = (await r.json()) as { assets: { name: string; url: string; browser_download_url: string }[] };
+  const a = rel.assets.find((x) => app.nombre.test(x.name));
+  if (!a) throw new ErrorNegocio("Todavía no hay una versión publicada", 404);
+  return urlDescarga({ url: a.url, descarga: a.browser_download_url });
 }
 
 /** Estado por fecha (para la lista del portal). */

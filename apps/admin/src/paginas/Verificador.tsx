@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { esLocal } from "../api";
+import { CONFIG, esLocal } from "../api";
 import { Aviso, Encabezado, SelectorSucursal, useDatos } from "../ui";
 
 interface Consultas {
@@ -49,8 +49,8 @@ function ConsultasRecientes({ sucursalId }: { sucursalId: string }) {
   );
 }
 
-const DESCARGA_ANDROID = "https://github.com/supporthng/factpos/releases/download/verificador-android/FactPOS-Verificador.apk";
-const DESCARGA_WINDOWS = "https://github.com/supporthng/factpos/releases/download/verificador-windows/Instalador_Verificador_FactPOS.exe";
+// El servidor las pide al portal de FactPOS (que las entrega desde GitHub aunque el repositorio sea privado)
+const descarga = (so: "android" | "windows") => `${CONFIG.api ?? ""}/verificador/descarga/${so}`;
 
 /** Verificadores de precios (Android y Windows): la dirección que se configura en cada equipo y cómo dejarlo en pantalla completa. */
 export function Verificador() {
@@ -97,7 +97,7 @@ export function Verificador() {
           <h3 style={{ marginTop: 0 }}>App para Android (tableta o pantalla)</h3>
           <ol className="pequeno" style={{ paddingLeft: 20 }}>
             <li>Conecte el equipo a la misma red Wi-Fi o cable que el servidor de la sucursal.</li>
-            <li>Desde el equipo, descargue e instale <a href={DESCARGA_ANDROID}>FactPOS-Verificador.apk</a> (Android pide permitir «instalar apps desconocidas» una sola vez).</li>
+            <li>Desde el equipo, descargue e instale <a href={descarga("android")}>FactPOS-Verificador.apk</a> (Android pide permitir «instalar apps desconocidas» una sola vez).</li>
             <li>Al abrirla, escriba la dirección del servidor (la de arriba) y una <b>clave de salida</b>. Solo se hace una vez.</li>
             <li>Queda a pantalla completa, arranca al encender el equipo y no se puede cerrar sin la clave (esquina superior izquierda ⓘ).</li>
             <li>Para bloqueo total, conecte el equipo a la PC y ejecute: <span className="mono">adb shell dpm set-device-owner com.factpos.verificador/.AdminReceiver</span> (con el equipo sin cuentas).</li>
@@ -108,7 +108,7 @@ export function Verificador() {
           <h3 style={{ marginTop: 0 }}>App para Windows</h3>
           <ol className="pequeno" style={{ paddingLeft: 20 }}>
             <li>Conecte la PC a la red del servidor de la sucursal.</li>
-            <li>Descargue y ejecute <a href={DESCARGA_WINDOWS}>Instalador_Verificador_FactPOS.exe</a> (no pide administrador). Deje marcado «abrir al iniciar Windows».</li>
+            <li>Descargue y ejecute <a href={descarga("windows")}>Instalador_Verificador_FactPOS.exe</a> (no pide administrador). Deje marcado «abrir al iniciar Windows».</li>
             <li>Al abrirla, escriba la dirección del servidor (la de arriba) y una <b>clave de salida</b>.</li>
             <li>Queda a pantalla completa, bloquea Alt+Tab y la tecla Windows, y solo se cierra con la clave (esquina superior izquierda ⓘ).</li>
           </ol>
