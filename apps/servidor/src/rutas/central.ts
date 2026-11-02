@@ -275,6 +275,8 @@ export async function rutasCentral(app: FastifyInstance) {
     prioridad: z.number().int().default(0),
     /** Tope de unidades por sucursal ("20 whiskies a 800"); null = sin tope */
     unidadesMaximas: cant.refine((v) => Number(v) > 0, "El tope debe ser mayor que cero").nullable().default(null),
+    /** Se muestra en la pantalla de espera del verificador de precios */
+    mostrarEnVerificador: z.boolean().default(true),
     alcance: z
       .array(z.object({ productoId: uuid.optional(), presentacionId: uuid.optional(), categoriaId: uuid.optional() })
         .refine((a) => [a.productoId, a.presentacionId, a.categoriaId].filter(Boolean).length === 1, "Indique un producto, una presentación o una categoría"))
@@ -292,11 +294,11 @@ export async function rutasCentral(app: FastifyInstance) {
       try {
         await c.query(
           `INSERT INTO ofertas (id, empresa_id, nombre, tipo, valor, lleva, paga, cantidad_minima, inicia_en, termina_en,
-                                dias_semana, hora_desde, hora_hasta, sucursales, lista_precio_id, prioridad, unidades_maximas)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+                                dias_semana, hora_desde, hora_hasta, sucursales, lista_precio_id, prioridad, unidades_maximas, mostrar_en_verificador)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
           [id, empresaId, o.nombre, o.tipo, o.valor ?? null, o.lleva ?? null, o.paga ?? null, o.cantidadMinima,
            o.iniciaEn, o.terminaEn, o.diasSemana ?? null, o.horaDesde ?? null, o.horaHasta ?? null,
-           o.sucursales, lista, o.prioridad, o.unidadesMaximas],
+           o.sucursales, lista, o.prioridad, o.unidadesMaximas, o.mostrarEnVerificador],
         );
       } catch (e: any) {
         if (e.code === "23514") throw new ErrorNegocio("Datos de la oferta inválidos para su tipo (revise valor, lleva/paga o fechas)");
@@ -322,7 +324,11 @@ export async function rutasCentral(app: FastifyInstance) {
               o.hora_desde AS "horaDesde", o.hora_hasta AS "horaHasta", o.activo,
               CASE WHEN o.sucursales IS NULL THEN '{Todas}'::text[]
                    ELSE (SELECT array_agg(s.nombre ORDER BY s.nombre) FROM sucursales s WHERE s.id = ANY(o.sucursales)) END AS sucursales,
-              lp.nombre AS "nivelPrecio", o.unidades_maximas AS "unidadesMaximas",
+              lp.nombre AS "nivelPrecio", lp.nivel AS "nivel", o.unidades_maximas AS "unidadesMaximas",
+              o.mostrar_en_verificador AS "mostrarEnVerificador", o.prioridad, o.sucursales AS "sucursalesIds",
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object('productoId', COALESCE(a.producto_id, (SELECT pr.producto_id FROM presentaciones pr WHERE pr.id = a.presentacion_id)),
+                                                            'presentacionId', a.presentacion_id, 'categoriaId', a.categoria_id)), '[]')
+                 FROM oferta_alcance a WHERE a.oferta_id = o.id AND a.activo) AS alcance,
               (SELECT COALESCE(SUM(d.descuento_otorgado), 0) FROM rpt_ofertas d WHERE d.oferta_id = o.id) AS "descuentoOtorgado",
               (SELECT COALESCE(jsonb_agg(jsonb_build_object('sucursal', s.nombre, 'vendidas', vv.unidades::text) ORDER BY s.nombre), '[]')
                  FROM v_oferta_vendidas vv JOIN sucursales s ON s.id = vv.sucursal_id WHERE vv.oferta_id = o.id) AS "vendidasPorSucursal"
@@ -365,15 +371,53 @@ export async function rutasCentral(app: FastifyInstance) {
     return { ...p, ultimaCompraNormal: await ultima(false), ultimaCompraOferta: await ultima(true) };
   });
 
-  /** Activar/desactivar una oferta o cambiar sus sucursales. */
+  /** Editar una oferta completa (mismos datos que al crearla). Lo ya vendido en oferta no cambia. */
+  app.put("/central/ofertas/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const o = OfertaSchema.parse(req.body);
+    const empresaId = empresaDe(req);
+    await enTransaccion(async (c) => {
+      const ex = await c.query("SELECT 1 FROM ofertas WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [id, empresaId]);
+      if (!ex.rowCount) throw new ErrorNegocio("Oferta no encontrada", 404);
+      const lista = o.nivelPrecio
+        ? (await c.query("SELECT id FROM listas_precio WHERE empresa_id = $1 AND nivel = $2", [empresaId, o.nivelPrecio])).rows[0]?.id
+        : null;
+      try {
+        await c.query(
+          `UPDATE ofertas SET nombre = $3, tipo = $4, valor = $5, lleva = $6, paga = $7, cantidad_minima = $8, inicia_en = $9, termina_en = $10,
+                  dias_semana = $11, hora_desde = $12, hora_hasta = $13, sucursales = $14, lista_precio_id = $15, prioridad = $16,
+                  unidades_maximas = $17, mostrar_en_verificador = $18
+            WHERE id = $1 AND empresa_id = $2`,
+          [id, empresaId, o.nombre, o.tipo, o.valor ?? null, o.lleva ?? null, o.paga ?? null, o.cantidadMinima,
+           o.iniciaEn, o.terminaEn, o.diasSemana ?? null, o.horaDesde ?? null, o.horaHasta ?? null,
+           o.sucursales, lista, o.prioridad, o.unidadesMaximas, o.mostrarEnVerificador],
+        );
+      } catch (e: any) {
+        if (e.code === "23514") throw new ErrorNegocio("Datos de la oferta inválidos para su tipo (revise valor, lleva/paga o fechas)");
+        throw e;
+      }
+      // El alcance se reemplaza: lo anterior se desactiva (así también baja a las sucursales)
+      await c.query("UPDATE oferta_alcance SET activo = false WHERE oferta_id = $1 AND activo", [id]);
+      for (const a of o.alcance) {
+        await c.query(
+          "INSERT INTO oferta_alcance (id, oferta_id, producto_id, presentacion_id, categoria_id) VALUES ($1,$2,$3,$4,$5)",
+          [uuidv7(), id, a.productoId ?? null, a.presentacionId ?? null, a.categoriaId ?? null],
+        );
+      }
+    });
+    return { id };
+  });
+
+  /** Activar/desactivar una oferta, mostrarla u ocultarla en el verificador o cambiar sus sucursales. */
   app.patch("/central/ofertas/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const b = z.object({ activo: z.boolean().optional(), sucursales: z.array(uuid).min(1).nullable().optional() }).parse(req.body);
+    const b = z.object({ activo: z.boolean().optional(), mostrarEnVerificador: z.boolean().optional(), sucursales: z.array(uuid).min(1).nullable().optional() }).parse(req.body);
     const r = await pool.query(
       `UPDATE ofertas SET activo = COALESCE($2, activo),
+              mostrar_en_verificador = COALESCE($6, mostrar_en_verificador),
               sucursales = CASE WHEN $4 THEN $3::uuid[] ELSE sucursales END
-        WHERE id = $1 AND empresa_id = $5 RETURNING id, activo, sucursales`,
-      [id, b.activo ?? null, b.sucursales ?? null, b.sucursales !== undefined, empresaDe(req)],
+        WHERE id = $1 AND empresa_id = $5 RETURNING id, activo, sucursales, mostrar_en_verificador AS "mostrarEnVerificador"`,
+      [id, b.activo ?? null, b.sucursales ?? null, b.sucursales !== undefined, empresaDe(req), b.mostrarEnVerificador ?? null],
     );
     if (!r.rowCount) throw new ErrorNegocio("Oferta no encontrada", 404);
     return r.rows[0];
