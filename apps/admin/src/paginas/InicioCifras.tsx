@@ -17,7 +17,7 @@ interface Atencion { ayer: string; certificado: { vence: string | null } }
 interface EstadoActualizacion { actual: string; disponible: string | null; hayNueva: boolean }
 
 /** Franja de cifras del día en el inicio. Se oculta sola si el usuario no tiene permiso de reportes o si falla la consulta. */
-export function InicioCifras({ irA }: { irA: (seccion: string) => void }) {
+export function InicioCifras({ irA, sinResumen = false }: { irA: (seccion: string) => void; sinResumen?: boolean }) {
   const conPermiso = puede("admin.reportes");
   const suc = useDatos<FilaSucursal[]>(conPermiso ? "/central/sucursales" : null);
   const [periodo, setPeriodo] = useState<Periodo>(leerPeriodo());
@@ -63,11 +63,11 @@ export function InicioCifras({ irA }: { irA: (seccion: string) => void }) {
         <b>{num(bajo)}</b>
         <small className="suave">Por debajo del mínimo</small>
       </div>
-      <button type="button" className="cifra cifra-enlace" onClick={() => irA("resumen")}>
+      {!sinResumen && (      <button type="button" className="cifra cifra-enlace" onClick={() => irA("resumen")}>
         <span className="suave">Alertas y pendientes</span>
         <b>Ver resumen</b>
         <small className="suave">Cierres, DGII y existencias ›</small>
-      </button>
+      </button>)}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { rd, num } from "../api";
 import { Aviso, Encabezado, Kpi, Tabla, useDatos } from "../ui";
 import { Icono } from "../Iconos";
+import { InicioCifras } from "./InicioCifras";
 
 interface FilaSucursal {
   sucursal_id: string; sucursal: string; venta_hoy: string; transacciones_hoy: string;
@@ -30,7 +31,6 @@ export function Resumen() {
   const filas = datos ?? [];
   const sum = (k: keyof FilaSucursal) => filas.reduce((a, f) => a + Number(f[k]), 0);
   const a = at.datos;
-  const ventaHoy = sum("venta_hoy"), transHoy = sum("transacciones_hoy");
 
   const puntos: Punto[] = [];
   if (a) {
@@ -70,9 +70,8 @@ export function Resumen() {
     <>
       <Encabezado titulo="Resumen" descripcion={`Hoy, ${hoyTexto}, en ${filas.length === 1 ? "la sucursal" : `las ${filas.length} sucursales`}`} />
       <Aviso texto={error} />
+      <InicioCifras irA={ir} sinResumen />
       <div className="kpis">
-        <Kpi icono="venta" titulo="Venta de hoy" valor={rd(ventaHoy)} detalle={a ? `Ayer: ${rd(a.ayer)}` : `${num(transHoy)} transacciones`} />
-        <Kpi icono="ticket" titulo="Ventas de hoy" valor={num(transHoy)} detalle={`Ticket promedio ${rd(transHoy ? ventaHoy / transHoy : 0)}`} />
         <Kpi icono="inventario" titulo="Inventario al costo" valor={rd(sum("valor_inventario"))} detalle={`${filas.length} sucursal(es)`} />
         <Kpi icono="incidentes" titulo="Para atender" valor={a ? num(puntos.length) : "…"} tono={puntos.some((p) => p.tono === "grave") ? "alerta" : puntos.length ? undefined : "ok"} detalle={a && !puntos.length ? "Todo en orden" : undefined} />
       </div>
