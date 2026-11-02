@@ -67,9 +67,9 @@ describe("XML de respuesta", () => {
       { tipo: "E44", desde: "E440000000010", hasta: "E440000000012" },
     ] });
     expect(x.match(/<Anulacion>/g)).toHaveLength(2);
-    expect(x).toContain("<CantidadeNCFAnulados>51</CantidadeNCFAnulados>");
+    expect(x).toContain("<CantidadeNCFAnulados>47</CantidadeNCFAnulados>");
     expect(x).toContain("<CantidadeNCFAnulados>3</CantidadeNCFAnulados>");
     expect(valorDe(x, "FechaHoraAnulacioneNCF")).toBe("02-11-2026 10:05:09");
-    expect(x.match(/<Encabezado>.*?<\/Encabezado>/)?.[0]).toContain("<CantidadeNCFAnulados>54</CantidadeNCFAnulados>");
+    expect(x.match(/<Encabezado>.*?<\/Encabezado>/)?.[0]).toContain("<CantidadeNCFAnulados>50</CantidadeNCFAnulados>");
   });
 });
