@@ -24,6 +24,7 @@ import { Conteos } from "./paginas/Conteos";
 import { Precios } from "./paginas/Precios";
 import { Ofertas } from "./paginas/Ofertas";
 import { Clientes } from "./paginas/Clientes";
+import { Cierres } from "./paginas/Cierres";
 import { Cotizaciones } from "./paginas/Cotizaciones";
 import { Traspasos } from "./paginas/Traspasos";
 import { Delivery } from "./paginas/Delivery";
@@ -61,6 +62,7 @@ const SECCIONES = [
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Comercial", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, i: "delivery", p: ["admin.config"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
+  { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
   { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, i: "fiscal", p: ["admin.fiscal"] },
   { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
@@ -80,7 +82,7 @@ const SECCIONES = [
   { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
-const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "caja", "reportes"];
+const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "cierres", "caja", "reportes"];
 interface CfgMovil { habilitada: boolean; secciones: string[]; aplica: boolean }
 const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
@@ -133,6 +135,7 @@ const DESCRIPCION: Record<string, string> = {
   cotizaciones: "Preparar cotizaciones y enviarlas por correo",
   delivery: "Pedidos a domicilio y repartidores",
   cxc: "Clientes a crédito, abonos y estados de cuenta",
+  cierres: "Cuadre de cada turno, revisión de diferencias y depósitos",
   caja: "Retiros, gastos y movimientos de caja",
   fiscal: "e-CF, certificado digital y secuencias de NCF",
   padron: "Consulta de RNC y cédulas de la DGII",

@@ -96,6 +96,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "admin.cxc", grupo: "Administración", nombre: "Cuentas por cobrar" },
   { id: "admin.clientes", grupo: "Administración", nombre: "Clientes y su nivel de precio" },
   { id: "admin.cotizaciones", grupo: "Administración", nombre: "Cotizaciones: preparar y enviar por correo" },
+  { id: "admin.cierres", grupo: "Administración", nombre: "Cierres de caja: ver cuadres de todos, revisar diferencias y registrar depósitos" },
   { id: "admin.pedidos", grupo: "Administración", nombre: "Pedidos de clientes" },
   { id: "admin.facturas", grupo: "Administración", nombre: "Facturas: buscar, reimprimir, modificar (la anulación pide permiso de supervisor)" },
   { id: "admin.reportes", grupo: "Administración", nombre: "Ver reportes y resumen" },
@@ -114,6 +115,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   if (ruta.startsWith("/central/sesion")) return null; // cada usuario maneja su propia contraseña y verificación
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
   if (/^\/central\/facturas(\/|$)/.test(ruta)) return "admin.facturas";
+  if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";
   const mapa: [RegExp, string][] = [
@@ -125,6 +127,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
     [/^\/central\/cxc/, "admin.cxc"],
     [/^\/central\/clientes/, "admin.clientes"],
     [/^\/central\/cotizaciones/, "admin.cotizaciones"],
+    [/^\/central\/cierres/, "admin.cierres"],
     [/^\/central\/pedidos(\/|$)/, "admin.pedidos"],
     [/^\/central\/(fiscal|padron)/, "admin.fiscal"],
     [/^\/central\/(sucursales|terminales|marca|repartidores|incidentes|correo|alta|respaldos)/, "admin.config"],
