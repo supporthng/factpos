@@ -31,7 +31,11 @@ import android.widget.FrameLayout;
 
 import org.json.JSONObject;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 
@@ -252,6 +256,23 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("servidor", servidor()).put("tieneClave", hayClave())
                         .put("bloqueoTotal", esDeviceOwner()).put("botonesBloqueados", esDeviceOwner() || puedeVolverAlFrente()).toString();
             } catch (Exception e) { return "{}"; }
+        }
+
+        /** Redes /24 a las que está conectado este equipo (["192.168.1", …]), para buscar el servidor. */
+        @JavascriptInterface public String redes() {
+            org.json.JSONArray a = new org.json.JSONArray();
+            try {
+                for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                    if (!ni.isUp() || ni.isLoopback()) continue;
+                    for (InetAddress d : Collections.list(ni.getInetAddresses())) {
+                        if (d instanceof Inet4Address && d.isSiteLocalAddress()) {
+                            String ip = d.getHostAddress();
+                            a.put(ip.substring(0, ip.lastIndexOf('.')));
+                        }
+                    }
+                }
+            } catch (Exception ignorado) { }
+            return a.toString();
         }
 
         @JavascriptInterface public boolean verificarClave(String clave) { return claveOk(clave); }
