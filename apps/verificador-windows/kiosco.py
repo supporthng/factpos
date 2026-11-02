@@ -15,8 +15,10 @@ import ctypes
 import hashlib
 import json
 import os
+import pathlib
 import re
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -232,6 +234,23 @@ class Kiosco:
         return json.dumps({"servidor": c.get("servidor", ""), "tieneClave": bool(c.get("hash")),
                            "bloqueoTotal": False, "botonesBloqueados": True})
 
+    def redes(self):
+        """Redes /24 a las que está conectado este equipo (["192.168.1", …]), para buscar el servidor."""
+        ips = set()
+        try:
+            ips.update(socket.gethostbyname_ex(socket.gethostname())[2])
+        except Exception:
+            pass
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("10.255.255.255", 1))     # no envía nada: solo elige la tarjeta de red activa
+            ips.add(s.getsockname()[0])
+            s.close()
+        except Exception:
+            pass
+        return json.dumps(sorted({ip.rsplit(".", 1)[0] for ip in ips
+                                  if ip.count(".") == 3 and not ip.startswith(("127.", "169.254."))}))
+
     def verificarClave(self, clave):
         c = leer_config()
         return bool(c.get("hash")) and isinstance(clave, str) and huella(c.get("sal", ""), clave) == c["hash"]
@@ -257,7 +276,7 @@ class Kiosco:
         c.pop("servidor", None)
         guardar_config(c)
         if self._ventana:
-            self._ventana.load_url(recurso("config.html"))
+            self._ventana.load_url(pathlib.Path(recurso("config.html")).as_uri())
         return True
 
     def salir(self, clave):

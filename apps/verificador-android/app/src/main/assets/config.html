@@ -16,24 +16,34 @@
   small { color:#5d6d7e; display:block; margin-top:4px; }
   button { margin-top:22px; width:100%; font-size:22px; font-weight:700; padding:14px; border:0; border-radius:999px; background:#c0362c; color:#fff; }
   #error { color:#c0362c; font-weight:700; margin-top:14px; min-height:1.2em; }
+  .enlace { margin-top:10px; } .enlace:not([hidden]) { display:block; }
+  .busca { background:#eef1f4; border-radius:12px; padding:14px; font-weight:700; }
+  .op { display:flex; gap:10px; align-items:center; border:2px solid #cfd8e0; border-radius:12px; padding:12px; margin:8px 0; cursor:pointer; }
+  .op input { width:auto; } .op small { margin:0; }
   .aparte { background:#eef1f4; color:#10202e; margin-top:10px; font-size:16px; }
 </style>
 </head>
 <body>
 <form id="f" autocomplete="off">
   <h1>Verificador FactPOS</h1>
-  <p>Conecte este equipo con el servidor de la tienda. Solo se hace una vez.</p>
-  <label for="srv">Dirección del servidor de la sucursal</label>
-  <input id="srv" inputmode="url" placeholder="192.168.1.10:3000" required>
-  <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
+  <p>Se conecta solo con el servidor de la tienda. Solo falta una clave de salida.</p>
+  <div id="buscando" class="busca">Buscando el servidor de la tienda en la red…</div>
+  <div id="hallados"></div>
+  <button type="button" class="aparte" id="otra" hidden>Buscar de nuevo</button>
+  <div id="manual" hidden>
+    <label for="srv">Dirección del servidor de la sucursal</label>
+    <input id="srv" inputmode="url" placeholder="192.168.1.10:3000">
+    <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
+  </div>
+  <a href="#" id="verman" hidden class="enlace">Escribir la dirección a mano</a>
   <div id="actual" hidden>
     <label for="ca">Clave de salida actual</label>
     <input id="ca" type="password" autocomplete="off">
   </div>
   <label for="c1">Clave de salida (para cambiar el servidor o cerrar la app)</label>
-  <input id="c1" type="password" autocomplete="off" required minlength="4">
+  <input id="c1" type="password" autocomplete="off" minlength="4">
   <label for="c2">Repita la clave</label>
-  <input id="c2" type="password" autocomplete="off" required minlength="4">
+  <input id="c2" type="password" autocomplete="off" minlength="4">
   <div id="error" role="alert"></div>
   <button type="submit">Guardar y abrir el verificador</button>
   <button type="button" class="aparte" id="botones" hidden>Bloquear los botones de Android (permiso una sola vez)</button>
@@ -53,6 +63,50 @@
     return u.toString();
   }
 
+  // ---- búsqueda del servidor en la red local (responde /descubrir; igual que las cajas)
+  let elegido = "";
+  async function probar(base, ms) {
+    try {
+      const r = await fetch(base + "/descubrir", { signal: AbortSignal.timeout(ms), cache: "no-store" });
+      if (!r.ok) return null;
+      const d = await r.json();
+      return d && d.producto === "FactPOS" ? { url: base + "/verificador", empresa: d.empresa, sucursales: d.sucursales || [], equipo: d.equipo } : null;
+    } catch { return null; }
+  }
+  function mostrar(e) {
+    if (document.querySelector('[data-url="' + e.url + '"]')) return;
+    const l = document.createElement("label");
+    l.className = "op"; l.dataset.url = e.url;
+    const r = document.createElement("input"); r.type = "radio"; r.name = "srv"; r.value = e.url;
+    r.onchange = () => { elegido = e.url; };
+    const t = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = (e.empresa || "Servidor FactPOS") + (e.sucursales.length ? " · " + e.sucursales.join(", ") : "");
+    const sm = document.createElement("small"); sm.textContent = e.url.replace("/verificador", "").replace("http://", "") + (e.equipo ? " · " + e.equipo : "");
+    t.append(b, sm); l.append(r, t);
+    $("hallados").appendChild(l);
+    if (!elegido) { r.checked = true; elegido = e.url; }
+  }
+  async function buscar() {
+    $("hallados").innerHTML = ""; elegido = ""; $("otra").hidden = true;
+    $("buscando").hidden = false; $("buscando").textContent = "Buscando el servidor de la tienda en la red…";
+    const redes = new Set();
+    try { JSON.parse(await llamar("redes")).forEach((x) => redes.add(x)); } catch {}
+    ["192.168.1", "192.168.0", "192.168.100", "10.0.0", "192.168.2", "192.168.10", "10.0.1"].forEach((x) => redes.add(x));
+    const nombre = await probar("http://factpos.local:3000", 2500);
+    if (nombre) mostrar(nombre);
+    for (const red of redes) {
+      if ($("hallados").children.length) break;
+      $("buscando").textContent = "Buscando en la red " + red + ".x…";
+      const ips = Array.from({ length: 254 }, (_, k) => "http://" + red + "." + (k + 1) + ":3000");
+      for (let k = 0; k < ips.length; k += 64) (await Promise.all(ips.slice(k, k + 64).map((u) => probar(u, 1200)))).forEach((e) => e && mostrar(e));
+    }
+    $("buscando").hidden = $("hallados").children.length > 0;
+    if (!$("hallados").children.length) { $("buscando").textContent = "No se encontró el servidor. Revise que esté encendido y en la misma red, o escriba su dirección."; $("manual").hidden = false; }
+    $("otra").hidden = false; $("verman").hidden = $("manual").hidden === false;
+  }
+  $("otra").onclick = buscar;
+  $("verman").onclick = (e) => { e.preventDefault(); $("manual").hidden = false; $("verman").hidden = true; elegido = ""; document.querySelectorAll('input[name=srv]').forEach((r) => (r.checked = false)); $("srv").focus(); };
+
   async function iniciar() {
     for (let i = 0; i < 60 && !puente(); i++) await new Promise((r) => setTimeout(r, 250));
     try {
@@ -60,6 +114,7 @@
       if (e.tieneClave) $("actual").hidden = false;
       if (!e.botonesBloqueados && typeof (window.FactPOSApp && window.FactPOSApp.bloquearBotones) !== "undefined") $("botones").hidden = false;
     } catch { error("Esperando a la app…"); }
+    buscar();
   }
   $("botones").onclick = () => llamar("bloquearBotones");
   $("f").onsubmit = async (ev) => {
@@ -67,14 +122,16 @@
     error("");
     if ($("c1").value !== $("c2").value) return error("Las dos claves no coinciden.");
     let url;
-    try { url = normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
+    try { url = elegido || normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
     try {
       const r = await llamar("guardar", url, $("c1").value, $("ca").value);
       if (r) error(r);   // "" = guardado: la app abre el verificador sola
     } catch (e) { error(e.message || "No se pudo guardar"); }
   };
-  window.addEventListener("pywebviewready", iniciar);
-  iniciar();
+  let arrancó = false;
+  const arrancar = () => { if (!arrancó) { arrancó = true; iniciar(); } };
+  window.addEventListener("pywebviewready", arrancar);
+  if (window.FactPOSApp) arrancar(); else setTimeout(arrancar, 1500);
 </script>
 </body>
 </html>
