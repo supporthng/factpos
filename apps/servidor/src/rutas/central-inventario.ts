@@ -279,13 +279,21 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     await exigirFuncion(e, "borrar_inventario");
     const b = z.object({
       sucursalId: uuid, almacenId: uuid.optional(), clave: z.string().min(1).max(200),
-      frase: z.literal("BORRAR INVENTARIO", { errorMap: () => ({ message: "Escriba exactamente BORRAR INVENTARIO" }) }),
+      alcance: z.enum(["EXISTENCIAS", "HISTORIAL", "PRODUCTOS", "CATALOGO"]).default("EXISTENCIAS"),
+      frase: z.string().trim(),
       motivo: z.string().trim().min(10, "Explique el motivo (mínimo 10 caracteres)").max(180),
     }).parse(req.body);
+    const FRASES = { EXISTENCIAS: "BORRAR INVENTARIO", HISTORIAL: "BORRAR HISTORIAL", PRODUCTOS: "BORRAR PRODUCTOS", CATALOGO: "BORRAR CATALOGO" } as const;
+    if (b.frase !== FRASES[b.alcance]) throw new ErrorNegocio(`Escriba exactamente ${FRASES[b.alcance]}`);
     accesoSucursal(req, b.sucursalId);
     const usuarioId = uuid.parse(req.headers["x-usuario-id"]);
     const u = await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [usuarioId]);
     if (!(await verificarClave(b.clave, u.rows[0]?.clave_hash))) throw new ErrorNegocio("La contraseña no es correcta", 403);
+    if (b.alcance !== "EXISTENCIAS") {
+      const r2 = await enTransaccion(async (c) => borrarProfundo(c, e, b.sucursalId, b.alcance as "HISTORIAL" | "PRODUCTOS" | "CATALOGO", usuarioId, b.motivo));
+      rep.code(201);
+      return r2;
+    }
     const r = await enTransaccion(async (c) => {
       const s = await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, e]);
       if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
@@ -655,4 +663,57 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     ]);
     return { sucursales: sucursales.rows, productos: productos.rows, categorias: categorias.rows, usuarios: usuarios.rows };
   });
+}
+
+
+/**
+ * Borrados profundos de Seguridad. Nunca tocan facturas, ventas, e-CF ni secuencias NCF.
+ *  HISTORIAL: existencias en cero y borra el kardex de la sucursal (el trigger de inmutabilidad se suspende solo dentro de esta transacción).
+ *  PRODUCTOS: además borra los productos sin ventas, compras, pedidos ni cotizaciones; los que sí tienen se dan de baja (inactivos).
+ *  CATALOGO: además borra categorías, ofertas y conteos/transferencias/ajustes de esos productos.
+ */
+async function borrarProfundo(c: PoolClient, empresa: string, sucursalId: string, alcance: "HISTORIAL" | "PRODUCTOS" | "CATALOGO", usuarioId: string, motivo: string) {
+  const s = await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [sucursalId, empresa]);
+  if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+  const out: Record<string, number> = {};
+  const n = async (k: string, sql: string, par: unknown[] = []) => { out[k] = (await c.query(sql, par)).rowCount ?? 0; };
+  // Existencias en cero y kardex de la sucursal
+  await c.query(`UPDATE existencias SET cantidad = 0 WHERE almacen_id IN (SELECT id FROM almacenes WHERE sucursal_id = $1)`, [sucursalId]);
+  await c.query(`DELETE FROM existencias_lote WHERE almacen_id IN (SELECT id FROM almacenes WHERE sucursal_id = $1)`, [sucursalId]);
+  await c.query("ALTER TABLE kardex_movimientos DISABLE TRIGGER tr_kardex_inmutable");
+  await n("movimientos", "DELETE FROM kardex_movimientos WHERE sucursal_id = $1", [sucursalId]);
+  await c.query("ALTER TABLE kardex_movimientos ENABLE TRIGGER tr_kardex_inmutable");
+  if (alcance !== "HISTORIAL") {
+    const ids = `SELECT p.id FROM productos p WHERE p.empresa_id = $1
+      AND NOT EXISTS (SELECT 1 FROM presentaciones pr JOIN venta_items vi ON vi.presentacion_id = pr.id WHERE pr.producto_id = p.id)
+      AND NOT EXISTS (SELECT 1 FROM presentaciones pr JOIN compra_items ci ON ci.presentacion_id = pr.id WHERE pr.producto_id = p.id)
+      AND NOT EXISTS (SELECT 1 FROM presentaciones pr JOIN pedidos_clientes_items x ON x.presentacion_id = pr.id WHERE pr.producto_id = p.id)
+      AND NOT EXISTS (SELECT 1 FROM presentaciones pr JOIN cotizacion_lineas x ON x.presentacion_id = pr.id WHERE pr.producto_id = p.id)
+      AND NOT EXISTS (SELECT 1 FROM kardex_movimientos k WHERE k.producto_id = p.id)`;
+    const q = async (sql: string) => c.query(sql, [empresa]);
+    const pres = `SELECT id FROM presentaciones WHERE producto_id IN (${ids})`;
+    for (const t of ["existencias_lote", "lotes", "existencias", "producto_sucursal", "producto_proveedores", "conteo_items", "ajuste_items", "transferencia_items", "pedido_sucursal_items"]) {
+      await q(`DELETE FROM ${t} WHERE producto_id IN (${ids})`);
+    }
+    await q(`DELETE FROM producto_componentes WHERE combo_id IN (${ids}) OR componente_id IN (${ids})`);
+    await q(`DELETE FROM oferta_alcance WHERE producto_id IN (${ids}) OR presentacion_id IN (${pres})`);
+    for (const t of ["codigos_barra", "precios", "historial_precios"]) await q(`DELETE FROM ${t} WHERE presentacion_id IN (${pres})`);
+    await q(`DELETE FROM presentaciones WHERE producto_id IN (${ids})`);
+    const del = await q(`DELETE FROM productos WHERE id IN (${ids})`);
+    out.productosBorrados = del.rowCount ?? 0;
+    const baja = await c.query("UPDATE productos SET activo = FALSE WHERE empresa_id = $1 AND activo", [empresa]);
+    out.productosDadosDeBaja = baja.rowCount ?? 0;
+    if (alcance === "CATALOGO") {
+      await c.query("DELETE FROM oferta_alcance WHERE categoria_id IN (SELECT id FROM categorias WHERE empresa_id = $1)", [empresa]);
+      await c.query("UPDATE productos SET categoria_id = NULL WHERE empresa_id = $1", [empresa]);
+      await c.query("UPDATE categorias SET padre_id = NULL WHERE empresa_id = $1", [empresa]);
+      const cat = await c.query("DELETE FROM categorias WHERE empresa_id = $1", [empresa]);
+      out.categorias = cat.rowCount ?? 0;
+    }
+  }
+  await c.query(
+    `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+     VALUES ($1,$2,$3,$3,$4,'inventario',$2,$5)`,
+    [uuidv7(), sucursalId, usuarioId, `inventario.borrar.${alcance.toLowerCase()}`, JSON.stringify({ motivo, ...out })]);
+  return { alcance, ...out };
 }

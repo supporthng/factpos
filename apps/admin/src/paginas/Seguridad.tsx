@@ -88,16 +88,24 @@ function BorrarInventario({ admin, habilitada }: { admin: boolean; habilitada: b
   const [motivo, setMotivo] = useState("");
   const [clave, setClave] = useState("");
   const [frase, setFrase] = useState("");
+  const [alcance, setAlcance] = useState<"EXISTENCIAS" | "HISTORIAL" | "PRODUCTOS" | "CATALOGO">("EXISTENCIAS");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   if (!admin || !habilitada) return null;
+  const OPC = {
+    EXISTENCIAS: { t: "Solo dejar existencias en cero", f: "BORRAR INVENTARIO", d: "Genera ajustes de salida en el kardex; productos e historial se conservan." },
+    HISTORIAL: { t: "Existencias en cero + borrar historial de movimientos (kardex)", f: "BORRAR HISTORIAL", d: "Borra el kardex de la sucursal. Productos y ventas quedan." },
+    PRODUCTOS: { t: "Además borrar los productos sin ventas ni compras", f: "BORRAR PRODUCTOS", d: "Lo anterior y elimina los productos sin movimientos de venta/compra; los que sí los tienen se dan de baja (inactivos)." },
+    CATALOGO: { t: "Empezar de cero el catálogo completo", f: "BORRAR CATALOGO", d: "Lo anterior y además categorías. Facturas emitidas, e-CF y secuencias NCF nunca se borran." },
+  } as const;
   const borrar = async () => {
     const s = sucursales.find((x) => x.id === sucursalId)?.nombre ?? "la sucursal";
-    if (!confirm(`Se dejará en CERO toda la existencia de ${s}. Esto no se puede deshacer (solo volviendo a cargar el inventario). ¿Continuar?`)) return;
+    if (!confirm(`${OPC[alcance].t}\n\nSucursal: ${s}\n${OPC[alcance].d}\n\nEsto NO se puede deshacer. ¿Continuar?`)) return;
     setOcupado(true); setMsg(null);
     try {
-      const r = await api<{ productos: number; numero: string }>("/central/seguridad/borrar-inventario", { metodo: "POST", cuerpo: { sucursalId, motivo, clave, frase } });
-      setMsg({ t: `Inventario borrado: ${r.productos} producto(s) quedaron en cero (ajuste Nº ${r.numero}).`, tipo: "ok" });
+      const r = await api<Record<string, number | string>>("/central/seguridad/borrar-inventario", { metodo: "POST", cuerpo: { sucursalId, motivo, clave, frase, alcance } });
+      setMsg({ t: alcance === "EXISTENCIAS" ? `Inventario borrado: ${r.productos} producto(s) quedaron en cero (ajuste Nº ${r.numero}).`
+        : `Listo: ${r.movimientos ?? 0} movimiento(s) borrados` + (r.productosBorrados !== undefined ? `, ${r.productosBorrados} producto(s) eliminados, ${r.productosDadosDeBaja} dados de baja` : "") + (r.categorias !== undefined ? `, ${r.categorias} categoría(s)` : "") + ".", tipo: "ok" });
       setClave(""); setFrase(""); setMotivo("");
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     setOcupado(false);
@@ -105,14 +113,17 @@ function BorrarInventario({ admin, habilitada }: { admin: boolean; habilitada: b
   return (
     <div className="panel" style={{ borderColor: "var(--peligro, #c0392b)" }}>
       <h3 style={{ marginTop: 0 }}>Borrar inventario</h3>
-      <p className="suave pequeno">Deja en cero la existencia de todos los productos de una sucursal. No borra productos ni historial: genera ajustes de salida en el kardex con su nombre. Cuando termine, desactive la función arriba.</p>
+      <p className="suave pequeno">Elija qué borrar. {OPC[alcance].d} Cuando termine, desactive la función arriba.</p>
+      <select value={alcance} onChange={(e) => { setAlcance(e.target.value as typeof alcance); setFrase(""); }} style={{ marginBottom: 8, maxWidth: "100%" }}>
+        {(Object.keys(OPC) as (keyof typeof OPC)[]).map((k) => <option key={k} value={k}>{OPC[k].t}</option>)}
+      </select>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
         <SelectorSucursal todas={false} valor={sucursalId} onCambio={setSucursalId} />
         <input style={{ minWidth: 260 }} placeholder="Motivo (mínimo 10 caracteres)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
         <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
-        <input placeholder="Escriba BORRAR INVENTARIO" value={frase} onChange={(e) => setFrase(e.target.value)} />
-        <button className="boton peligro" disabled={ocupado || !sucursalId || motivo.trim().length < 10 || !clave || frase !== "BORRAR INVENTARIO"} onClick={borrar}>Borrar inventario</button>
+        <input placeholder={`Escriba ${OPC[alcance].f}`} value={frase} onChange={(e) => setFrase(e.target.value)} />
+        <button className="boton peligro" disabled={ocupado || !sucursalId || motivo.trim().length < 10 || !clave || frase !== OPC[alcance].f} onClick={borrar}>Borrar</button>
       </div>
     </div>
   );
