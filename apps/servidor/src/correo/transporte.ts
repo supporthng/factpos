@@ -150,3 +150,37 @@ export async function enviarCorreo(empresaId: string, correo: Correo, configNuev
     t.close();
   }
 }
+
+/** Prueba de conexión: entra a la cuenta (usuario y contraseña) sin enviar ningún correo. */
+export async function probarConexion(empresaId: string, configNueva?: { clave?: string } & Partial<ConfigCorreo>): Promise<string> {
+  const r = await pool.query(SELECT, [empresaId]);
+  const guardada = r.rows[0];
+  const c = { ...(guardada ?? {}), ...(configNueva ?? {}) } as ConfigCorreo & { clave_cifrada?: string };
+  const clave = configNueva?.clave || (guardada?.clave_cifrada ? descifrarClave(guardada.clave_cifrada) : "");
+  if (!c.remitenteCorreo) throw new Error("Falta el correo del remitente");
+  if (!clave) throw new Error(c.metodo === "RESEND" ? "Falta la clave de Resend" : "Falta la contraseña del correo");
+  if (c.metodo === "RESEND") {
+    const res = await fetch("https://api.resend.com/domains", { headers: { authorization: `Bearer ${clave}` }, signal: AbortSignal.timeout(15_000) });
+    // Una clave de «solo envío» responde 401 en este listado aunque sirva para enviar; solo se rechaza si dice que es inválida
+    if (res.status === 403 || (res.status === 401 && !/restricted|only send/i.test(await res.text()))) throw new Error("Resend rechazó la clave");
+    return "Conexión con Resend correcta.";
+  }
+  if (!c.smtpServidor) throw new Error("Falta el servidor SMTP");
+  const t = nodemailer.createTransport({
+    host: c.smtpServidor,
+    port: c.smtpPuerto ?? (c.smtpSeguridad === "SSL" ? 465 : 587),
+    secure: c.smtpSeguridad === "SSL",
+    requireTLS: c.smtpSeguridad === "STARTTLS",
+    ignoreTLS: c.smtpSeguridad === "NINGUNA",
+    auth: { user: c.usuario || c.remitenteCorreo, pass: clave },
+    connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000,
+  });
+  try {
+    await t.verify();
+    return `Conexión correcta: ${c.smtpServidor} aceptó el usuario y la contraseña.`;
+  } catch (e) {
+    throw new Error(explicarError(e as Error));
+  } finally {
+    t.close();
+  }
+}
