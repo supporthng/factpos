@@ -30,3 +30,18 @@ export function uuidv7(ahora: number = Date.now()): string {
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+const ALFABETO_LICENCIA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/**
+ * Número de licencia legible: FPOS-XXXX-XXXX-XXXX. Se deriva siempre igual del identificador interno de la licencia
+ * (sus últimos 60 bits, que son aleatorios), así no hay que guardar nada más y es el mismo en todas partes.
+ */
+export function numeroLicencia(id: string | null | undefined): string {
+  const hex = (id ?? "").replace(/[^0-9a-f]/gi, "").toLowerCase();
+  if (hex.length < 15) return "—";
+  let n = BigInt("0x" + hex.slice(-15));
+  const c: string[] = [];
+  for (let i = 0; i < 12; i++) { c.unshift(ALFABETO_LICENCIA[Number(n % 32n)]); n /= 32n; }
+  const s = c.join("");
+  return `FPOS-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}`;
+}

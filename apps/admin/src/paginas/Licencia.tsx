@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { numeroLicencia } from "@factpos/compartido";
 import { api, puede } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 import { useFuncionSeguridad } from "../seguridad";
@@ -391,7 +392,7 @@ function MiLicencia({ d, onError }: { d: EstadoLicencia; onError: (t: string) =>
         </span>
       </div>
       <ul className="lic-lista">
-        <li><span className="suave">Número de licencia</span><b className="mono">{d.licenciaId ?? "—"}</b></li>
+        <li><span className="suave">Número de licencia</span><b className="mono" title={d.licenciaId ?? undefined}>{numeroLicencia(d.licenciaId)}</b></li>
         <li><span className="suave">Licenciado a</span><b>{d.cliente}</b></li>
         <li><span className="suave">Plan</span><b>{d.plan ?? "—"}</b></li>
         <li><span className="suave">Sucursales permitidas</span><b>{d.sucursales}</b></li>
