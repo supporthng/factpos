@@ -111,8 +111,11 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
           categoria: val(f, "categoria"), marca: val(f, "marca").slice(0, 60), costo: num(f, "costo"),
           p: [num(f, "p1"), num(f, "p2"), num(f, "p3")], existencia: Math.max(0, num(f, "existencia")), minimo: Math.max(0, num(f, "minimo")),
         };
-        if (/^\d+(\.0+)?$/.test(codigo)) codigo = codigo.replace(/\.0+$/, "");
-        if (/^\d{6,14}$/.test(codigo)) l.codigo = codigo; else if (codigo) l.aviso = "Código de barras inválido: se omitió";
+        // El código se guarda tal cual está en el archivo (los ceros a la izquierda cuentan); solo se quita el ".0" que Excel agrega a los números
+        if (/^\d+\.0+$/.test(codigo)) codigo = codigo.replace(/\.0+$/, "");
+        if (/^\d+(\.\d+)?e\+?\d+$/i.test(codigo)) l.aviso = "El código viene en notación científica (Excel lo estropeó): se omitió. Ponga la columna en formato Texto";
+        else if (codigo && codigo.length <= 30) l.codigo = codigo;
+        else if (codigo) l.aviso = "Código de barras demasiado largo (máx. 30): se omitió";
         if (!l.sku) l.sku = l.codigo || "IMP" + String(l.fila).padStart(5, "0");
         if (l.nombre.length < 2) l.error = "Sin nombre";
         else if (l.p[0] <= 0) l.error = "Sin precio detalle";
