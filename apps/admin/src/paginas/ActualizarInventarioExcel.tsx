@@ -89,7 +89,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
   };
   const cambios = (vista ?? []).filter((f) => !f.error && (f.diferencia !== 0 || (!!f.precio && f.precio !== f.precioActual)));
   const errores = (vista ?? []).filter((f) => f.error);
-  const esNuevo = (f: Resuelta) => !!f.error && /^No se encontró/.test(f.error) && (() => { const d = datosFila(f.fila); return !!d.sku && d.nombre.length >= 2 && d.precio > 0; })();
+  const esNuevo = (f: Resuelta) => !!f.error && /^No se encontró/.test(f.error) && (() => { const d = datosFila(f.fila); return !!d.sku && d.nombre.length >= 2; })();
   const nuevos = crearNuevos && impuestoId ? errores.filter(esNuevo) : [];
   const aplicar = async () => {
     setOcupado(true); setMsg(null);
@@ -100,7 +100,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
         try {
           await api("/central/productos", { metodo: "POST", cuerpo: {
             sku: d.sku, nombre: d.nombre, tipo: "INVENTARIABLE", impuestoId, precioIncluyeItbis: true, costoReferencia: String(d.costo),
-            presentaciones: [{ nombre: "Unidad", factor: "1", codigos: d.codigo ? [d.codigo.slice(0, 30)] : [], precios: { "1": d.precio.toFixed(2), "2": null, "3": null }, porcentajes: {} }],
+            presentaciones: [{ nombre: "Unidad", factor: "1", codigos: d.codigo ? [d.codigo.slice(0, 30)] : [], precios: { "1": d.precio > 0 ? d.precio.toFixed(2) : null, "2": null, "3": null }, porcentajes: {} }],
             sucursales: sucursales.map((s) => ({ sucursalId: s.id, stockMinimo: "0", stockMaximo: null, ubicacion: null, activo: true })),
           } });
           creados++;
@@ -150,7 +150,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
           </div>
           <div className="fila-acciones"><span className="flex" /><button className="boton primario" disabled={!listo || ocupado} onClick={revisar}>Revisar cambios</button></div>
         </>}
-        {tabla.length > 0 && <label className="pr-check" style={{ margin: "8px 0" }}><input type="checkbox" checked={crearNuevos} onChange={(e) => { setCrearNuevos(e.target.checked); }} /><span>Crear los productos que no existan (con el nombre y el precio de venta del archivo)</span></label>}
+        {tabla.length > 0 && <label className="pr-check" style={{ margin: "8px 0" }}><input type="checkbox" checked={crearNuevos} onChange={(e) => { setCrearNuevos(e.target.checked); }} /><span>Crear los productos que no existan (con el nombre y, si lo trae, el precio de venta del archivo)</span></label>}
         {vista && <>
           <p><b>{cambios.length}</b> producto(s) cambiarían{errores.length ? <> · <span className="texto-alerta"><b>{errores.length}</b> con problemas (se omiten)</span></> : null} · {vista.length - cambios.length - errores.length} sin diferencia</p>
           <div style={{ maxHeight: 260, overflow: "auto" }}>
@@ -159,7 +159,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
               <tbody>
                 {[...errores, ...cambios].slice(0, 300).map((f) => (
                   <tr key={f.fila}>
-                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{!f.error && !!f.precio && f.precio !== f.precioActual && <div className="suave pequeno">Precio de venta: {f.precioActual != null ? num(f.precioActual, 2) : "—"} → <b>{num(f.precio, 2)}</b></div>}{f.error && (nuevos.includes(f) ? <div className="pequeno" style={{ color: "var(--ok, #15803d)" }}>No existe: se creará con el nombre y precio del archivo</div> : <div className="texto-alerta pequeno">{f.error}{/^No se encontró/.test(f.error) && crearNuevos && (() => { const d = datosFila(f.fila); const falta = [d.nombre.length < 2 ? "el nombre" : "", d.precio <= 0 ? "el precio de venta (vacío o 0)" : ""].filter(Boolean).join(" y "); return falta ? ` · para crearlo falta ${falta} en el archivo` : ""; })()}</div>)}</td>
+                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{!f.error && !!f.precio && f.precio !== f.precioActual && <div className="suave pequeno">Precio de venta: {f.precioActual != null ? num(f.precioActual, 2) : "—"} → <b>{num(f.precio, 2)}</b></div>}{f.error && (nuevos.includes(f) ? <div className="pequeno" style={{ color: "var(--ok, #15803d)" }}>No existe: se creará con el nombre del archivo{datosFila(f.fila).precio > 0 ? " y su precio" : " (sin precio: asígnelo después en Productos)"}</div> : <div className="texto-alerta pequeno">{f.error}{/^No se encontró/.test(f.error) && crearNuevos && " · para crearlo falta el nombre del producto en el archivo"}</div>)}</td>
                     <td className="der">{f.error ? "" : num(f.actual, 3)}</td><td className="der">{f.error ? "" : num(f.nuevo, 3)}</td>
                     <td className="der">{f.error ? "" : `${f.diferencia > 0 ? "+" : ""}${num(f.diferencia, 3)}`}</td>
                   </tr>
