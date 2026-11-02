@@ -26,13 +26,24 @@ export function InicioCifras({ irA }: { irA: (seccion: string) => void }) {
   const p = PERIODOS.find((x) => x.id === periodo)!;
   const filas = suc.datos;
   const suma = (k: keyof FilaSucursal) => filas.reduce((a, f) => a + Number(f[k]), 0);
-  const venta = suma("venta_hoy"), trans = suma("transacciones_hoy"), bajo = suma("productos_bajo_minimo");
+  const bajo = suma("productos_bajo_minimo");
+  // Mientras llega el periodo elegido, "hoy" ya se conoce por el resumen de sucursales
+  const venta = per.datos ? Number(per.datos.venta) : periodo === "hoy" ? suma("venta_hoy") : 0;
+  const trans = per.datos ? Number(per.datos.transacciones) : periodo === "hoy" ? suma("transacciones_hoy") : 0;
+  const antes = per.datos ? Number(per.datos.ventaAnterior) : null;
+  const cambio = antes ? ((venta - antes) / antes) * 100 : null;
   return (
     <div className="cifras">
+      <div className="cifras-filtro" role="group" aria-label="Periodo">
+        {PERIODOS.map((x) => (
+          <button key={x.id} type="button" className={"chip-periodo" + (x.id === periodo ? " activo" : "")} aria-pressed={x.id === periodo}
+            onClick={() => { setPeriodo(x.id); try { localStorage.setItem("factpos.inicio.periodo", x.id); } catch { /* sin almacenamiento */ } }}>{x.texto}</button>
+        ))}
+      </div>
       <div className="cifra">
-        <span className="suave">Venta de hoy</span>
+        <span className="suave">{p.titulo}</span>
         <b>{rd(venta)}</b>
-        <small className="suave">{at.datos ? `Ayer: ${rd(at.datos.ayer)}` : " "}</small>
+        <small className="suave">{antes == null ? " " : `${p.anterior}: ${rd(antes)}`}{cambio != null && <> · <span className={cambio < 0 ? "texto-alerta" : "texto-ok"}>{cambio >= 0 ? "▲" : "▼"} {Math.abs(cambio).toFixed(0)} %</span></>}</small>
       </div>
       <div className="cifra">
         <span className="suave">Ventas realizadas</span>
