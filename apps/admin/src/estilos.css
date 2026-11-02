@@ -1052,3 +1052,8 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
   .tabla-tarjetas .oculto-movil { display: none; }
   .tabla-contenedor:has(.tabla-tarjetas) { overflow-x: visible; }
 }
+
+/* Filtro de periodo de las cifras del inicio */
+.cifras-filtro { grid-column: 1 / -1; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+.chip-periodo { flex: none; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--borde, #d2dae3); background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.chip-periodo.activo { background: var(--primario, #0f766e); border-color: var(--primario, #0f766e); color: #fff; font-weight: 600; }

@@ -1,7 +1,18 @@
+import { useState } from "react";
 import { num, puede, rd } from "../api";
 import { useDatos } from "../ui";
 
 interface FilaSucursal { venta_hoy: string; transacciones_hoy: string; productos_bajo_minimo: string }
+type Periodo = "hoy" | "ayer" | "semana" | "semanaPasada" | "mes";
+const PERIODOS: { id: Periodo; texto: string; titulo: string; anterior: string }[] = [
+  { id: "hoy", texto: "Hoy", titulo: "Venta de hoy", anterior: "Ayer" },
+  { id: "ayer", texto: "Ayer", titulo: "Venta de ayer", anterior: "Antier" },
+  { id: "semana", texto: "Esta semana", titulo: "Venta de esta semana", anterior: "Misma fecha de la semana pasada" },
+  { id: "semanaPasada", texto: "Semana pasada", titulo: "Venta de la semana pasada", anterior: "La semana anterior" },
+  { id: "mes", texto: "Este mes", titulo: "Venta de este mes", anterior: "Mes anterior (igual tramo)" },
+];
+const leerPeriodo = (): Periodo => { try { const v = localStorage.getItem("factpos.inicio.periodo"); return PERIODOS.some((p) => p.id === v) ? (v as Periodo) : "hoy"; } catch { return "hoy"; } };
+interface DatosPeriodo { venta: string; transacciones: string; ventaAnterior: string }
 interface Atencion { ayer: string; certificado: { vence: string | null } }
 interface EstadoActualizacion { actual: string; disponible: string | null; hayNueva: boolean }
 
@@ -9,8 +20,10 @@ interface EstadoActualizacion { actual: string; disponible: string | null; hayNu
 export function InicioCifras({ irA }: { irA: (seccion: string) => void }) {
   const conPermiso = puede("admin.reportes");
   const suc = useDatos<FilaSucursal[]>(conPermiso ? "/central/sucursales" : null);
-  const at = useDatos<Atencion>(conPermiso ? "/central/resumen/atencion" : null);
+  const [periodo, setPeriodo] = useState<Periodo>(leerPeriodo());
+  const per = useDatos<DatosPeriodo>(conPermiso ? `/central/resumen/periodo?periodo=${periodo}` : null);
   if (!conPermiso || suc.error || !suc.datos) return null;
+  const p = PERIODOS.find((x) => x.id === periodo)!;
   const filas = suc.datos;
   const suma = (k: keyof FilaSucursal) => filas.reduce((a, f) => a + Number(f[k]), 0);
   const venta = suma("venta_hoy"), trans = suma("transacciones_hoy"), bajo = suma("productos_bajo_minimo");
