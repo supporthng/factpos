@@ -3,6 +3,8 @@ import type { PoolClient } from "pg";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { leerToken } from "../sesion.js";
+import { usuarioVigente } from "./sesion.js";
 
 /**
  * Cuadre y cierre de la caja registradora.
@@ -24,7 +26,7 @@ const CONTADAS = ["EFECTIVO", "TARJETA", "TRANSFERENCIA"] as const;
 /** Todo lo que se necesita para el reporte X o Z de un turno. */
 export async function reporteTurno(c: Q, turnoId: string) {
   const t = (await c.query(
-    `SELECT t.id, t.caja_id AS "cajaId", t.estado, t.abierto_en AS "abiertoEn", t.cerrado_en AS "cerradoEn",
+    `SELECT t.id, t.caja_id AS "cajaId", t.usuario_id AS "usuarioId", t.estado, t.abierto_en AS "abiertoEn", t.cerrado_en AS "cerradoEn",
             t.fondo_inicial::text AS "fondoInicial", t.declarado, t.esperado, t.diferencia::text AS diferencia,
             t.conteo, t.notas, u.nombre AS cajero, uc.nombre AS "cerradoPor", ca.nombre AS caja, s.nombre AS sucursal,
             cu.ventas_efectivo::text AS "ventasEfectivo", cu.entradas::text AS entradas, cu.salidas::text AS salidas
@@ -94,14 +96,26 @@ export async function reporteTurno(c: Q, turnoId: string) {
   };
 }
 
+/** Administradores y supervisores ven los turnos de todos; un cajero solo los suyos. */
+async function quienVe(req: { headers: Record<string, unknown> }, cajaId: string): Promise<{ usuarioId: string; todos: boolean }> {
+  const s = leerToken(req.headers["x-sesion-caja"] as string | undefined);
+  if (!s || s.t !== "caja" || s.c !== cajaId) throw new ErrorNegocio("Su sesión en la caja terminó: vuelva a entrar con su PIN", 401);
+  const v = await usuarioVigente(s.u);
+  if (!v.activo) throw new ErrorNegocio("Su usuario fue desactivado", 401);
+  const todos = v.permisos.includes("*") || ["venta.anular", "venta.descuento", "venta.corregir"].some((p) => v.permisos.includes(p));
+  return { usuarioId: s.u, todos };
+}
+
 export async function rutasCierre(app: FastifyInstance) {
   const uuid = z.string().uuid();
 
   /** Cuadre del turno abierto (reporte X). */
   app.get("/cajas/:cajaId/turno/cuadre", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const t = await pool.query("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO'", [cajaId]);
+    const quien = await quienVe(req, cajaId);
+    const t = await pool.query("SELECT id, usuario_id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO'", [cajaId]);
     if (!t.rowCount) throw new ErrorNegocio("La caja no tiene un turno abierto");
+    if (!quien.todos && t.rows[0].usuario_id !== quien.usuarioId) throw new ErrorNegocio("Este turno es de otro cajero: solo un supervisor o administrador puede ver su cuadre", 403);
     return reporteTurno(pool, t.rows[0].id);
   });
 
@@ -149,8 +163,10 @@ export async function rutasCierre(app: FastifyInstance) {
   /** Reporte Z de un turno ya cerrado (para reimprimirlo). */
   app.get("/cajas/:cajaId/turnos/:turnoId", async (req) => {
     const { cajaId, turnoId } = z.object({ cajaId: uuid, turnoId: uuid }).parse(req.params);
+    const quien = await quienVe(req, cajaId);
     const r = await reporteTurno(pool, turnoId);
     if (r.turno.cajaId !== cajaId) throw new ErrorNegocio("Turno no encontrado", 404);
+    if (!quien.todos && (r.turno as { usuarioId?: string }).usuarioId !== quien.usuarioId) throw new ErrorNegocio("Solo puede ver sus propios turnos", 403);
     if (r.turno.estado !== "CERRADO") throw new ErrorNegocio("El turno sigue abierto");
     return r;
   });
@@ -159,24 +175,26 @@ export async function rutasCierre(app: FastifyInstance) {
   app.get("/cajas/:cajaId/cuadre-dia", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
     const { fecha } = z.object({ fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
+    const quien = await quienVe(req, cajaId);
+    const soloMio = quien.todos ? null : quien.usuarioId;
     const r = await pool.query(
       `SELECT t.id, u.nombre AS cajero, t.estado, t.abierto_en AS "abiertoEn", t.cerrado_en AS "cerradoEn",
               t.diferencia::text AS diferencia, t.declarado, t.esperado,
               COALESCE((SELECT SUM(CASE WHEN v.tipo_documento IN ('E34','ANU') THEN -v.total ELSE v.total END) FROM ventas v WHERE v.turno_id = t.id), 0)::text AS ventas,
               (SELECT COUNT(*) FROM ventas v WHERE v.turno_id = t.id AND v.tipo_documento NOT IN ('E34','ANU'))::int AS facturas
          FROM turnos t JOIN usuarios u ON u.id = t.usuario_id
-        WHERE t.caja_id = $1
+        WHERE t.caja_id = $1 AND ($3::uuid IS NULL OR t.usuario_id = $3)
           AND (t.abierto_en AT TIME ZONE 'America/Santo_Domingo')::date = COALESCE($2::date, (now() AT TIME ZONE 'America/Santo_Domingo')::date)
         ORDER BY t.abierto_en`,
-      [cajaId, fecha ?? null],
+      [cajaId, fecha ?? null, soloMio],
     );
     const pagos = await pool.query(
       `SELECT f.forma_pago AS "formaPago", SUM(f.monto)::text AS monto
          FROM rpt_formas_pago f JOIN turnos t ON t.id = f.turno_id
-        WHERE t.caja_id = $1
+        WHERE t.caja_id = $1 AND ($3::uuid IS NULL OR t.usuario_id = $3)
           AND (t.abierto_en AT TIME ZONE 'America/Santo_Domingo')::date = COALESCE($2::date, (now() AT TIME ZONE 'America/Santo_Domingo')::date)
         GROUP BY f.forma_pago ORDER BY f.forma_pago`,
-      [cajaId, fecha ?? null],
+      [cajaId, fecha ?? null, soloMio],
     );
     const suma = (k: "ventas" | "diferencia") => r.rows.reduce((a, x) => a.plus(x[k] ?? 0), new Decimal(0)).toFixed(2);
     return {
