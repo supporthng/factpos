@@ -168,7 +168,9 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     clearTimeout(rot);
     if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, 7000);
   }
+  let qrActivo = true;   // lo decide el interruptor de Administración › Verificador
   function qrMovil() {
+    if (!qrActivo) return "";
     return '<div class="qrmovil"><img src="/verificador/movil/qr.svg' + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "") + '" alt=""><span>Consulta el precio<br>desde tu celular<br><small style="font-weight:400">Escanea este código</small></span></div>';
   }
   function espera() {
@@ -227,6 +229,15 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       }
     } catch {}
   }
+  setInterval(async function () {   // el interruptor del QR también se aplica sin reiniciar
+    try {
+      const r = await fetch("/verificador/config" + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : ""));
+      if (!r.ok) return;
+      const c = await r.json();
+      const nuevo = c.mostrarQr !== false;
+      if (nuevo !== qrActivo) { qrActivo = nuevo; if (vista.className === "espera") espera(); }
+    } catch {}
+  }, 30 * 1000);
   setInterval(cargarOfertas, 30 * 1000); // las ofertas nuevas aparecen en menos de 30 segundos
   // Sin ?sucursal=: el servidor dice cuál es (un servidor de sucursal atiende una sola) y entrega la marca de la empresa
   async function cargarConfig() {
@@ -235,6 +246,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       if (!r.ok) return;
       const c = await r.json();
       sucursal = sucursal || c.sucursalId;
+      qrActivo = c.mostrarQr !== false;
       logo = c.logo ? await quitarFondo(c.logo) : null;
       if (c.secundario) document.documentElement.style.setProperty("--fondo", c.secundario);
       if (c.primario) document.documentElement.style.setProperty("--acento", c.primario);

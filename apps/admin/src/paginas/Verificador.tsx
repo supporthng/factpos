@@ -52,23 +52,30 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
 function AjustesVerificador() {
-  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean }>("/central/verificador/ajustes");
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean }>("/central/verificador/ajustes");
   const [msg, setMsg] = useState("");
-  const cambiar = async (mostrarOfertas: boolean) => {
+  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean }) => {
     setMsg("");
-    try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: { mostrarOfertas } }); recargar(); }
+    try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: cambio }); recargar(); }
     catch (e) { setMsg((e as Error).message); }
   };
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <h3 style={{ marginTop: 0 }}>Configuración del verificador</h3>
       <label className="check" style={{ fontSize: 16 }}>
-        <input type="checkbox" disabled={!datos} checked={datos?.mostrarOfertas ?? true} onChange={(e) => cambiar(e.target.checked)} />
+        <input type="checkbox" disabled={!datos} checked={datos?.mostrarOfertas ?? true} onChange={(e) => cambiar({ mostrarOfertas: e.target.checked })} />
         {" "}Mostrar las ofertas en la pantalla del verificador
       </label>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
         Apagado: la pantalla solo dice «Consulta de precios» y el producto que se pase por el lector. Encendido: además muestra las ofertas vigentes
         (en Comercial › Ofertas se elige cuáles). Las ofertas se siguen aplicando en la caja en ambos casos.
+      </p>
+      <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
+        <input type="checkbox" disabled={!datos} checked={datos?.mostrarQr ?? true} onChange={(e) => cambiar({ mostrarQr: e.target.checked })} />
+        {" "}Mostrar el QR para consultar desde el celular
+      </label>
+      <p className="suave pequeno" style={{ marginBottom: 0 }}>
+        Muestra en la pantalla del verificador un código QR (abajo al centro) para que el cliente consulte precios desde su celular, conectado al WiFi de la tienda.
       </p>
       <Aviso texto={error || msg} />
     </div>

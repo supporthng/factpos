@@ -135,7 +135,8 @@ export async function rutasVerificador(app: FastifyInstance) {
     const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
     const r = await pool.query(
       `SELECT s.id AS "sucursalId", s.nombre, COALESCE(e.nombre_comercial, e.razon_social) AS empresa, m.logo,
-              COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario
+              COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario,
+              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr"
          FROM sucursales s JOIN empresas e ON e.id = s.empresa_id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
         WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null]);
     if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
@@ -152,18 +153,18 @@ export async function rutasVerificador(app: FastifyInstance) {
   app.get("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const r = await pool.query<{ v: unknown }>("SELECT verificador->'mostrarOfertas' AS v FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
-    return { mostrarOfertas: r.rows[0]?.v !== false };
+    const r = await pool.query<{ o: unknown; q: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    return { mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const { mostrarOfertas } = z.object({ mostrarOfertas: z.boolean() }).parse(req.body);
+    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional() }).refine((x) => x.mostrarOfertas !== undefined || x.mostrarQr !== undefined, "Nada que cambiar").parse(req.body);
     await pool.query(
-      `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, jsonb_build_object('mostrarOfertas', $2::boolean))
-       ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || jsonb_build_object('mostrarOfertas', $2::boolean)`,
-      [empresaId, mostrarOfertas]);
-    return { mostrarOfertas };
+      `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, $2::jsonb)
+       ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || $2::jsonb`,
+      [empresaId, JSON.stringify(b)]);
+    return b;
   });
 
   /** Qué se consultó en los últimos días y qué códigos no tenían precio (para la administración). */
