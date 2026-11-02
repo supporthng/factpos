@@ -182,9 +182,10 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         `SELECT p.id, p.sku, p.nombre, COALESCE(e.cantidad, 0)::text AS actual
            FROM productos p LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = $2
           WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock AND (
-                ($3 <> '' AND lower(p.sku) = lower($3))
-             OR ($4 <> '' AND p.id IN (SELECT pr.producto_id FROM codigos_barra cb JOIN presentaciones pr ON pr.id = cb.presentacion_id WHERE cb.empresa_id = $1 AND cb.codigo = $4)))
-          LIMIT 1`,
+                ($3 <> '' AND (lower(p.sku) = lower($3) OR (ltrim($3, '0') <> '' AND ltrim(lower(p.sku), '0') = ltrim(lower($3), '0'))))
+             OR ($4 <> '' AND p.id IN (SELECT pr.producto_id FROM codigos_barra cb JOIN presentaciones pr ON pr.id = cb.presentacion_id
+                                        WHERE cb.empresa_id = $1 AND (cb.codigo = $4 OR (ltrim($4, '0') <> '' AND ltrim(cb.codigo, '0') = ltrim($4, '0'))))))
+          ORDER BY (lower(p.sku) = lower($3)) DESC NULLS LAST LIMIT 1`,
         [empresaId, almacenId, f.sku ?? "", f.codigo ?? ""],
       );
       if (!r.rowCount) { salida.push({ fila: f.fila, actual: 0, nuevo: 0, diferencia: 0, error: `No se encontró «${clave}» (o no lleva inventario)` }); continue; }
