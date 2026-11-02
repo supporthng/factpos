@@ -6,6 +6,7 @@ import { api, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type
 import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
 import { Venta, Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
+import { TurnoCaja } from "./Turno";
 import { temaTerminal } from "@factpos/compartido";
 import { SimboloFactPOS } from "./Logo";
 
@@ -105,7 +106,32 @@ function AppInterna() {
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={() => setTurno(undefined)} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
 
+  // El turno es de quien lo abrió: otro cajero no vende dentro de un turno ajeno (el cuadre sería de dos personas)
+  if (turno.usuarioId !== usuario.id) {
+    return <><TurnoAjeno ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} onCerrado={() => setTurno(undefined)} />{ventanaSalir}</>;
+  }
   return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}</>;
+}
+
+function TurnoAjeno({ ajustes, config, usuario, turno, onSalir, onCerrado }: {
+  ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; turno: Turno; onSalir: () => void; onCerrado: () => void;
+}) {
+  const [cerrando, setCerrando] = useState(false);
+  const [autorizado, setAutorizado] = useState(false);
+  if (cerrando && autorizado) return <TurnoCaja ajustes={ajustes} config={config} usuario={usuario} turno={turno} pausadas={0} onCerrado={onCerrado} onCerrar={() => { setCerrando(false); setAutorizado(false); }} />;
+  return (
+    <Pantalla>
+      <h2>Esta caja tiene un turno abierto</h2>
+      <p>El turno de <b>{turno.usuario}</b> sigue abierto. Cada cajero trabaja con su propio turno para que el cuadre sea de una sola persona.</p>
+      <p className="suave">{turno.usuario} debe cerrar su turno, o un supervisor puede cerrarlo ahora. Después podrá abrir el suyo con su fondo inicial.</p>
+      {cerrando ? (
+        <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar el turno" onAprobado={() => setAutorizado(true)} />
+      ) : (
+        <button className="boton ancho" onClick={() => setCerrando(true)}>Cerrar el turno de {turno.usuario} (supervisor)</button>
+      )}
+      <button className="enlace" style={{ marginTop: 10 }} onClick={onSalir}>← Volver a la pantalla del PIN</button>
+    </Pantalla>
+  );
 }
 
 function Pantalla({ children }: { children: React.ReactNode }) {
