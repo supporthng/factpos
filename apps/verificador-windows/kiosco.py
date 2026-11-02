@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+import winreg
 from ctypes import wintypes
 
 import webview
@@ -185,6 +186,103 @@ class BarraDeTareas:
 
 
 barra = BarraDeTareas()
+
+
+# --------------------------------------------------------------------------- escudo: nada se queda encima del verificador
+HWND_TOPMOST = wintypes.HWND(-1)
+SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+SW_RESTORE = 9
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+user32.BringWindowToTop.argtypes = [wintypes.HWND]
+user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+user32.IsIconic.argtypes = [wintypes.HWND]
+kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+TITULO_VENTANA = "Verificador FactPOS"
+
+
+class Escudo:
+    """Mantiene la ventana del verificador al frente y con el foco: los avisos de Windows (reinicio por actualizaciones,
+    notificaciones, otras apps) quedan debajo y no reciben toques. Solo actúa cuando el equipo ya tiene servidor
+    configurado (en la pantalla de configuración hace falta poder usar el teclado de Windows)."""
+
+    def __init__(self):
+        self._activo = False
+
+    def iniciar(self):
+        if self._activo:
+            return
+        self._activo = True
+        threading.Thread(target=self._vigilar, name="escudo", daemon=True).start()
+
+    def detener(self):
+        self._activo = False
+
+    def _vigilar(self):
+        while self._activo:
+            time.sleep(0.4)
+            try:
+                if not leer_config().get("servidor"):
+                    continue
+                hwnd = user32.FindWindowW(None, TITULO_VENTANA)
+                if not hwnd or not user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+                    continue
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, SW_RESTORE)
+                # Por encima de todo, también de otras ventanas «siempre visibles»
+                user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+                primero = user32.GetForegroundWindow()
+                if primero != hwnd:
+                    self._tomar_foco(hwnd, primero)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _tomar_foco(hwnd, primero):
+        actual = kernel32.GetCurrentThreadId()
+        otro = user32.GetWindowThreadProcessId(primero, None) if primero else 0
+        unido = bool(otro) and otro != actual
+        if unido:
+            user32.AttachThreadInput(actual, otro, True)
+        try:
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+        finally:
+            if unido:
+                user32.AttachThreadInput(actual, otro, False)
+
+
+escudo = Escudo()
+
+RUTA_AVISOS = r"Software\Microsoft\Windows\CurrentVersion\PushNotifications"
+
+
+def silenciar_avisos():
+    """Apaga las notificaciones emergentes del usuario mientras la app está abierta. Devuelve el valor anterior para restaurarlo."""
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUTA_AVISOS, 0, winreg.KEY_READ | winreg.KEY_WRITE) as k:
+            try:
+                previo = winreg.QueryValueEx(k, "ToastEnabled")[0]
+            except FileNotFoundError:
+                previo = None
+            winreg.SetValueEx(k, "ToastEnabled", 0, winreg.REG_DWORD, 0)
+        return previo
+    except OSError:
+        return None
+
+
+def restaurar_avisos(previo):
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUTA_AVISOS, 0, winreg.KEY_WRITE) as k:
+            if previo is None:
+                winreg.DeleteValue(k, "ToastEnabled")
+            else:
+                winreg.SetValueEx(k, "ToastEnabled", 0, winreg.REG_DWORD, int(previo))
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------------- pantalla de configuración
@@ -444,11 +542,15 @@ def main():
     ventana.events.minimized += al_minimizar
     teclado.poner()
     barra.ocultar()
+    avisos_previos = silenciar_avisos()
+    escudo.iniciar()
     import atexit
     atexit.register(barra.mostrar)      # pase lo que pase, la barra de tareas vuelve al salir
     try:
         webview.start(gui="edgechromium", private_mode=False, storage_path=WEBVIEW, debug=False)
     finally:
+        escudo.detener()
+        restaurar_avisos(avisos_previos)
         teclado.quitar()
         barra.mostrar()
 

@@ -31,6 +31,7 @@ Name: "inicio"; Description: "Abrir automáticamente al iniciar Windows (recomen
 Name: "escritorio"; Description: "Crear un acceso directo en el escritorio"
 [Files]
 Source: "dist\FactPOSVerificador\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "Preparar_Windows_Kiosco.ps1"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\Verificador FactPOS"; Filename: "{app}\{#MyAppExeName}"
 Name: "{userdesktop}\Verificador FactPOS"; Filename: "{app}\{#MyAppExeName}"; Tasks: escritorio
