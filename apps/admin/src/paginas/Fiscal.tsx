@@ -11,6 +11,21 @@ const TIPOS: Record<string, string> = {
   E43: "Gastos menores", E44: "Regímenes especiales", E45: "Gubernamental", E46: "Exportaciones", E47: "Pagos al exterior",
 };
 
+/** Comprobantes (NCF): rangos de serie B y secuencias e-NCF por sucursal. */
+export function ComprobantesNcf() {
+  const [vista, setVista] = useState<"rangos" | "secuencias">("rangos");
+  return (
+    <>
+      <Encabezado titulo="Comprobantes (NCF)" descripcion="Configure los rangos NCF tradicionales (serie B) y las secuencias e-NCF que usa cada sucursal." />
+      <div className="pestanas">
+        <button className={vista === "rangos" ? "activa" : ""} onClick={() => setVista("rangos")}>Rangos NCF (serie B)</button>
+        <button className={vista === "secuencias" ? "activa" : ""} onClick={() => setVista("secuencias")}>Secuencias e-NCF</button>
+      </div>
+      {vista === "rangos" ? <RangosNCF /> : <Secuencias />}
+    </>
+  );
+}
+
 /** Facturación electrónica: estado de envíos a la DGII, secuencias e-NCF y configuración. */
 export function Fiscal() {
   const [vista, setVista] = useState<"verificacion" | "envios" | "secuencias" | "ncf" | "certificado" | "config">("verificacion");
