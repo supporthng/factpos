@@ -20,16 +20,17 @@ export interface VentaRegistrada {
 }
 
 /** Encabezado del ticket según el formato elegido por el administrador (logo, datos del negocio y líneas extra). */
-export function EncabezadoTicket({ config }: { config: ConfigCaja }) {
+/** `fiscal`: en un e-CF el RNC y la dirección del emisor son obligatorios en la representación impresa, aunque el formato los oculte. */
+export function EncabezadoTicket({ config, fiscal = false }: { config: ConfigCaja; fiscal?: boolean }) {
   const fmt = formatoTicket(config.marca.formato);
   const med = medidasTicket(fmt);
   return (
     <div className="t-centro">
       {config.marca.logo && config.marca.logoEnTicket && <img className="t-logo" src={config.marca.logo} alt="" style={{ maxWidth: med.logoAncho, maxHeight: med.logoAlto }} />}
       <b className="t-grande">{config.empresa}</b>
-      {fmt.mostrarRnc && <div>RNC {config.rnc}</div>}
+      {(fmt.mostrarRnc || fiscal) && <div>RNC {config.rnc}</div>}
       {fmt.mostrarSucursal && <div>{config.sucursal}</div>}
-      {fmt.mostrarDireccion && config.direccion && <div>{config.direccion}</div>}
+      {(fmt.mostrarDireccion || fiscal) && config.direccion && <div>{config.direccion}</div>}
       {fmt.mostrarTelefono && config.telefono && <div>Tel. {config.telefono}</div>}
       {fmt.encabezadoExtra.split("\n").filter((l) => l.trim()).map((l, i) => <div key={i}>{l}</div>)}
     </div>
@@ -83,7 +84,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
         {(venta.tipoDocumento === "E34" || venta.tipoDocumento === "ANU") && <div className="centro aviso-devolucion">Devolver al cliente: <b>{rd(venta.total)}</b></div>}
         <style>{`@media print { @page { size: ${fmt.papel}mm auto; margin: 0; } }`}</style>
         <div className="ticket" id="ticket" style={{ width: med.ancho, fontSize: med.letra }}>
-          <EncabezadoTicket config={config} />
+          <EncabezadoTicket config={config} fiscal={!!venta.fiscal} />
           <div className="t-linea" />
           {copia && <div className="t-centro t-copia">*** COPIA ***</div>}
           <div className="t-centro"><b>{NOMBRE_TIPO[venta.tipoDocumento] ?? venta.tipoDocumento}</b></div>
