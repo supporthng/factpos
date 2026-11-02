@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { num, puede, rd } from "../api";
-import { useDatos } from "../ui";
+import { SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
-interface FilaSucursal { venta_hoy: string; transacciones_hoy: string; productos_bajo_minimo: string }
+interface FilaSucursal { sucursal_id?: string; venta_hoy: string; transacciones_hoy: string; productos_bajo_minimo: string }
 type Periodo = "hoy" | "ayer" | "semana" | "semanaPasada" | "mes";
 const PERIODOS: { id: Periodo; texto: string; titulo: string; anterior: string }[] = [
   { id: "hoy", texto: "Hoy", titulo: "Venta de hoy", anterior: "Ayer" },
@@ -21,10 +21,13 @@ export function InicioCifras({ irA }: { irA: (seccion: string) => void }) {
   const conPermiso = puede("admin.reportes");
   const suc = useDatos<FilaSucursal[]>(conPermiso ? "/central/sucursales" : null);
   const [periodo, setPeriodo] = useState<Periodo>(leerPeriodo());
-  const per = useDatos<DatosPeriodo>(conPermiso ? `/central/resumen/periodo?periodo=${periodo}` : null);
+  const { sucursales } = useCatalogo();
+  const [sucursal, setSucursal] = useState(() => { try { return localStorage.getItem("factpos.inicio.sucursal") ?? ""; } catch { return ""; } });
+  const sucursalValida = sucursales.some((x) => x.id === sucursal) ? sucursal : "";
+  const per = useDatos<DatosPeriodo>(conPermiso ? `/central/resumen/periodo?periodo=${periodo}${sucursalValida ? `&sucursalId=${sucursalValida}` : ""}` : null);
   if (!conPermiso || suc.error || !suc.datos) return null;
   const p = PERIODOS.find((x) => x.id === periodo)!;
-  const filas = suc.datos;
+  const filas = suc.datos.filter((f) => !sucursalValida || f.sucursal_id === sucursalValida);
   const suma = (k: keyof FilaSucursal) => filas.reduce((a, f) => a + Number(f[k]), 0);
   const bajo = suma("productos_bajo_minimo");
   // Mientras llega el periodo elegido, "hoy" ya se conoce por el resumen de sucursales
@@ -34,6 +37,11 @@ export function InicioCifras({ irA }: { irA: (seccion: string) => void }) {
   const cambio = antes ? ((venta - antes) / antes) * 100 : null;
   return (
     <div className="cifras">
+      {sucursales.length > 1 && (
+        <div className="cifras-filtro">
+          <SelectorSucursal valor={sucursalValida} onCambio={(v) => { setSucursal(v); try { localStorage.setItem("factpos.inicio.sucursal", v); } catch { /* sin almacenamiento */ } }} />
+        </div>
+      )}
       <div className="cifras-filtro" role="group" aria-label="Periodo">
         {PERIODOS.map((x) => (
           <button key={x.id} type="button" className={"chip-periodo" + (x.id === periodo ? " activo" : "")} aria-pressed={x.id === periodo}
