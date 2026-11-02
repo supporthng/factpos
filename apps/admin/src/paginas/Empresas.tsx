@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { api, fijarSesion, sesionActual } from "../api";
 import { Aviso, useDatos } from "../ui";
 
@@ -62,6 +62,77 @@ export function EmpresasEnlazadas() {
           <button className="enlace" onClick={() => setAbrir(false)}>Cancelar</button>
         </div>
       )}
+      {(datos?.length ?? 0) > 1 && <CopiarCatalogo otras={(datos ?? []).filter((e) => !e.actual)} />}
+      {(datos?.length ?? 0) > 1 && <Consolidado />}
+    </div>
+  );
+}
+
+const PERIODOS = [["hoy", "Hoy"], ["ayer", "Ayer"], ["semana", "Esta semana"], ["semanaPasada", "Semana pasada"], ["mes", "Este mes"]] as const;
+const rd = (n: number | string) => "RD$" + Number(n).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Ventas de todas las empresas enlazadas, por sucursal. */
+function Consolidado() {
+  const [periodo, setPeriodo] = useState<(typeof PERIODOS)[number][0]>("hoy");
+  const { datos } = useDatos<{ empresaId: string; empresa: string; rnc: string; sucursalId: string; sucursal: string; venta: string; transacciones: number; ventaAnterior: string }[]>(`/central/empresas/consolidado?periodo=${periodo}`);
+  const porEmpresa = new Map<string, { nombre: string; venta: number; ant: number; tx: number }>();
+  (datos ?? []).forEach((x) => {
+    const e = porEmpresa.get(x.empresaId) ?? { nombre: x.empresa, venta: 0, ant: 0, tx: 0 };
+    e.venta += Number(x.venta); e.ant += Number(x.ventaAnterior); e.tx += x.transacciones; porEmpresa.set(x.empresaId, e);
+  });
+  const tot = [...porEmpresa.values()].reduce((a, e) => ({ venta: a.venta + e.venta, ant: a.ant + e.ant, tx: a.tx + e.tx }), { venta: 0, ant: 0, tx: 0 });
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h4>Ventas consolidadas</h4>
+      <div className="cifras-filtro">
+        {PERIODOS.map(([k, t]) => <button key={k} className={"chip-periodo" + (periodo === k ? " activo" : "")} onClick={() => setPeriodo(k)}>{t}</button>)}
+      </div>
+      <table className="tabla">
+        <thead><tr><th>Empresa / sucursal</th><th className="num">Ventas</th><th className="num">Transacciones</th><th className="num">Periodo anterior</th></tr></thead>
+        <tbody>
+          {[...porEmpresa.entries()].map(([id, e]) => (
+            <Fragment key={id}>
+              <tr><td><b>{e.nombre}</b></td><td className="num"><b>{rd(e.venta)}</b></td><td className="num">{e.tx}</td><td className="num">{rd(e.ant)}</td></tr>
+              {(datos ?? []).filter((x) => x.empresaId === id).map((x) => (
+                <tr key={x.sucursalId} className="suave"><td style={{ paddingLeft: 24 }}>{x.sucursal}</td><td className="num">{rd(x.venta)}</td><td className="num">{x.transacciones}</td><td className="num">{rd(x.ventaAnterior)}</td></tr>
+              ))}
+            </Fragment>
+          ))}
+          <tr><td><b>Total del grupo</b></td><td className="num"><b>{rd(tot.venta)}</b></td><td className="num"><b>{tot.tx}</b></td><td className="num"><b>{rd(tot.ant)}</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Copia el catálogo de otra empresa del grupo a la empresa actual. */
+function CopiarCatalogo({ otras }: { otras: EmpresaGrupo[] }) {
+  const [origen, setOrigen] = useState(otras[0]?.id ?? "");
+  const [precios, setPrecios] = useState(true);
+  const [clave, setClave] = useState("");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const copiar = async () => {
+    const o = otras.find((x) => x.id === origen)?.nombre ?? "";
+    if (!confirm(`Se copiarán categorías, productos, códigos de barra${precios ? " y precios" : ""} de «${o}» a esta empresa. No se copian existencias, costos ni historial. Los SKU que ya existan aquí se omiten. ¿Continuar?`)) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await api<{ productos: number; omitidos: number; categorias: number; codigos: number; precios: number }>("/central/empresas/copiar-catalogo", { cuerpo: { origenId: origen, clave, precios } });
+      setMsg({ t: `Listo: ${r.productos} producto(s) copiados, ${r.omitidos} omitidos por existir, ${r.categorias} categoría(s) nuevas, ${r.codigos} código(s) de barra, ${r.precios} precio(s).`, tipo: "ok" });
+      setClave("");
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setOcupado(false);
+  };
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h4>Copiar catálogo a esta empresa</h4>
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
+        <select value={origen} onChange={(e) => setOrigen(e.target.value)}>{otras.map((e) => <option key={e.id} value={e.id}>Desde: {e.nombre}</option>)}</select>
+        <label><input type="checkbox" checked={precios} onChange={(e) => setPrecios(e.target.checked)} /> Copiar precios</label>
+        <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
+        <button className="boton" disabled={ocupado || !origen || !clave} onClick={copiar}>Copiar catálogo</button>
+      </div>
     </div>
   );
 }
