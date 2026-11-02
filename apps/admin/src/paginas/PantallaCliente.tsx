@@ -66,7 +66,7 @@ export function PantallaCliente() {
 
   return (
     <>
-      <Encabezado titulo="Pantalla del cliente" descripcion="Segunda pantalla de la caja: muestra al cliente los productos que se digitan y el monto a pagar. Mientras no se cobra, presenta las ofertas del negocio.">
+      <Encabezado titulo="Pantalla del cliente" descripcion="Segunda pantalla de la caja: muestra al cliente los productos que se digitan y el monto a pagar. Mientras no se cobra, presenta las ofertas creadas en Ofertas y los anuncios propios de aquí.">
         <button className="boton primario" disabled={guardando} onClick={guardar}>Guardar</button>
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
@@ -84,10 +84,10 @@ export function PantallaCliente() {
 
       <div className="panel">
         <div className="fila-acciones" style={{ marginTop: 0 }}>
-          <h3 style={{ margin: 0 }}>Ofertas ({f.ofertas.length} de 10)</h3><span className="flex" />
+          <h3 style={{ margin: 0 }}>Anuncios propios ({f.ofertas.length} de 10)</h3><span className="flex" />
           <button className="boton" disabled={f.ofertas.length >= 10} onClick={agregar}>Agregar oferta</button>
         </div>
-        {!f.ofertas.length && <p className="suave">Aún no hay ofertas. Agrega una con su título, texto, precio y una imagen.</p>}
+        {!f.ofertas.length && <p className="suave">Aún no hay ofertas propias de esta pantalla. Las ofertas que creas en Ofertas (vigentes hoy) se presentan solas; aquí solo agregas anuncios con imagen.</p>}
         {f.ofertas.map((o, i) => (
           <div key={o.id} className="seg-fila" style={{ alignItems: "flex-start", gap: 16 }}>
             <div style={{ width: 150, flexShrink: 0 }}>
