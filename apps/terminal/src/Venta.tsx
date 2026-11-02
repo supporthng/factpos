@@ -771,7 +771,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               setLineas((ls) => ls.map((x, j) => (j === sel ? { ...x, descuentoManual: monto, motivoDescuento: motivo, precioCambiado: undefined } : x)));
             } else {
               const partes = repartir(monto, lineas.map((l) => Number(l.cantidad) * Number(precioDe(l))));
-              setLineas((ls) => ls.map((x, j) => ({ ...x, descuentoManual: Number(partes[j]) > 0 ? partes[j] : undefined, motivoDescuento: `Descuento a la factura: ${motivo}`, precioCambiado: undefined })));
+              setLineas((ls) => ls.map((x, j) => ({ ...x, descuentoManual: Number(partes[j]) > 0 ? partes[j] : undefined, motivoDescuento: motivo ? `Descuento a la factura: ${motivo}` : "Descuento a la factura", precioCambiado: undefined })));
             }
             setAprobacion(a);
             setModal(null);
