@@ -25,7 +25,7 @@ export const CAPACIDADES = {
   firmaXml: true,              // XMLDSig RSA-SHA256
   codigoSeguridadQr: true,     // código de seguridad y URL del QR
   envioDgii: true,             // autenticación por semilla, recepción y consulta de resultado
-  acuseRecibo: false,          // ARECF: responder a los e-CF que envía la DGII
+  acuseRecibo: true,           // ARECF: responder a los e-CF que envía la DGII
   aprobacionComercial: false,  // ACECF: generar y recibir aprobaciones/rechazos comerciales
   anulacionSecuencias: false,  // ANECF: anular rangos de e-NCF no usados
   representacionPdf: false,    // PDF de la representación impresa por tipo (con QR)

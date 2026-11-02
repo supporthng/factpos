@@ -8,6 +8,7 @@ import { rutasPortalRespaldo } from "./respaldo/portal.js";
 import { rutasCentralCotizaciones } from "./rutas/central-cotizaciones.js";
 import { rutasCentralCierres } from "./rutas/central-cierres.js";
 import { rutasCentralEmpresas } from "./rutas/central-empresas.js";
+import { rutasDgiiPublico } from "./rutas/dgii-publico.js";
 import { rutasPortalLector } from "./lector/portal.js";
 import { rutasPortalGastos } from "./licencia/gastos.js";
 import { rutasLectorFacturas } from "./lector/central.js";
@@ -91,7 +92,7 @@ export async function crearApp() {
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/fe/") || ruta.startsWith("/central/")) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
@@ -104,6 +105,7 @@ export async function crearApp() {
     app.addHook("onRequest", async (req, rep) => {
       if (!vieneDelTunel(req.headers)) return;
       const ruta = req.url.split("?")[0];
+      if (ruta.startsWith("/fe/")) return; // la DGII llama aquí (recepción, aprobación comercial y autenticación)
       if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
       if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Configuración › Conexión web, desde la red local." });
     });
@@ -258,6 +260,7 @@ export async function crearApp() {
     await app.register(rutasCentralIncidentes);
     await app.register(rutasCentralCorreo);
     if (config.modo === "central") await app.register(rutasCentralAlta);
+    if (config.modo === "central") await app.register(rutasDgiiPublico);
     // La licencia se activa en la nube; una tienda que trabaja sola la activa aquí mismo
     if (config.modo === "central" || !syncActiva()) { await app.register(rutasLicenciaCentral); await app.register(rutasRespaldos); await app.register(rutasRestaurarRespaldo); }
     await app.register(rutasPadronCentral);
