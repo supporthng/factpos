@@ -74,7 +74,7 @@ export async function api<T = any>(ruta: string, opciones: { metodo?: string; cu
   }
   const datos = await r.json().catch(() => ({}));
   if (!r.ok) {
-    if (r.status === 403 && datos.dispositivo) window.dispatchEvent(new CustomEvent("factpos:dispositivo", { detail: datos.dispositivo }));
+    if (r.status === 403 && datos.dispositivo) window.dispatchEvent(new CustomEvent("factpos:dispositivo", { detail: { estado: datos.dispositivo, servidor: base } }));
     if (r.status === 401 && datos.sesion) window.dispatchEvent(new Event("factpos:sesion-vencida"));
     throw new Error(datos.error ?? `Error ${r.status}`);
   }

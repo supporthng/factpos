@@ -612,14 +612,15 @@ export function App() {
   useTablasApiladas();
   const servidor = () => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin);
   const listo = usePreparado(servidor, () => fijarSesion(null));
-  const [dispositivo, setDispositivo] = useState<string | null>(null);
+  const [dispositivo, setDispositivo] = useState<{ estado: string; servidor: string } | null>(null);
   useEffect(() => {
-    const f = (e: Event) => setDispositivo(String((e as CustomEvent).detail ?? "DESCONOCIDO"));
+    // La solicitud va al MISMO servidor que respondió «no autorizado» (puede diferir de uno guardado en una sesión vieja)
+    const f = (e: Event) => { const d = (e as CustomEvent).detail ?? {}; setDispositivo({ estado: String(d.estado ?? "DESCONOCIDO"), servidor: String(d.servidor || servidor()) }); };
     window.addEventListener("factpos:dispositivo", f);
     return () => window.removeEventListener("factpos:dispositivo", f);
   }, []);
   if (CONFIG.modo === "cliente" && location.hash === "#instalar") return <PaginaInstalar />;
-  if (dispositivo) return <SolicitarDispositivo servidor={servidor()} estado={dispositivo} />;
+  if (dispositivo) return <SolicitarDispositivo servidor={dispositivo.servidor} estado={dispositivo.estado} />;
   return (
     <>
       {listo ? <AppInterna /> : <div className="cargando">Iniciando…</div>}
