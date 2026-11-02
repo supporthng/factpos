@@ -9,7 +9,7 @@ type Tipo = "INVENTARIABLE" | "SERVICIO" | "COMBO";
 interface Presentacion {
   id?: string; nombre: string; factor: string; codigos: string[];
   precios: Partial<Record<"1" | "2" | "3", string | null>>;
-  /** % de ganancia sobre el costo; si existe, ese nivel se define por % y el precio se calcula */
+  /** % de ganancia sobre la venta (margen); si existe, ese nivel se define por % y el precio se calcula */
   porcentajes?: Partial<Record<"1" | "2" | "3", string | number | null>>;
   /** Precios 2 y 3: "PRECIO1" = el % es un descuento sobre el precio 1 */
   bases?: Partial<Record<"2" | "3", "COSTO" | "PRECIO1">>;
@@ -52,20 +52,18 @@ const margen = (precio: number, costo: number, tasa: number, incluye: boolean) =
   const b = base(precio, tasa, incluye);
   return b > 0 && costo > 0 ? ((b - costo) / b) * 100 : null;
 };
-/** Precio desde el % de ganancia sobre el costo: costo + %, más ITBIS si el precio lo incluye. */
+/** Precio desde el % de ganancia sobre la venta (margen): venta sin ITBIS = costo ÷ (1 − %), más ITBIS si el precio lo incluye.
+ *  Con 25 % de ganancia, el margen que se ve es 25 %. */
 const desdePorcentaje = (costo: number, pct: number, tasa: number, incluye: boolean, redondeo: number) => {
-  const b = costo * (1 + pct / 100);
+  const b = costo / (1 - Math.min(pct, 95) / 100);
   const p = incluye ? b * (1 + tasa) : b;
   return redondeo ? Math.ceil(p / redondeo - 1e-9) * redondeo : Math.round(p * 100) / 100;
 };
-/** % de ganancia sobre el costo que da un precio. */
-const sobreCosto = (precio: number, costo: number, tasa: number, incluye: boolean) => {
-  const b = base(precio, tasa, incluye);
-  return b > 0 && costo > 0 ? ((b - costo) / costo) * 100 : null;
-};
+/** % de ganancia sobre la venta que da un precio (es el mismo margen). */
+const sobreCosto = (precio: number, costo: number, tasa: number, incluye: boolean) => margen(precio, costo, tasa, incluye);
 /** Descuento sobre el precio 1 (solo precios 2 y 3) */
 const esDesc = (p: Presentacion, k: string) => k !== "1" && p.bases?.[k as "2"] === "PRECIO1" && p.porcentajes?.[k as "1"] != null;
-/** % de ganancia sobre el costo */
+/** % de ganancia sobre la venta (margen) */
 const esPct = (p: Presentacion, k: string) => p.porcentajes?.[k as "1"] != null && !esDesc(p, k);
 /** Precio = precio 1 menos el % de descuento */
 const desdePrecio1 = (precio1: number, pct: number) => (Math.round(precio1 * (1 - pct / 100) * 100) / 100).toFixed(2);
@@ -438,7 +436,7 @@ function Codigos({ valores, onCambio }: { valores: string[]; onCambio: (v: strin
 
 /* ---------- Precios ---------- */
 /**
- * Cada nivel se define por monto (RD$) o por % de ganancia sobre el costo.
+ * Cada nivel se define por monto (RD$) o por % de ganancia sobre la venta.
  * Con %, el precio se calcula y se guarda ya hecho: la caja siempre lee un monto.
  */
 function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p: Partial<Ficha>) => void; tasa: number; costo: number; aux: Auxiliares }) {
@@ -512,7 +510,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
             <label className="interruptor pequeno"><input type="checkbox" checked={f.precioIncluyeItbis} onChange={(e) => cambiar({ precioIncluyeItbis: e.target.checked })} />Incluye ITBIS ({Math.round(tasa * 100)} %)</label>
           </div>
         </div>
-        <p className="suave pequeno">Defina cada precio por <b>monto</b> o por <b>% de ganancia sobre el costo</b>. Los precios 2 y 3 también pueden ser un <b>% de descuento sobre el precio 1</b> y se recalculan solos cuando éste cambie.</p>
+        <p className="suave pequeno">Defina cada precio por <b>monto</b> o por <b>% de ganancia sobre la venta</b>. Los precios 2 y 3 también pueden ser un <b>% de descuento sobre el precio 1</b> y se recalculan solos cuando éste cambie.</p>
         {f.precioVariable && <Aviso tipo="info" texto={`Precio variable: la cajera lo escribe entre ${rd(f.precioVariableMin)} y ${rd(f.precioVariableMax)}. El precio de aquí se propone por defecto.`} />}
         {desfasados && (
           <div className="aviso-linea info fila-aviso">
@@ -544,7 +542,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
                         <td>
                           <div className="segmentado" role="group" aria-label={`Precio ${k}: definir por`}>
                             <button className={!pct && !desc ? "activo" : ""} aria-pressed={!pct && !desc} onClick={() => (pct || desc) && alternar(i, k, "monto")}>RD$</button>
-                            <button className={pct ? "activo" : ""} aria-pressed={pct} onClick={() => !pct && alternar(i, k, "costo")} disabled={!costoP} title={costoP ? "% de ganancia sobre el costo" : "Indique el costo en General"}>% costo</button>
+                            <button className={pct ? "activo" : ""} aria-pressed={pct} onClick={() => !pct && alternar(i, k, "costo")} disabled={!costoP} title={costoP ? "% de ganancia sobre la venta" : "Indique el costo en General"}>% ganancia</button>
                             {k !== "1" && <button className={desc ? "activo" : ""} aria-pressed={desc} onClick={() => !desc && alternar(i, k, "precio1")} disabled={!n(p.precios["1"])} title={n(p.precios["1"]) ? "% de descuento sobre el precio 1" : "Primero escriba el precio 1"}>% desc. P1</button>}
                           </div>
                         </td>
@@ -591,7 +589,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
       </div>
 
       <div className="panel">
-        <div className="encabezado-sub"><h3>Mismo % para todas las presentaciones</h3><span className="suave pequeno">Ganancia sobre el costo de referencia ({rd(costo)} por unidad)</span></div>
+        <div className="encabezado-sub"><h3>Mismo % para todas las presentaciones</h3><span className="suave pequeno">Ganancia sobre la venta, con el costo de referencia ({rd(costo)} por unidad)</span></div>
         <div className="calculo-margen">
           {(["1"] as const).map((k) => (
             <label key={k} className="campo"><span>Precio {k}</span>
@@ -1043,7 +1041,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
           </div>
 
           <div className="pr-niveles">
-            <div className="pr-nivel pr-nivel-cab"><span>Precio de venta</span><span>% ganancia sobre el costo</span><span>Precio</span><span>Margen sobre la venta</span></div>
+            <div className="pr-nivel pr-nivel-cab"><span>Precio de venta</span><span>% ganancia (sobre la venta)</span><span>Precio</span><span>Margen</span></div>
             {(["1"] as const).map((k) => {
               const x = nv[k];
               const m = x.precio ? margen(n(x.precio), c, tasa, incluye) : null;
@@ -1057,7 +1055,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
                 </div>
               );
             })}
-            <small className="suave">El % de ganancia se aplica sobre el costo (costo 100 + 26 % = 126 sin ITBIS); el margen es esa misma ganancia vista como parte de la venta, por eso sale menor (26 % sobre el costo = 20.6 % de la venta). Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Comercial › Precios).</small>
+            <small className="suave">La ganancia es sobre el precio de venta sin ITBIS: con 25 % el margen que se ve es 25 %. Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Comercial › Precios).</small>
           </div>
         </div>
 
