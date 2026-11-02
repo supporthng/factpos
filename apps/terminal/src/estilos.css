@@ -742,3 +742,5 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .comanda-nombre { flex: 1; min-width: 0; }
 .comanda-nombre em { font-style: normal; opacity: .8; }
 .comanda-firma { margin-top: 14px; }
+
+.stock.fila { font-size: 14px; font-weight: 600; margin: 2px 0 4px; } .stock.fila b { font-size: 16px; color: var(--texto, inherit); }
