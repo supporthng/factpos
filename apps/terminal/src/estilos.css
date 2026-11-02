@@ -744,3 +744,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .comanda-firma { margin-top: 14px; }
 
 .stock.fila { font-size: 14px; font-weight: 600; margin: 2px 0 4px; } .stock.fila b { font-size: 16px; color: var(--texto, inherit); }
+
+/* Logo oscuro sobre la pantalla oscura del cliente: resplandor claro para que se lea */
+.pc-logo.logo-oscuro { filter: drop-shadow(0 0 1px rgba(255,255,255,.95)) drop-shadow(0 0 8px rgba(255,255,255,.55)); }

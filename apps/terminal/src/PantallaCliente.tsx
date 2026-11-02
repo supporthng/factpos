@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { temaTerminal } from "@factpos/compartido";
+import { LogoSinFondo } from "./LogoSinFondo";
 import { rd } from "./api";
 import {
   escuchar, leerGuardado, type Carrito, type DatosMarca, type Gracias, type OfertaPantalla,
@@ -43,7 +44,7 @@ export function PantallaCliente() {
   const hayLineas = !!carrito && carrito.lineas.length > 0;
   const graciasVigente = !hayLineas && gracias && ahora - gracias.en < SEGUNDOS_GRACIAS * 1000;
   const nombre = marca?.empresa ?? "FactPOS";
-  const logo = marca?.logo ? <img className="pc-logo" src={marca.logo} alt="" /> : null;
+  const logo = marca?.logo ? <LogoSinFondo className="pc-logo" src={marca.logo} /> : null;
 
   if (graciasVigente) {
     return (
