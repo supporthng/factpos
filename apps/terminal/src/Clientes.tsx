@@ -18,6 +18,18 @@ export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
   const [vista, setVista] = useState<"buscar" | "nuevo" | { precio: Cliente } | { abono: Cliente }>("buscar");
   const [q, setQ] = useState("");
   const [res, setRes] = useState<Cliente[]>([]);
+  // Si lo escrito es un RNC o cédula completos, se consulta el padrón de la DGII para ofrecer el nombre
+  const [dgii, setDgii] = useState<{ nombre: string; estado: string | null; sinPadron: boolean } | null>(null);
+  useEffect(() => {
+    setDgii(null);
+    const dd = q.replace(/\D/g, "");
+    if (!/^\d+$/.test(q.trim().replace(/-/g, "")) || (dd.length !== 9 && dd.length !== 11)) return;
+    let vigente = true;
+    api<{ encontrado: { nombre: string; estado: string | null } | null; padron?: { registros?: number | null } | null }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/rnc/${dd}`)
+      .then((r) => { if (vigente) setDgii({ nombre: r.encontrado?.nombre ?? "", estado: r.encontrado?.estado ?? null, sinPadron: !r.padron || !Number(r.padron.registros) }); })
+      .catch(() => {});
+    return () => { vigente = false; };
+  }, [q, ajustes]);
   useEffect(() => {
     if (q.trim().length < 2) return setRes([]);
     const t = setTimeout(() => {
@@ -51,7 +63,7 @@ export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
         ))}
         {q.trim().length >= 2 && !res.length && (
           <div className="sin-resultados">
-            <span className="suave">No hay clientes con “{q}”.</span>
+            <span className="suave">No hay clientes con “{q}”.{dgii?.nombre && <> <b>En la DGII: {dgii.nombre}</b>{dgii.estado && dgii.estado !== "ACTIVO" ? ` (${dgii.estado})` : ""}.</>}{dgii && !dgii.nombre && (dgii.sinPadron ? " El padrón de la DGII no está cargado en este servidor: pida a un administrador cargarlo (Administración › Padrón DGII)." : " No aparece en el padrón de la DGII: escriba el nombre al crearlo.")}</span>
             <button className="boton primario" onClick={() => setVista("nuevo")}>Crear cliente</button>
           </div>
         )}
@@ -94,17 +106,17 @@ function NuevoCliente({ ajustes, usuario, inicial, onCreado, onVolver, onCerrar 
   const valido = c.nombre.trim().length >= 3 && docOk && (!comprobante || numerico);
 
   // Padrón de la DGII: con el RNC o la cédula completos, se busca el nombre (en el servidor local, sin internet)
-  const [padron, setPadron] = useState<{ estado: "buscando" | "no" | "si"; nombre?: string; comercial?: string | null; situacion?: string | null } | null>(null);
+  const [padron, setPadron] = useState<{ estado: "buscando" | "no" | "si"; sinPadron?: boolean; nombre?: string; comercial?: string | null; situacion?: string | null } | null>(null);
   const autollenado = useRef("");
   useEffect(() => {
     setPadron(null);
     if (!numerico || !completo) return;
     let vigente = true;
     setPadron({ estado: "buscando" });
-    api<{ encontrado: { nombre: string; nombreComercial: string | null; estado: string | null } | null }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/rnc/${d}`)
+    api<{ encontrado: { nombre: string; nombreComercial: string | null; estado: string | null } | null; padron?: { registros?: number | null } | null }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/rnc/${d}`)
       .then((r) => {
         if (!vigente) return;
-        if (!r.encontrado) return setPadron({ estado: "no" });
+        if (!r.encontrado) return setPadron({ estado: "no", sinPadron: !r.padron || !Number(r.padron.registros) });
         setPadron({ estado: "si", nombre: r.encontrado.nombre, comercial: r.encontrado.nombreComercial, situacion: r.encontrado.estado });
         // Solo se reemplaza el nombre si está vacío o lo había puesto el padrón
         const previo = autollenado.current;
@@ -169,7 +181,7 @@ function NuevoCliente({ ajustes, usuario, inicial, onCreado, onVolver, onCerrar 
               : <>Encontrado en el padrón de la DGII{padron.comercial ? ` · ${padron.comercial}` : ""}</>}
           </p>
         )}
-        {padron?.estado === "no" && <p className="padron-dgii no">No está en el padrón de la DGII: escriba el nombre.</p>}
+        {padron?.estado === "no" && <p className="padron-dgii no">{padron.sinPadron ? "El padrón de la DGII no está cargado en este servidor (Administración › Padrón DGII): escriba el nombre." : "No está en el padrón de la DGII: escriba el nombre."}</p>}
         <label className="campo"><span>{c.tipoDocumento === "RNC" ? "Razón social" : "Nombre completo"}</span>
           <input autoFocus={esDoc} className="entrada-media" value={c.nombre} onChange={(e) => setC({ ...c, nombre: e.target.value })} /></label>
         <label className="campo"><span>Teléfono (opcional)</span><input className="entrada-media" inputMode="tel" value={c.telefono} onChange={(e) => setC({ ...c, telefono: e.target.value })} /></label>
