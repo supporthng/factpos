@@ -168,7 +168,7 @@ function AnularSinUsar() {
   return (
     <>
       <p className="suave pequeno">Informe a la DGII los e-NCF que asignó a una sucursal y no va a usar (por ejemplo, un rango por vencer). Se anula lo que queda sin usar de cada bloque.</p>
-      {msg && <Aviso tipo={msg.tipo}>{msg.t}</Aviso>}
+      {msg && <Aviso tipo={msg.tipo} texto={msg.t} />}
       <h2>Bloques con números sin usar</h2>
       <Tabla filas={d.datos?.libres ?? []} clave={(f) => f.id} vacio="No hay números sin usar"
         columnas={[
