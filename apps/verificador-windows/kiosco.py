@@ -15,7 +15,7 @@ import ctypes
 import hashlib
 import json
 import os
-import pathlib
+import http.server
 import re
 import secrets
 import socket
@@ -186,6 +186,39 @@ class BarraDeTareas:
 barra = BarraDeTareas()
 
 
+# --------------------------------------------------------------------------- pantalla de configuración
+_url_config = None
+
+
+def url_config():
+    """Sirve config.html en 127.0.0.1 (puerto libre). Un origen http local sí puede consultar la red de la tienda."""
+    global _url_config
+    if _url_config:
+        return _url_config
+    with open(recurso("config.html"), "rb") as f:
+        contenido = f.read()
+
+    class Pagina(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.split("?")[0] in ("/", "/config.html"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(contenido)))
+                self.end_headers()
+                self.wfile.write(contenido)
+            else:
+                self.send_error(404)
+
+        def log_message(self, *args):
+            pass
+
+    servidor = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Pagina)
+    threading.Thread(target=servidor.serve_forever, name="pantalla-config", daemon=True).start()
+    _url_config = f"http://127.0.0.1:{servidor.server_port}/config.html"
+    return _url_config
+
+
 # --------------------------------------------------------------------------- configuración y clave
 def leer_config():
     try:
@@ -218,7 +251,7 @@ class Kiosco:
         self._permitir_cierre = False
 
     def _direccion(self):
-        return leer_config().get("servidor") or recurso("config.html")
+        return leer_config().get("servidor") or url_config()
 
     def esApp(self):
         return True
@@ -276,7 +309,7 @@ class Kiosco:
         c.pop("servidor", None)
         guardar_config(c)
         if self._ventana:
-            self._ventana.load_url(pathlib.Path(recurso("config.html")).as_uri())
+            self._ventana.load_url(url_config())
         return True
 
     def salir(self, clave):
@@ -314,6 +347,17 @@ def main():
         except Exception:
             pass
 
+    def al_cargar():
+        # Esquina ✕ / ⓘ (cerrar y opciones con la clave) en la pantalla del verificador, no en la de configuración
+        try:
+            url = ventana.get_current_url() or ""
+            if url.startswith("http"):
+                with open(recurso("boton-app.js"), encoding="utf-8") as f:
+                    ventana.evaluate_js(f.read())
+        except Exception:
+            pass
+
+    ventana.events.loaded += al_cargar
     ventana.events.closing += al_cerrar
     ventana.events.minimized += al_minimizar
     teclado.poner()

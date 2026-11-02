@@ -131,6 +131,17 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageFinished(WebView vista, String url) {
+                // Esquina ✕ / ⓘ (cerrar y opciones con la clave): en la pantalla del verificador, no en la de configuración
+                if (url == null || !url.startsWith("http")) return;
+                try (java.io.InputStream in = getAssets().open("boton-app.js")) {
+                    byte[] b = new byte[in.available()];
+                    int n = in.read(b);
+                    vista.evaluateJavascript(new String(b, 0, Math.max(n, 0), StandardCharsets.UTF_8), null);
+                } catch (Exception ignorado) { }
+            }
+
+            @Override
             public void onReceivedError(WebView vista, WebResourceRequest pedido, WebResourceError error) {
                 // Servidor apagado o sin red: avisar y reintentar solo.
                 if (pedido != null && pedido.isForMainFrame() && !servidor().isEmpty()) {
