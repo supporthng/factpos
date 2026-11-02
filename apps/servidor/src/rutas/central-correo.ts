@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
-import { cifrarClave, enviarCorreo, leerConfigCorreo } from "../correo/transporte.js";
+import { cifrarClave, enviarCorreo, leerConfigCorreo, probarConexion } from "../correo/transporte.js";
 import { construir, marcaDe, procesarEnvios, type TipoEnvio } from "../correo/envios.js";
 import { correoPrueba } from "../correo/plantillas.js";
 import { olvidarCanales } from "../incidentes.js";
@@ -89,6 +89,16 @@ export async function rutasCentralCorreo(app: FastifyInstance) {
       if (!b.config) await pool.query("UPDATE configuracion_correo SET probado_en = now(), prueba_ok = FALSE, prueba_error = $2 WHERE empresa_id = $1", [e, msg]);
       throw new ErrorNegocio(msg, 400);
     }
+  });
+
+  /** Probar la conexión (usuario y contraseña) sin enviar ningún correo; con lo guardado o con lo del formulario. */
+  app.post("/central/correo/conexion", async (req) => {
+    const e = empresaDe(req);
+    const b = z.object({ config: esquemaConfig.optional() }).parse(req.body ?? {});
+    try {
+      const mensaje = await probarConexion(e, b.config ? { ...b.config, clave: b.config.clave || undefined } as never : undefined);
+      return { ok: true, mensaje };
+    } catch (err) { throw new ErrorNegocio((err as Error).message, 400); }
   });
 
   /** Configurar un envío automático. */

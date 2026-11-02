@@ -108,7 +108,7 @@ function Conexion({ config, onGuardado }: { config: Config | null; onGuardado: (
   const [nombre, setNombre] = useState(config?.remitenteNombre ?? "");
   const [responder, setResponder] = useState(config?.responderA ?? "");
   const [pruebaA, setPruebaA] = useState("");
-  const [ocupado, setOcupado] = useState<"" | "guardar" | "probar">("");
+  const [ocupado, setOcupado] = useState<"" | "guardar" | "probar" | "conexion">("");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const [avanzado, setAvanzado] = useState(prov === "otro");
   const resend = prov === "resend";
@@ -131,12 +131,20 @@ function Conexion({ config, onGuardado }: { config: Config | null; onGuardado: (
     catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     finally { setOcupado(""); }
   };
+  const probarConexion = async () => {
+    setOcupado("conexion"); setMsg(null);
+    try {
+      const r = await api<{ mensaje: string }>("/central/correo/conexion", { cuerpo: clave || !config ? { config: cuerpo() } : {} });
+      setMsg({ t: r.mensaje, tipo: "ok" });
+    } catch (e) { setMsg({ t: `No se pudo conectar: ${(e as Error).message}`, tipo: "error" }); }
+    finally { setOcupado(""); }
+  };
   const probar = async () => {
     setOcupado("probar"); setMsg(null);
     try {
       // Si cambió algo en el formulario, se prueba eso (sin guardarlo todavía)
-      await api("/central/correo/prueba", { cuerpo: { para: pruebaA.trim(), ...(clave || !config ? { config: cuerpo() } : {}) } });
-      setMsg({ t: `Correo de prueba enviado a ${pruebaA}. Revise también la carpeta de spam.`, tipo: "ok" });
+      await api("/central/correo/prueba", { cuerpo: { para: (pruebaA || correo).trim(), ...(clave || !config ? { config: cuerpo() } : {}) } });
+      setMsg({ t: `Correo de prueba enviado a ${pruebaA || correo}. Revise también la carpeta de spam.`, tipo: "ok" });
       onGuardado();
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     finally { setOcupado(""); }
@@ -202,9 +210,11 @@ function Conexion({ config, onGuardado }: { config: Config | null; onGuardado: (
       <div className="fila-acciones correo-acciones">
         <button className="boton primario" disabled={!valido || !!ocupado} onClick={guardar}>{ocupado === "guardar" ? "Guardando…" : "Guardar cuenta"}</button>
         <span className="flex" />
-        <input type="email" value={pruebaA} onChange={(e) => setPruebaA(e.target.value)} placeholder="Enviar una prueba a…" aria-label="Correo para la prueba" />
-        <button className="boton" disabled={!esCorreo(pruebaA) || !valido || !!ocupado} onClick={probar}>{ocupado === "probar" ? "Enviando…" : "Enviar prueba"}</button>
+        <button className="boton" disabled={!valido || !!ocupado} onClick={probarConexion} title="Comprueba el usuario y la contraseña sin enviar ningún correo">{ocupado === "conexion" ? "Probando…" : "Probar conexión"}</button>
+        <input type="email" value={pruebaA} onChange={(e) => setPruebaA(e.target.value)} placeholder={correo || "Enviar una prueba a…"} aria-label="Correo para la prueba" />
+        <button className="boton" disabled={!esCorreo(pruebaA || correo) || !valido || !!ocupado} onClick={probar}>{ocupado === "probar" ? "Enviando…" : "Enviar prueba"}</button>
       </div>
+      {pruebaA && !esCorreo(pruebaA) && <p className="suave pequeno">Escriba un correo completo para la prueba, por ejemplo nombre@gmail.com. Si lo deja vacío se envía a {correo || "su correo"}.</p>}
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
     </div>
   );
