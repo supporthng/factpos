@@ -15,6 +15,17 @@ export function leerAjustes(): Ajustes | null {
   }
 }
 
+/** Identificador permanente de esta PC (se crea la primera vez y no cambia). */
+export function equipoId(): string {
+  try {
+    let v = localStorage.getItem("factpos.equipo");
+    if (!v) { v = crypto.randomUUID(); localStorage.setItem("factpos.equipo", v); }
+    return v;
+  } catch {
+    return "sin-almacenamiento-" + (navigator.userAgent.length + 1000);
+  }
+}
+
 export function guardarAjustes(a: Ajustes) {
   try {
     localStorage.setItem(CLAVE, JSON.stringify(a));

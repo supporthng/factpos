@@ -82,6 +82,15 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     return { id: nuevo };
   });
 
+  /** Libera la caja de la PC a la que quedó ligada: la próxima PC que abra FactPOS la podrá recibir. */
+  app.post("/central/terminales/:id/liberar-equipo", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const r = await pool.query(
+      `DELETE FROM cajas_equipos ce USING cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
+        WHERE ce.caja_id = ca.id AND ca.id = $1 AND s.empresa_id = $2`, [id, empresaDe(req)]);
+    return { liberada: (r.rowCount ?? 0) > 0 };
+  });
+
   /** Nueva terminal de venta en una sucursal. */
   app.post("/central/sucursales/:id/terminales", async (req, rep) => {
     const { id } = z.object({ id: uuid }).parse(req.params);

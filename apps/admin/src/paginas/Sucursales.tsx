@@ -167,6 +167,7 @@ export function Sucursales() {
                   <span className="suave pequeno">{t.ultimaVenta ? `Última venta: ${new Date(t.ultimaVenta).toLocaleString("es-DO")}` : "Sin ventas"}</span>
                   <span className="suave pequeno mono" title="Identificador para configurar la terminal">{t.id.slice(0, 8)}…</span>
                   <button className="enlace" onClick={() => accion(`/central/terminales/${t.id}`, { activo: !t.activo }, "PATCH")}>{t.activo ? "Desactivar" : "Activar"}</button>
+                  {esLocal() && <button className="enlace" title="Si cambió la PC de esta caja, libérela para que la nueva PC la reciba" onClick={() => { if (window.confirm(`¿Liberar ${t.nombre}? La PC que la tiene dejará de estar ligada a ella.`)) void accion(`/central/terminales/${t.id}/liberar-equipo`, {}); }}>Liberar PC</button>}
                 </div>
               ))}
               <button className="terminal nueva" onClick={() => accion(`/central/sucursales/${s.id}/terminales`, {})}>+ Agregar terminal</button>

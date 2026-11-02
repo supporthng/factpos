@@ -2,7 +2,7 @@ import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
 import { useEffect, useRef, useState } from "react";
-import { api, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
+import { api, equipoId, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
 import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
 import { Venta, Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
@@ -58,6 +58,17 @@ function AppInterna() {
   const [saliendo, setSaliendo] = useState(false);
   const electron = (window as unknown as { factpos?: { turno?: (v: boolean) => void; alIntentarCerrar?: (f: () => void) => void; cerrar?: () => void } }).factpos;
   useEffect(() => { if (turno !== undefined) electron?.turno?.(!!turno); }, [turno]); // eslint-disable-line react-hooks/exhaustive-deps
+  // En el navegador (la app de escritorio ya abre en kiosko) la caja pasa a pantalla completa con el primer toque o tecla:
+  // los navegadores no permiten hacerlo sin una acción del usuario.
+  useEffect(() => {
+    if (electron) return;
+    const pantallaCompleta = () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+    window.addEventListener("pointerdown", pantallaCompleta, { once: true });
+    window.addEventListener("keydown", pantallaCompleta, { once: true });
+    return () => { window.removeEventListener("pointerdown", pantallaCompleta); window.removeEventListener("keydown", pantallaCompleta); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [cerrada, setCerrada] = useState(false);
   const turnoRef = useRef<Turno | null | undefined>(undefined);
   turnoRef.current = turno;
@@ -107,7 +118,11 @@ function AppInterna() {
     </Modal>
   ) : null;
   if (cerrada) return <Pantalla><h2>Caja cerrada</h2><p className="suave">Ya puede cerrar esta ventana.</p><button className="boton ancho" onClick={() => location.reload()}>Abrir de nuevo</button></Pantalla>;
-  if (!ajustes || (error && !config)) {
+  if (ajustes && error && !config) {
+    // Esta PC ya tiene su caja: un fallo de conexión nunca la desconfigura, solo se reintenta
+    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button></Pantalla>;
+  }
+  if (!ajustes) {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
@@ -211,7 +226,6 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
 
 function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; error: string; onListo: (a: Ajustes) => void }) {
   const [servidor, setServidor] = useState(inicial?.servidor ?? "");
-  const [cajas, setCajas] = useState<{ id: string; nombre: string; sucursal: string }[]>([]);
   const [msg, setMsg] = useState(error);
   const [buscando, setBuscando] = useState(false);
   const [avance, setAvance] = useState("");
@@ -222,7 +236,9 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
     setMsg("");
     setServidor(url);
     try {
-      setCajas(await api(url, "/cajas"));
+      // La primera vez, el servidor le asigna a esta PC su caja y queda definitiva: no se pregunta
+      const c = await api<{ id: string }>(url, "/cajas/asignar", { cuerpo: { equipoId: equipoId() } });
+      onListo({ servidor: url, cajaId: c.id });
     } catch (e) {
       setMsg((e as Error).message);
     }
@@ -231,7 +247,6 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
   const buscar = async () => {
     setBuscando(true);
     setEncontrados([]);
-    setCajas([]);
     setMsg("");
     const hallados: Encontrado[] = [];
     await buscarServidores(setAvance, (e) => { hallados.push(e); setEncontrados([...hallados]); });
@@ -244,24 +259,14 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
 
   return (
     <Pantalla>
-      <h2>Configurar esta caja</h2>
+      <h2>Preparando esta caja</h2>
       {buscando && <p className="buscando"><span className="girando" aria-hidden="true" />{avance}</p>}
-      {!cajas.length && encontrados.length > 1 && (
+      {encontrados.length > 1 && (
         <div className="lista-opciones">
           <p className="suave">Se encontraron varios servidores. ¿Cuál es el de esta sucursal?</p>
           {encontrados.map((e) => (
             <button key={e.url} className="opcion" onClick={() => conectar(e.url)}>
               <b>{e.empresa ?? "FactPOS"}</b> <span className="suave">{e.sucursales.join(", ")} · {e.url.replace("http://", "")}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      {cajas.length > 0 && (
-        <div className="lista-opciones">
-          <p className="suave">Servidor encontrado en <b>{servidor.replace("http://", "")}</b>. ¿Qué caja es esta?</p>
-          {cajas.map((c) => (
-            <button key={c.id} className="opcion" onClick={() => onListo({ servidor, cajaId: c.id })}>
-              <b>{c.nombre}</b> <span className="suave">{c.sucursal}</span>
             </button>
           ))}
         </div>
