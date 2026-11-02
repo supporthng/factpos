@@ -1,0 +1,59 @@
+name: Admin Android
+# Compila FactPOS-Admin.apk (administración remota) y lo publica en Releases › «admin-android».
+# Firma: secretos ANDROID_KEYSTORE_B64 y ANDROID_KEYSTORE_PASSWORD (Settings › Secrets and variables › Actions).
+# Con ellos, cada APK nuevo se instala ENCIMA del anterior. Sin ellos se firma con una llave de prueba:
+# el APK se instala igual, pero para actualizar hay que desinstalar el anterior.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["apps/admin-android/**", ".github/workflows/admin-android.yml"]
+  pull_request:
+    paths: ["apps/admin-android/**", ".github/workflows/admin-android.yml"]
+permissions:
+  contents: write
+concurrency: { group: admin-android, cancel-in-progress: false }
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.9" }
+      - name: Llave de firma
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/firma.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/firma.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Falta el secreto ANDROID_KEYSTORE_B64: el APK se firma con una llave de prueba (instalable, pero no se actualiza encima)."
+          fi
+      - name: Compilar
+        working-directory: apps/admin-android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then
+            gradle --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk ../../FactPOS-Admin.apk
+          else
+            gradle --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../../FactPOS-Admin.apk
+          fi
+      - uses: actions/upload-artifact@v4
+        with: { name: FactPOS-Admin-Android, path: FactPOS-Admin.apk }
+      - name: Publicar en Releases
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view admin-android >/dev/null 2>&1 || gh release create admin-android --title "FactPOS Admin para Android" --notes "Descargue FactPOS-Admin.apk en el celular o la tableta Android y ábralo para instalarlo (Android pide permitir «instalar apps desconocidas» una vez)." --latest=false
+          gh release upload admin-android FactPOS-Admin.apk --clobber
+          # Número de compilación vigente: lo leen las apps para actualizarse solas
+          gh release edit admin-android --notes "Descargue FactPOS-Admin.apk en el celular o la tableta Android y ábralo para instalarlo (Android pide permitir «instalar apps desconocidas» una vez). build=${{ github.run_number }}"
