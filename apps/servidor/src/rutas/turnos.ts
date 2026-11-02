@@ -18,6 +18,29 @@ export async function rutasTurnos(app: FastifyInstance) {
     return r.rows;
   });
 
+  /**
+   * Primera vez que una PC abre FactPOS: el servidor le asigna la primera caja libre y queda ligada a esa PC
+   * de forma definitiva (si vuelve a preguntar, recibe la misma caja). El administrador puede liberarla.
+   */
+  app.post("/cajas/asignar", async (req) => {
+    const { equipoId } = z.object({ equipoId: z.string().min(8).max(80) }).parse(req.body);
+    return enTransaccion(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(hashtext('cajas_equipos'))");
+      const ya = (await c.query(
+        `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas_equipos ce JOIN cajas ca ON ca.id = ce.caja_id JOIN sucursales s ON s.id = ca.sucursal_id
+          WHERE ce.equipo_id = $1 AND ca.activo`, [equipoId])).rows[0];
+      if (ya) return ya;
+      const libre = (await c.query(
+        `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
+          WHERE ca.activo AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
+          ORDER BY s.nombre, ca.numero LIMIT 1`)).rows[0];
+      if (!libre) throw new ErrorNegocio("Todas las cajas de este servidor ya están asignadas a otra PC. Pida al administrador que libere una (Sucursales y terminales) o que agregue una terminal.", 409);
+      await c.query("DELETE FROM cajas_equipos WHERE equipo_id = $1", [equipoId]);
+      await c.query("INSERT INTO cajas_equipos (caja_id, equipo_id) VALUES ($1,$2)", [libre.id, equipoId]);
+      return libre;
+    });
+  });
+
   /** Configuración que la terminal necesita al arrancar (incluye qué módulos están activos). */
   app.get("/cajas/:cajaId/config", async (req) => {
     const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
