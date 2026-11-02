@@ -164,13 +164,14 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     filas: z.array(z.object({
       fila: z.number().int(), sku: z.string().trim().max(60).optional(), codigo: z.string().trim().max(30).optional(),
       cantidad: z.number().finite().min(-1e9).max(1e9), costo: z.number().finite().min(0).max(1e9).optional(),
+      precio: z.number().finite().min(0).max(1e9).optional(),
     })).min(1).max(5000),
   });
   const accesoSucursal = (req: { headers: Record<string, unknown> }, sucursalId: string) => {
     const p = sucursalesDe(req);
     if (p && !p.includes(sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
   };
-  interface Resuelta { fila: number; productoId?: string; sku?: string; nombre?: string; actual: number; nuevo: number; diferencia: number; costo?: number; error?: string }
+  interface Resuelta { fila: number; productoId?: string; sku?: string; nombre?: string; actual: number; nuevo: number; diferencia: number; costo?: number; precio?: number; precioActual?: number; presentacionId?: string; error?: string }
   /** Cada fila se busca por SKU o código de barras; la diferencia contra la existencia actual es lo que se ajusta. */
   const resolverExcel = async (c: Pick<PoolClient, "query">, empresaId: string, almacenId: string, b: z.infer<typeof cuerpoExcel>): Promise<Resuelta[]> => {
     const vistos = new Set<string>();
@@ -178,9 +179,13 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     for (const f of b.filas) {
       const clave = (f.sku || f.codigo || "").trim();
       if (!clave) { salida.push({ fila: f.fila, actual: 0, nuevo: 0, diferencia: 0, error: "Sin SKU ni código de barras" }); continue; }
-      const r = await c.query<{ id: string; sku: string; nombre: string; actual: string }>(
-        `SELECT p.id, p.sku, p.nombre, COALESCE(e.cantidad, 0)::text AS actual
+      const r = await c.query<{ id: string; sku: string; nombre: string; actual: string; presentacion_id: string | null; precio_actual: string | null }>(
+        `SELECT p.id, p.sku, p.nombre, COALESCE(e.cantidad, 0)::text AS actual,
+                pp.id AS presentacion_id,
+                (SELECT pr1.precio::text FROM precios pr1 JOIN listas_precio l1 ON l1.id = pr1.lista_precio_id AND l1.nivel = 1
+                  WHERE pr1.presentacion_id = pp.id AND pr1.sucursal_id IS NULL AND pr1.activo LIMIT 1) AS precio_actual
            FROM productos p LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = $2
+          LEFT JOIN LATERAL (SELECT id FROM presentaciones WHERE producto_id = p.id ORDER BY es_principal DESC, factor LIMIT 1) pp ON true
           WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock AND (
                 ($3 <> '' AND lower(p.sku) = lower($3))
              OR ($4 <> '' AND p.id IN (SELECT pr.producto_id FROM codigos_barra cb JOIN presentaciones pr ON pr.id = cb.presentacion_id WHERE cb.empresa_id = $1 AND cb.codigo = $4)))
@@ -194,7 +199,8 @@ export async function rutasCentralInventario(app: FastifyInstance) {
       const actual = Number(p.actual);
       const nuevo = b.modo === "FIJAR" ? f.cantidad : actual + f.cantidad;
       if (nuevo < 0) { salida.push({ fila: f.fila, productoId: p.id, sku: p.sku, nombre: p.nombre, actual, nuevo, diferencia: 0, error: "La existencia no puede quedar negativa" }); continue; }
-      salida.push({ fila: f.fila, productoId: p.id, sku: p.sku, nombre: p.nombre, actual, nuevo, diferencia: Math.round((nuevo - actual) * 1000) / 1000, costo: f.costo });
+      salida.push({ fila: f.fila, productoId: p.id, sku: p.sku, nombre: p.nombre, actual, nuevo, diferencia: Math.round((nuevo - actual) * 1000) / 1000, costo: f.costo,
+        presentacionId: p.presentacion_id ?? undefined, precioActual: p.precio_actual == null ? undefined : Number(p.precio_actual), precio: f.precio && f.precio > 0 ? f.precio : undefined });
     }
     return salida;
   };
@@ -212,16 +218,36 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     const usuarioId = uuid.parse(req.headers["x-usuario-id"]);
     const r = await enTransaccion(async (c) => {
       const almacenId = await almacenDe(c, b.sucursalId, b.almacenId);
-      const filas = (await resolverExcel(c, empresaDe(req), almacenId, b)).filter((f) => !f.error && f.productoId && f.diferencia !== 0);
-      if (!filas.length) throw new ErrorNegocio("No hay diferencias que aplicar: la existencia ya coincide con el archivo.");
-      const ajuste = await crearAjuste(c, {
+      const todas = (await resolverExcel(c, empresaDe(req), almacenId, b)).filter((f) => !f.error && f.productoId);
+      const cambiaPrecio = (f: Resuelta) => !!f.precio && !!f.presentacionId && f.precio !== f.precioActual;
+      const filas = todas.filter((f) => f.diferencia !== 0);
+      const preciosNuevos = todas.filter(cambiaPrecio);
+      if (!filas.length && !preciosNuevos.length) throw new ErrorNegocio("No hay diferencias que aplicar: la existencia y los precios ya coinciden con el archivo.");
+      // Precio de venta (nivel 1): queda en el historial de precios
+      if (preciosNuevos.length) {
+        const lista = (await c.query<{ id: string }>("SELECT id FROM listas_precio WHERE empresa_id = $1 AND nivel = 1", [empresaDe(req)])).rows[0];
+        if (!lista) throw new ErrorNegocio("No hay lista de Precio 1 configurada");
+        for (const f of preciosNuevos) {
+          await c.query(
+            `INSERT INTO precios (id, lista_precio_id, presentacion_id, precio, porcentaje, base) VALUES ($1,$2,$3,$4,NULL,'COSTO')
+             ON CONFLICT (lista_precio_id, presentacion_id, COALESCE(sucursal_id, '00000000-0000-0000-0000-000000000000'))
+             DO UPDATE SET precio = EXCLUDED.precio, porcentaje = NULL, base = 'COSTO', activo = true`,
+            [uuidv7(), lista.id, f.presentacionId, f.precio!.toFixed(2)],
+          );
+          await c.query(
+            `INSERT INTO historial_precios (id, presentacion_id, lista_precio_id, precio_anterior, precio_nuevo, usuario_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+            [uuidv7(), f.presentacionId, lista.id, f.precioActual ?? null, f.precio!.toFixed(2), usuarioId],
+          );
+        }
+      }
+      const ajuste = filas.length ? await crearAjuste(c, {
         sucursalId: b.sucursalId, almacenId, usuarioId, motivo: `Actualización por Excel: ${b.motivo}`, origen: "MANUAL",
         lineas: filas.map((f) => ({
           productoId: f.productoId!, tipo: f.diferencia > 0 ? "AJUSTE_ENTRADA" as const : "AJUSTE_SALIDA" as const,
           cantidad: new Decimal(f.diferencia), costoUnitario: f.diferencia > 0 && f.costo ? f.costo.toFixed(4) : undefined, nota: `Excel fila ${f.fila}`,
         })),
-      });
-      return { ...ajuste, productos: filas.length };
+      }) : { numero: "—" };
+      return { ...ajuste, productos: filas.length, precios: preciosNuevos.length };
     });
     rep.code(201);
     return r;
