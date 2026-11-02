@@ -29,13 +29,14 @@ export function ComprobantesNcf() {
 
 /** Facturación electrónica: estado de envíos a la DGII, secuencias e-NCF y configuración. */
 export function Fiscal() {
-  const [vista, setVista] = useState<"verificacion" | "envios" | "secuencias" | "ncf" | "certificado" | "config">("verificacion");
+  const [vista, setVista] = useState<"verificacion" | "envios" | "secuencias" | "ncf" | "certificado" | "config" | "recibidos">("verificacion");
   return (
     <>
       <Encabezado titulo="Gestión fiscal" descripcion="Comprobantes e-CF, rangos NCF serie B y certificados digitales." />
       <div className="pestanas">
         <button className={vista === "verificacion" ? "activa" : ""} onClick={() => setVista("verificacion")}>¿Puedo facturar?</button>
         <button className={vista === "envios" ? "activa" : ""} onClick={() => setVista("envios")}>Envíos a la DGII</button>
+        <button className={vista === "recibidos" ? "activa" : ""} onClick={() => setVista("recibidos")}>Recibidos</button>
         <button className={vista === "secuencias" ? "activa" : ""} onClick={() => setVista("secuencias")}>Secuencias e-NCF</button>
         <button className={vista === "ncf" ? "activa" : ""} onClick={() => setVista("ncf")}>Rangos NCF (serie B)</button>
         <button className={vista === "certificado" ? "activa" : ""} onClick={() => setVista("certificado")}>Certificado digital</button>
@@ -43,6 +44,7 @@ export function Fiscal() {
       </div>
       {vista === "verificacion" && <Verificacion irA={setVista} />}
       {vista === "envios" && <Envios />}
+      {vista === "recibidos" && <Recibidos />}
       {vista === "secuencias" && <Secuencias />}
       {vista === "ncf" && <RangosNCF />}
       {vista === "certificado" && <CertificadoDigital />}
@@ -149,6 +151,36 @@ function Envios() {
           },
         ]}
       />
+    </>
+  );
+}
+
+/** e-CF que nos enviaron otros contribuyentes: se aceptan o rechazan comercialmente (ACECF). */
+function Recibidos() {
+  const d = useDatos<any[]>("/central/fiscal/recibidos");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const decidir = async (f: any, aceptado: boolean) => {
+    let motivo: string | undefined;
+    if (!aceptado) { motivo = window.prompt("Motivo del rechazo comercial") ?? ""; if (!motivo.trim()) return; }
+    try {
+      const r = await api(`/central/fiscal/recibidos/${f.id}/aprobacion`, { cuerpo: { aceptado, motivo } });
+      setMsg({ t: r.resultado === "RECHAZADA" ? `La DGII no aceptó la aprobación: ${r.respuesta}` : r.resultado === "SIMULADA" ? "Registrada en modo simulado (no se envió a la DGII)." : "Aprobación comercial enviada a la DGII.", tipo: r.resultado === "RECHAZADA" ? "error" : "ok" });
+      d.recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  return (
+    <>
+      <p className="suave pequeno">Comprobantes electrónicos que otros contribuyentes le enviaron. Aquí informa a la DGII si los acepta o los rechaza comercialmente.</p>
+      {msg && <Aviso tipo={msg.tipo} texto={msg.t} />}
+      <Tabla filas={d.datos ?? []} clave={(f) => f.id} vacio="No ha recibido comprobantes electrónicos"
+        columnas={[
+          { titulo: "Recibido", valor: (f) => new Date(f.recibido_en).toLocaleString("es-DO") },
+          { titulo: "RNC emisor", valor: (f) => f.rnc_emisor },
+          { titulo: "e-NCF", valor: (f) => <b className="mono">{f.encf}</b> },
+          { titulo: "Monto", der: true, valor: (f) => f.monto_total ? num(f.monto_total) : "—" },
+          { titulo: "Aprobación", valor: (f) => f.aprobacion_resultado === "ENVIADA" || f.aprobacion_resultado === "SIMULADA" ? (f.aprobacion_estado === 1 ? "Aceptado" : "Rechazado") : f.aprobacion_resultado === "RECHAZADA" ? "La DGII no la aceptó" : "Pendiente" },
+          { titulo: "", valor: (f) => f.aprobacion_resultado === "ENVIADA" ? null : <><button className="enlace" onClick={() => decidir(f, true)}>Aceptar</button>{" · "}<button className="enlace" onClick={() => decidir(f, false)}>Rechazar</button></> },
+        ]} />
     </>
   );
 }

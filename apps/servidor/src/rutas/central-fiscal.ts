@@ -7,7 +7,7 @@ import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.
 import { usarCertificado, certificado } from "../fiscal/firma.js";
 import { dgii } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
-import { construirAnecf } from "../fiscal/servicios-dgii.js";
+import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
 import { firmarXml } from "../fiscal/firma.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
 
@@ -94,6 +94,41 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     return { id };
   });
 
+
+
+  /** e-CF que otros contribuyentes nos enviaron, con el estado de nuestra aprobación comercial. */
+  app.get("/central/fiscal/recibidos", async (req) => (await pool.query(
+    `SELECT id, rnc_emisor, encf, monto_total::text, fecha_emision, recibido_en, acuse_estado, aprobacion_estado, aprobacion_motivo, aprobacion_resultado, aprobacion_respuesta, aprobacion_en
+       FROM ecf_recibidos WHERE empresa_id = $1 ORDER BY recibido_en DESC LIMIT 200`, [empresaDe(req)])).rows);
+
+  /** Acepta o rechaza comercialmente un e-CF recibido: arma el ACECF, lo firma y lo envía a la DGII. */
+  app.post("/central/fiscal/recibidos/:id/aprobacion", async (req) => {
+    const e = empresaDe(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ aceptado: z.boolean(), motivo: z.string().trim().max(250).optional() }).parse(req.body);
+    if (!b.aceptado && !b.motivo) throw new ErrorNegocio("Para rechazar indique el motivo");
+    const f = (await pool.query(
+      `SELECT r.*, e.rnc AS rnc_comprador, cf.transmisor, cf.ambiente FROM ecf_recibidos r JOIN empresas e ON e.id = r.empresa_id
+         LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE r.id = $1 AND r.empresa_id = $2`, [id, e])).rows[0];
+    if (!f) throw new ErrorNegocio("Comprobante recibido no encontrado", 404);
+    if (f.aprobacion_resultado === "ENVIADA") throw new ErrorNegocio("Este comprobante ya tiene su aprobación comercial enviada.");
+    const xml = construirAcecf({
+      rncEmisor: f.rnc_emisor, encf: f.encf, fechaEmision: f.fecha_emision, montoTotal: Number(f.monto_total).toFixed(2),
+      rncComprador: f.rnc_comprador, aceptado: b.aceptado, motivoRechazo: b.motivo,
+    });
+    const real = f.transmisor === "DGII" && f.ambiente && f.ambiente !== "SIMULADO";
+    let resultado: "ENVIADA" | "RECHAZADA" | "SIMULADA" = "SIMULADA";
+    let respuesta = "Modo simulado: no se envió a la DGII.";
+    if (real) {
+      const r = await dgii(f.ambiente).aprobarComercial!(firmarXml(xml).xmlFirmado, f.rnc_comprador);
+      resultado = r.aceptada ? "ENVIADA" : "RECHAZADA";
+      respuesta = r.respuesta;
+    }
+    await pool.query(
+      `UPDATE ecf_recibidos SET aprobacion_estado = $2, aprobacion_motivo = $3, aprobacion_resultado = $4, aprobacion_respuesta = $5, aprobacion_en = now() WHERE id = $1`,
+      [id, b.aceptado ? 1 : 2, b.motivo ?? null, resultado, respuesta]);
+    return { resultado, respuesta };
+  });
 
   /** Números asignados y sin usar (desde el siguiente hasta el final de cada bloque): lo que se puede anular. */
   app.get("/central/fiscal/anulaciones", async (req) => {
