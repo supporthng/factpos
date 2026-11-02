@@ -95,9 +95,10 @@ function totalesPorTasa(d: DatosEcf) {
   };
 }
 
-function bloqueTotales(d: DatosEcf) {
+function bloqueTotales(d: DatosEcf, resumen = false) {
   const x = totalesPorTasa(d);
-  return `<Totales>${Object.entries(x).map(([k, v]) => t(k, v)).join("")}</Totales>`;
+  // El resumen (RFCE) no lleva las tasas ITBIS1/ITBIS2 (el esquema no las admite)
+  return `<Totales>${Object.entries(x).filter(([k]) => !(resumen && (k === "ITBIS1" || k === "ITBIS2"))).map(([k, v]) => t(k, v)).join("")}</Totales>`;
 }
 
 function bloquePagos(d: DatosEcf) {
@@ -144,9 +145,10 @@ export function construirEcf(d: DatosEcf, fechaFirma: Date): string {
     t("FechaEmision", fechaDGII(d.fechaEmision)),
   ].join("");
 
+  // El esquema exige el bloque Comprador en el E31, E32, E41, E44... (aunque vaya vacío en consumo final)
   const comprador = d.comprador?.rnc || d.comprador?.nombre
     ? `<Comprador>${t("RNCComprador", d.comprador.rnc)}${t("RazonSocialComprador", d.comprador.nombre)}</Comprador>`
-    : "";
+    : tipo === "33" ? "" : "<Comprador></Comprador>";
 
   const items = d.lineas.map((l, i) => [
     "<Item>",
@@ -176,12 +178,13 @@ export function construirRfce(d: DatosEcf, codigoSeguridad: string): string {
     d.condicion === "CONTADO" ? bloquePagos(d) : "",
   ].join("");
   const emisor = [t("RNCEmisor", d.emisor.rnc), t("RazonSocialEmisor", d.emisor.razonSocial), t("FechaEmision", fechaDGII(d.fechaEmision))].join("");
+  // En el resumen (RFCE) el bloque Comprador es obligatorio, aunque vaya vacío
   const comprador = d.comprador?.rnc
     ? `<Comprador>${t("RNCComprador", d.comprador.rnc)}${t("RazonSocialComprador", d.comprador.nombre)}</Comprador>`
-    : "";
+    : "<Comprador></Comprador>";
   return `<?xml version="1.0" encoding="utf-8"?>` +
     `<RFCE><Encabezado>${t("Version", "1.0")}<IdDoc>${idDoc}</IdDoc><Emisor>${emisor}</Emisor>${comprador}` +
-    `${bloqueTotales(d)}${t("CodigoSeguridadeCF", codigoSeguridad)}</Encabezado></RFCE>`;
+    `${bloqueTotales(d, true)}${t("CodigoSeguridadeCF", codigoSeguridad)}</Encabezado></RFCE>`;
 }
 
 export const LIMITE_RFCE = new Decimal("250000");
