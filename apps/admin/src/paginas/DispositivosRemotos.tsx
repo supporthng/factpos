@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { api } from "../api";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
+import { api, CONFIG } from "../api";
 import { Aviso, Encabezado, Tabla, useDatos } from "../ui";
 
 /** Equipos (apps FactPOS Admin o navegadores) que piden entrar por internet: el administrador los autoriza o los niega. */
@@ -9,6 +10,34 @@ interface Dispositivo {
 }
 const fecha = (v: string | null) => (v ? new Date(v).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" }) : "—");
 const ETIQUETA: Record<Dispositivo["estado"], string> = { PENDIENTE: "Pendiente", AUTORIZADO: "Autorizado", DENEGADO: "Denegado", REVOCADO: "Revocado" };
+
+/** Enlace y QR de instalación: descarga la app y la abre ya configurada con esta empresa. */
+function EnlaceInstalacion() {
+  const url = CONFIG.modo === "cliente" && CONFIG.slug ? `${location.origin}/${CONFIG.slug}/#instalar` : "";
+  const [img, setImg] = useState("");
+  const [copiado, setCopiado] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    if (url) QRCode.toDataURL(url, { margin: 2, width: 360, errorCorrectionLevel: "M" }).then((d) => { if (vivo) setImg(d); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [url]);
+  if (!url) return null;
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Instalar la app en un celular o PC</h3>
+      <p className="suave pequeno">Envía este enlace (o muestra el QR) a quien vaya a usar la app. Descarga la app y la deja conectada a tu empresa, sin escribir nada.</p>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+        {img && <img src={img} alt="QR de instalación" width={150} height={150} />}
+        <div>
+          <a className="mono" href={url} target="_blank" rel="noreferrer">{url}</a>
+          <div style={{ marginTop: 8 }}>
+            <button className="boton" onClick={async () => { try { await navigator.clipboard.writeText(url); setCopiado(true); setTimeout(() => setCopiado(false), 2000); } catch { /* sin portapapeles */ } }}>{copiado ? "Copiado" : "Copiar enlace"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function DispositivosRemotos() {
   const { datos, error, recargar } = useDatos<Dispositivo[]>("/central/dispositivos");
@@ -48,6 +77,7 @@ export function DispositivosRemotos() {
           Instale la app, ábrala una vez para que pida acceso, y autorícela en esta lista. Desactivado: basta el usuario y la clave.
         </p>
       </div>
+      <EnlaceInstalacion />
       {pendientes > 0 && <Aviso tipo="info" texto={`Hay ${pendientes} solicitud${pendientes === 1 ? "" : "es"} esperando su respuesta.`} />}
       <div className="panel">
         <Tabla

@@ -32,5 +32,10 @@ Source: "dist\FactPOSAdmin\*"; DestDir: "{app}"; Flags: ignoreversion recursesub
 [Icons]
 Name: "{group}\FactPOS Admin"; Filename: "{app}\{#MyAppExeName}"
 Name: "{userdesktop}\FactPOS Admin"; Filename: "{app}\{#MyAppExeName}"; Tasks: escritorio
+[Registry]
+; Enlace «Abrir y conectar» de la página de instalación (factpos-admin://conectar/<empresa>)
+Root: HKCU; Subkey: "Software\Classes\factpos-admin"; ValueType: string; ValueData: "URL:FactPOS Admin"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\factpos-admin"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\factpos-admin\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir FactPOS Admin ahora"; Flags: postinstall nowait skipifsilent

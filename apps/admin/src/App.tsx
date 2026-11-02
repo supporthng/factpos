@@ -1,6 +1,7 @@
 import { Seguridad } from "./paginas/Seguridad";
 import { DispositivosRemotos } from "./paginas/DispositivosRemotos";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
+import { PaginaInstalar } from "./PaginaInstalar";
 import { Pedidos } from "./paginas/Pedidos";
 import { Facturas } from "./paginas/Facturas";
 import { CertificacionDgii } from "./paginas/CertificacionDgii";
@@ -617,6 +618,7 @@ export function App() {
     window.addEventListener("factpos:dispositivo", f);
     return () => window.removeEventListener("factpos:dispositivo", f);
   }, []);
+  if (CONFIG.modo === "cliente" && location.hash === "#instalar") return <PaginaInstalar />;
   if (dispositivo) return <SolicitarDispositivo servidor={servidor()} estado={dispositivo} />;
   return (
     <>

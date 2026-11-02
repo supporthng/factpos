@@ -865,6 +865,9 @@ export async function urlDescarga(a: { url: string; descarga: string }) {
 const APPS_VERIFICADOR = {
   android: { tag: "verificador-android", nombre: /^FactPOS-Verificador\.apk$/i },
   windows: { tag: "verificador-windows", nombre: /^Instalador_Verificador_FactPOS\.exe$/i },
+  // Apps de administración remota (FactPOS Admin)
+  "admin-android": { tag: "admin-android", nombre: /^FactPOS-Admin\.apk$/i },
+  "admin-windows": { tag: "admin-windows", nombre: /^Instalador_Admin_FactPOS\.exe$/i },
 } as const;
 export async function urlDescargaVerificador(so: string) {
   const app = APPS_VERIFICADOR[so as keyof typeof APPS_VERIFICADOR];

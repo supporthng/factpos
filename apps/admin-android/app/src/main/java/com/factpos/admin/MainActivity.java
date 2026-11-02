@@ -98,6 +98,21 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Descargando…", Toast.LENGTH_SHORT).show();
             } catch (Exception e) { Toast.makeText(this, "No se pudo descargar", Toast.LENGTH_LONG).show(); }
         });
+        recibirEnlace(getIntent());
+        abrir();
+    }
+
+    /** Enlace factpos-admin://conectar/<empresa>: deja la empresa configurada sin escribirla. */
+    private void recibirEnlace(Intent i) {
+        Uri u = i == null ? null : i.getData();
+        if (u == null || !"factpos-admin".equals(u.getScheme())) return;
+        String e = u.getLastPathSegment();
+        if (e != null && e.matches("[a-z0-9.-]{2,60}")) prefs.edit().putString("empresa", e).apply();
+    }
+
+    @Override protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        recibirEnlace(i);
         abrir();
     }
 
