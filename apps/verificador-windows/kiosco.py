@@ -314,6 +314,17 @@ def main():
         except Exception:
             pass
 
+    def al_cargar():
+        # Esquina ✕ / ⓘ (cerrar y opciones con la clave) en la pantalla del verificador, no en la de configuración
+        try:
+            url = ventana.get_current_url() or ""
+            if url.startswith("http"):
+                with open(recurso("boton-app.js"), encoding="utf-8") as f:
+                    ventana.evaluate_js(f.read())
+        except Exception:
+            pass
+
+    ventana.events.loaded += al_cargar
     ventana.events.closing += al_cerrar
     ventana.events.minimized += al_minimizar
     teclado.poner()
