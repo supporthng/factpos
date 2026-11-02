@@ -105,8 +105,7 @@ export function certificado(): Certificado {
 }
 
 /** Firma el documento completo y devuelve el XML firmado y el SignatureValue. */
-export function firmarXml(xml: string): { xmlFirmado: string; signatureValue: string } {
-  const c = certificado();
+export function firmarXml(xml: string, c: Certificado = certificado()): { xmlFirmado: string; signatureValue: string } {
   const sig = new SignedXml({
     privateKey: c.llavePem,
     publicCert: c.certPem,
