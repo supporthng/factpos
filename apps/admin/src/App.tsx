@@ -15,7 +15,7 @@ import { Actualizaciones, AvisoActualizacion } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, useCatalogo, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
-import { InicioCifras, EstadoSistema } from "./paginas/InicioCifras";
+import { EstadoSistema } from "./paginas/InicioCifras";
 import { Inventario } from "./paginas/Inventario";
 import { Productos } from "./paginas/Productos";
 import { Compras } from "./paginas/Compras";
@@ -332,7 +332,6 @@ function AppInterna() {
                   <h1>{saludo()}, {sesion.nombre.split(" ")[0]}</h1>
                   <p className="suave">¿Qué desea hacer hoy? Elija una función.</p>
                 </div>
-                {!enPortal && <InicioCifras irA={setSeccion} />}
                 <h2 className="titulo-seccion">Módulos</h2>
                 <div className="cuadricula cuadricula-grupos">
                   {grupos.map((g) => {
