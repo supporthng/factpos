@@ -31,7 +31,7 @@ import { Traspasos } from "./paginas/Traspasos";
 import { Delivery } from "./paginas/Delivery";
 import { Reportes } from "./paginas/Reportes";
 import { Kardex } from "./paginas/Kardex";
-import { Fiscal } from "./paginas/Fiscal";
+import { ComprobantesNcf, Fiscal } from "./paginas/Fiscal";
 import { Sucursales } from "./paginas/Sucursales";
 import { Marca } from "./paginas/Marca";
 import { PantallaCliente } from "./paginas/PantallaCliente";
@@ -66,6 +66,7 @@ const SECCIONES = [
   { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
   { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, i: "fiscal", p: ["admin.fiscal"] },
+  { id: "ncf", titulo: "Comprobantes (NCF)", grupo: "Fiscal", C: ComprobantesNcf, i: "fiscal", p: ["admin.fiscal"] },
   { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, i: "reportes", p: ["admin.reportes"] },
   { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Configuración", C: Sucursales, i: "sucursales", p: ["admin.config"] },
@@ -138,7 +139,8 @@ const DESCRIPCION: Record<string, string> = {
   cxc: "Clientes a crédito, abonos y estados de cuenta",
   cierres: "Cuadre de cada turno, revisión de diferencias y depósitos",
   caja: "Retiros, gastos y movimientos de caja",
-  fiscal: "e-CF, certificado digital y secuencias de NCF",
+  fiscal: "e-CF, envíos a la DGII y certificado digital",
+  ncf: "Rangos NCF (serie B) y secuencias e-NCF por sucursal",
   padron: "Consulta de RNC y cédulas de la DGII",
   reportes: "Ventas, cierres, inventario, impuestos y más",
   sucursales: "Tiendas, cajas y servidores de cada local",
