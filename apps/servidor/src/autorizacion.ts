@@ -47,6 +47,13 @@ export async function autorizarConPin(c: Pick<PoolClient, "query">, empresaId: s
   return { token: `${cuerpo}.${firmar(cuerpo)}`, supervisor: u.nombre, expira: new Date(a.expira).toISOString() };
 }
 
+/** Autorización firmada para un usuario ya autenticado con el permiso (p. ej. el administrador que corrige una factura). */
+export function autorizacionDirecta(supervisorId: string, supervisor: string, permiso: Permiso, cajaId: string): string {
+  const a: Autorizacion = { supervisorId, supervisor, permiso, cajaId, expira: Date.now() + VIGENCIA_MS };
+  const cuerpo = b64(JSON.stringify(a));
+  return `${cuerpo}.${firmar(cuerpo)}`;
+}
+
 export function verificarAutorizacion(token: string | undefined, permiso: Permiso, cajaId: string): Autorizacion {
   if (!token) throw new ErrorNegocio("Esta acción requiere la aprobación de un supervisor", 403);
   const [cuerpo, firma] = token.split(".");

@@ -5,6 +5,8 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, datosTicket } from "./facturas.js";
+import { registrarVenta } from "./ventas.js";
+import { autorizacionDirecta } from "../autorizacion.js";
 
 /**
  * Facturas (administración): buscar cualquier factura, reimprimirla, modificarla o anularla.
@@ -122,6 +124,70 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       );
     });
     return datosTicket(pool, id);
+  });
+
+  /** Productos que se pueden agregar al corregir una factura. */
+  app.get("/central/facturas/buscar-producto", async (req) => {
+    const { q } = z.object({ q: z.string().trim().min(2).max(60) }).parse(req.query);
+    return (await pool.query(
+      `SELECT pr.id AS "presentacionId", TRIM(p.nombre || ' ' || pr.nombre) AS nombre,
+              (SELECT x.precio FROM precios x JOIN listas_precio lp ON lp.id = x.lista_precio_id AND lp.es_predeterminada
+                WHERE x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL LIMIT 1) AS precio
+         FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id
+        WHERE p.empresa_id = $1 AND p.activo AND (p.nombre ILIKE '%' || $2 || '%' OR p.sku ILIKE $2 || '%'
+              OR EXISTS (SELECT 1 FROM codigos_barra cb WHERE cb.presentacion_id = pr.id AND cb.codigo = $2))
+        ORDER BY p.nombre LIMIT 15`, [empresaDe(req), q])).rows;
+  });
+
+  /**
+   * Corregir una factura sin comprobante (líneas, cantidades, descuentos, cliente, nota).
+   * Por el diseño inmutable del sistema se hace así, todo en una sola transacción: la factura original queda anulada
+   * («Corregida») con su devolución al inventario y la nueva sale con los cambios y un número nuevo.
+   * Solo mientras el turno de la factura siga abierto (el cuadre de un turno cerrado no se toca).
+   */
+  app.post("/central/facturas/:id/corregir", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({
+      motivo: z.string().trim().min(10, "Explique el motivo (mínimo 10 caracteres)").max(200),
+      items: z.array(z.object({
+        presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+      })).min(1, "La factura necesita al menos un producto").max(200),
+      clienteId: uuid.nullable().optional(),
+      notas: z.string().trim().max(300).nullable().optional(),
+    }).parse(req.body);
+    if (!tienePermiso(permisos(req), "venta.anular")) throw new ErrorNegocio("Corregir una factura requiere permiso de supervisor", 403);
+    if (config.modo !== "sucursal") throw new ErrorNegocio("La corrección se hace en la administración de la sucursal (su servidor): allí están la caja y el inventario de esa factura.", 409);
+    const v = await cargar(req, id);
+    if (v.tipo_documento !== "SIN") throw new ErrorNegocio("Solo se corrigen las facturas sin comprobante. Las fiscales se anulan y se emite una nueva.", 409);
+    const usuarioId = usuarioDe(req);
+    return enTransaccion(async (c) => {
+      const o = (await c.query(
+        `SELECT v.*, t.estado AS turno_estado, u.nombre AS supervisor FROM ventas v JOIN turnos t ON t.id = v.turno_id, usuarios u
+          WHERE v.id = $1 AND u.id = $2 FOR UPDATE OF v`, [id, usuarioId])).rows[0];
+      if (o.turno_estado !== "ABIERTO") throw new ErrorNegocio("El turno de esta factura ya está cerrado: su cuadre no se modifica. Anule la factura y emita una nueva en un turno abierto.", 409);
+      const pagos = (await c.query("SELECT forma_pago, monto, referencia FROM venta_pagos WHERE venta_id = $1", [id])).rows;
+      if (pagos.length !== 1) throw new ErrorNegocio("Esta factura tiene varios pagos: anúlela y emita una nueva con las formas de pago correctas.", 409);
+      const clienteId = b.clienteId === undefined ? o.cliente_id : b.clienteId;
+      const hayDescuento = b.items.some((i) => Number(i.descuentoManual ?? 0) > 0);
+
+      await anularVenta(c, { cajaId: o.caja_id, ventaId: id, usuarioId, supervisorId: usuarioId, motivo: `Corregida: ${b.motivo}`, corregir: true });
+
+      const nueva = await registrarVenta(c, o.caja_id, {
+        usuarioId: o.usuario_id, tipoDocumento: "SIN", clienteId: clienteId ?? undefined,
+        notas: (b.notas === undefined ? o.notas : b.notas) ?? undefined,
+        items: b.items.map((i) => ({ presentacionId: i.presentacionId, cantidad: i.cantidad, descuentoManual: i.descuentoManual })),
+        ...(hayDescuento ? { autorizacionDescuento: autorizacionDirecta(usuarioId, o.supervisor, "venta.descuento", o.caja_id), motivoDescuento: b.motivo } : {}),
+        // El mismo medio de pago, por el nuevo total
+        pagos: [{ formaPago: pagos[0].forma_pago, monto: "0", referencia: pagos[0].referencia ?? undefined }],
+      } as never, { pagarTodoCon: pagos[0].forma_pago });
+
+      await c.query(
+        `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+         VALUES ($1,$2,$3,$3,'venta.corregir.nueva','venta',$4,$5)`,
+        [uuidv7(), v.sucursal_id, usuarioId, id, JSON.stringify({ motivo: b.motivo, reemplazadaPor: (nueva as { id?: string }).id ?? null })],
+      );
+      return nueva;
+    });
   });
 
   /** Anular desde la administración de la sucursal (donde están las cajas y el inventario). */
