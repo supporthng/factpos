@@ -8,8 +8,9 @@ const BASE_ANCHO = 1366;
 const BASE_ALTO = 768;
 const CLAVE = "factpos.tamano";
 
-export type Tamano = "normal" | "grande" | "muy-grande";
+export type Tamano = "pequeno" | "normal" | "grande" | "muy-grande";
 export const TAMANOS: Record<Tamano, { nombre: string; factor: number }> = {
+  pequeno: { nombre: "Pequeño", factor: 0.85 },
   normal: { nombre: "Normal", factor: 1 },
   grande: { nombre: "Grande", factor: 1.12 },
   "muy-grande": { nombre: "Muy grande", factor: 1.25 },
@@ -24,8 +25,10 @@ export function guardarTamano(t: Tamano) {
 }
 
 export function aplicarEscala() {
-  const auto = Math.min(window.innerWidth / BASE_ANCHO, window.innerHeight / BASE_ALTO);
-  const escala = Math.max(0.75, Math.min(2, auto * TAMANOS[leerTamano()].factor));
+  const bruto = Math.min(window.innerWidth / BASE_ANCHO, window.innerHeight / BASE_ALTO);
+  // En pantallas grandes (Full HD, 2K) crece solo un poco: antes llenaba todo y se veía enorme
+  const auto = bruto > 1 ? 1 + (bruto - 1) * 0.3 : bruto;
+  const escala = Math.max(0.6, Math.min(2, auto * TAMANOS[leerTamano()].factor));
   document.documentElement.style.setProperty("--escala", escala.toFixed(3));
 }
 
