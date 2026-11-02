@@ -104,6 +104,18 @@ async function tokenLicencia() {
   return (await pool.query<{ token: string | null }>("SELECT token FROM licencia WHERE id = 1").catch(() => ({ rows: [] as { token: string | null }[] }))).rows[0]?.token ?? null;
 }
 
+/** Dirección temporal del instalador completo de FactPOS (para la pestaña Instaladores). Pide lo mismo que una actualización: licencia o prueba permitida. */
+export async function urlInstaladorPrincipal() {
+  const token = await tokenLicencia();
+  const pruebaOk = !token && !!(await politicaPortal())?.pruebaActualiza;
+  if (!token && !pruebaOk) throw new ErrorNegocio("Active la licencia para descargar el instalador", 402);
+  const cabecera: Record<string, string> = token ? { "x-licencia": token } : { "x-instalacion": (await filaLicencia()).instalacion_id };
+  const r = await fetch(`${PORTAL_URL()}/licencias/descargar?tipo=setup`, { headers: cabecera, signal: AbortSignal.timeout(20_000) });
+  const d = (await r.json().catch(() => ({}))) as { url?: string; version?: string; nombre?: string; error?: string };
+  if (!r.ok || !d.url) throw new ErrorNegocio(d.error ?? `El portal respondió ${r.status}`, r.status === 404 ? 404 : 502);
+  return { url: d.url, version: d.version ?? null, nombre: d.nombre ?? null };
+}
+
 /** Descarga, descomprime y deja corriendo la actualización (Windows). */
 export async function instalarVersion(version: string, log: (m: string) => void = () => {}) {
   if (process.platform !== "win32") throw new ErrorNegocio("La instalación automática es para servidores Windows", 409);
@@ -253,6 +265,7 @@ export async function rutasActualizacion(app: FastifyInstance) {
       modo: config.modo,
     };
   });
+  app.post("/central/instaladores/principal", async () => urlInstaladorPrincipal());
   app.post("/central/actualizacion/instalar", async (req) => {
     const d = await revisarVersion(true);
     if (!d || compararVersion(d.version, versionActual()) <= 0) throw new ErrorNegocio("Ya tiene la versión más reciente", 409);
