@@ -14,6 +14,7 @@ bloqueo total, usar además "Acceso asignado" de Windows.
 import ctypes
 import json
 import os
+import platform
 import http.server
 import re
 import socket
@@ -457,7 +458,9 @@ def _buscar_actualizacion():
         return
     u = urllib.parse.urlparse(sv)
     base = f"{u.scheme}://{u.netloc}"
-    with urllib.request.urlopen(f"{base}/verificador/actualizacion/windows", timeout=15) as r:
+    equipo = platform.node()[:60]
+    ident = re.sub(r"[^A-Za-z0-9._-]", "_", equipo)[:60] or "equipo"
+    with urllib.request.urlopen(f"{base}/verificador/actualizacion/windows?build={propia}&id={ident}&equipo={urllib.parse.quote(equipo)}", timeout=15) as r:
         info = json.loads(r.read().decode("utf-8"))
     vigente, orden, auto = int(info.get("version") or 0), int(info.get("orden") or 0), info.get("auto", True) is not False
     cfg = leer_config()

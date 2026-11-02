@@ -302,6 +302,14 @@ public class MainActivity extends Activity {
         throw new Exception("demasiadas redirecciones");
     }
 
+    /** Identificador propio de este equipo (para que la administración vea su versión). */
+    private String idEquipo() {
+        SharedPreferences p = prefs();
+        String id = p.getString("id_equipo", "");
+        if (id.isEmpty()) { id = java.util.UUID.randomUUID().toString(); p.edit().putString("id_equipo", id).apply(); }
+        return id;
+    }
+
     private void actualizar() {
         try {
             String sv = servidor();
@@ -309,7 +317,7 @@ public class MainActivity extends Activity {
             Uri u = Uri.parse(sv);
             String base = u.getScheme() + "://" + u.getAuthority();
             JSONObject j;
-            HttpURLConnection c = abrirUrl(base + "/verificador/actualizacion/android");
+            HttpURLConnection c = abrirUrl(base + "/verificador/actualizacion/android?build=" + codigoVersion() + "&id=" + idEquipo() + "&equipo=" + Uri.encode(android.os.Build.MODEL == null ? "" : android.os.Build.MODEL));
             try (InputStream in = c.getInputStream()) {
                 java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
                 byte[] t = new byte[4096]; int n;

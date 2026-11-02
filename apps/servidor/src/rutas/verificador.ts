@@ -24,6 +24,18 @@ import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 /** Cambia cada vez que el servidor arranca (p. ej. al actualizarse): las pantallas abiertas se recargan solas al notarlo. */
 const ARRANQUE = String(Date.now());
 const versionApps = new Map<string, { version: number; hasta: number }>();
+/** Compilación vigente de la app del verificador (la misma que ven las apps), con la caché de 10 min. null si no se pudo saber. */
+export async function buildVigenteVerificador(so: "android" | "windows"): Promise<number | null> {
+  const c = versionApps.get(so);
+  if (c && c.hasta > Date.now()) return c.version;
+  try {
+    const r = await fetch(`${PORTAL_URL()}/licencias/version-verificador/${so}`, { signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) throw new Error(String(r.status));
+    const { version } = (await r.json()) as { version: number };
+    versionApps.set(so, { version, hasta: Date.now() + 10 * 60_000 });
+    return version;
+  } catch { return c?.version ?? null; }
+}
 
 export async function rutasVerificador(app: FastifyInstance) {
   /** Consulta desde el celular del cliente (QR en la tienda, dentro del WiFi de la sucursal). */
@@ -141,6 +153,15 @@ export async function rutasVerificador(app: FastifyInstance) {
    */
   app.get("/verificador/actualizacion/:so", async (req) => {
     const { so } = z.object({ so: z.enum(["android", "windows"]) }).parse(req.params);
+    // La app dice quién es y qué versión tiene: así la administración ve cuáles están desactualizadas (nunca estorba a la app)
+    const q = z.object({ build: z.coerce.number().int().min(0).max(1_000_000).optional(), id: z.string().trim().min(1).max(64).optional(), equipo: z.string().trim().max(60).optional() }).safeParse(req.query);
+    if (q.success && q.data.id && q.data.build !== undefined) {
+      pool.query(
+        `INSERT INTO verificador_equipos (id, so, equipo, build, sucursal_id, ultimo_contacto)
+         VALUES ($1, $2, $3, $4, (SELECT id FROM sucursales WHERE activo ORDER BY nombre LIMIT 1), now())
+         ON CONFLICT (id) DO UPDATE SET so = $2, equipo = $3, build = $4, ultimo_contacto = now()`,
+        [q.data.id, so, q.data.equipo ?? "", q.data.build]).catch(() => {});
+    }
     // «auto»: si las apps se actualizan solas; «orden»: marca de tiempo del último botón «Actualizar ahora» de la administración
     const aj = await pool.query<{ auto: unknown; orden: string | null }>(
       `SELECT m.verificador->'autoActualizar' AS auto, m.verificador->>'ordenActualizar' AS orden
