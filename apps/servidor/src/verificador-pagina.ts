@@ -30,6 +30,9 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .nivel { background:#eef1f4; border-radius:12px; padding:10px 16px; font-size:16px; }
   .espera { color:#cfd8e0; font-size:clamp(22px,4vw,32px); text-align:center; }
   .error { color:var(--acento); font-size:24px; font-weight:700; }
+  .qrmovil { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); display:flex; align-items:center; gap:10px; background:#fff; color:#10202e; border-radius:14px; padding:8px 14px 8px 8px; font:700 14px system-ui,sans-serif; box-shadow:0 4px 16px rgba(0,0,0,.35); z-index:5; }
+  .qrmovil img { width:84px; height:84px; display:block; }
+  @media (max-height:560px) { .qrmovil { display:none; } }
   .logo { max-width:min(260px,60vw); max-height:120px; margin-bottom:20px; object-fit:contain; }
   /* El campo del lector sigue activo (recibe lo que escribe el escáner), pero no se ve ni abre el teclado */
   .barra { position:fixed; left:0; bottom:0; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
@@ -165,13 +168,16 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     clearTimeout(rot);
     if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, 7000);
   }
+  function qrMovil() {
+    return '<div class="qrmovil"><img src="/verificador/movil/qr.svg' + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "") + '" alt=""><span>Consulta el precio<br>desde tu celular<br><small style="font-weight:400">Escanea este código</small></span></div>';
+  }
   function espera() {
     clearTimeout(inactivo);
     cargarOfertas();
     vista.className = "espera";
     const cab = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "");
     const titulo = cab + '<div class="ofertas-titulo">Consulta de precios</div><div class="ofertas-sub pulso">Pase el producto por el lector para ver su precio</div>';
-    if (!ofertas.length) { clearTimeout(rot); vista.innerHTML = titulo; return; }
+    if (!ofertas.length) { clearTimeout(rot); vista.innerHTML = titulo + qrMovil(); return; }
     if (idx >= ofertas.length) idx = 0;
     vista.innerHTML = titulo +
       '<div class="ofertas-sub" style="color:#fff;font-weight:700;margin-top:6px">Ofertas de hoy · deslice o toque una para ver sus productos</div>' +
@@ -179,7 +185,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
         (ofertas.length > 1 ? '<button class="flecha ant" data-paso="-1" aria-label="Anterior">&#8249;</button><button class="flecha sig" data-paso="1" aria-label="Siguiente">&#8250;</button>' : "") + '</div>' +
       (ofertas.length > 1 ? '<div class="puntos">' + ofertas.map((_, i) => '<button class="punto' + (i === idx ? " on" : "") + '" data-ir="' + i + '" aria-label="Oferta ' + (i + 1) + '"></button>').join("") + '</div>' : "") +
       (ofertas.length > 1 ? '<div class="ofertas-sub" style="margin-top:18px">Todas las ofertas</div><div class="rejilla">' + ofertas.map((o, i) => '<button class="oferta-card" data-oferta="' + i + '"><b>' + esc(o.nombre) + '</b><span class="t">' + esc(o.texto) + '</span>' +
-        '<small>' + o.productos.length + (o.productos.length === 1 ? " producto" : " productos") + ' · ' + esc(finDe(o)) + '</small></button>').join("") + '</div>' : "");
+        '<small>' + o.productos.length + (o.productos.length === 1 ? " producto" : " productos") + ' · ' + esc(finDe(o)) + '</small></button>').join("") + '</div>' : "") + qrMovil();
     girar();
   }
   function detalleOferta(i) {

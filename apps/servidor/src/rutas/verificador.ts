@@ -7,6 +7,7 @@ import { tienePermiso, type SesionAdmin } from "../sesion.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
 import { supervisorPorPin } from "../autorizacion.js";
 import { ofertasPara } from "../promociones.js";
+import QRCode from "qrcode";
 import { PAGINA_CONSULTA_MOVIL } from "../consulta-movil-pagina.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 
@@ -25,6 +26,16 @@ export async function rutasVerificador(app: FastifyInstance) {
   app.get("/verificador/movil", async (_req, rep) => {
     rep.type("text/html; charset=utf-8");
     return PAGINA_CONSULTA_MOVIL;
+  });
+
+  /** QR de la consulta móvil con la dirección por la que el equipo llegó a este servidor (la IP de la tienda). */
+  app.get("/verificador/movil/qr.svg", async (req, rep) => {
+    const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
+    const host = String(req.headers.host ?? "").replace(/[^a-zA-Z0-9.:\-\[\]]/g, "");
+    if (!host) throw new ErrorNegocio("Sin dirección del servidor", 400);
+    const url = `http://${host}/verificador/movil${sucursal ? `?sucursal=${sucursal}` : ""}`;
+    rep.type("image/svg+xml").header("cache-control", "public, max-age=3600");
+    return QRCode.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
   });
 
   app.get("/verificador", async (_req, rep) => {
