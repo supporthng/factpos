@@ -438,16 +438,20 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const hayLinea = sel >= 0 && !!lineas[sel];
   const abrirDescuento = (alcance: "linea" | "factura") => { if (!lineas.length) return; setAlcanceDescuento(hayLinea ? alcance : "factura"); setModal("descuento"); };
   /** Bloquear: la venta en curso pasa a pausa y la caja vuelve a la pantalla del PIN. */
-  // Salir cierra FactPOS (con confirmación). En el navegador no se puede cerrar la ventana: ahí vuelve a la pantalla de usuarios.
+  // Salir cierra FactPOS. Con el turno abierto pide la aprobación de un supervisor (lo maneja la pantalla principal).
+  // En el navegador no se puede cerrar la ventana: ahí vuelve a la pantalla de usuarios.
   const salirDelSistema = () => {
     const f = (window as unknown as { factpos?: { cerrar?: () => void } }).factpos;
     if (!f?.cerrar) return onSalir();
-    if (lineas.length && !confirm("Hay una venta en curso. Se dejará en pausa. ¿Cerrar FactPOS?")) return;
-    if (!lineas.length && !confirm("¿Cerrar FactPOS?")) return;
-    if (lineas.length) pausar();
-    f.cerrar();
+    window.dispatchEvent(new Event("factpos:salir-sistema"));
   };
   const bloquear = () => { if (lineas.length) pausar(); onSalir(); };
+  // Si se autoriza cerrar FactPOS con una venta en curso, queda en pausa
+  useEffect(() => {
+    const f = () => { if (lineas.length) pausar(); };
+    window.addEventListener("factpos:antes-salir", f);
+    return () => window.removeEventListener("factpos:antes-salir", f);
+  });
 
   // Atajos de teclado
   useEffect(() => {
@@ -833,7 +837,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       )}
       {modal === "turno" && (
         <TurnoCaja ajustes={ajustes} config={config} usuario={usuario} turno={turno} pausadas={pausadas.length}
-          onCerrado={onSalir} onCerrar={() => setModal(null)} />
+          onCerrado={() => { (window as unknown as { factpos?: { turno?: (v: boolean) => void } }).factpos?.turno?.(false); onSalir(); }} onCerrar={() => setModal(null)} />
       )}
     </div>
   );

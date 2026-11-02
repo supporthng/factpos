@@ -150,7 +150,7 @@ export async function rutasFacturas(app: FastifyInstance) {
   /** El supervisor teclea su PIN y obtiene una aprobación para una acción concreta. */
   app.post("/cajas/:cajaId/autorizar", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto"]) }).parse(req.body);
+    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir"]) }).parse(req.body);
     const ctx = await contextoCaja(cajaId);
     return autorizarConPin(pool, ctx.empresaId, cajaId, b.pin, b.permiso);
   });

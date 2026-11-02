@@ -19,7 +19,7 @@ import { ErrorNegocio } from "./db.js";
 const secreto = () => process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
 const VIGENCIA_MS = 10 * 60 * 1000;
 
-export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto";
+export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto" | "caja.salir";
 
 export const hashPin = (empresaId: string, pin: string) =>
   createHmac("sha256", secreto()).update(`${empresaId}:${pin}`).digest("hex");
@@ -37,7 +37,9 @@ export async function autorizarConPin(c: Pick<PoolClient, "query">, empresaId: s
   );
   const u = r.rows[0];
   if (!u) throw new ErrorNegocio("PIN incorrecto", 401);
-  if (!u.permisos.includes("*") && !u.permisos.includes(permiso)) {
+  // Salir con el turno abierto lo autoriza quien tenga ese permiso o sea supervisor (puede anular ventas)
+  const tiene = u.permisos.includes("*") || u.permisos.includes(permiso) || (permiso === "caja.salir" && u.permisos.includes("venta.anular"));
+  if (!tiene) {
     throw new ErrorNegocio(`${u.nombre} no tiene permiso para autorizar esta acción`, 403);
   }
   const a: Autorizacion = { supervisorId: u.id, supervisor: u.nombre, permiso, cajaId, expira: Date.now() + VIGENCIA_MS };

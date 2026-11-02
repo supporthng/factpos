@@ -378,6 +378,7 @@ function openMain(onShown) {
   mainWindow = win;
   // La pantalla de entrada del admin es solo el cuadro pequeño; al entrar la ventana vuelve a su tamaño normal
   win.webContents.on('ipc-message', (_e, canal, modo) => {
+    if (canal === 'factpos:turno') { turnoAbierto = !!modo; return; }
     if (canal === 'factpos:cerrar') { app.quit(); return; }
     if (canal !== 'factpos:ventana' || selected !== 'admin' || win.isDestroyed() || win.isKiosk()) return;
     if (modo === 'entrar') {
@@ -388,6 +389,13 @@ function openMain(onShown) {
     }
   });
   win.on('closed', closeCustomer);
+  // Seguridad de la caja: con el turno abierto la ventana no se cierra (Alt+F4, cerrar, Ctrl+Mayús+Q): la pantalla pide
+  // el PIN de un supervisor. Al apagar Windows o al actualizar sí se deja cerrar.
+  win.on('close', (e) => {
+    if (selected !== 'caja' || !turnoAbierto || saliendo || updating || win.isDestroyed()) return;
+    e.preventDefault();
+    try { win.webContents.send('factpos:intento-cierre'); } catch {}
+  });
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
@@ -397,12 +405,13 @@ function openMain(onShown) {
   };
   // La Caja abre en modo kiosko (pantalla completa, sin barra de ventana). F11 alterna con ventana normal;
   // Ctrl+Mayús+Q cierra la caja (pide confirmación). Para abrirla siempre en ventana: --ventana en el acceso directo.
-  const kiosko = selected === 'caja' && !args.includes('--ventana') && config.kiosko !== false;
+  const kiosko = selected === 'caja' && !args.includes('--ventana');
   win.webContents.on('before-input-event', (event, input) => {
     if (selected !== 'caja' || input.type !== 'keyDown') return;
     if (input.key === 'F11') { event.preventDefault(); win.setKiosk(!win.isKiosk()); }
     else if (input.control && input.shift && input.key.toLowerCase() === 'q') {
       event.preventDefault();
+      if (turnoAbierto) { try { win.webContents.send('factpos:intento-cierre'); } catch {} return; }
       const r = dialog.showMessageBoxSync(win, { type: 'question', buttons: ['Cerrar la caja', 'Seguir vendiendo'], defaultId: 1, cancelId: 1, title: 'FactPOS Caja', message: '¿Cerrar FactPOS Caja?', detail: 'Las ventas guardadas se conservan en esta caja.', noLink: true });
       if (r === 0) app.quit();
     }
@@ -427,6 +436,8 @@ function openMain(onShown) {
 // Si el servidor se actualiza: se cierra todo, se muestra una ventana pequeña con el avance y,
 // al terminar, el sistema se abre de nuevo (las pantallas piden usuario y contraseña porque la versión cambió).
 let mainWindow = null;
+let turnoAbierto = false; // lo informa la pantalla de la caja
+let saliendo = false;   // se está cerrando la aplicación a propósito
 let miniWindow = null;
 let updating = false;
 let updateStartedAt = 0;
@@ -508,4 +519,5 @@ function watchUpdates() {
 }
 if (unica) app.whenReady().then(start);
 let mainOpened = false;
+app.on('before-quit', () => { saliendo = true; });
 app.on('window-all-closed', () => { if (mainOpened && process.platform !== 'darwin') app.quit(); });
