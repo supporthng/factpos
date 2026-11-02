@@ -438,6 +438,15 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const hayLinea = sel >= 0 && !!lineas[sel];
   const abrirDescuento = (alcance: "linea" | "factura") => { if (!lineas.length) return; setAlcanceDescuento(hayLinea ? alcance : "factura"); setModal("descuento"); };
   /** Bloquear: la venta en curso pasa a pausa y la caja vuelve a la pantalla del PIN. */
+  // Salir cierra FactPOS (con confirmación). En el navegador no se puede cerrar la ventana: ahí vuelve a la pantalla de usuarios.
+  const salirDelSistema = () => {
+    const f = (window as unknown as { factpos?: { cerrar?: () => void } }).factpos;
+    if (!f?.cerrar) return onSalir();
+    if (lineas.length && !confirm("Hay una venta en curso. Se dejará en pausa. ¿Cerrar FactPOS?")) return;
+    if (!lineas.length && !confirm("¿Cerrar FactPOS?")) return;
+    if (lineas.length) pausar();
+    f.cerrar();
+  };
   const bloquear = () => { if (lineas.length) pausar(); onSalir(); };
 
   // Atajos de teclado
@@ -521,7 +530,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </button>
           <button className="pv-icono" onClick={() => setModal("ajustes")} title="Tamaño de letra, colores y atajos"><Icono n="ajustes" /><span>Ajustes</span></button>
           <button className="pv-icono" onClick={bloquear} title="La venta queda en pausa y se pide el PIN"><Icono n="candado" /><span>Bloquear</span></button>
-          <button className="pv-icono" onClick={onSalir}><Icono n="salir" /><span>Salir</span></button>
+          <button className="pv-icono" onClick={salirDelSistema}><Icono n="salir" /><span>Salir</span></button>
         </nav>
       </header>
 
