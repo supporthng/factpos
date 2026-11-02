@@ -9,13 +9,13 @@ import { aNumero, leerTabla, type Tabla } from "../leerTabla";
  *  - «Sumar»: la cantidad del archivo se suma (o se resta, si es negativa) a la existencia actual.
  * Se ve primero qué cambiaría; al aplicar queda un ajuste en el kardex con el nombre de quien lo hizo.
  */
-interface Resuelta { fila: number; sku?: string; nombre?: string; actual: number; nuevo: number; diferencia: number; error?: string }
+interface Resuelta { fila: number; sku?: string; nombre?: string; actual: number; nuevo: number; diferencia: number; precio?: number; precioActual?: number; error?: string }
 const CAMPOS = [
   { id: "sku", t: "SKU / código interno", re: /sku|referencia|c[oó]digo|code|^id$|ref/i },
   { id: "codigo", t: "Código de barras", re: /barra|ean|upc|gtin|barcode/i },
   { id: "cantidad", t: "Cantidad", re: /exist|stock|cantidad|qty|conteo|contad|saldo/i },
   { id: "costo", t: "Costo (solo entradas, opcional)", re: /costo|cost/i },
-  { id: "precio", t: "Precio de venta (solo para productos nuevos)", re: /precio|detalle|venta|pvp/i },
+  { id: "precio", t: "Precio de venta (actualiza el Precio 1 y crea los nuevos)", re: /precio|detalle|venta|pvp/i },
   { id: "nombre", t: "Nombre o descripción (solo para ver el producto)", re: /nombre|descrip|producto|art[ií]culo|detalle/i },
 ] as const;
 type Campo = (typeof CAMPOS)[number]["id"];
@@ -59,12 +59,13 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
   const filas = () => datos.map((r, i) => {
     const cant = mapa.cantidad != null ? aNumero(r[mapa.cantidad] ?? "") : null;
     return { fila: i + 2, sku: mapa.sku != null ? (r[mapa.sku] ?? "").trim() || undefined : undefined, codigo: mapa.codigo != null ? (r[mapa.codigo] ?? "").trim() || undefined : undefined,
-      cantidad: cant, costo: mapa.costo != null ? aNumero(r[mapa.costo] ?? "") ?? undefined : undefined };
+      cantidad: cant, costo: mapa.costo != null ? aNumero(r[mapa.costo] ?? "") ?? undefined : undefined,
+      precio: mapa.precio != null ? aNumero(r[mapa.precio] ?? "") ?? undefined : undefined };
   });
   const cuerpo = () => {
     const todas = filas();
     const buenas = todas.filter((f) => f.cantidad !== null && (f.sku || f.codigo));
-    return { omitidas: todas.length - buenas.length, cuerpo: { sucursalId, modo, filas: buenas.map((f) => ({ fila: f.fila, sku: f.sku, codigo: f.codigo, cantidad: f.cantidad!, ...(f.costo ? { costo: f.costo } : {}) })) } };
+    return { omitidas: todas.length - buenas.length, cuerpo: { sucursalId, modo, filas: buenas.map((f) => ({ fila: f.fila, sku: f.sku, codigo: f.codigo, cantidad: f.cantidad!, ...(f.costo ? { costo: f.costo } : {}), ...(f.precio && f.precio > 0 ? { precio: f.precio } : {}) })) } };
   };
   const listo = (mapa.sku != null || mapa.codigo != null) && mapa.cantidad != null && !!sucursalId;
 
@@ -85,7 +86,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
     const codigo = v("codigo") || v("sku");
     return { codigo, sku: (v("sku") || v("codigo")).toUpperCase().slice(0, 30), nombre: v("nombre").slice(0, 120), precio: aNumero(v("precio")) ?? 0, costo: aNumero(v("costo")) ?? 0, cantidad: aNumero(v("cantidad")) ?? 0 };
   };
-  const cambios = (vista ?? []).filter((f) => !f.error && f.diferencia !== 0);
+  const cambios = (vista ?? []).filter((f) => !f.error && (f.diferencia !== 0 || (!!f.precio && f.precio !== f.precioActual)));
   const errores = (vista ?? []).filter((f) => f.error);
   const esNuevo = (f: Resuelta) => !!f.error && /^No se encontró/.test(f.error) && (() => { const d = datosFila(f.fila); return !!d.sku && d.nombre.length >= 2 && d.precio > 0; })();
   const nuevos = crearNuevos && impuestoId ? errores.filter(esNuevo) : [];
@@ -157,7 +158,7 @@ export function ActualizarInventarioExcel({ onCerrar, onTerminado }: { onCerrar:
               <tbody>
                 {[...errores, ...cambios].slice(0, 300).map((f) => (
                   <tr key={f.fila}>
-                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{f.error && (nuevos.includes(f) ? <div className="pequeno" style={{ color: "var(--ok, #15803d)" }}>No existe: se creará con el nombre y precio del archivo</div> : <div className="texto-alerta pequeno">{f.error}{/^No se encontró/.test(f.error) && crearNuevos && " · para crearlo faltan el nombre o el precio de venta en el archivo"}</div>)}</td>
+                    <td>{f.fila}</td><td>{f.nombre || (mapa.nombre != null ? (datos[f.fila - 2]?.[mapa.nombre] ?? "").trim() : "") || "—"}{f.sku && <span className="suave"> · {f.sku}</span>}{!f.error && !!f.precio && f.precio !== f.precioActual && <div className="suave pequeno">Precio de venta: {f.precioActual != null ? num(f.precioActual, 2) : "—"} → <b>{num(f.precio, 2)}</b></div>}{f.error && (nuevos.includes(f) ? <div className="pequeno" style={{ color: "var(--ok, #15803d)" }}>No existe: se creará con el nombre y precio del archivo</div> : <div className="texto-alerta pequeno">{f.error}{/^No se encontró/.test(f.error) && crearNuevos && " · para crearlo faltan el nombre o el precio de venta en el archivo"}</div>)}</td>
                     <td className="der">{f.error ? "" : num(f.actual, 3)}</td><td className="der">{f.error ? "" : num(f.nuevo, 3)}</td>
                     <td className="der">{f.error ? "" : `${f.diferencia > 0 ? "+" : ""}${num(f.diferencia, 3)}`}</td>
                   </tr>
