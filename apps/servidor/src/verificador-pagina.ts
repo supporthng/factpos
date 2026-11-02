@@ -33,6 +33,21 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .logo { max-width:min(260px,60vw); max-height:120px; margin-bottom:20px; object-fit:contain; }
   .barra { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px; background:rgba(0,0,0,.25); }
   .barra input { width:min(420px,90vw); font-size:20px; padding:12px 16px; border-radius:12px; border:0; text-align:center; }
+  .ofertas-titulo { color:#fff; font-size:clamp(22px,4vw,34px); font-weight:800; margin-bottom:6px; }
+  .ofertas-sub { color:#cfd8e0; margin-bottom:18px; font-size:clamp(14px,2.4vw,20px); }
+  .rejilla { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; width:min(1100px,100%); }
+  .oferta-card { background:#fff; color:var(--texto); border:0; border-radius:18px; padding:20px; text-align:left; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,.3); }
+  .oferta-card:active { transform:scale(.98); }
+  .oferta-card b { display:block; font-size:20px; margin-bottom:6px; }
+  .oferta-card .t { display:inline-block; background:var(--oferta); color:#fff; border-radius:999px; padding:4px 12px; font-weight:700; font-size:16px; }
+  .oferta-card small { display:block; color:var(--suave); margin-top:8px; }
+  .lista { text-align:left; margin-top:16px; display:grid; gap:10px; max-height:52vh; overflow:auto; }
+  .prod { display:flex; align-items:center; gap:14px; background:#eef1f4; border-radius:14px; padding:10px 14px; }
+  .prod img { width:56px; height:56px; object-fit:cover; border-radius:10px; background:#fff; }
+  .prod .n { flex:1; font-size:18px; font-weight:600; }
+  .prod .p { font-weight:800; font-size:20px; color:var(--acento); text-align:right; }
+  .prod .p s { display:block; color:var(--suave); font-weight:600; font-size:14px; }
+  .volver { margin-top:18px; font-size:20px; padding:12px 28px; border:0; border-radius:999px; background:var(--fondo); color:#fff; cursor:pointer; }
   .sin-conexion { position:fixed; top:12px; right:16px; background:#c0362c; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; display:none; }
 </style>
 </head>
@@ -51,10 +66,40 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   const rd = (v) => "RD$" + Number(v).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  let ofertas = [];
+  let inactivo;
   function espera() {
+    clearTimeout(inactivo);
     vista.className = "espera";
-    vista.innerHTML = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "") + "Pase el producto por el lector<br>para ver su precio";
+    const cab = (logo ? '<img class="logo" src="' + logo + '" alt=""><br>' : "");
+    if (!ofertas.length) { vista.innerHTML = cab + "Pase el producto por el lector<br>para ver su precio"; return; }
+    vista.innerHTML = cab + '<div class="ofertas-titulo">Ofertas de hoy</div><div class="ofertas-sub">Toque una oferta para ver sus productos · o pase un producto por el lector</div>' +
+      '<div class="rejilla">' + ofertas.map((o, i) => '<button class="oferta-card" data-oferta="' + i + '"><b>' + esc(o.nombre) + '</b><span class="t">' + esc(o.texto) + '</span>' +
+        '<small>' + o.productos.length + (o.productos.length === 1 ? " producto" : " productos") + ' · hasta el ' + new Date(o.hasta).toLocaleDateString("es-DO", { day: "numeric", month: "short" }) + '</small></button>').join("") + '</div>';
   }
+  function detalleOferta(i) {
+    const o = ofertas[i]; if (!o) return;
+    clearTimeout(temporizador); clearTimeout(inactivo);
+    vista.className = "";
+    vista.innerHTML = '<div class="tarjeta"><h1>' + esc(o.nombre) + '</h1><div class="oferta">' + esc(o.texto) + '</div><div class="lista">' +
+      o.productos.map((p) => '<div class="prod">' + (p.imagen ? '<img src="' + esc(p.imagen) + '" alt="">' : "") + '<div class="n">' + esc(p.nombre) + '</div><div class="p">' +
+        (p.precioOferta ? '<s>' + rd(p.precio) + '</s>' + rd(p.precioOferta) : (p.precio ? rd(p.precio) : "")) + '</div></div>').join("") +
+      '</div><button class="volver" data-volver="1">Volver a las ofertas</button></div>';
+    inactivo = setTimeout(espera, 45000); // si nadie lo toca, vuelve solo
+  }
+  vista.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-oferta],[data-volver]");
+    if (!t) return;
+    if (t.dataset.volver) espera(); else detalleOferta(Number(t.dataset.oferta));
+  });
+  async function cargarOfertas() {
+    if (!sucursal) return;
+    try {
+      const r = await fetch("/verificador/ofertas?sucursal=" + encodeURIComponent(sucursal));
+      if (r.ok) { ofertas = await r.json(); if (vista.className === "espera") espera(); }
+    } catch {}
+  }
+  setInterval(cargarOfertas, 5 * 60 * 1000);
   // Sin ?sucursal=: el servidor dice cuál es (un servidor de sucursal atiende una sola) y entrega la marca de la empresa
   async function cargarConfig() {
     try {
@@ -65,6 +110,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       logo = c.logo || null;
       if (c.secundario) document.documentElement.style.setProperty("--fondo", c.secundario);
       if (c.primario) document.documentElement.style.setProperty("--acento", c.primario);
+      await cargarOfertas();
       espera();
       document.getElementById("sinconexion").style.display = "none";
     } catch { document.getElementById("sinconexion").style.display = "block"; setTimeout(cargarConfig, 5000); }
