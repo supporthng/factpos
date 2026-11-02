@@ -19,7 +19,7 @@
     var cerrar = boton("✕", "Cerrar la app"), info = boton("ⓘ", "Opciones del equipo");
     raiz.appendChild(cerrar); raiz.appendChild(info);
     var velo = el("div", css + "inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center");
-    var caja = el("div", "background:#fff;color:#10202e;border-radius:18px;padding:26px;width:min(420px,92vw);text-align:center;font-size:18px");
+    var caja = el("div", "background:#fff;color:#10202e;border-radius:18px;padding:22px;width:min(380px,92vw);max-height:96vh;overflow:auto;text-align:center;font-size:18px");
     velo.appendChild(caja);
     // El diálogo se cierra solo si nadie escribe: 5 s para el PIN (se reinicia al teclear) y 30 s en el menú de opciones
     var tiempo = null;
@@ -30,13 +30,31 @@
       armar(5000);
       caja.appendChild(el("h2", "margin:0 0 8px;font-size:24px", accion === "cerrar" ? "Cerrar la app" : "Opciones del equipo"));
       caja.appendChild(el("div", "color:#5d6d7e", "Escriba el PIN de un supervisor o administrador"));
-      var inp = el("input", "width:100%;font-size:24px;padding:12px;border:2px solid #cfd8e0;border-radius:12px;text-align:center;margin:12px 0;box-sizing:border-box");
-      inp.type = "password"; inp.autocomplete = "off"; inp.inputMode = "numeric"; inp.maxLength = 8;
+      var inp = el("input", "width:100%;font-size:26px;letter-spacing:.3em;padding:10px;border:2px solid #cfd8e0;border-radius:12px;text-align:center;margin:10px 0 4px;box-sizing:border-box");
+      inp.type = "password"; inp.autocomplete = "off"; inp.setAttribute("inputmode", "none"); inp.maxLength = 8;   // el teclado va en pantalla (más abajo)
       // Versiones viejas de la página devuelven el foco al lector cada segundo: aquí se recupera mientras se escribe la clave
       inp.onblur = function () { setTimeout(function () { if (velo.style.display === "flex" && caja.contains(inp)) inp.focus(); }, 0); };
       var err = el("div", "color:#c0362c;font-weight:700;min-height:1.3em");
       var btn = function (txt, fondo, color) { var b = el("button", "display:block;width:100%;font-size:20px;font-weight:700;padding:14px;margin-top:10px;border:0;border-radius:999px;cursor:pointer;background:" + fondo + ";color:" + color, txt); b.type = "button"; return b; };
-      var ok = btn("Entrar", "#c0362c", "#fff"), no = btn("Cancelar", "#eef1f4", "#10202e");
+      var no = btn("Cancelar", "#eef1f4", "#10202e");
+      no.style.marginTop = "8px"; no.style.padding = "10px";
+      // Teclado numérico en pantalla: el equipo táctil no siempre abre el teclado del sistema
+      var tecla = function (txt, fondo, color) {
+        var b = el("button", "font-size:26px;font-weight:700;padding:0;height:clamp(46px,9vh,60px);border:0;border-radius:14px;cursor:pointer;touch-action:manipulation;background:" + fondo + ";color:" + color, txt);
+        b.type = "button"; b.onmousedown = function (e) { e.preventDefault(); }; return b;
+      };
+      var ok = tecla("Entrar", "#c0362c", "#fff"); ok.style.fontSize = "19px";
+      var teclado = el("div", "display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px");
+      "123456789".split("").forEach(function (d) {
+        var t = tecla(d, "#eef1f4", "#10202e");
+        t.onclick = function () { armar(5000); if (inp.value.length < 8) inp.value += d; };
+        teclado.appendChild(t);
+      });
+      var borrar = tecla("\u232B", "#eef1f4", "#10202e");
+      borrar.onclick = function () { armar(5000); inp.value = inp.value.slice(0, -1); };
+      var cero = tecla("0", "#eef1f4", "#10202e");
+      cero.onclick = function () { armar(5000); if (inp.value.length < 8) inp.value += "0"; };
+      teclado.appendChild(borrar); teclado.appendChild(cero); teclado.appendChild(ok);
       no.onclick = cerrarVelo;
       ok.onclick = function () {
         var c = inp.value;
@@ -59,7 +77,7 @@
       inp.onkeydown = function (e) { e.stopPropagation(); armar(5000); if (e.key === "Enter") ok.click(); };
       inp.oninput = function () { armar(5000); };
       caja.onpointerdown = function () { armar(5000); };
-      caja.appendChild(inp); caja.appendChild(err); caja.appendChild(ok); caja.appendChild(no);
+      caja.appendChild(inp); caja.appendChild(err); caja.appendChild(teclado); caja.appendChild(no);
       velo.style.display = "flex"; inp.focus();
     }
     cerrar.onclick = function (e) { e.stopPropagation(); abrir("cerrar"); };
