@@ -58,15 +58,23 @@ function AppInterna() {
   const [saliendo, setSaliendo] = useState(false);
   const electron = (window as unknown as { factpos?: { turno?: (v: boolean) => void; alIntentarCerrar?: (f: () => void) => void; cerrar?: () => void } }).factpos;
   useEffect(() => { if (turno !== undefined) electron?.turno?.(!!turno); }, [turno]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [cerrada, setCerrada] = useState(false);
   const turnoRef = useRef<Turno | null | undefined>(undefined);
   turnoRef.current = turno;
   useEffect(() => {
     electron?.alIntentarCerrar?.(() => setSaliendo(true)); // Alt+F4, cerrar la ventana o Ctrl+Mayús+Q con el turno abierto
-    const f = () => { if (turnoRef.current) setSaliendo(true); else if (confirm("¿Cerrar FactPOS?")) electron?.cerrar?.(); };
+    const f = () => { if (turnoRef.current) setSaliendo(true); else if (confirm("¿Cerrar FactPOS?")) cerrarTodo(); };
     window.addEventListener("factpos:salir-sistema", f);
     return () => window.removeEventListener("factpos:salir-sistema", f);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const aprobadoSalir = () => { window.dispatchEvent(new Event("factpos:antes-salir")); setTimeout(() => electron?.cerrar?.(), 200); };
+  // En la aplicación de escritorio se cierra el programa; en un navegador no se puede cerrar la pestaña a la fuerza:
+  // se cierra la sesión y queda una pantalla de «Caja cerrada» (nunca se vuelve a las ventas).
+  const cerrarTodo = () => {
+    if (electron?.cerrar) return electron.cerrar();
+    fijarSesionCaja(null); setUsuario(null); setTurno(undefined); setSaliendo(false); setCerrada(true);
+    try { window.close(); } catch { /* el navegador no lo permite */ }
+  };
+  const aprobadoSalir = () => { window.dispatchEvent(new Event("factpos:antes-salir")); setTimeout(cerrarTodo, 200); };
 
   // Configuración de la caja. Si el servidor no responde, la última guardada en esta caja
   // (así se puede seguir vendiendo en contingencia).
@@ -98,6 +106,7 @@ function AppInterna() {
       <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
     </Modal>
   ) : null;
+  if (cerrada) return <Pantalla><h2>Caja cerrada</h2><p className="suave">Ya puede cerrar esta ventana.</p><button className="boton ancho" onClick={() => location.reload()}>Abrir de nuevo</button></Pantalla>;
   if (!ajustes || (error && !config)) {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
   }
