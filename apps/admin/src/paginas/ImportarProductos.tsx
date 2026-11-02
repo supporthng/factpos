@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Aviso, useCatalogo } from "../ui";
-import { useFuncionSeguridad } from "../seguridad";
 import { aNumero, leerTabla, type Tabla } from "../leerTabla";
 
 /**
@@ -35,7 +34,6 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
   recargarAux: () => void; onCerrar: () => void; onTerminado: () => void;
 }) {
   const { sucursales } = useCatalogo();
-  const { habilitada: puedeExistencia } = useFuncionSeguridad("agregar_existencia");
   const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
   const [tabla, setTabla] = useState<Tabla>([]);
   const [nombreArchivo, setNombreArchivo] = useState("");
@@ -44,7 +42,7 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
   const [incluye, setIncluye] = useState(true);
   const [impuestoId, setImpuestoId] = useState(aux.impuestos.find((i) => i.tasa === 0.18)?.id ?? aux.impuestos[0]?.id ?? "");
   const [crearCats, setCrearCats] = useState(true);
-  const [sumarExistentes, setSumarExistentes] = useState(false);
+  const [igualarExistentes, setIgualarExistentes] = useState(true);
   const [sucursalId, setSucursalId] = useState(sucursales[0]?.id ?? "");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [lineas, setLineas] = useState<Linea[]>([]);
@@ -174,11 +172,8 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
       await Promise.all(Array.from({ length: 5 }, trabajador));
       // Existencia inicial: un ajuste de entrada (queda en el kardex)
       let stock = 0;
-      // Productos nuevos: su existencia inicial no necesita permiso especial. Los que ya existían solo se suman si «Agregar existencia» está activo.
-      const conExistencia = sucursalId ? [
-        ...creados.filter((c) => c.existencia > 0),
-        ...(sumarExistentes && puedeExistencia ? malas.filter((l) => l.existenteId && l.existencia > 0).map((l) => ({ id: l.existenteId!, costo: 0, existencia: l.existencia })) : []),
-      ] : [];
+      // Productos nuevos: su existencia inicial no necesita permiso especial
+      const conExistencia = sucursalId ? creados.filter((c) => c.existencia > 0) : [];
       for (let i = 0; i < conExistencia.length; i += 500) {
         const lote = conExistencia.slice(i, i + 500);
         try {
@@ -192,6 +187,19 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
           stock += lote.length;
         } catch (e) { setMsg({ t: `Los productos se crearon, pero la existencia inicial falló: ${(e as Error).message}. Cárguela desde Ajustes.`, tipo: "error" }); }
       }
+      // Productos que ya existían (mismo SKU): su existencia queda igual a la del archivo (ajuste en el kardex)
+      let igualados = 0;
+      const previos = igualarExistentes && sucursalId ? malas.filter((l) => l.existenteId) : [];
+      for (let i = 0; i < previos.length; i += 500) {
+        try {
+          const r = await api<{ productos: number }>("/central/inventario/excel/aplicar", { metodo: "POST", cuerpo: {
+            sucursalId, modo: "FIJAR", motivo: `Existencia por importación (${nombreArchivo})`.slice(0, 200),
+            filas: previos.slice(i, i + 500).map((l) => ({ fila: l.fila, sku: l.sku, cantidad: l.existencia, ...(l.costo > 0 ? { costo: l.costo } : {}) })),
+          } });
+          igualados += r.productos;
+        } catch (e) { if (!/No hay diferencias/.test((e as Error).message)) setMsg({ t: `La existencia de los productos que ya existían falló: ${(e as Error).message}`, tipo: "error" }); }
+      }
+      stock += igualados;
       setResultado({ creados: creados.length, omitidos: malas.length, fallidos, stock });
       onTerminado();
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
@@ -245,8 +253,8 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
                     {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                   </select></label>
               )}
-              {mapa.existencia != null && sucursalId && puedeExistencia && (
-                <label className="pr-check"><input type="checkbox" checked={sumarExistentes} onChange={(e) => setSumarExistentes(e.target.checked)} /><span>También sumar la existencia a los productos que ya existen (mismo SKU)</span></label>
+              {mapa.existencia != null && sucursalId && (
+                <label className="pr-check"><input type="checkbox" checked={igualarExistentes} onChange={(e) => setIgualarExistentes(e.target.checked)} /><span>A los productos que ya existen (mismo SKU), dejarles la existencia igual a la del archivo</span></label>
               )}
               {mapa.existencia != null && !sucursalId && <p className="suave pequeno">Elija la sucursal arriba para cargar la existencia; con «No cargar existencia» los productos quedan en 0.</p>}
             </div>
@@ -260,7 +268,7 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
 
         {paso === 3 && (
           <>
-            <p style={{ marginTop: 0 }}><b>{buenas.length}</b> producto(s) listos para crear{conStock.length && sucursalId ? <> · <b>{conStock.length}</b> con existencia inicial</> : null}{malas.length ? <> · <span className="texto-alerta"><b>{malas.length}</b> con problemas (se omiten)</span></> : null}</p>
+            <p style={{ marginTop: 0 }}><b>{buenas.length}</b> producto(s) listos para crear{conStock.length && sucursalId ? <> · <b>{conStock.length}</b> con existencia inicial</> : null}{malas.length ? <> · <span className="texto-alerta"><b>{malas.length}</b> con problemas (se omiten{malas.some((l) => l.existenteId) ? <>; <b>{malas.filter((l) => l.existenteId).length}</b> ya existen como producto</> : null})</span></> : null}</p>
             <div className="imp-tabla">
               <table>
                 <thead><tr><th>Fila</th><th>Nombre</th><th>Código</th><th>Costo</th><th>Detalle</th><th>Mayorista</th><th>Distribuidor</th><th>Exist.</th><th>Estado</th></tr></thead>
