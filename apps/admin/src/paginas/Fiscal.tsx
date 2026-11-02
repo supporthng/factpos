@@ -13,15 +13,16 @@ const TIPOS: Record<string, string> = {
 
 /** Comprobantes (NCF): rangos de serie B y secuencias e-NCF por sucursal. */
 export function ComprobantesNcf() {
-  const [vista, setVista] = useState<"rangos" | "secuencias">("rangos");
+  const [vista, setVista] = useState<"rangos" | "secuencias" | "anular">("rangos");
   return (
     <>
       <Encabezado titulo="Comprobantes (NCF)" descripcion="Configure los rangos NCF tradicionales (serie B) y las secuencias e-NCF que usa cada sucursal." />
       <div className="pestanas">
         <button className={vista === "rangos" ? "activa" : ""} onClick={() => setVista("rangos")}>Rangos NCF (serie B)</button>
         <button className={vista === "secuencias" ? "activa" : ""} onClick={() => setVista("secuencias")}>Secuencias e-NCF</button>
+        <button className={vista === "anular" ? "activa" : ""} onClick={() => setVista("anular")}>Anular sin usar (ANECF)</button>
       </div>
-      {vista === "rangos" ? <RangosNCF /> : <Secuencias />}
+      {vista === "rangos" ? <RangosNCF /> : vista === "secuencias" ? <Secuencias /> : <AnularSinUsar />}
     </>
   );
 }
@@ -148,6 +149,44 @@ function Envios() {
           },
         ]}
       />
+    </>
+  );
+}
+
+/** Anulación ante la DGII de los e-NCF asignados que no se van a usar (ANECF). */
+function AnularSinUsar() {
+  const d = useDatos<{ libres: any[]; hechas: any[] }>("/central/fiscal/anulaciones");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const anular = async (f: any) => {
+    if (!window.confirm(`¿Anular ${num(Number(f.hasta) - Number(f.desde) + 1)} e-NCF ${f.tipo_ecf} (${f.desde}–${f.hasta}) de ${f.sucursal} ante la DGII? Estos números no se podrán volver a usar.`)) return;
+    try {
+      const r = await api("/central/fiscal/anulaciones", { cuerpo: { rangoId: f.id } });
+      setMsg({ t: r.estado === "RECHAZADA" ? `La DGII no aceptó la anulación: ${r.respuesta}` : r.estado === "SIMULADA" ? "Anulación registrada en modo simulado (no se envió a la DGII)." : "Anulación enviada y aceptada por la DGII.", tipo: r.estado === "RECHAZADA" ? "error" : "ok" });
+      d.recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  return (
+    <>
+      <p className="suave pequeno">Informe a la DGII los e-NCF que asignó a una sucursal y no va a usar (por ejemplo, un rango por vencer). Se anula lo que queda sin usar de cada bloque.</p>
+      {msg && <Aviso tipo={msg.tipo}>{msg.t}</Aviso>}
+      <h2>Bloques con números sin usar</h2>
+      <Tabla filas={d.datos?.libres ?? []} clave={(f) => f.id} vacio="No hay números sin usar"
+        columnas={[
+          { titulo: "Sucursal", valor: (f) => f.sucursal },
+          { titulo: "Tipo", valor: (f) => f.tipo_ecf },
+          { titulo: "Sin usar", valor: (f) => <span className="mono">{f.tipo_ecf}{String(f.desde).padStart(10, "0")} – {f.tipo_ecf}{String(f.hasta).padStart(10, "0")}</span> },
+          { titulo: "Cantidad", der: true, valor: (f) => num(Number(f.hasta) - Number(f.desde) + 1) },
+          { titulo: "", valor: (f) => <button className="enlace" onClick={() => anular(f)}>Anular ante la DGII</button> },
+        ]} />
+      <h2 style={{ marginTop: 20 }}>Anulaciones hechas</h2>
+      <Tabla filas={d.datos?.hechas ?? []} clave={(f) => f.id} vacio="Aún no hay anulaciones"
+        columnas={[
+          { titulo: "Fecha", valor: (f) => new Date(f.creado_en).toLocaleString("es-DO") },
+          { titulo: "Tipo", valor: (f) => f.tipo_ecf },
+          { titulo: "Rango", valor: (f) => <span className="mono">{f.desde} – {f.hasta}</span> },
+          { titulo: "Cantidad", der: true, valor: (f) => num(f.cantidad) },
+          { titulo: "Estado", valor: (f) => f.estado === "ENVIADA" ? "Aceptada" : f.estado === "RECHAZADA" ? "Rechazada" : "Simulada" },
+        ]} />
     </>
   );
 }

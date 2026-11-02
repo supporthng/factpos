@@ -7,6 +7,8 @@ import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.
 import { usarCertificado, certificado } from "../fiscal/firma.js";
 import { dgii } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
+import { construirAnecf } from "../fiscal/servicios-dgii.js";
+import { firmarXml } from "../fiscal/firma.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
 
 /** Estado de la certificación del software en el portal de FactPOS (caché de 10 min). */
@@ -90,6 +92,55 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     );
     rep.code(201);
     return { id };
+  });
+
+
+  /** Números asignados y sin usar (desde el siguiente hasta el final de cada bloque): lo que se puede anular. */
+  app.get("/central/fiscal/anulaciones", async (req) => {
+    const e = empresaDe(req);
+    const libres = (await pool.query(
+      `SELECT r.id, r.tipo_ecf, r.siguiente::text AS desde, r.hasta::text AS hasta, s.nombre AS sucursal, r.vence_en
+         FROM ecf_rangos r JOIN sucursales s ON s.id = r.sucursal_id
+        WHERE s.empresa_id = $1 AND r.siguiente <= r.hasta ORDER BY r.tipo_ecf, r.desde`, [e])).rows;
+    const hechas = (await pool.query(
+      `SELECT id, tipo_ecf, desde::text, hasta::text, cantidad::text, estado, respuesta, creado_en
+         FROM ecf_anulaciones WHERE empresa_id = $1 ORDER BY creado_en DESC LIMIT 50`, [e])).rows;
+    return { libres, hechas };
+  });
+
+  /** Anula ante la DGII lo que queda sin usar de un bloque. Esos números no se vuelven a usar. */
+  app.post("/central/fiscal/anulaciones", async (req, rep) => {
+    const e = empresaDe(req);
+    const b = z.object({ rangoId: uuid }).parse(req.body);
+    const r = await enTransaccion(async (c) => {
+      const rg = (await c.query(
+        `SELECT r.* FROM ecf_rangos r JOIN sucursales s ON s.id = r.sucursal_id
+          WHERE r.id = $1 AND s.empresa_id = $2 FOR UPDATE OF r`, [b.rangoId, e])).rows[0];
+      if (!rg) throw new ErrorNegocio("Bloque no encontrado", 404);
+      if (Number(rg.siguiente) > Number(rg.hasta)) throw new ErrorNegocio("Este bloque ya se usó completo: no queda nada por anular.");
+      const emp = (await c.query(
+        `SELECT e.rnc, cf.transmisor, cf.ambiente FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`, [e])).rows[0];
+      const fmt = (n: number) => `${rg.tipo_ecf}${String(n).padStart(10, "0")}`;
+      const desde = Number(rg.siguiente), hasta = Number(rg.hasta);
+      const xml = construirAnecf({ rncEmisor: emp.rnc, rangos: [{ tipo: rg.tipo_ecf, desde: fmt(desde), hasta: fmt(hasta) }] });
+      const real = emp.transmisor === "DGII" && emp.ambiente && emp.ambiente !== "SIMULADO";
+      let estado: "ENVIADA" | "RECHAZADA" | "SIMULADA" = "SIMULADA";
+      let respuesta = "Modo simulado: no se envió a la DGII.";
+      if (real) {
+        const t = dgii(emp.ambiente);
+        const res = await t.anularRango!(firmarXml(xml).xmlFirmado, emp.rnc);
+        estado = res.aceptada ? "ENVIADA" : "RECHAZADA";
+        respuesta = res.respuesta;
+      }
+      await c.query(
+        `INSERT INTO ecf_anulaciones (id, empresa_id, tipo_ecf, desde, hasta, cantidad, estado, respuesta, xml) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [uuidv7(), e, rg.tipo_ecf, desde, hasta, hasta - desde + 1, estado, respuesta, xml]);
+      // Aceptada (o simulada): se consumen los números para que nadie los vuelva a emitir
+      if (estado !== "RECHAZADA") await c.query("UPDATE ecf_rangos SET siguiente = hasta + 1 WHERE id = $1", [rg.id]);
+      return { estado, respuesta, cantidad: hasta - desde + 1 };
+    });
+    rep.code(201);
+    return r;
   });
 
   /** Asigna a una sucursal el siguiente bloque libre de una autorización. */
