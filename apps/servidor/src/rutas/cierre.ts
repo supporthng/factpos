@@ -157,6 +157,9 @@ export async function rutasCierre(app: FastifyInstance) {
       );
       return t.id as string;
     });
+    // Si la empresa tiene activo el envío del cierre por correo, sale ya (no espera la próxima vuelta de la vigilancia).
+    // Es una tarea aparte: si falla o no hay correo configurado, el cierre de caja no se afecta.
+    void import("../correo/envios.js").then((m) => m.procesarEnvios()).catch(() => {});
     return reporteTurno(pool, turnoId);
   });
 
