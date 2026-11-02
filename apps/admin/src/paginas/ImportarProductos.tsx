@@ -25,7 +25,7 @@ const CAMPOS: { id: Campo; t: string; req?: boolean; adivina: RegExp }[] = [
 ];
 const CLAVE_MAPA = "factpos.importar.mapa";
 
-interface Linea { fila: number; sku: string; nombre: string; codigo: string; categoria: string; marca: string; costo: number; p: [number, number, number]; existencia: number; minimo: number; error?: string; aviso?: string }
+interface Linea { fila: number; sku: string; nombre: string; codigo: string; categoria: string; marca: string; costo: number; p: [number, number, number]; existencia: number; minimo: number; existenteId?: string; error?: string; aviso?: string }
 
 const guardarMapa = (m: Record<string, string>) => { try { localStorage.setItem(CLAVE_MAPA, JSON.stringify(m)); } catch { /* sin almacenamiento */ } };
 const leerMapa = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(CLAVE_MAPA) ?? "{}"); } catch { return {}; } };
@@ -44,6 +44,7 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
   const [incluye, setIncluye] = useState(true);
   const [impuestoId, setImpuestoId] = useState(aux.impuestos.find((i) => i.tasa === 0.18)?.id ?? aux.impuestos[0]?.id ?? "");
   const [crearCats, setCrearCats] = useState(true);
+  const [sumarExistentes, setSumarExistentes] = useState(false);
   const [sucursalId, setSucursalId] = useState(sucursales[0]?.id ?? "");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [lineas, setLineas] = useState<Linea[]>([]);
@@ -99,7 +100,9 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
       for (const c of CAMPOS) if (mapa[c.id] != null && titulos[mapa[c.id]!]) m[titulos[mapa[c.id]!].toLowerCase()] = c.id;
       guardarMapa({ ...leerMapa(), ...m });
 
-      const existentes = new Set((await api<{ sku: string }[]>("/central/productos?estado=todos")).map((p) => p.sku.toUpperCase()));
+      const prods = await api<{ id: string; sku: string }[]>("/central/productos?estado=todos");
+      const existentes = new Set(prods.map((p) => p.sku.toUpperCase()));
+      const idPorSku = new Map(prods.map((p) => [p.sku.toUpperCase(), p.id]));
       const vistoSku = new Set<string>(), vistoCod = new Set<string>();
       const val = (f: string[], c: Campo) => (mapa[c] != null ? (f[mapa[c]!] ?? "").trim() : "");
       const num = (f: string[], c: Campo) => aNumero(val(f, c)) ?? 0;
@@ -115,7 +118,7 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
         if (!l.sku) l.sku = l.codigo || "IMP" + String(l.fila).padStart(5, "0");
         if (l.nombre.length < 2) l.error = "Sin nombre";
         else if (l.p[0] <= 0) l.error = "Sin precio detalle";
-        else if (existentes.has(l.sku)) l.error = "Ya existe un producto con ese SKU";
+        else if (existentes.has(l.sku)) { l.error = "Ya existe un producto con ese SKU"; l.existenteId = idPorSku.get(l.sku); }
         else if (vistoSku.has(l.sku)) l.error = "SKU repetido en el archivo";
         else if (l.codigo && vistoCod.has(l.codigo)) l.error = "Código de barras repetido en el archivo";
         if (!l.error) { vistoSku.add(l.sku); if (l.codigo) vistoCod.add(l.codigo); }
@@ -171,7 +174,11 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
       await Promise.all(Array.from({ length: 5 }, trabajador));
       // Existencia inicial: un ajuste de entrada (queda en el kardex)
       let stock = 0;
-      const conExistencia = sucursalId && puedeExistencia ? creados.filter((c) => c.existencia > 0) : [];
+      // Productos nuevos: su existencia inicial no necesita permiso especial. Los que ya existían solo se suman si «Agregar existencia» está activo.
+      const conExistencia = sucursalId ? [
+        ...creados.filter((c) => c.existencia > 0),
+        ...(sumarExistentes && puedeExistencia ? malas.filter((l) => l.existenteId && l.existencia > 0).map((l) => ({ id: l.existenteId!, costo: 0, existencia: l.existencia })) : []),
+      ] : [];
       for (let i = 0; i < conExistencia.length; i += 500) {
         const lote = conExistencia.slice(i, i + 500);
         try {
@@ -231,16 +238,17 @@ export function ImportarProductos({ aux, recargarAux, onCerrar, onTerminado }: {
                 <label className="pr-check"><input type="checkbox" checked={incluye} onChange={(e) => setIncluye(e.target.checked)} /><span>Los precios del archivo ya incluyen ITBIS</span></label>
                 <label className="pr-check"><input type="checkbox" checked={crearCats} onChange={(e) => setCrearCats(e.target.checked)} /><span>Crear las categorías que no existan</span></label>
               </div>
-              {mapa.existencia != null && !puedeExistencia && (
-                <p className="suave pequeno">La columna de existencia no se cargará: «Agregar existencia» está desactivado. Un administrador puede activarlo en Configuración › Seguridad.</p>
-              )}
-              {mapa.existencia != null && puedeExistencia && (
+              {mapa.existencia != null && (
                 <label className="campo" style={{ maxWidth: 360, marginBottom: 0 }}><span>Cargar la existencia inicial en</span>
                   <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
                     <option value="">No cargar existencia</option>
                     {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                   </select></label>
               )}
+              {mapa.existencia != null && sucursalId && puedeExistencia && (
+                <label className="pr-check"><input type="checkbox" checked={sumarExistentes} onChange={(e) => setSumarExistentes(e.target.checked)} /><span>También sumar la existencia a los productos que ya existen (mismo SKU)</span></label>
+              )}
+              {mapa.existencia != null && !sucursalId && <p className="suave pequeno">Elija la sucursal arriba para cargar la existencia; con «No cargar existencia» los productos quedan en 0.</p>}
             </div>
             <div className="acciones-modal">
               <button className="boton fantasma" onClick={() => setPaso(1)}>Cambiar archivo</button>
