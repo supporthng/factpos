@@ -277,7 +277,8 @@ function ElegirUsuario({ ajustes, config, onElegir }: { ajustes: Ajustes; config
       }
       const r = await api<{ token: string; usuario: Usuario }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/entrar`, { cuerpo: { usuarioId: elegido.id, pin: valor } });
       fijarSesionCaja({ token: r.token, usuario: r.usuario, cajaId: ajustes.cajaId });
-      await recordarPin(ajustes, r.usuario, valor);
+      // Guardar el PIN para contingencia no debe poder trabar el ingreso (si el almacenamiento local se cuelga, se sigue)
+      await Promise.race([recordarPin(ajustes, r.usuario, valor).catch(() => {}), new Promise((ok) => setTimeout(ok, 1500))]);
       onElegir(r.usuario);
     } catch (e) {
       setMsg((e as Error).message);

@@ -64,6 +64,7 @@ export async function api<T = any>(servidor: string, ruta: string, opciones: { m
         ...(sesion ? { "x-sesion-caja": sesion.token } : {}),
       },
       body: opciones.cuerpo ? JSON.stringify(opciones.cuerpo) : undefined,
+      signal: AbortSignal.timeout(30_000), // un servidor colgado no deja la pantalla esperando para siempre
     });
   } catch {
     perdida?.();
