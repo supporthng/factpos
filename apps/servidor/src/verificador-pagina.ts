@@ -30,6 +30,15 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   .nivel { background:#eef1f4; border-radius:12px; padding:10px 16px; font-size:16px; }
   .espera { color:#cfd8e0; font-size:clamp(22px,4vw,32px); text-align:center; }
   .error { color:var(--acento); font-size:24px; font-weight:700; }
+  #actualiza { position:fixed; inset:0; z-index:50; display:none; align-items:center; justify-content:center; background:rgba(8,16,24,.92); padding:20px; }
+  #actualiza .caja { background:#fff; color:#10202e; border-radius:18px; padding:28px 30px; max-width:520px; width:100%; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  #actualiza h2 { margin:0 0 8px; font-size:24px; }
+  #actualiza p { margin:6px 0 14px; font-size:18px; }
+  #actualiza small { color:#5b6b7a; font-size:14px; }
+  .barra-act { height:12px; background:#e3e8ec; border-radius:999px; overflow:hidden; margin:6px 0 14px; }
+  .barra-act b { display:block; height:100%; width:30%; background:var(--acento,#c0362c); border-radius:999px; transition:width .6s; }
+  .barra-act.ind b { animation:ind 1.4s ease-in-out infinite alternate; }
+  @keyframes ind { from { margin-left:0 } to { margin-left:70% } }
   .qrmovil { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); display:flex; align-items:center; gap:10px; background:#fff; color:#10202e; border-radius:14px; padding:8px 14px 8px 8px; font:700 14px system-ui,sans-serif; box-shadow:0 4px 16px rgba(0,0,0,.35); z-index:5; }
   .qrmovil img { width:84px; height:84px; display:block; }
   @media (max-height:560px) { .qrmovil { display:none; } }
@@ -87,6 +96,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
 </head>
 <body>
   <div id="vista" class="espera">Pase el producto por el lector<br>para ver su precio</div>
+  <div id="actualiza" role="alertdialog" aria-live="polite"><div class="caja"><h2 id="act-t">Actualizando FactPOS</h2><p id="act-p">Preparando…</p><div class="barra-act" id="act-barra"><b id="act-b"></b></div><small>No apague el equipo. Al terminar, la pantalla se abrirá sola.</small></div></div>
   <div class="sin-conexion" id="sinconexion">Sin conexión con el servidor</div>
   <div class="barra"><input id="codigo" autocomplete="off" inputmode="none" autofocus aria-label="Código de barras"></div>
 <script>
@@ -168,6 +178,27 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     clearTimeout(rot);
     if (ofertas.length > 1) rot = setTimeout(() => { if (vista.className === "espera") { mostrarSlide(idx + 1); girar(); } }, 7000);
   }
+  // Cuadro con el avance cuando el servidor se está actualizando (el mismo estado que muestran la administración y la caja)
+  let vioActualizar = false;
+  async function estadoActualizacion() {
+    let d = null;
+    try { const r = await fetch("/actualizacion/estado", { cache: "no-store" }); if (r.ok) d = await r.json(); } catch {}
+    const activa = d ? !!d.actualizando : vioActualizar;   // si dejó de responder tras verla, el servidor se está reiniciando
+    if (d && d.actualizando) vioActualizar = true;
+    if (!activa && vioActualizar && d) { location.reload(); return; }   // terminó: cargar la versión nueva ya
+    const el = document.getElementById("actualiza");
+    el.style.display = activa ? "flex" : "none";
+    if (activa) {
+      const destino = d && d.destino ? " a la versión " + String(d.destino).replace(/[.]0$/, "") : "";
+      document.getElementById("act-t").textContent = "Actualizando FactPOS" + destino;
+      document.getElementById("act-p").textContent = d ? (d.paso || "Preparando…") : "Reiniciando el servidor…";
+      const pct = d && typeof d.porcentaje === "number" ? d.porcentaje : null;
+      document.getElementById("act-barra").className = "barra-act" + (pct === null ? " ind" : "");
+      document.getElementById("act-b").style.width = pct === null ? "" : Math.max(4, pct) + "%";
+    }
+    setTimeout(estadoActualizacion, activa ? 2500 : 6000);
+  }
+  estadoActualizacion();
   let arranque = null;   // identifica la versión del servidor: si cambia, la pantalla se recarga sola
   let qrActivo = true;   // lo decide el interruptor de Administración › Verificador
   function qrMovil() {
