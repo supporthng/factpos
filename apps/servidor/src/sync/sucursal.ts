@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { seguirAlPrincipal } from "../actualizacion.js";
+import { seguirAlPrincipal, versionActual } from "../actualizacion.js";
 import { guardarLicenciaDeCentral } from "../licencia/cliente.js";
 import { pool } from "../db.js";
 import { TABLAS_BAJADA } from "../rutas/central-sync.js";
@@ -127,6 +127,7 @@ export async function subir(): Promise<{ enviados: number; errores: number }> {
         sucursalId,
         equipo: hostname().slice(0, 80),
         pendientes,
+        appVersion: versionActual().slice(0, 20),
         items: lote.map((f) => ({ id: String(f.id), tabla: f.tabla, registroId: f.registro_id, payload: f.payload })),
       }),
     });
@@ -141,6 +142,17 @@ export async function subir(): Promise<{ enviados: number; errores: number }> {
     if (!ok.length || r.rowCount < LOTE) break;
   }
   return { enviados, errores };
+}
+
+/** Dice a la central la versión de este servidor y de las apps del verificador que lo consultan (a lo sumo cada 2 minutos). */
+let ultimoAviso = 0;
+async function avisarEquipo() {
+  if (Date.now() - ultimoAviso < 2 * 60_000) return;
+  ultimoAviso = Date.now();
+  const verificadores = (await pool.query(
+    `SELECT id, so, equipo, build, ultimo_contacto AS "ultimoContacto" FROM verificador_equipos WHERE ultimo_contacto > now() - interval '30 days' ORDER BY ultimo_contacto DESC LIMIT 100`)
+    .catch(() => ({ rows: [] }))).rows.map((v: { ultimoContacto: Date | string }) => ({ ...v, ultimoContacto: new Date(v.ultimoContacto).toISOString() }));
+  await pedir("/central/sync/equipo", { method: "POST", body: JSON.stringify({ sucursalId: configSync().sucursalId, equipo: hostname().slice(0, 80), appVersion: versionActual().slice(0, 20), verificadores }) });
 }
 
 // ---------------------------------------------------------------- BAJADA
@@ -313,6 +325,7 @@ async function vueltaCompleta() {
     const s = await subir();
     await marca("ultima_subida = now()", []);
     const b = await bajar();
+    await avisarEquipo().catch(() => {});   // versión de este servidor y de sus verificadores (nunca detiene la sincronización)
     await marca("ultima_bajada = now(), ultimo_error = $2", [s.errores ? `${s.errores} elemento(s) no se pudieron subir; se reintentan` : null]);
     // Si la central tiene otro certificado, se pide ya (sin esperar los 10 minutos)
     const enUso = huellaEnUso();

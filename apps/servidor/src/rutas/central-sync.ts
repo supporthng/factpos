@@ -1,5 +1,6 @@
 import { procesarEnvios } from "../correo/envios.js";
-import { versionActual } from "../actualizacion.js";
+import { versionActual, compararVersion } from "../actualizacion.js";
+import { buildVigenteVerificador } from "./verificador.js";
 import { aplicarCambioLocal, esCambioLocal } from "../sync/subida-local.js";
 import { licenciaParaSucursal } from "../licencia/cliente.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -196,6 +197,50 @@ export async function rutasCentralSync(app: FastifyInstance) {
     const licencia = await licenciaParaSucursal().catch(() => undefined);
     return { desde: f.desde, version, versionKardex, completo, cambios, componentes, certificado: cert.rows[0]?.huella ?? null, licencia,
       versionPrincipal: versionActual() };
+  });
+
+  /** La sucursal avisa su versión y la de las apps del verificador que la consultan (se ve en Configuración › Versiones de los equipos). */
+  app.post("/central/sync/equipo", async (req) => {
+    const b = z.object({
+      sucursalId: uuid, equipo: z.string().max(80).optional(), appVersion: z.string().max(20).optional(),
+      verificadores: z.array(z.object({ id: z.string().max(64), so: z.string().max(10), equipo: z.string().max(60), build: z.number().int(), ultimoContacto: z.string().max(40) })).max(200).default([]),
+    }).parse(req.body);
+    await verificarConexion(req, b.sucursalId);
+    await pool.query(
+      `INSERT INTO sync_sucursales (sucursal_id, equipo, app_version, verificadores) VALUES ($1, $2, $3, $4::jsonb)
+       ON CONFLICT (sucursal_id) DO UPDATE SET equipo = COALESCE($2, sync_sucursales.equipo), app_version = COALESCE($3, sync_sucursales.app_version), verificadores = $4::jsonb`,
+      [b.sucursalId, b.equipo ?? null, b.appVersion ?? null, JSON.stringify(b.verificadores)]);
+    return { ok: true };
+  });
+
+  /** Versiones de los equipos: servidores de las sucursales y apps del verificador, y cuáles están desactualizados. */
+  app.get("/central/versiones", async (req) => {
+    const empresaId = uuid.parse(req.headers["x-empresa-id"]);
+    const principal = versionActual();
+    const [android, windows] = await Promise.all([buildVigenteVerificador("android"), buildVigenteVerificador("windows")]);
+    const filas = (await pool.query(
+      `SELECT s.id AS "sucursalId", s.nombre, s.tipo, y.equipo, y.app_version AS "appVersion", y.verificadores,
+              GREATEST(y.ultima_subida, y.ultima_bajada) AS "ultimoContacto"
+         FROM sucursales s LEFT JOIN sync_sucursales y ON y.sucursal_id = s.id WHERE s.empresa_id = $1 AND s.activo ORDER BY s.nombre`, [empresaId])).rows;
+    const hace = (f: string | Date | null) => (f ? Date.now() - new Date(f).getTime() : Infinity);
+    const servidores = filas.map((f) => ({
+      sucursalId: f.sucursalId, nombre: f.nombre, tipo: f.tipo, equipo: f.equipo ?? null, version: f.appVersion ?? null, ultimoContacto: f.ultimoContacto,
+      enLinea: hace(f.ultimoContacto) < 2 * 60_000,
+      estado: !f.appVersion ? "SIN_DATO" : compararVersion(f.appVersion, principal) < 0 ? "DESACTUALIZADO" : "AL_DIA",
+    }));
+    // Apps del verificador: las que reportaron las sucursales + las que consultan a este mismo servidor
+    const vistos = new Map<string, { id: string; so: string; equipo: string; build: number; ultimoContacto: string; sucursal: string }>();
+    for (const f of filas) for (const v of (f.verificadores ?? []) as { id: string; so: string; equipo: string; build: number; ultimoContacto: string }[]) vistos.set(v.id, { ...v, sucursal: f.nombre });
+    const locales = await pool.query(`SELECT v.id, v.so, v.equipo, v.build, v.ultimo_contacto AS "ultimoContacto", COALESCE(s.nombre, '') AS sucursal
+                                        FROM verificador_equipos v LEFT JOIN sucursales s ON s.id = v.sucursal_id WHERE v.ultimo_contacto > now() - interval '30 days'`).catch(() => ({ rows: [] }));
+    for (const v of locales.rows) vistos.set(v.id, { ...v, ultimoContacto: new Date(v.ultimoContacto).toISOString() });
+    const vigente: Record<string, number | null> = { android, windows };
+    const verificadores = [...vistos.values()].sort((a, b) => b.ultimoContacto.localeCompare(a.ultimoContacto)).map((v) => ({
+      ...v, version: v.build ? `1.0.${v.build}` : "?", vigente: vigente[v.so] != null ? `1.0.${vigente[v.so]}` : null,
+      enLinea: hace(v.ultimoContacto) < 10 * 60_000,
+      estado: vigente[v.so] == null || !v.build ? "SIN_DATO" : v.build < (vigente[v.so] as number) ? "DESACTUALIZADO" : "AL_DIA",
+    }));
+    return { principal, servidores, verificadores };
   });
 
   // ------------------------------------------------------------- SUBIDA

@@ -129,7 +129,7 @@ export async function crearApp() {
       if (config.modo === "sucursal" && syncActiva() && metodo !== "GET" && metodo !== "HEAD" && soloEnLaNube(metodo, ruta)) {
         return rep.code(409).send({ error: "Esto se hace en la Administración en la nube (necesita internet): afecta a otras sucursales o a la facturación de toda la empresa." });
       }
-      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
+      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/equipo" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
         || ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado" || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/inicio") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
