@@ -35,7 +35,8 @@ export interface Sesion {
 
 export function leerSesion(): Sesion | null {
   try {
-    const v = localStorage.getItem(CLAVE);
+    localStorage.removeItem(CLAVE); // versiones anteriores la dejaban guardada para siempre
+    const v = sessionStorage.getItem(CLAVE);
     const s = v ? JSON.parse(v) : null;
     return s?.token ? s : null; // sesiones viejas (sin contraseña) ya no sirven
   } catch {
@@ -44,8 +45,10 @@ export function leerSesion(): Sesion | null {
 }
 export function guardarSesion(s: Sesion | null) {
   try {
-    if (s) localStorage.setItem(CLAVE, JSON.stringify(s));
-    else localStorage.removeItem(CLAVE);
+    // La sesión vive solo mientras la ventana está abierta: al cerrarla y abrirla de nuevo se piden las credenciales
+    // (recargar la página no la pierde)
+    if (s) sessionStorage.setItem(CLAVE, JSON.stringify(s));
+    else sessionStorage.removeItem(CLAVE);
   } catch { /* sin almacenamiento */ }
 }
 
