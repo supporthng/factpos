@@ -2,7 +2,10 @@
 
 Herramienta aparte (no forma parte de la aplicación) para traer los datos de otro sistema. Solo necesita Node 20 o superior; no instala nada.
 
-## Uso
+## App portable (recomendada)
+Doble clic en **Importador FactPOS.bat**. Se abre una ventana en el navegador (solo en esta computadora) donde se elige el respaldo, se ve la vista previa y se carga a FactPOS con el usuario administrador. Si la PC no tiene Node, el .bat baja una copia portable a esta misma carpeta (no instala nada en Windows). Los informes quedan en `Importacion-FactPOS` dentro de la carpeta personal.
+
+## Uso por línea de comandos
 
 1. **Vista previa** (no cambia nada): `node importar.mjs --fuente wilpos --archivo respaldo.sql`
    Deja en `./salida-importacion` el informe, `problemas.csv` y los CSV de historial.
