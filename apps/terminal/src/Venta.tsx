@@ -328,6 +328,23 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   useEffect(() => { setModo(modoInicial(ajustes.cajaId)); }, [ajustes.cajaId]);
   useEffect(() => { try { localStorage.setItem(claveModo, modo); } catch { /* sin almacenamiento */ } }, [claveModo, modo]);
   const verCatalogo = modo === "catalogo";
+  // Ancho del catálogo en la Caja táctil: se arrastra el borde con el mouse o el dedo (o con las flechas) y queda guardado en esta caja
+  const catRef = useRef<HTMLElement>(null);
+  const claveAncho = `factpos.caja.${ajustes.cajaId}.anchoCatalogo`;
+  const [anchoCat, setAnchoCat] = useState<number | null>(() => { try { const n = Number(localStorage.getItem(claveAncho)); return n >= 200 ? n : null; } catch { return null; } });
+  const escalaActual = () => Number(getComputedStyle(document.documentElement).getPropertyValue("--escala")) || 1;
+  const limitarAncho = (w: number) => Math.max(220, Math.min(w, window.innerWidth / escalaActual() - 28 - 312 - 24 - 260));
+  const guardarAncho = (w: number | null) => { try { if (w == null) localStorage.removeItem(claveAncho); else localStorage.setItem(claveAncho, String(Math.round(w))); } catch { /* sin almacenamiento */ } };
+  const arrastrarDivisor = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = catRef.current?.offsetWidth ?? 400, esc = escalaActual();
+    let ultimo = w0;
+    const mover = (ev: PointerEvent) => { ultimo = limitarAncho(w0 + (ev.clientX - x0) / esc); setAnchoCat(ultimo); };
+    const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); guardarAncho(ultimo); };
+    window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
+  };
+  const ajustarAncho = (delta: number) => { const w = limitarAncho((anchoCat ?? catRef.current?.offsetWidth ?? 400) + delta); setAnchoCat(w); guardarAncho(w); };
+  const restablecerAncho = () => { setAnchoCat(null); guardarAncho(null); };
   const enCarrito = useMemo(() => {
     const m = new Map<string, number>();
     for (const l of lineas) m.set(l.prod.presentacionId, (m.get(l.prod.presentacionId) ?? 0) + Number(l.cantidad));
@@ -558,11 +575,14 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a consumidor final" onClick={() => setCliente(null)}>×</button>}
       </div>
 
-      <main className="pv-cuerpo">
+      <main className={"pv-cuerpo" + (verCatalogo && anchoCat ? " con-ancho" : "")} style={verCatalogo && anchoCat ? ({ "--ancho-cat": anchoCat } as React.CSSProperties) : undefined}>
         {verCatalogo && catalogo && (
-          <section className="pv-catalogo" aria-label="Catálogo">
+          <section className="pv-catalogo" aria-label="Catálogo" ref={catRef}>
             <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivelPrecio} enCarrito={enCarrito}
               onAgregar={(p) => agregar(p, "1")} onCodigo={procesarCodigo} />
+            <div className="pv-divisor" role="separator" aria-orientation="vertical" tabIndex={0} title="Arrastre para ampliar o reducir el catálogo (doble toque: tamaño original)"
+              onPointerDown={arrastrarDivisor} onDoubleClick={restablecerAncho}
+              onKeyDown={(e) => { if (e.key === "ArrowLeft") { e.preventDefault(); ajustarAncho(-24); } else if (e.key === "ArrowRight") { e.preventDefault(); ajustarAncho(24); } }} />
           </section>
         )}
 
