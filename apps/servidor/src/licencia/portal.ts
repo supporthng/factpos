@@ -334,6 +334,14 @@ export async function rutasPortal(app: FastifyInstance) {
     return { version: v.version, url: await urlDescarga(v.asset) };
   });
 
+  /** Descarga directa del instalador para probar 15 días (sin licencia ni datos). La instalación llega al portal sola cuando pide su activación. */
+  app.get("/licencias/descargar-instalador", async (req, rep) => {
+    const v = await ultimaVersion();
+    if (!v?.setup) throw new ErrorNegocio("Todavía no hay un instalador publicado", 404);
+    await evento(pool, { tipo: "DEMO_DESCARGA", detalle: { version: v.version } });
+    return rep.redirect(await urlDescarga(v.setup));
+  });
+
   /**
    * Solicitud de prueba desde la página web: deja el contacto en el portal y entrega el instalador.
    * Es pública (la página no tiene sesión), por eso va limitada por dirección y solo devuelve un enlace temporal.
