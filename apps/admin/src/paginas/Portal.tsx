@@ -17,7 +17,7 @@ interface Cliente {
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
-  sucursalesIncluidas: number; modulos: string[]; funciones: string[]; destacado: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
+  sucursalesIncluidas: number; modulos: string[]; funciones: string[]; destacado: boolean; permanente: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
 }
 interface Instalacion {
   id: string; estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA"; empresa: string | null; rnc: string | null; equipo: string | null; versionApp: string | null;
@@ -40,7 +40,7 @@ const ESTADOS: Record<string, { t: string; c: string }> = {
 };
 const masUnAno = (desde?: string | null) => masMeses(12, desde);
 const aSlug = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "").slice(0, 40);
-const fecha = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-DO", { day: "numeric", month: "short", year: "numeric" });
+const fecha = (iso: string) => iso >= "2099-01-01" ? "Sin vencimiento" : new Date(`${iso}T12:00:00`).toLocaleDateString("es-DO", { day: "numeric", month: "short", year: "numeric" });
 const hace = (iso: string | null) => {
   if (!iso) return "nunca";
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
@@ -428,7 +428,7 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
 }
 
 /* ---------------- Planes ---------------- */
-const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], funciones: [] as string[], destacado: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
+const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], funciones: [] as string[], destacado: false, permanente: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
 
 function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) {
   const [edit, setEdit] = useState<(Omit<Plan, "id" | "clientes" | "descripcion"> & { id: string; descripcion: string | null }) | null>(null);
@@ -470,6 +470,7 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
               <textarea rows={6} value={(edit.funciones ?? []).join("\n")} onChange={(e) => setEdit({ ...edit, funciones: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 14) })} placeholder={"1 tienda, con sus cajas y usuarios\nFacturación electrónica y NCF\nCompras con IA"} /></label>
             <div>
               <label className="campo"><span>Etiqueta en la página (opcional)</span><input value={edit.etiqueta ?? ""} maxLength={40} placeholder="Para 2 sucursales" onChange={(e) => setEdit({ ...edit, etiqueta: e.target.value })} /></label>
+              <label className="regla" style={{ marginTop: 8 }}><input type="checkbox" checked={edit.permanente} onChange={(e) => setEdit({ ...edit, permanente: e.target.checked, ...(e.target.checked ? { permiteActualizaciones: false } : {}) })} /><span><b>Licencia permanente (pago único)</b><small>No vence y no tiene mensualidad. El precio se cobra una sola vez.</small></span></label>
               <label className="regla" style={{ marginTop: 8 }}><input type="checkbox" checked={edit.destacado} onChange={(e) => setEdit({ ...edit, destacado: e.target.checked })} /><span><b>Destacado</b><small>Se resalta en la página web</small></span></label>
             </div>
           </div>
