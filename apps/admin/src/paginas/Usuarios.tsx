@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { api, sesionActual } from "../api";
 import { Aviso, Encabezado, Tabla, useCatalogo, useDatos } from "../ui";
 
@@ -12,15 +12,16 @@ interface Permiso { id: string; grupo: "Caja" | "Administración"; nombre: strin
  *  - PIN (4 a 6 números): para entrar a la caja y para aprobar como supervisor.
  */
 export function Usuarios() {
-  const [pestana, setPestana] = useState<"usuarios" | "roles">("usuarios");
+  const [pestana, setPestana] = useState<"usuarios" | "roles" | "permisos">("usuarios");
   return (
     <>
       <Encabezado titulo="Usuarios y permisos" descripcion="La contraseña sirve para la Administración; el PIN, para entrar a la caja y aprobar como supervisor." />
       <div className="pestanas">
         <button className={pestana === "usuarios" ? "activa" : ""} onClick={() => setPestana("usuarios")}>Usuarios</button>
         <button className={pestana === "roles" ? "activa" : ""} onClick={() => setPestana("roles")}>Roles</button>
+        <button className={pestana === "permisos" ? "activa" : ""} onClick={() => setPestana("permisos")}>Permisos</button>
       </div>
-      {pestana === "usuarios" ? <ListaUsuarios /> : <Roles />}
+      {pestana === "usuarios" ? <ListaUsuarios /> : pestana === "roles" ? <Roles /> : <MatrizPermisos />}
     </>
   );
 }
@@ -181,6 +182,53 @@ function Roles() {
       {editar && permisos.datos && (
         <EditarRol rol={editar === "nuevo" ? null : editar} permisos={permisos.datos} onCerrar={() => setEditar(null)} onListo={() => { setEditar(null); roles.recargar(); }} />
       )}
+    </>
+  );
+}
+
+/** Qué permiso tiene cada rol, en una sola tabla. Marcar o desmarcar guarda al instante. */
+function MatrizPermisos() {
+  const roles = useDatos<Rol[]>("/central/roles");
+  const permisos = useDatos<Permiso[]>("/central/roles/permisos");
+  const [msg, setMsg] = useState("");
+  const [ocupado, setOcupado] = useState("");
+  if (!roles.datos || !permisos.datos) return <p className="suave">Cargando…</p>;
+  const cambiar = async (r: Rol, permiso: string) => {
+    const nuevos = r.permisos.includes(permiso) ? r.permisos.filter((x) => x !== permiso) : [...r.permisos, permiso];
+    setOcupado(r.id + permiso); setMsg("");
+    try { await api(`/central/roles/${r.id}`, { metodo: "PATCH", cuerpo: { nombre: r.nombre, permisos: nuevos } }); roles.recargar(); }
+    catch (e) { setMsg((e as Error).message); }
+    setOcupado("");
+  };
+  return (
+    <>
+      <p className="suave">Cada columna es un rol. Marque o desmarque para cambiar lo que puede hacer; se guarda al momento y aplica la próxima vez que la persona inicie sesión. El rol con todos los permisos no se edita.</p>
+      {msg && <Aviso texto={msg} />}
+      <div className="tabla-contenedor">
+        <table className="tabla">
+          <thead><tr><th>Permiso</th>{roles.datos.map((r) => <th key={r.id} style={{ textAlign: "center" }}>{r.nombre}<div className="suave pequeno" style={{ textTransform: "none", letterSpacing: 0 }}>{r.usuarios} usuario(s)</div></th>)}</tr></thead>
+          <tbody>
+            {(["Caja", "Administración"] as const).map((g) => (
+              <Fragment key={g}>
+                <tr><td colSpan={roles.datos!.length + 1} style={{ background: "var(--fondo)", fontWeight: 600 }}>{g}</td></tr>
+                {permisos.datos!.filter((p) => p.grupo === g).map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.nombre}</td>
+                    {roles.datos!.map((r) => {
+                      const todo = r.permisos.includes("*");
+                      return (
+                        <td key={r.id} style={{ textAlign: "center" }}>
+                          <input type="checkbox" aria-label={`${r.nombre}: ${p.nombre}`} checked={todo || r.permisos.includes(p.id)} disabled={todo || ocupado === r.id + p.id} onChange={() => cambiar(r, p.id)} />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
