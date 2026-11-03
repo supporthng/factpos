@@ -43,6 +43,7 @@ import { Marca } from "./paginas/Marca";
 import { PantallaCliente } from "./paginas/PantallaCliente";
 import { Respaldos } from "./paginas/Respaldos";
 import { FormatosImpresion } from "./paginas/FormatosImpresion";
+import { EquiposCaja } from "./paginas/EquiposCaja";
 import { Padron } from "./paginas/Padron";
 import { Usuarios } from "./paginas/Usuarios";
 import { Cxc } from "./paginas/Cxc";
@@ -82,6 +83,7 @@ const SECCIONES = [
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
   { id: "marca", titulo: "Logo y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
+  { id: "equipos", titulo: "Equipos de la caja", grupo: "Configuración", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
   { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
   { id: "versiones", titulo: "Versiones de los equipos", grupo: "Configuración", C: VersionesEquipos, i: "actualizaciones", p: ["admin.config"] },
@@ -160,6 +162,7 @@ const DESCRIPCION: Record<string, string> = {
   sucursales: "Tiendas, cajas y servidores de cada local",
   incidentes: "Fallas, caídas de conexión y soporte",
   usuarios: "Cuentas, roles y permisos del personal",
+  equipos: "Impresora, gaveta, báscula y datáfono de cada terminal",
   correo: "Envío de reportes y facturas por correo",
   marca: "Suba el logo de su empresa; el sistema toma sus colores",
   formatos: "Diseño del ticket: papel, logo, encabezado, pie y datos",
