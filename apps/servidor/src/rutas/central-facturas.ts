@@ -5,7 +5,7 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, datosTicket } from "./facturas.js";
-import { registrarVenta, cotizar, resumen } from "./ventas.js";
+import { registrarVenta, cotizar, resumen, exigirSinComprobante } from "./ventas.js";
 import { contextoCaja } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
@@ -260,6 +260,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
     const usuarioId = usuarioDe(req);
+    if (b.tipoDocumento === "SIN") await exigirSinComprobante(b.cajaId);
     // Descuentos manuales: solo con el permiso de aprobar descuentos (la persona que factura es quien los autoriza) y con motivo
     const hayDescuento = b.items.some((i) => Number(i.descuentoManual ?? 0) > 0);
     let autorizacion: string | undefined;

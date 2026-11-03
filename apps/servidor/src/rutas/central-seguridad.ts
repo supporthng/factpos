@@ -17,6 +17,12 @@ export const FUNCIONES = [
     porDefecto: false,
   },
   {
+    clave: "venta_sin_comprobante",
+    titulo: "Facturas sin comprobante (factura interna)",
+    descripcion: "Muestra la opción «Sin comprobante» al cobrar en la caja y al crear facturas desde la administración. Son facturas internas, sin valor fiscal, que no se reportan a la DGII. Desactivado: toda venta lleva comprobante (e-CF o NCF). Las facturas internas que ya existen se pueden seguir consultando y corrigiendo.",
+    porDefecto: false,
+  },
+  {
     clave: "cupos_contingencia",
     titulo: "Cupos de existencia por caja sin servidor",
     descripcion: "Mientras hay servidor, cada caja recibe su parte de la existencia de cada producto (10 unidades y 2 cajas abiertas: 5 y 5). Si se cae el servidor, cada caja vende solo su parte y no se vende de más. Los combos no entran en el reparto. Desactivado: sin servidor las cajas venden con la existencia que conocían, sin límite entre ellas.",

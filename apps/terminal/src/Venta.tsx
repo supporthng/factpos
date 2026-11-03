@@ -76,7 +76,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   /** Pedido de cliente cargado en la venta: al cobrar, queda facturado */
   /** Tipo de comprobante de esta venta (Consumo por defecto) */
-  const [tipoComp, setTipoComp] = useState<TipoComprobante>("SIN");
+  const [tipoComp, setTipoComp] = useState<TipoComprobante>(config.funciones?.sinComprobante ? "SIN" : "E32");
   const volverACobro = useRef(false);
   const [pedidoActivo, setPedidoActivo] = useState<{ id: string; numero: string } | null>(null);
   const [cupon, setCupon] = useState<Cupon | null>(null);
@@ -374,7 +374,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setSel((s) => Math.min(s, lineas.length - 2));
   };
   const nuevaVenta = () => {
-    setPedidoActivo(null); setTipoComp("SIN");
+    setPedidoActivo(null); setTipoComp(config.funciones?.sinComprobante ? "SIN" : "E32");
     setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); setNotas(""); setMetodo("EFECTIVO"); avisadas.current = new Set();
   };
 
@@ -655,7 +655,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           {cot.error && <p className="error">{cot.error}</p>}
 
           <span className="pv-titulo-pago">Comprobante</span>
-          <SelectorComprobante tipo={tipoComp} compacto onTipo={(t) => {
+          <SelectorComprobante tipo={tipoComp} compacto permitirSin={!!config.funciones?.sinComprobante} onTipo={(t) => {
             setTipoComp(t);
             if (requiereDocumento(t) && !tieneDocumentoFiscal(cliente)) { avisar("Crédito fiscal: elija un cliente con RNC o cédula", "ok"); setModal("cliente"); }
           }} />
@@ -732,14 +732,17 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             turnoId: turno.id,
             hayDescuentos: lineas.some((l) => l.descuentoManual),
           }}
-          onVendido={(r) => {
+          permitirSin={!!config.funciones?.sinComprobante}
+          onVendido={(r, op) => {
             const ped = pedidoActivo;
             if (ped) { // el pedido queda facturado; si falla el aviso se reintenta unas veces
               const avisarFacturado = (n: number) => api(ajustes.servidor, `/cajas/${ajustes.cajaId}/pedidos/${ped.id}/facturado`, { cuerpo: { ventaId: r.id } })
                 .catch(() => { if (n > 0) setTimeout(() => avisarFacturado(n - 1), 5000); });
               avisarFacturado(5);
             }
-            setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta(); setModal("ticket"); existenciasRef.current().catch(() => {}); }}
+            setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta();
+            if (op?.sinImprimir) { setModal(null); avisar("Venta registrada · comprobante no impreso (puede usar Reimprimir última)", "ok"); } else setModal("ticket");
+            existenciasRef.current().catch(() => {}); }}
         />
       )}
       {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}

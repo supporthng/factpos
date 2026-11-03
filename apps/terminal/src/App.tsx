@@ -19,6 +19,8 @@ export interface ConfigCaja {
   empresa: string;
   rnc: string;
   modulos: { delivery: { activo: boolean } };
+  /** Funciones de Seguridad que cambian la pantalla de venta */
+  funciones?: { sinComprobante: boolean };
   marca: { logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; formato?: Partial<import("@factpos/compartido").FormatoTicket>; pantallaCliente?: Partial<import("./pantalla-cliente").ConfigPantalla> };
   direccion?: string | null;
   telefono?: string | null;

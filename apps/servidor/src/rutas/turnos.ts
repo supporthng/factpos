@@ -5,6 +5,7 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { encolarFilas } from "../sync/outbox.js";
+import { funcionHabilitada } from "./central-seguridad.js";
 
 const decimal2 = z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido");
 
@@ -84,7 +85,8 @@ export async function rutasTurnos(app: FastifyInstance) {
       ...(pc.ofertas ?? []),
       ...creadas.rows.map((o) => ({ id: o.id, titulo: o.nombre, texto: texto(o), precio: "", imagen: null, activa: true, desde: o.desde, hasta: o.hasta })),
     ] } };
-    return { ...c, marca, modulos: { delivery: { activo: Boolean(c.modulos?.delivery?.activo) } } };
+    return { ...c, marca, modulos: { delivery: { activo: Boolean(c.modulos?.delivery?.activo) } },
+      funciones: { sinComprobante: await funcionHabilitada(c.empresaId, "venta_sin_comprobante") } };
   });
 
   app.get("/cajas/:cajaId/usuarios", async (req) => {
