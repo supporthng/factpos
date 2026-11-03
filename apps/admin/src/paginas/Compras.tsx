@@ -64,15 +64,29 @@ export function Compras() {
   const [hasta, setHasta] = useState("");
   const ruta = `/central/compras?${new URLSearchParams({ ...(sucursal ? { sucursalId: sucursal } : {}), ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) })}`;
   const { datos, error, recargar } = useDatos<FilaCompra[]>(ruta);
+  const borr = useDatos<{ id: string; titulo: string; actualizadoEn: string; usuario: string; lineas: number }[]>("/central/compras/borradores");
+  const [borrador, setBorrador] = useState<{ id: string; datos: any } | null>(null);
+  const [errBorr, setErrBorr] = useState("");
+  const continuar = async (id: string) => {
+    setErrBorr("");
+    try { const b = await api<{ id: string; datos: any }>(`/central/compras/borradores/${id}`); setBorrador(b); setNueva(true); }
+    catch (e) { setErrBorr((e as Error).message); borr.recargar(); }
+  };
+  const quitarBorrador = async (id: string) => {
+    if (!confirm("¿Eliminar este borrador? No se ha registrado nada.")) return;
+    try { await api(`/central/compras/borradores/${id}`, { metodo: "DELETE" }); } catch (e) { setErrBorr((e as Error).message); }
+    borr.recargar();
+  };
 
-  if (nueva) return <NuevaCompra onCerrar={() => setNueva(false)} onRegistrada={() => { setNueva(false); recargar(); }} />;
+  if (nueva) return <NuevaCompra key={borrador?.id ?? "nueva"} borrador={borrador} onCerrar={() => { setNueva(false); setBorrador(null); borr.recargar(); }}
+    onRegistrada={() => { setNueva(false); setBorrador(null); recargar(); borr.recargar(); }} />;
 
   const total = (datos ?? []).reduce((a, f) => a + n(f.total), 0);
   const ahorro = (datos ?? []).reduce((a, f) => a + n(f.ahorro), 0);
   return (
     <>
       <Encabezado titulo="Compras" descripcion="Entrada de mercancía con la factura del proveedor. Suma al inventario de la sucursal y actualiza el costo.">
-        <button className="boton primario" onClick={() => setNueva(true)}>Registrar compra</button>
+        <button className="boton primario" onClick={() => { setBorrador(null); setNueva(true); }}>Registrar compra</button>
       </Encabezado>
       <div className="filtros">
         <SelectorSucursal valor={sucursal} onCambio={setSucursal} />
@@ -80,7 +94,20 @@ export function Compras() {
         <label className="en-linea-campo"><span className="suave">Hasta</span><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></label>
         {datos && datos.length > 0 && <span className="suave pequeno">{datos.length} compra(s) · {rd(total)}{ahorro > 0 ? ` · ahorro en ofertas ${rd(ahorro)}` : ""}</span>}
       </div>
-      <Aviso texto={error} />
+      <Aviso texto={error || errBorr} />
+      {borr.datos && borr.datos.length > 0 && (
+        <div className="panel">
+          <h3>Compras en borrador ({borr.datos.length})</h3>
+          <p className="suave pequeno">Facturas que empezó (por ejemplo, con la foto desde el celular) y falta terminar. No han movido inventario.</p>
+          {borr.datos.map((b) => (
+            <div key={b.id} className="en-linea" style={{ flexWrap: "wrap", gap: 10, margin: "8px 0" }}>
+              <span><b>{b.titulo || "Compra sin título"}</b> <span className="suave pequeno">{b.lineas} línea(s){b.usuario ? ` · ${b.usuario}` : ""} · {new Date(b.actualizadoEn).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" })}</span></span>
+              <button className="boton primario" onClick={() => continuar(b.id)}>Continuar</button>
+              <button className="boton fantasma" onClick={() => quitarBorrador(b.id)}>Eliminar</button>
+            </div>
+          ))}
+        </div>
+      )}
       {datos && (
         <Tabla
           filas={datos}
@@ -245,14 +272,15 @@ function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: stri
 }
 
 /* ---------- Nueva compra ---------- */
-function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegistrada: () => void }) {
+function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => void; onRegistrada: () => void; borrador: { id: string; datos: any } | null }) {
   const { sucursales, productos } = useCatalogo();
   const aux = useDatos<{ proveedores: { id: string; nombre: string; rnc: string | null }[] }>("/central/productos-auxiliares");
-  const [cab, setCab] = useState({
+  const baseCab = {
     sucursalId: sucursales[0]?.id ?? "", almacenId: "", proveedorId: "", numeroFactura: "", ncfProveedor: "",
     fechaFactura: hoy(), condicion: "CONTADO" as "CONTADO" | "CREDITO", venceEn: "", notas: "",
-  });
-  const [lineas, setLineas] = useState<Linea[]>([]);
+  };
+  const [cab, setCab] = useState<typeof baseCab>({ ...baseCab, ...(borrador?.datos?.cab as Partial<typeof baseCab> | undefined) });
+  const [lineas, setLineas] = useState<Linea[]>(() => ((borrador?.datos?.lineas as Linea[] | undefined) ?? []).map((l) => ({ ...l, ref: null })));
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
   const [foco, setFoco] = useState<string | null>(null);
   const [creando, setCreando] = useState<{ i: number; item: ItemLeido } | null>(null);
@@ -267,7 +295,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
   const [provNuevo, setProvNuevo] = useState<string | null>(null);
   const lector = useDatos<{ cupo: number; usadas: number; disponible: boolean; error?: string }>("/central/compras/lector/estado");
   const [leyendo, setLeyendo] = useState(false);
-  const [pend, setPend] = useState<ItemLeido[]>([]);
+  const [pend, setPend] = useState<ItemLeido[]>(() => (borrador?.datos?.pend as ItemLeido[] | undefined) ?? []);
   const [leidaInfo, setLeidaInfo] = useState<string>("");
 
   /** Agrega varias líneas de una vez (de la factura leída); si la presentación ya está, suma la cantidad */
@@ -411,6 +439,8 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
           })),
         },
       });
+      terminada.current = true;
+      try { await api(`/central/compras/borradores/${borradorId.current}`, { metodo: "DELETE" }); } catch { /* sin borrador */ }
       onRegistrada();
     } catch (e) {
       setMsg((e as Error).message);
@@ -425,13 +455,45 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     return () => window.removeEventListener("keydown", t);
   });
 
+  // ---- Borrador: lo escrito se guarda solo en el servidor para poder seguir en otro equipo
+  const borradorId = useRef(borrador?.id ?? crypto.randomUUID());
+  const terminada = useRef(false);
+  const [guardado, setGuardado] = useState(!!borrador);
+  useEffect(() => {
+    if (!borrador) return;
+    for (const l of lineas) {
+      api<Referencia>(`/central/ofertas/referencia/${l.presentacionId}`)
+        .then((ref) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, ref } : x)))).catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (terminada.current || (!lineas.length && !pend.length)) return;
+    const t = setTimeout(async () => {
+      const prov = aux.datos?.proveedores.find((p) => p.id === cab.proveedorId)?.nombre ?? "Sin proveedor";
+      try {
+        await api(`/central/compras/borradores/${borradorId.current}`, { metodo: "PUT", cuerpo: {
+          titulo: `${prov} · ${cab.numeroFactura || "sin número"}`,
+          datos: { cab, pend, lineas: lineas.map((l) => ({ ...l, ref: null })) },
+        } });
+        if (!terminada.current) setGuardado(true);
+      } catch { /* sin conexión: se reintenta con el próximo cambio */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [cab, lineas, pend, aux.datos]);
+  const descartarBorrador = async () => {
+    if (!confirm("¿Descartar esta compra? Se borra el borrador y no se registra nada.")) return;
+    terminada.current = true;
+    try { await api(`/central/compras/borradores/${borradorId.current}`, { metodo: "DELETE" }); } catch { /* ya no existía */ }
+    onCerrar();
+  };
+
   useEffect(() => { if (!cab.sucursalId && sucursales[0]) setCab((c) => ({ ...c, sucursalId: sucursales[0].id })); }, [sucursales, cab.sucursalId]);
   const variasSuc = sucursales.length > 1;
   const almacenes = sucursales.find((x) => x.id === cab.sucursalId)?.almacenes ?? [];
   const lectorOk = !!lector.datos?.disponible && !leyendo;
   return (
     <>
-      <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La compra no se ha registrado. ¿Salir?")) && onCerrar()}>Compras</button><span>/</span><span>Registrar compra</span></div>
+      <div className="migas"><button className="enlace" onClick={onCerrar}>Compras</button><span>/</span><span>Registrar compra</span></div>
       <Encabezado titulo="Registrar compra" descripcion="Busque cada producto, escriba cantidad y costo, y Enter. También puede leer la factura con IA.">
         <label className={"boton" + (!lectorOk ? " desactivado" : "")} title={motivoLector}>
           {leyendo ? "Leyendo la factura…" : "📷 Leer factura"}
@@ -448,6 +510,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
       {leyendo && <Aviso tipo="info" texto="Leyendo la factura con IA… tarda entre 15 y 40 segundos. Puede ir llenando los datos mientras tanto." />}
       <Aviso texto={msg} />
       {leidaInfo && <p className="texto-ok">{leidaInfo}</p>}
+      {guardado && <p className="suave pequeno">Esta compra se guarda sola como borrador: puede seguirla desde la PC u otro equipo en Compras › «Compras en borrador».</p>}
       {pend.length > 0 && (
         <div className="panel">
           <h3>Líneas de la factura sin emparejar ({pend.length})</h3>
@@ -592,7 +655,8 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
 
       {/* Barra fija: el total y el botón siempre a la vista, sin subir la pantalla */}
       <div className="barra-compra">
-        <span className="suave">{lineas.length} línea(s)</span>
+        <span className="suave">{lineas.length} línea(s){guardado ? " · borrador guardado" : ""}</span>
+        {guardado && <button className="boton fantasma" onClick={descartarBorrador} title="Borra el borrador sin registrar la compra">Descartar</button>}
         <span>Subtotal {rd(sub)}</span><span>ITBIS {rd(itb)}</span>
         {ahorro > 0 && <span className="texto-ok">Ahorro por ofertas {rd(ahorro)}</span>}
         <b className="total-compra">Total {rd(sub + itb)}</b>

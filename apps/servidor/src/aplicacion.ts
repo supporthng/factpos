@@ -12,6 +12,7 @@ import { rutasDgiiPublico } from "./rutas/dgii-publico.js";
 import { rutasPortalLector } from "./lector/portal.js";
 import { rutasPortalGastos } from "./licencia/gastos.js";
 import { rutasLectorFacturas } from "./lector/central.js";
+import { rutasComprasBorradores } from "./rutas/central-compras-borradores.js";
 import { rutasRespaldos, rutasRestaurarRespaldo } from "./respaldo/respaldo.js";
 import { rutasInicio } from "./rutas/inicio.js";
 import { rutasLicenciaCentral, rutasLicenciaSucursal } from "./licencia/cliente.js";
@@ -257,6 +258,7 @@ export async function crearApp() {
     await app.register(rutasCentralProductos);
     await app.register(rutasCentralCompras);
     await app.register(rutasLectorFacturas);
+    await app.register(rutasComprasBorradores);
     if (config.modo === "central") await app.register(rutasCentralSync);
     await app.register(rutasCentralTraspasos);
     await app.register(rutasCentralCxc);
