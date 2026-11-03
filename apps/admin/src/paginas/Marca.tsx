@@ -3,6 +3,7 @@ import { Icono } from "../Iconos";
 import { extraerPaleta, temaAdmin, temaTerminal, contraste, marcaEfectiva } from "@factpos/compartido";
 import { api } from "../api";
 import { aplicarTemaAdmin } from "../tema";
+import { TAMANOS_ADMIN, leerTamanoAdmin, guardarTamanoAdmin, type TamanoAdmin } from "../escala";
 import { Aviso, Encabezado } from "../ui";
 
 interface MarcaDatos { nombre: string; logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; usarColores: boolean }
@@ -37,6 +38,7 @@ async function procesarLogo(archivo: File): Promise<{ dataUrl: string; paleta: s
 export function Marca() {
   const [m, setM] = useState<MarcaDatos | null>(null);
   const [paleta, setPaleta] = useState<string[]>([]);
+  const [tamano, setTamano] = useState<TamanoAdmin>(leerTamanoAdmin());
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
   useEffect(() => { api<MarcaDatos>("/central/marca").then(setM); }, []);
@@ -75,6 +77,15 @@ export function Marca() {
         <button className="boton primario" onClick={guardar}>Guardar marca</button>
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <h3>Tamaño de la pantalla</h3>
+        <p className="suave pequeno">Solo para este equipo. «Automático» se adapta al tamaño de la ventana; si todo se ve grande, elija Compacto.</p>
+        <div className="selector-modo">
+          {(Object.keys(TAMANOS_ADMIN) as TamanoAdmin[]).map((k) => (
+            <button key={k} className={tamano === k ? "activo" : ""} onClick={() => { setTamano(k); guardarTamanoAdmin(k); }}>{TAMANOS_ADMIN[k].nombre}</button>
+          ))}
+        </div>
+      </div>
       <div className="marca-grid">
         <div className="panel">
           <h3>Logo</h3>

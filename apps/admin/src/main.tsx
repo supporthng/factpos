@@ -3,6 +3,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./estilos.css";
+import { iniciarEscalaAdmin } from "./escala";
+
+iniciarEscalaAdmin();
 
 
 createRoot(document.getElementById("root")!).render(

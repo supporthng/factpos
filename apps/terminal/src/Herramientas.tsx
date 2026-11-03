@@ -4,6 +4,7 @@ import { precioPara, type Catalogo, type ProductoCatalogo } from "@factpos/compa
 import { api, rd, type Ajustes } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
 import { Modal, TamanoPantalla, type Cliente } from "./Venta";
+import { leerVistaInicial, guardarVistaInicial, type VistaInicial } from "./vista";
 import { PinSupervisor, type Aprobacion } from "./Operaciones";
 import { EncabezadoTicket } from "./Ticket";
 import { estadoPrincipal, fijarPrincipal } from "./contingencia";
@@ -297,6 +298,7 @@ export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCe
     <Modal titulo="Configuración de esta terminal" onCerrar={onCerrar}>
       <p className="suave">{config.nombre} · {config.sucursal}</p>
       <TamanoPantalla />
+      <VistaInicialCaja cajaId={config.id} />
       <div className="campo">
         <span>Pantalla del cliente</span>
         <div><button className="boton" onClick={abrirPantallaCliente}>Abrir pantalla del cliente</button></div>
@@ -317,5 +319,19 @@ export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCe
       <p className="nota">Atajos: F1 catálogo · F2 buscar · F3 suspender · F4 cliente · F5 en pausa · F6 cupón · F7 descuento · F8 delivery ·
         F9 facturas y devoluciones · F10 turno y cierre · F12 cobrar · Alt+P precio · Alt+N nota · Alt+Q cotización · Alt+E existencias · Alt+G gaveta · Esc cancelar.</p>
     </Modal>
+  );
+}
+
+/** Con qué vista abre esta caja. F1 sigue cambiando entre las dos durante la venta. */
+function VistaInicialCaja({ cajaId }: { cajaId: string }) {
+  const [v, setV] = useState<VistaInicial>(leerVistaInicial(cajaId));
+  const opciones: [VistaInicial, string][] = [["escaner", "Caja clásica"], ["catalogo", "Caja táctil"], ["recordar", "La última que usé"]];
+  return (
+    <div className="tamano-pantalla">
+      <span className="suave">Vista con la que abre esta caja</span>
+      <div className="selector-modo">
+        {opciones.map(([k, n]) => <button key={k} className={v === k ? "activo" : ""} onClick={() => { setV(k); guardarVistaInicial(cajaId, k); }}>{n}</button>)}
+      </div>
+    </div>
   );
 }
