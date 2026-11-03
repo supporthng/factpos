@@ -40,6 +40,7 @@ export interface Turno { id: string; abiertoEn: string; fondoInicial: string; us
 /**
  * Flujo de la terminal: configurar (una sola vez) → elegir usuario → abrir turno → vender.
  */
+const MINUTOS_INACTIVIDAD = 5;
 function AppInterna() {
   const [ajustes, setAjustes] = useState<Ajustes | null>(leerAjustes());
   const [config, setConfig] = useState<ConfigCaja | null>(null);
@@ -58,7 +59,20 @@ function AppInterna() {
 
   // Seguridad de la caja: con el turno abierto, salir de FactPOS necesita la aprobación de un supervisor
   const [saliendo, setSaliendo] = useState(false);
-  const electron = (window as unknown as { factpos?: { turno?: (v: boolean) => void; alIntentarCerrar?: (f: () => void) => void; cerrar?: () => void } }).factpos;
+  const [minimizando, setMinimizando] = useState(false);
+  const [bloqueada, setBloqueada] = useState(false);
+  const electron = (window as unknown as { factpos?: { turno?: (v: boolean) => void; alIntentarCerrar?: (f: () => void) => void; cerrar?: () => void; alIntentarMinimizar?: (f: () => void) => void; minimizar?: () => void } }).factpos;
+  // Minimizar la caja (Windows+D, etc.) también necesita el permiso de un supervisor
+  useEffect(() => { electron?.alIntentarMinimizar?.(() => setMinimizando(true)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Inactividad: pasados unos minutos sin tocar la caja se bloquea y pide el PIN de quien está en caja (la venta en curso se conserva)
+  const ultimaActividad = useRef(Date.now());
+  useEffect(() => {
+    const marcar = () => { ultimaActividad.current = Date.now(); };
+    const ev = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    ev.forEach((x) => window.addEventListener(x, marcar, { passive: true }));
+    const t = setInterval(() => { if (Date.now() - ultimaActividad.current > MINUTOS_INACTIVIDAD * 60000 && sesionCaja()) setBloqueada(true); }, 10000);
+    return () => { ev.forEach((x) => window.removeEventListener(x, marcar)); clearInterval(t); };
+  }, []);
   useEffect(() => { if (turno !== undefined) electron?.turno?.(!!turno); }, [turno]); // eslint-disable-line react-hooks/exhaustive-deps
   // En el navegador (la app de escritorio ya abre en kiosko) la caja pasa a pantalla completa con el primer toque o tecla:
   // los navegadores no permiten hacerlo sin una acción del usuario.
@@ -93,12 +107,16 @@ function AppInterna() {
   // (así se puede seguir vendiendo en contingencia).
   useEffect(() => {
     if (!ajustes) return;
+    // Arranque rápido: se muestra de inmediato la última configuración guardada en esta caja y se actualiza en segundo plano
+    let activo = true;
+    leerCache<ConfigCaja>(ajustes, "config").then((c) => { if (activo && c) { aplicarMarca(c.marca); setConfig((previa) => previa ?? c); } }).catch(() => {});
     api<ConfigCaja>(ajustes.servidor, `/cajas/${ajustes.cajaId}/config`)
       .then((c) => { aplicarMarca(c.marca); setConfig(c); guardarCache(ajustes, "config", c); })
       .catch(async (e) => {
         const c = await leerCache<ConfigCaja>(ajustes, "config");
         if (c) { aplicarMarca(c.marca); setConfig(c); } else setError(e.message);
       });
+    return () => { activo = false; };
   }, [ajustes]);
   useEffect(() => { if (ajustes && config) void iniciarVigilancia(ajustes); }, [ajustes, config]);
 
@@ -119,6 +137,18 @@ function AppInterna() {
       <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
     </Modal>
   ) : null;
+  const ventanaMin = minimizando ? (
+    <Modal titulo="Minimizar la caja" onCerrar={() => setMinimizando(false)}>
+      <p>Para minimizar la caja hace falta la aprobación de un supervisor.</p>
+      {ajustes
+        ? <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y minimizar" onAprobado={() => { setMinimizando(false); electron?.minimizar?.(); }} />
+        : <button className="boton ancho" onClick={() => { setMinimizando(false); electron?.minimizar?.(); }}>Minimizar</button>}
+      <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setMinimizando(false)}>Volver a la caja</button>
+    </Modal>
+  ) : null;
+  const pantallaBloqueo = bloqueada && ajustes && config && usuario ? (
+    <div className="bloqueo-caja"><ElegirUsuario ajustes={ajustes} config={config} bloqueo={usuario} onElegir={() => { ultimaActividad.current = Date.now(); setBloqueada(false); }} /></div>
+  ) : null;
   if (cerrada) return <Pantalla><h2>Caja cerrada</h2><p className="suave">Ya puede cerrar esta ventana.</p><button className="boton ancho" onClick={() => location.reload()}>Abrir de nuevo</button></Pantalla>;
   if (ajustes && error && !config) {
     // Esta PC ya tiene su caja: un fallo de conexión nunca la desconfigura, solo se reintenta
@@ -128,7 +158,7 @@ function AppInterna() {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
-  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />{ventanaSalir}</>;
+  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />{ventanaSalir}{ventanaMin}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={() => setTurno(undefined)} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
 
@@ -136,7 +166,7 @@ function AppInterna() {
   if (turno.usuarioId !== usuario.id) {
     return <><TurnoAjeno ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} onCerrado={() => { guardarCache(ajustes, "turno", null); setTurno(null); }} />{ventanaSalir}</>;
   }
-  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}</>;
+  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}{ventanaMin}{pantallaBloqueo}</>;
 }
 
 function TurnoAjeno({ ajustes, config, usuario, turno, onSalir, onCerrado }: {
@@ -292,9 +322,9 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
   );
 }
 
-function ElegirUsuario({ ajustes, config, onElegir }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void }) {
+function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void; bloqueo?: Usuario }) {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [elegido, setElegido] = useState<Usuario | null>(null);
+  const [elegido, setElegido] = useState<Usuario | null>(bloqueo ?? null);
   const [pin, setPin] = useState("");
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -354,7 +384,8 @@ function ElegirUsuario({ ajustes, config, onElegir }: { ajustes: Ajustes; config
   return (
     <Pantalla>
       <p className="suave">{config.sucursal} · {config.nombre}</p>
-      <h2>{elegido.nombre}</h2>
+      <h2>{bloqueo ? "Caja bloqueada" : elegido.nombre}</h2>
+      {bloqueo && <p className="suave">Por inactividad. {elegido.nombre}, escriba su PIN para continuar; la venta en curso se conserva.</p>}
       <label className="campo">
         <span>Su PIN</span>
         <input autoFocus type="password" inputMode="numeric" autoComplete="off" className="entrada-grande pin" aria-label="PIN"
@@ -366,7 +397,7 @@ function ElegirUsuario({ ajustes, config, onElegir }: { ajustes: Ajustes; config
         ))}
       </div>
       {msg && <p className="error">{msg}</p>}
-      <button className="enlace" onClick={() => setElegido(null)}>← No soy {elegido.nombre.split(" ")[0]}</button>
+      {!bloqueo && <button className="enlace" onClick={() => setElegido(null)}>← No soy {elegido.nombre.split(" ")[0]}</button>}
     </Pantalla>
   );
 }

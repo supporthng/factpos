@@ -19,8 +19,8 @@ export const FUNCIONES = [
   {
     clave: "venta_sin_comprobante",
     titulo: "Facturas sin comprobante (factura interna)",
-    descripcion: "Muestra la opción «Sin comprobante» al cobrar en la caja y al crear facturas desde la administración. Son facturas internas, sin valor fiscal, que no se reportan a la DGII. Desactivado: toda venta lleva comprobante (e-CF o NCF). Las facturas internas que ya existen se pueden seguir consultando y corrigiendo.",
-    porDefecto: false,
+    descripcion: "Muestra la opción «Sin comprobante» al cobrar en la caja y al crear facturas desde la administración. Son facturas internas, sin valor fiscal, que no se reportan a la DGII. Desactivado: toda venta lleva comprobante (e-CF o NCF); conviene desactivarlo cuando el negocio no lo vaya a usar. Las facturas internas que ya existen se pueden seguir consultando y corrigiendo.",
+    porDefecto: true,
   },
   {
     clave: "cupos_contingencia",

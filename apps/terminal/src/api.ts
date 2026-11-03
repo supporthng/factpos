@@ -35,12 +35,14 @@ export function guardarAjustes(a: Ajustes) {
 }
 
 // --------------------------------------------------------------- Sesión del cajero
-/** Quien entró con su PIN. Se guarda para que recargar la pantalla no lo saque. */
+/** Quien entró con su PIN. Se guarda para que recargar la pantalla no lo saque, pero NO sobrevive al cerrar la caja:
+ *  al abrirla de nuevo se pide el PIN (sessionStorage se borra al cerrar la ventana). */
 const CLAVE_SESION = "factpos.sesion-caja";
 export interface SesionCaja { token: string; usuario: { id: string; nombre: string }; cajaId: string }
 let sesion: SesionCaja | null = null;
 try {
-  const v = localStorage.getItem(CLAVE_SESION);
+  try { localStorage.removeItem(CLAVE_SESION); } catch { /* sesión antigua: ya no se usa */ }
+  const v = sessionStorage.getItem(CLAVE_SESION);
   sesion = v ? JSON.parse(v) : null;
   // Vencida (16 h): se descarta
   if (sesion && JSON.parse(atob(sesion.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))).exp < Date.now()) sesion = null;
@@ -50,8 +52,8 @@ export const sesionCaja = () => sesion;
 export function fijarSesionCaja(s: SesionCaja | null) {
   sesion = s;
   try {
-    if (s) localStorage.setItem(CLAVE_SESION, JSON.stringify(s));
-    else localStorage.removeItem(CLAVE_SESION);
+    if (s) sessionStorage.setItem(CLAVE_SESION, JSON.stringify(s));
+    else sessionStorage.removeItem(CLAVE_SESION);
   } catch { /* sin almacenamiento */ }
 }
 

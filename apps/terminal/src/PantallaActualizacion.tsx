@@ -96,7 +96,7 @@ export function usePreparado(servidor: () => string, alCambiarVersion: () => voi
       try {
         const base = servidor().replace(/\/$/, "");
         if (base) {
-          const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store", signal: AbortSignal.timeout(2500) });
+          const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store", signal: AbortSignal.timeout(1200) });
           const d = r.ok ? ((await r.json()) as Estado) : null;
           if (d && !d.actualizando) {
             const guardada = leer();

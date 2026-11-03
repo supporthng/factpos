@@ -683,9 +683,11 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .comprobante:hover:not(:disabled) { border-color: var(--primario); }
 .comprobante.activo { border-color: var(--primario); background: color-mix(in srgb, var(--primario) 14%, var(--panel-2)); box-shadow: inset 0 0 0 1px var(--primario); }
 .comprobante:disabled { opacity: .45; }
-.comprobantes.compacto { gap: 6px; margin-bottom: 10px; }
+.comprobantes.compacto { gap: 6px; margin-bottom: 10px; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.comprobantes.compacto.subtipos { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-columns: auto; }
 .comprobantes.compacto .comprobante { padding: 8px 6px; align-items: center; text-align: center; }
-.comprobantes.compacto .comprobante b { font-size: 12.5px; }
+.comprobantes.compacto .comprobante b { font-size: 12.5px; line-height: 1.2; }
+.comprobantes.compacto .comprobante { justify-content: center; min-height: 40px; }
 .comprobantes-grupo { display: grid; gap: 8px; }
 .comprobantes.subtipos { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .comprobante .prefijo { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 700; background: rgba(127,127,127,.2); }
@@ -785,3 +787,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .buscar-todos .der { text-align: right; justify-content: flex-end; }
 .buscar-todos .sin-stock { color: var(--error); }
 .buscar-pie { margin-top: 8px; font-size: 13px; }
+
+/* Caja bloqueada por inactividad: tapa toda la pantalla y pide el PIN */
+.bloqueo-caja { position: fixed; inset: 0; z-index: 300; background: var(--fondo); overflow: auto; }
