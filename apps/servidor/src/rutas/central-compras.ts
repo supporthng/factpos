@@ -21,6 +21,10 @@ const uuid = z.string().uuid();
 const cant = z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida").refine((v) => Number(v) > 0, "La cantidad debe ser mayor que cero");
 const costo = z.string().regex(/^\d+(\.\d{1,4})?$/, "Costo inválido");
 
+/** Descripción de factura en forma comparable: sin tildes, minúsculas y sin signos */
+export const normalizarAlias = (t: string | null | undefined) =>
+  (t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
 const CompraSchema = z.object({
   sucursalId: uuid,
   /** Almacén de la sucursal que recibe la mercancía (si no se indica, el principal) */
@@ -37,6 +41,8 @@ const CompraSchema = z.object({
     cantidad: cant,
     /** Costo por presentación, SIN ITBIS, tal como vino en la factura */
     costoUnitario: costo.refine((v) => Number(v) > 0, "El costo debe ser mayor que cero"),
+    /** Descripción tal como vino en la factura del proveedor (para reconocer el producto la próxima vez) */
+    descripcionFactura: z.string().trim().max(200).nullable().optional(),
     enOferta: z.boolean().default(false),
     /** Costo normal cuando vino en oferta (para saber cuánto se ahorró) */
     costoRegular: costo.nullable().default(null),
@@ -136,6 +142,15 @@ export async function rutasCentralCompras(app: FastifyInstance) {
         itbis = itbis.plus(imp);
         return { it, p, base, imp, linea: n + 1 };
       });
+      // El lector aprende cómo escribe este proveedor cada producto
+      for (const l of lineas) {
+        const alias = normalizarAlias(l.it.descripcionFactura);
+        if (alias.length < 4) continue;
+        await c.query(
+          `INSERT INTO alias_factura (proveedor_id, alias, presentacion_id) VALUES ($1,$2,$3)
+           ON CONFLICT (proveedor_id, alias) DO UPDATE SET presentacion_id = $3, usos = alias_factura.usos + 1, actualizado_en = now()`,
+          [b.proveedorId, alias, l.it.presentacionId]);
+      }
       const total = subtotal.plus(itbis);
 
       await c.query(
