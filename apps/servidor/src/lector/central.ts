@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { llamarPortal } from "../licencia/cliente.js";
@@ -10,6 +11,9 @@ import { credencialesPortal } from "../respaldo/respaldo.js";
  * la persona revisa en «Registrar compra».
  */
 const uuid = z.string().uuid();
+
+interface Trabajo { empresaId: string; creado: number; estado: "LEYENDO" | "LISTO" | "ERROR"; resultado?: unknown; error?: string; codigo?: number }
+const trabajos = new Map<string, Trabajo>();
 
 interface Leida {
   proveedor?: { nombre: string | null; rnc: string | null };
@@ -44,9 +48,35 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     }
   });
 
+  /**
+   * La lectura con IA tarda 15-60 s. Para que ninguna conexión (celular, túnel, proxy) tenga que esperar tanto,
+   * la petición solo ENCOLA el trabajo y responde al instante; la pantalla consulta el resultado cada pocos segundos.
+   */
   app.post("/central/compras/leer-factura", { bodyLimit: 6 * 1024 * 1024 }, async (req) => {
     const b = z.object({ tipo: z.enum(["image/jpeg", "image/png", "image/webp", "application/pdf"]), datos: z.string().min(100) }).parse(req.body);
     const empresaId = empresaDe(req);
+    for (const [k, t] of trabajos) if (Date.now() - t.creado > 15 * 60_000) trabajos.delete(k);
+    const id = randomUUID();
+    const t: Trabajo = { empresaId, creado: Date.now(), estado: "LEYENDO" };
+    trabajos.set(id, t);
+    leer(empresaId, b).then(
+      (resultado) => { t.estado = "LISTO"; t.resultado = resultado; },
+      (e) => { t.estado = "ERROR"; t.error = (e as Error).message || "No se pudo leer la factura"; t.codigo = (e as { statusCode?: number }).statusCode; },
+    );
+    return { trabajoId: id };
+  });
+
+  app.get("/central/compras/leer-factura/:id", async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const t = trabajos.get(id);
+    if (!t || t.empresaId !== empresaDe(req)) return reply.code(404).send({ error: "La lectura ya no está disponible. Vuelva a cargar la factura." });
+    if (t.estado === "LEYENDO") return { estado: "LEYENDO" };
+    trabajos.delete(id);
+    if (t.estado === "ERROR") return { estado: "ERROR", error: t.error, codigo: t.codigo };
+    return { estado: "LISTO", resultado: t.resultado };
+  });
+
+  async function leer(empresaId: string, b: { tipo: string; datos: string }) {
     const r = await llamarPortal<{ factura: Leida; cupo: number; usadas: number }>("/licencias/lector/leer", { ...(await credencialesPortal()), tipo: b.tipo, datos: b.datos }, 70_000);
     const f = r.factura;
 
@@ -105,5 +135,5 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       preciosIncluyenItbis: f.preciosIncluyenItbis, subtotal: f.subtotal ?? null, itbis: f.itbis ?? null, total: f.total ?? null,
       items,
     };
-  });
+  }
 }
