@@ -22,7 +22,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Construir el .exe
         run: node construir.mjs
-      - name: Prueba: el .exe arranca y sirve la pantalla
+      - name: "Prueba: el .exe arranca y sirve la pantalla"
         shell: pwsh
         env: { IMPORTADOR_PUERTO: "4599", IMPORTADOR_SIN_VENTANA: "1" }
         run: |
