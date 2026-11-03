@@ -1,3 +1,4 @@
+import { imprimirHtml } from "../impresion";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { CONFIG, api, esLocal } from "../api";
@@ -30,24 +31,18 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
     return () => { vivo = false; };
   }, [url]);
   const imprimir = () => {
-    const w = window.open("", "_blank", "width=700,height=900");
-    if (!w) return;
+    const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
     const pasos = [
       wifi.trim() ? `Conéctate al WiFi «${wifi.trim()}» de la tienda` : "Conéctate al WiFi de la tienda",
       "Escanea este código con la cámara del celular",
       "Escanea o escribe el código de barras del producto y mira su precio",
     ];
-    const img_ = document.createElement("img");
-    img_.src = img; img_.style.cssText = "width:340px;margin:10px auto;display:block";
-    w.document.title = "Consulta de precios";
-    w.document.body.style.cssText = "font-family:system-ui,sans-serif;text-align:center;padding:36px;color:#10202e";
-    const h = w.document.createElement("h1"); h.textContent = "Consulta el precio desde tu celular";
-    const lista = w.document.createElement("ol");
-    lista.style.cssText = "display:inline-block;text-align:left;font-size:22px;line-height:1.5;margin:10px 0 0;padding-left:30px";
-    for (const t of pasos) { const li = w.document.createElement("li"); li.textContent = t; lista.append(li); }
-    const nota = w.document.createElement("p"); nota.textContent = "Solo funciona dentro del WiFi de la tienda: no uses datos móviles."; nota.style.cssText = "font-size:18px;color:#5b6b7a";
-    w.document.body.append(h, lista, img_, nota);
-    img_.onload = () => w.print();
+    void imprimirHtml(`<!doctype html><meta charset="utf-8"><title>Consulta de precios</title>
+<body style="font-family:system-ui,sans-serif;text-align:center;padding:36px;color:#10202e">
+<h1>Consulta el precio desde tu celular</h1>
+<ol style="display:inline-block;text-align:left;font-size:22px;line-height:1.5;margin:10px 0 0;padding-left:30px">${pasos.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
+<img src="${img}" style="width:340px;margin:10px auto;display:block" alt="">
+<p style="font-size:18px;color:#5b6b7a">Solo funciona dentro del WiFi de la tienda: no uses datos móviles.</p></body>`);
   };
   return (
     <div className="panel" style={{ marginTop: 16 }}>

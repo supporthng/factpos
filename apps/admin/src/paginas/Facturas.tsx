@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, esLocal, hoy, num, puede, rd } from "../api";
-import { imprimirCarta } from "../impresion";
+import { imprimirCarta, imprimirHtml } from "../impresion";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
 /**
@@ -50,10 +50,8 @@ function imprimirCartaFactura(d: Detalle) {
 
 /** Abre una página lista para imprimir (la representación con QR se reimprime desde la caja). */
 function imprimir(d: Detalle) {
-  const w = window.open("", "_blank", "width=420,height=700");
-  if (!w) return alert("El navegador bloqueó la ventana de impresión: permita las ventanas emergentes.");
   const filas = (d.lineas ?? []).map((l) => `<tr><td>${esc(l.descripcion)}<br><small>${num(l.cantidad, 3)} × ${rd(l.precio)}</small></td><td class="d">${rd(l.total)}</td></tr>`).join("");
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>Factura ${esc(d.numeroDocumento ?? d.fiscal?.encf ?? d.numero)}</title>
+  void imprimirHtml(`<!doctype html><meta charset="utf-8"><title>Factura ${esc(d.numeroDocumento ?? d.fiscal?.encf ?? d.numero)}</title>
 <style>body{font:13px system-ui,sans-serif;margin:16px;max-width:380px}h1{font-size:16px;margin:0 0 4px}table{width:100%;border-collapse:collapse}td{padding:3px 0;vertical-align:top}.d{text-align:right}hr{border:0;border-top:1px dashed #888;margin:8px 0}small{color:#555}.anulada{color:#b00;font-weight:700;text-align:center;border:2px solid #b00;padding:4px;margin:8px 0}</style>
 <h1>${esc(NOMBRE[d.tipoDocumento] ?? d.tipoDocumento)}</h1>
 <div>${esc(d.fiscal?.encf ?? d.numeroDocumento ?? "")} · Nº ${d.numero}</div>
@@ -62,8 +60,7 @@ ${d.cliente ? `<div>Cliente: ${esc(d.cliente.nombre)}${d.cliente.documento ? ` (
 ${d.anulada ? `<div class="anulada">ANULADA</div>` : ""}<hr><table>${filas}</table><hr>
 <table><tr><td>Subtotal</td><td class="d">${rd(d.subtotal)}</td></tr><tr><td>Descuento</td><td class="d">${rd(d.descuento)}</td></tr><tr><td>ITBIS</td><td class="d">${rd(d.itbis)}</td></tr><tr><td><b>Total</b></td><td class="d"><b>${rd(d.total)}</b></td></tr></table>
 <hr>${(d.pagos ?? []).map((p) => `<div>${esc(p.formaPago)}: ${rd(p.monto)}</div>`).join("")}${d.notas ? `<p>${esc(d.notas)}</p>` : ""}
-<p><small>Reimpresión desde la administración</small></p><script>window.onload=()=>{window.print()}</script>`);
-  w.document.close();
+<p><small>Reimpresión desde la administración</small></p>`);
 }
 
 export function Facturas() {

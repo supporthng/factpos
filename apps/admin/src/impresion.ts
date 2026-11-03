@@ -31,14 +31,33 @@ export interface DocumentoCarta {
 const esc = (t: unknown) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const multilinea = (t: unknown) => esc(t).replace(/\n/g, "<br>");
 
+/**
+ * Imprime un documento HTML completo SIN abrir ventanas: usa un marco oculto de esta misma pantalla.
+ * Así funciona igual en el navegador (sin bloqueo de ventanas emergentes) y en la app de escritorio.
+ */
+export async function imprimirHtml(html: string): Promise<void> {
+  const marco = document.createElement("iframe");
+  marco.setAttribute("aria-hidden", "true");
+  marco.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(marco);
+  const w = marco.contentWindow!;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // Se espera a que el logo y el QR estén listos antes de imprimir (máx. 3 s)
+  const imgs = Array.from(w.document.images);
+  await Promise.race([
+    Promise.all(imgs.map((i) => (i.complete ? Promise.resolve() : new Promise<void>((ok) => { i.onload = () => ok(); i.onerror = () => ok(); })))),
+    new Promise<void>((ok) => setTimeout(ok, 3000)),
+  ]);
+  try { w.focus(); w.print(); }
+  finally { setTimeout(() => marco.remove(), 120_000); }
+}
+
 export const empresaParaImprimir = (sucursalId?: string | null) =>
   api<EmpresaImpresion>(`/central/empresa/impresion${sucursalId ? `?sucursalId=${sucursalId}` : ""}`).catch(() => ({} as EmpresaImpresion));
 
 export async function imprimirCarta(doc: DocumentoCarta, sucursalId?: string | null) {
-  // La ventana se abre ya (dentro del clic) para que el navegador no la bloquee; se llena cuando llegan los datos
-  const w = window.open("", "_blank");
-  if (!w) { alert("El navegador bloqueó la ventana de impresión: permita las ventanas emergentes."); return; }
-  w.document.write("<!doctype html><meta charset=\"utf-8\"><title>Preparando…</title><p style=\"font:14px system-ui;margin:24px\">Preparando el documento…</p>");
   const emp = await empresaParaImprimir(sucursalId);
   let qr = "";
   if (doc.fiscal?.urlQr) { try { qr = await QRCode.toDataURL(doc.fiscal.urlQr, { margin: 0, width: 220 }); } catch { /* sin QR */ } }
@@ -103,10 +122,8 @@ ${f ? `<div class="fiscal">${qr ? `<img src="${qr}" alt="QR">` : ""}<div><b>e-NC
   ${f.codigoSeguridad ? `Código de seguridad: ${esc(f.codigoSeguridad)}<br>` : ""}
   ${f.venceSecuencia ? `Fecha de vencimiento de la secuencia: ${esc(new Date(f.venceSecuencia).toLocaleDateString("es-DO"))}` : ""}</div></div>` : ""}
 ${!f && !doc.pie?.length ? "" : ""}
-<script>onload=()=>setTimeout(()=>print(),300)</script></body></html>`;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+</body></html>`;
+  await imprimirHtml(html);
 }
 
 export { rd };
