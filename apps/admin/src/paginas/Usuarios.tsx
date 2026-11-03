@@ -256,7 +256,7 @@ function EditarRol({ rol, permisos, onCerrar, onListo }: { rol: Rol | null; perm
             <fieldset key={g} className="grupo-permisos">
               <legend>{g}</legend>
               {permisos.filter((p) => p.grupo === g).map((p) => (
-                <label key={p.id} className="interruptor"><input type="checkbox" checked={marcados.has(p.id)} onChange={() => alternar(p.id)} /><span>{p.nombre}</span></label>
+                <label key={p.id} className="casilla-permiso"><input type="checkbox" checked={marcados.has(p.id)} onChange={() => alternar(p.id)} /><span>{p.nombre}</span></label>
               ))}
             </fieldset>
           ))}
