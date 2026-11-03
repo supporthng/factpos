@@ -19,7 +19,6 @@ export const FAMILIAS: { id: FamiliaComprobante; titulo: string; prefijo: string
     { id: "B01", titulo: "Crédito fiscal", detalle: "B01 · con RNC o cédula" },
     { id: "B14", titulo: "Régimen especial", detalle: "B14 · con RNC" },
     { id: "B15", titulo: "Gubernamental", detalle: "B15 · con RNC" },
-    { id: "B16", titulo: "Exportación", detalle: "B16 · cliente del exterior" },
   ] },
   { id: "SIN", titulo: "Sin comprobante", prefijo: "FI-", detalle: "Factura interna, sin valor fiscal", tipos: [] },
 ];
