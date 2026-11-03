@@ -198,6 +198,7 @@ function AppInterna() {
   const [error, setError] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
   const [cambiarClave, setCambiarClave] = useState(false);
+  const [menuUsuario, setMenuUsuario] = useState(false);
   const [, setRefresco] = useState(0);
   const [cfgMovil, setCfgMovil] = useState<CfgMovil | null>(null);
 
@@ -329,9 +330,22 @@ function AppInterna() {
             </div>
             <span className="empresa-superior">{sesion.empresa}</span>
             {!enPortal && !esLocal() && <SelectorEmpresa />}
-            <button className="chip-usuario" title="Cambiar mi contraseña" onClick={() => setCambiarClave(true)}>
-              <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>
-            </button>
+            <div className="menu-usuario">
+              <button className="chip-usuario" title="Mi cuenta" aria-haspopup="menu" aria-expanded={menuUsuario} onClick={() => setMenuUsuario((v) => !v)}>
+                <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>
+              </button>
+              {menuUsuario && (
+                <>
+                  <div className="menu-usuario-fondo" onClick={() => setMenuUsuario(false)} />
+                  <div className="menu-usuario-lista" role="menu">
+                    <div className="menu-usuario-nombre"><b>{sesion.nombre}</b><span className="suave pequeno">{sesion.empresa}</span></div>
+                    <button role="menuitem" onClick={() => { setMenuUsuario(false); setCambiarClave(true); }}>Cambiar mi contraseña</button>
+                    <button role="menuitem" onClick={() => { setMenuUsuario(false); salir(); }}>Cambiar de usuario</button>
+                    <button role="menuitem" onClick={() => { setMenuUsuario(false); salir(); }}>Salir</button>
+                  </div>
+                </>
+              )}
+            </div>
             {vm.puedeAlternar && !enPortal && <button className="boton-icono" title={vm.movil ? "Ver versión completa" : "Ver versión celular"} aria-label={vm.movil ? "Ver versión completa" : "Ver versión celular"} onClick={vm.alternar}><Icono n={vm.movil ? "menu-lateral" : "menu"} /></button>}
             <button className="boton-icono" title="Salir" aria-label="Salir" onClick={salir}><Icono n="salir" /></button>
           </header>
