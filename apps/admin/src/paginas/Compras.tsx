@@ -130,6 +130,74 @@ function DetalleCompra({ id, onCerrar }: { id: string; onCerrar: () => void }) {
   );
 }
 
+/* ---------- Crear producto nuevo desde una línea de la factura ---------- */
+interface AuxProducto { impuestos: { id: string; nombre: string; tasa: number }[]; categorias: { id: string; nombre: string }[] }
+function CrearProductoCompra({ item, proveedorId, onCerrar, onCreado }: {
+  item: ItemLeido; proveedorId: string; onCerrar: () => void; onCreado: (productoId: string) => void;
+}) {
+  const { sucursales } = useCatalogo();
+  const aux = useDatos<AuxProducto>("/central/productos-auxiliares");
+  const [nombre, setNombre] = useState(item.descripcion.trim());
+  const [categoriaId, setCategoriaId] = useState("");
+  const [impuestoId, setImpuestoId] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [msg, setMsg] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const impuesto = aux.datos?.impuestos.find((i) => i.id === (impuestoId || aux.datos?.impuestos.find((x) => x.tasa === 0.18)?.id || aux.datos?.impuestos[0]?.id));
+  const costoCon = item.costo * (1 + (impuesto?.tasa ?? 0.18));
+  const crear = async () => {
+    if (nombre.trim().length < 2) return setMsg("Escriba el nombre del producto.");
+    if (n(precio) <= 0) return setMsg("Escriba el precio de venta (con ITBIS): es el que se cobra en caja.");
+    if (!impuesto) return setMsg("No hay ITBIS configurado.");
+    setGuardando(true); setMsg("");
+    try {
+      const cod = (item.codigo ?? "").trim();
+      const r = await api<{ id: string }>("/central/productos", { metodo: "POST", cuerpo: {
+        sku: cod ? cod.slice(0, 30).toUpperCase() : "P" + Date.now().toString(36).slice(-6).toUpperCase(),
+        nombre: nombre.trim(), categoriaId: categoriaId || null, tipo: "INVENTARIABLE", impuestoId: impuesto.id, precioIncluyeItbis: true,
+        costoReferencia: String(Math.round(item.costo * 100) / 100),
+        presentaciones: [{ nombre: "Unidad", factor: "1", codigos: [], precios: { "1": n(precio).toFixed(2) }, porcentajes: {}, bases: {} }],
+        sucursales: sucursales.map((s) => ({ sucursalId: s.id, stockMinimo: "0", stockMaximo: null, ubicacion: null, activo: true })),
+        // Con el código del proveedor guardado, la próxima factura de este proveedor empareja este producto sola
+        proveedores: proveedorId ? [{ proveedorId, codigoProveedor: cod ? cod.slice(0, 40) : null, ultimoCosto: String(Math.round(item.costo * 100) / 100), principal: true }] : [],
+      } });
+      window.dispatchEvent(new Event("factpos:catalogo"));
+      onCreado(r.id);
+    } catch (e) { setMsg((e as Error).message); setGuardando(false); }
+  };
+  return (
+    <div className="fondo-modal" onMouseDown={onCerrar}>
+      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+        <h3>Crear producto nuevo</h3>
+        <p className="suave pequeno">De la factura: <b>{item.descripcion}</b>{item.codigo ? ` · código ${item.codigo}` : ""} · {item.cantidad} × {rd(item.costo)} (sin ITBIS)</p>
+        <label className="campo"><span>Nombre</span><input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} /></label>
+        <label className="campo"><span>Categoría</span>
+          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+            <option value="">Sin categoría</option>
+            {aux.datos?.categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </label>
+        <label className="campo"><span>ITBIS</span>
+          <select value={impuesto?.id ?? ""} onChange={(e) => setImpuestoId(e.target.value)}>
+            {aux.datos?.impuestos.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+          </select>
+        </label>
+        <label className="campo"><span>Precio de venta (con ITBIS)</span>
+          <input className="numero" inputMode="decimal" value={precio} placeholder={`Su costo con ITBIS es ${rd(costoCon)}`}
+            onChange={(e) => setPrecio(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && crear()} />
+        </label>
+        {n(precio) > 0 && costoCon > 0 && <p className="suave pequeno">Ganancia sobre el costo: {(((n(precio) - costoCon) / costoCon) * 100).toFixed(1)} %</p>}
+        <Aviso texto={msg} />
+        <div className="acciones-modal">
+          <button className="boton fantasma" onClick={onCerrar}>Cancelar</button>
+          <button className="boton primario" disabled={guardando} onClick={crear}>{guardando ? "Creando…" : "Crear y agregar a la compra"}</button>
+        </div>
+        <p className="suave pequeno">Los demás datos (códigos de barra, otros precios, presentaciones) se completan después en Productos.</p>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Buscador rápido de líneas ---------- */
 /** Escribe nombre o SKU → flechas ↑↓ y Enter agregan la presentación (cada presentación es una fila: no hay que elegir dos veces). */
 function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: string) => void; inputRef: React.RefObject<HTMLInputElement> }) {
@@ -187,6 +255,9 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
   const [foco, setFoco] = useState<string | null>(null);
+  const [creando, setCreando] = useState<{ i: number; item: ItemLeido } | null>(null);
+  // Producto recién creado: se espera a que el catálogo lo traiga y entonces se agrega a la compra
+  const [porAgregar, setPorAgregar] = useState<{ productoId: string; item: ItemLeido } | null>(null);
   const buscarRef = useRef<HTMLInputElement>(null);
   const cantRefs = useRef(new Map<string, HTMLInputElement>());
   const costoRefs = useRef(new Map<string, HTMLInputElement>());
@@ -263,6 +334,15 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     } catch (e) { setMsg((e as Error).message); }
     finally { setLeyendo(false); }
   };
+
+  useEffect(() => {
+    if (!porAgregar) return;
+    const p = productos.find((x) => x.id === porAgregar.productoId);
+    const pr = p?.presentaciones[0];
+    if (!pr) return;
+    agregarLeidas([{ presentacionId: pr.id, cantidad: porAgregar.item.cantidad, costo: porAgregar.item.costo }]);
+    setPorAgregar(null);
+  }, [porAgregar, productos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cuando se agrega una línea, el cursor va directo a su cantidad (Enter → costo → Enter → vuelve al buscador)
   useEffect(() => {
@@ -371,7 +451,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
       {pend.length > 0 && (
         <div className="panel">
           <h3>Líneas de la factura sin emparejar ({pend.length})</h3>
-          <p className="suave">No se encontró el producto en su inventario. Elija el que corresponde (o créelo primero en Productos y vuelva a leer la factura).</p>
+          <p className="suave">No se encontró el producto en su inventario. Elija el que corresponde o créelo aquí mismo con «Crear producto nuevo».</p>
           {pend.map((it, i) => (
             <div key={i} className="en-linea" style={{ flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
               <span><b>{it.descripcion}</b> <span className="suave">{it.codigo ? `${it.codigo} · ` : ""}{it.cantidad} × {rd(it.costo)}</span></span>
@@ -387,6 +467,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
                 agregarLeidas([{ presentacionId: pr.id, cantidad: it.cantidad, costo: it.costo }]);
                 setPend((q) => q.filter((_, j) => j !== i));
               }} />
+              <button className="boton" onClick={() => setCreando({ i, item: it })}>＋ Crear producto nuevo</button>
               <button className="boton fantasma" onClick={() => setPend((p) => p.filter((_, j) => j !== i))}>Descartar</button>
             </div>
           ))}
@@ -503,6 +584,11 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
         )}
         <label className="campo"><span>Notas (opcional)</span><input value={cab.notas} onChange={(e) => setCab({ ...cab, notas: e.target.value })} /></label>
       </div>
+
+      {creando && (
+        <CrearProductoCompra item={creando.item} proveedorId={cab.proveedorId} onCerrar={() => setCreando(null)}
+          onCreado={(productoId) => { setPorAgregar({ productoId, item: creando.item }); setPend((q) => q.filter((_, j) => j !== creando.i)); setCreando(null); }} />
+      )}
 
       {/* Barra fija: el total y el botón siempre a la vista, sin subir la pantalla */}
       <div className="barra-compra">
