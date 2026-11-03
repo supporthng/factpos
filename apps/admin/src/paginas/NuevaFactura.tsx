@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, num, rd } from "../api";
+import { api, rd } from "../api";
 import { Aviso, Encabezado, useCatalogo, useDatos } from "../ui";
 import { BuscadorLinea } from "./Compras";
 
@@ -190,7 +190,6 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
         <button className="boton primario" disabled={!!problema || guardando} onClick={crear}>{guardando ? "Emitiendo…" : "Emitir factura"}</button>
       </div>
       {problema && lineas.length > 0 && <p className="suave pequeno">{problema}</p>}
-      {num(0) === "" ? null : null}
     </>
   );
 }
