@@ -33,7 +33,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
       let proximo = visto.current ? 2500 : 5_000;
       try {
         const base = servidor().replace(/\/$/, "");
-        const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store" });
+        const r = await fetch(`${base}/actualizacion/estado`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
         if (!r.ok) throw new Error(String(r.status));
         const d = (await r.json()) as Estado;
         if (!vivo) return;

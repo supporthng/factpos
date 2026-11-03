@@ -132,7 +132,7 @@ function DetalleCompra({ id, onCerrar }: { id: string; onCerrar: () => void }) {
 
 /* ---------- Buscador rápido de líneas ---------- */
 /** Escribe nombre o SKU → flechas ↑↓ y Enter agregan la presentación (cada presentación es una fila: no hay que elegir dos veces). */
-function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: string) => void; inputRef: React.RefObject<HTMLInputElement | null> }) {
+function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: string) => void; inputRef: React.RefObject<HTMLInputElement> }) {
   const { productos } = useCatalogo();
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
@@ -187,7 +187,7 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
   const [foco, setFoco] = useState<string | null>(null);
-  const buscarRef = useRef<HTMLInputElement | null>(null);
+  const buscarRef = useRef<HTMLInputElement>(null);
   const cantRefs = useRef(new Map<string, HTMLInputElement>());
   const costoRefs = useRef(new Map<string, HTMLInputElement>());
   const alternar = (clave: string) => setAbiertas((a) => { const x = new Set(a); if (x.has(clave)) x.delete(clave); else x.add(clave); return x; });
