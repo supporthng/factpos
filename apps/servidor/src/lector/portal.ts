@@ -49,7 +49,7 @@ const HERRAMIENTA = {
 
 const INSTRUCCIONES = "Eres un asistente que lee facturas de proveedores de la República Dominicana. Extrae SOLO lo que está impreso; " +
   "si un dato no aparece, usa null. No inventes productos ni cifras. Los números van sin separador de miles. " +
-  "Llama a la herramienta registrar_factura con el resultado.";
+  "Responde SIEMPRE y ÚNICAMENTE llamando a la herramienta registrar_factura con el resultado; no escribas texto.";
 
 export async function rutasPortalLector(app: FastifyInstance) {
   app.post("/licencias/lector/estado", async (req) => {
@@ -81,7 +81,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
         headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
           model: MODELO(), max_tokens: 4096, system: INSTRUCCIONES,
-          tools: [HERRAMIENTA], tool_choice: { type: "tool", name: HERRAMIENTA.name },
+          tools: [HERRAMIENTA], tool_choice: { type: "auto" }, // los modelos nuevos no aceptan forzar la herramienta: se le exige en las instrucciones
           messages: [{ role: "user", content: [bloque, { type: "text", text: "Lea esta factura de compra." }] }],
         }),
         signal: AbortSignal.timeout(55_000),
