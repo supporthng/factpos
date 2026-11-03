@@ -1084,3 +1084,13 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .casilla-permiso { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 14px; line-height: 1.3; padding: 4px 0; }
 .casilla-permiso input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--primario); cursor: pointer; }
 .casilla-permiso:hover span { color: var(--primario); }
+
+/* Equipos de la caja: paneles en dos columnas y campos compactos */
+.equipos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.equipos-panel { padding: 10px 14px; margin: 0; }
+.equipos-panel h3 { margin: 0 0 6px; font-size: 14px; }
+.equipos-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 10px; align-items: end; }
+.equipos-panel .campo { margin: 0; }
+.equipos-panel .casilla-permiso { padding: 0 0 8px; }
+.equipos-panel .suave.pequeno { margin: 6px 0 0; }
+@media (max-width: 1000px) { .equipos-grid { grid-template-columns: minmax(0, 1fr); } }
