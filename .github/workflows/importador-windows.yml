@@ -1,0 +1,44 @@
+name: Importador Windows
+# Compila Importador-FactPOS.exe (portable: un solo archivo, con Node incluido) y lo publica en Releases › «importador».
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["herramientas/importador/**", ".github/workflows/importador-windows.yml"]
+  pull_request:
+    paths: ["herramientas/importador/**", ".github/workflows/importador-windows.yml"]
+permissions:
+  contents: write
+concurrency: { group: importador-windows, cancel-in-progress: false }
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults: { run: { working-directory: herramientas/importador } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install --no-audit --no-fund
+      - name: Construir el .exe
+        run: node construir.mjs
+      - name: "Prueba: el .exe arranca y sirve la pantalla"
+        shell: pwsh
+        env: { IMPORTADOR_PUERTO: "4599", IMPORTADOR_SIN_VENTANA: "1" }
+        run: |
+          $p = Start-Process -FilePath ./dist/Importador-FactPOS.exe -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 4
+          $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4599/
+          if ($r.Content -notmatch "Importador") { throw "La pantalla no cargó" }
+          Write-Host "OK: la pantalla responde"
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with: { name: Importador-FactPOS, path: herramientas/importador/dist/Importador-FactPOS.exe }
+      - name: Publicar en Releases
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view importador >/dev/null 2>&1 || gh release create importador --title "Importador FactPOS" --notes "Descargue Importador-FactPOS.exe (portable, no se instala)."
+          gh release upload importador dist/Importador-FactPOS.exe --clobber
