@@ -1,3 +1,4 @@
+import { useFuncionSeguridad } from "../seguridad";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, puede, rd } from "../api";
 import { Aviso, Encabezado, useCatalogo, useDatos } from "../ui";
@@ -30,6 +31,8 @@ const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 const limpiar = (v: string) => v.replace(/[^\d.]/g, "");
 
 export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (id: string) => void }) {
+  // «Sin comprobante» solo si un administrador lo activó en Configuración › Seguridad
+  const { habilitada: sinComprobante } = useFuncionSeguridad("venta_sin_comprobante");
   const { productos } = useCatalogo();
   const cajas = useDatos<CajaAbierta[]>("/central/facturas/cajas-abiertas");
   const [cajaId, setCajaId] = useState("");
@@ -150,7 +153,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
           </select>
         </label>
         <label className="campo"><span>Comprobante</span>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS.filter((x) => x.id !== "SIN" || sinComprobante).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
         </label>
         <div className="campo campo-prov"><span>Cliente {t.pideCliente ? "(obligatorio)" : "(opcional: sin cliente = mostrador)"}</span>
           {cliente ? (

@@ -28,12 +28,14 @@ export interface CobroLocal {
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
   local?: CobroLocal;
-  onCerrar: () => void; onVendido: (r: ResultadoVenta) => void;
+  onCerrar: () => void; onVendido: (r: ResultadoVenta, opciones?: { sinImprimir: boolean }) => void;
+  /** «Sin comprobante» solo si está activado en Seguridad */
+  permitirSin?: boolean;
   /** Se llama si el cobro falla (p. ej. para refrescar ofertas con tope) */
   alFallar?: () => void;
   /** Forma de pago elegida en la pantalla de venta (la ventana abre lista para esa forma) */
@@ -54,6 +56,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const [credito, setCredito] = useState("");
   const [recibido, setRecibido] = useState("");
   const tipoFactura = tipo;
+  /** La venta se emite y se transmite igual; solo se omite el ticket al terminar */
+  const [sinImprimir, setSinImprimir] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState("");
   // Mismo id si se reintenta: el servidor no duplica la venta
@@ -112,7 +116,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
           pagos, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null,
         },
       });
-      onVendido(ticket);
+      onVendido(ticket, { sinImprimir });
     };
     try {
       if (sinServidor) return await contingencia();
@@ -123,7 +127,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
           autorizacionDescuento: aprobacionDescuento, motivoDescuento, notas: notas || undefined,
         },
       });
-      onVendido({ ...r, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null });
+      onVendido({ ...r, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null }, { sinImprimir });
     } catch (e) {
       // Se cayó el servidor justo al cobrar: si se puede, se guarda en la caja
       if (e instanceof ErrorApi && e.estado === 0 && !motivoNoContingencia && local) {
@@ -201,7 +205,10 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
           <div className="cobro2-col">
             <div className="cobro-seccion">
               <span className="cobro-etiqueta">Comprobante</span>
-              <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} compacto />
+              <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} compacto permitirSin={permitirSin} />
+              <label className="cobro-sin-imprimir" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, cursor: "pointer" }} title="El comprobante se emite y se envía igual; solo no sale el ticket">
+                <input type="checkbox" checked={sinImprimir} onChange={(e) => setSinImprimir(e.target.checked)} /> No imprimir comprobante
+              </label>
             </div>
             <div className="cobro-seccion">
               <span className="cobro-etiqueta">Cliente</span>

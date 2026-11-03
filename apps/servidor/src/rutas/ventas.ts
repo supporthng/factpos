@@ -14,6 +14,13 @@ import { repartirPorLotes } from "../lotes.js";
 import { asignarNumeroNoElectronico } from "../fiscal/numeracion-modalidades.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { datosTicket } from "./facturas.js";
+import { exigirFuncion } from "./central-seguridad.js";
+
+/** «Sin comprobante» es una función de Seguridad (apagada por defecto): sin ella toda venta lleva comprobante. */
+export async function exigirSinComprobante(cajaId: string) {
+  const e = (await pool.query<{ empresa_id: string }>("SELECT s.empresa_id FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id WHERE ca.id = $1", [cajaId])).rows[0]?.empresa_id;
+  if (e) await exigirFuncion(e, "venta_sin_comprobante");
+}
 
 const cantidad = z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida");
 const monto = z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido");
@@ -437,6 +444,7 @@ export async function rutasVentas(app: FastifyInstance) {
     const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
     const body = VentaSchema.parse(req.body);
     await exigirLicenciaParaVender(); // licencia vencida (pasada la gracia): solo consulta
+    if (body.tipoDocumento === "SIN") await exigirSinComprobante(cajaId);
     const r = await enTransaccion((c) => registrarVenta(c, cajaId, body));
     rep.code(201);
     return r;

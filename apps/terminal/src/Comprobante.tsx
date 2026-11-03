@@ -29,8 +29,10 @@ export const requiereDocumento = (t: TipoComprobante) => ["E31", "B01", "B14", "
 export const tieneDocumentoFiscal = (c: Cliente | null) => !!c && ["RNC", "CEDULA"].includes(c.tipoDocumento) && !!c.documento;
 
 /** Primero la familia (e-CF · NCF · Sin comprobante) y, debajo, el tipo dentro de ella. */
-export function SelectorComprobante({ tipo, onTipo, soloConsumo = false, compacto = false }: {
+export function SelectorComprobante({ tipo, onTipo, soloConsumo = false, compacto = false, permitirSin = true }: {
   tipo: TipoComprobante; onTipo: (t: TipoComprobante) => void; soloConsumo?: boolean; compacto?: boolean;
+  /** «Sin comprobante» solo aparece si el administrador lo activó en Seguridad */
+  permitirSin?: boolean;
 }) {
   const fam = familiaDe(tipo);
   const actual = FAMILIAS.find((f) => f.id === fam)!;
@@ -41,7 +43,7 @@ export function SelectorComprobante({ tipo, onTipo, soloConsumo = false, compact
   return (
     <div className={"comprobantes-grupo" + (compacto ? " compacto" : "")}>
       <div className={"comprobantes" + (compacto ? " compacto" : "")} role="radiogroup" aria-label="Familia de comprobante">
-        {FAMILIAS.map((f) => (
+        {FAMILIAS.filter((f) => permitirSin || f.id !== "SIN").map((f) => (
           <button key={f.id} role="radio" aria-checked={fam === f.id} className={"comprobante" + (fam === f.id ? " activo" : "")}
             disabled={soloConsumo && f.id !== "ECF"} onClick={() => elegirFamilia(f)} title={f.detalle}>
             <b>{f.titulo} <span className="prefijo">{f.prefijo}</span></b>{!compacto && <small>{f.detalle}</small>}
