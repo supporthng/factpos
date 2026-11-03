@@ -334,6 +334,28 @@ export async function rutasPortal(app: FastifyInstance) {
     return { version: v.version, url: await urlDescarga(v.asset) };
   });
 
+  /**
+   * Solicitud de prueba desde la página web: deja el contacto en el portal y entrega el instalador.
+   * Es pública (la página no tiene sesión), por eso va limitada por dirección y solo devuelve un enlace temporal.
+   */
+  app.post("/licencias/prospecto", async (req) => {
+    limitarAltas(req.ip ?? "?");
+    const b = z.object({
+      nombre: z.string().trim().min(2).max(80), negocio: z.string().trim().min(2).max(100),
+      telefono: z.string().trim().min(7).max(30), correo: z.string().trim().email().max(120).optional().or(z.literal("")),
+      sucursales: z.coerce.number().int().min(1).max(999).optional(), mensaje: z.string().trim().max(400).optional(),
+    }).parse(req.body);
+    const id = uuidv7();
+    await pool.query(
+      `INSERT INTO portal_prospectos (id, nombre, negocio, telefono, correo, sucursales, mensaje) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, b.nombre, b.negocio, b.telefono, b.correo || null, b.sucursales ?? null, b.mensaje || null]);
+    await evento(pool, { tipo: "PROSPECTO", detalle: { negocio: b.negocio, telefono: b.telefono } });
+    const v = await ultimaVersion();
+    if (!v?.setup) return { ok: true, url: null, version: null };
+    await pool.query("UPDATE portal_prospectos SET descargas = descargas + 1 WHERE id = $1", [id]);
+    return { ok: true, version: v.version, nombre: v.setup.nombre, url: await urlDescarga(v.setup) };
+  });
+
   /** Descarga de las apps del verificador (sin licencia: son iguales para todos). Repositorio privado: lo resuelve el portal. */
   app.get("/licencias/descargar-verificador/:so", async (req, rep) => {
     const { so } = req.params as { so: string };
@@ -727,6 +749,22 @@ export async function rutasPortal(app: FastifyInstance) {
          LEFT JOIN portal_planes p ON p.id = i.plan_id
         WHERE ($1::text IS NULL OR i.estado = $1)
         ORDER BY (i.estado = 'PENDIENTE') DESC, i.solicitada_en DESC LIMIT 300`, [estado ?? null])).rows;
+  });
+
+  // ---- Prospectos que pidieron la prueba desde la página web
+  app.get("/central/portal/prospectos", async () =>
+    (await pool.query(
+      `SELECT id, nombre, negocio, telefono, correo, sucursales, mensaje, estado, nota, descargas, creado_en AS "creadoEn"
+         FROM portal_prospectos ORDER BY (estado = 'NUEVO') DESC, creado_en DESC LIMIT 300`)).rows);
+
+  app.patch("/central/portal/prospectos/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ estado: z.enum(["NUEVO", "CONTACTADO", "CLIENTE", "DESCARTADO"]).optional(), nota: z.string().trim().max(300).nullable().optional() }).parse(req.body);
+    const r = await pool.query(
+      "UPDATE portal_prospectos SET estado = COALESCE($2, estado), nota = CASE WHEN $3::boolean THEN $4 ELSE nota END WHERE id = $1 RETURNING id",
+      [id, b.estado ?? null, b.nota !== undefined, b.nota ?? null]);
+    if (!r.rowCount) throw new ErrorNegocio("Prospecto no encontrado", 404);
+    return { ok: true };
   });
 
   /** Aprobar: asigna la instalación a un cliente que ya existe, o crea uno con los datos de la solicitud. */
