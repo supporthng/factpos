@@ -406,9 +406,18 @@ function openMain(onShown) {
   // La Caja abre en modo kiosko (pantalla completa, sin barra de ventana). F11 alterna con ventana normal;
   // Ctrl+Mayús+Q cierra la caja (pide confirmación). Para abrirla siempre en ventana: --ventana en el acceso directo.
   const kiosko = selected === 'caja' && !args.includes('--ventana');
+  // Caja bloqueada: mientras está abierta (modo kiosko) no se puede minimizar, salir de pantalla completa, abrir otras ventanas
+  // ni cambiar con F11. Para salir hace falta el permiso de un supervisor (Ctrl+Mayús+Q o Salir). Con --ventana no se bloquea.
+  const bloqueada = () => kiosko && selected === 'caja' && !saliendo && !updating && !win.isDestroyed();
+  const fijar = () => { if (!bloqueada()) return; try { win.setAlwaysOnTop(true, 'screen-saver'); if (!win.isKiosk()) win.setKiosk(true); } catch {} };
+  win.on('minimize', () => { if (bloqueada()) { try { win.restore(); win.focus(); } catch {} } });
+  win.on('leave-full-screen', () => { if (bloqueada()) setTimeout(fijar, 50); });
+  win.on('show', fijar);
+  win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !win.isFocused() && !win.getChildWindows().length) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
   win.webContents.on('before-input-event', (event, input) => {
     if (selected !== 'caja' || input.type !== 'keyDown') return;
-    if (input.key === 'F11') { event.preventDefault(); win.setKiosk(!win.isKiosk()); }
+    if (input.key === 'F11') { event.preventDefault(); if (!bloqueada()) win.setKiosk(!win.isKiosk()); }
+    else if (bloqueada() && ((input.alt && input.key === 'F4') || (input.control && input.key === 'w') || (input.control && input.key === 'W') || input.key === 'F12' || (input.control && input.shift && /^[ij]$/i.test(input.key)))) { event.preventDefault(); if (input.key === 'F4') { try { win.webContents.send('factpos:intento-cierre'); } catch {} } }
     else if (input.control && input.shift && input.key.toLowerCase() === 'q') {
       event.preventDefault();
       if (turnoAbierto) { try { win.webContents.send('factpos:intento-cierre'); } catch {} return; }
@@ -423,7 +432,7 @@ function openMain(onShown) {
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
     try { const u = new URL(url); if (u.origin === endpoint.origin && u.hash.startsWith('#/cliente')) { openCustomer(); return { action: 'deny' }; } } catch {}
-    try { if (new URL(url).origin !== endpoint.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
+    try { if (!bloqueada() && new URL(url).origin !== endpoint.origin && /^https?:/.test(url)) shell.openExternal(url); } catch {}
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event, url) => {
