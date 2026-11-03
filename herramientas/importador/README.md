@@ -2,8 +2,8 @@
 
 Herramienta aparte (no forma parte de la aplicación) para traer los datos de otro sistema. Solo necesita Node 20 o superior; no instala nada.
 
-## App portable (recomendada)
-Doble clic en **Importador FactPOS.bat**. Se abre una ventana en el navegador (solo en esta computadora) donde se elige el respaldo, se ve la vista previa y se carga a FactPOS con el usuario administrador. Si la PC no tiene Node, el .bat baja una copia portable a esta misma carpeta (no instala nada en Windows). Los informes quedan en `Importacion-FactPOS` dentro de la carpeta personal.
+## App portable (un solo .exe)
+**Importador-FactPOS.exe** es portable: no se instala ni necesita Node. Se descarga de GitHub (Releases › «importador»), se hace doble clic y se abre una ventana: se carga el archivo `.sql`, se escribe el servidor y el administrador de FactPOS y se pulsa «Procesar y cargar». Se recuerdan el servidor y el usuario (la contraseña no). Los informes quedan en `Importacion-FactPOS` dentro de la carpeta personal. Lo genera automáticamente `.github/workflows/importador-windows.yml` (`node construir.mjs`).
 
 ## Uso por línea de comandos
 

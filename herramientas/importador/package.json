@@ -1,0 +1,9 @@
+{
+  "name": "importador-factpos",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Importador de datos de otros sistemas hacia FactPOS (app portable)",
+  "scripts": { "construir": "node construir.mjs" },
+  "devDependencies": { "esbuild": "0.24.2", "postject": "1.0.0-alpha.6" }
+}

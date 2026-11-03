@@ -1,28 +1,33 @@
 #!/usr/bin/env node
-// Importador FactPOS (app portable): una ventana en el navegador, sin instalar nada.
-// Sirve una página solo en esta computadora (127.0.0.1), recibe el respaldo y corre importar.mjs mostrando el avance.
+// Importador FactPOS (app): una sola pantalla. Se elige el respaldo, se procesa y se carga a FactPOS.
+// Sirve la pantalla solo en esta computadora (127.0.0.1) y la abre como ventana de aplicación.
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
-import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { createWriteStream, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { join, basename } from "node:path";
+import { tmpdir, homedir } from "node:os";
 import { randomBytes } from "node:crypto";
+import { importar } from "./nucleo.mjs";
+import PAGINA from "./app.html";
 
-const aqui = dirname(fileURLToPath(import.meta.url));
+const datosApp = join(process.env.APPDATA || join(homedir(), ".config"), "ImportadorFactPOS");
+mkdirSync(datosApp, { recursive: true });
+const rutaConexion = join(datosApp, "conexion.json");
 const trabajo = join(tmpdir(), "importador-factpos-" + randomBytes(4).toString("hex"));
 mkdirSync(trabajo, { recursive: true });
 const archivo = join(trabajo, "respaldo.sql");
-const salida = join(process.env.USERPROFILE || process.env.HOME || aqui, "Importacion-FactPOS");
-let hayArchivo = false, corriendo = null;
+const salida = join(homedir(), "Importacion-FactPOS");
+let hayArchivo = false, corriendo = false;
 
-const PAGINA = readFileSync(join(aqui, "app.html"), "utf8");
 const json = (r, c, o) => { r.writeHead(c, { "content-type": "application/json; charset=utf-8" }); r.end(JSON.stringify(o)); };
+const conexion = () => { try { return JSON.parse(readFileSync(rutaConexion, "utf8")); } catch { return {}; } };
 
 const srv = http.createServer((q, r) => {
   const u = new URL(q.url, "http://x");
   if (q.method === "GET" && u.pathname === "/") { r.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return r.end(PAGINA); }
-  if (q.method === "GET" && u.pathname === "/estado") return json(r, 200, { hayArchivo, salida, archivos: existsSync(salida) ? readdirSync(salida).filter((f) => f.endsWith(".csv") || f.endsWith(".md")) : [] });
+  if (q.method === "GET" && u.pathname === "/estado") {
+    return json(r, 200, { conexion: conexion(), salida, archivos: existsSync(salida) ? readdirSync(salida).filter((f) => f.endsWith(".csv") || f.endsWith(".md")) : [] });
+  }
   if (q.method === "GET" && u.pathname.startsWith("/salida/")) {
     const n = basename(decodeURIComponent(u.pathname.slice(8)));
     const p = join(salida, n);
@@ -39,32 +44,40 @@ const srv = http.createServer((q, r) => {
   }
   if (q.method === "POST" && u.pathname === "/ejecutar") {
     let b = ""; q.on("data", (d) => (b += d));
-    q.on("end", () => {
+    q.on("end", async () => {
       if (corriendo) return json(r, 409, { error: "Ya hay una importación corriendo" });
       if (!hayArchivo) return json(r, 400, { error: "Primero elija el archivo de respaldo" });
       let o; try { o = JSON.parse(b); } catch { return json(r, 400, { error: "Datos inválidos" }); }
-      const a = ["importar.mjs", "--fuente", "wilpos", "--archivo", archivo, "--salida", salida];
       if (o.aplicar) {
-        for (const k of ["servidor", "usuario", "clave"]) if (!String(o[k] ?? "").trim()) return json(r, 400, { error: `Falta ${k}` });
-        a.push("--aplicar", "--servidor", String(o.servidor).trim(), "--usuario", String(o.usuario).trim(), "--clave", String(o.clave));
-        for (const k of ["rnc", "codigo", "sucursal"]) if (String(o[k] ?? "").trim()) a.push("--" + k, String(o[k]).trim());
-        if (o.sinFotos) a.push("--sin-fotos");
+        for (const [k, n] of [["servidor", "la dirección del servidor"], ["usuario", "el usuario"], ["clave", "la contraseña"]]) if (!String(o[k] ?? "").trim()) return json(r, 400, { error: `Falta ${n}` });
+        // Se recuerdan el servidor y el usuario para la próxima vez (la contraseña nunca se guarda)
+        try { writeFileSync(rutaConexion, JSON.stringify({ servidor: String(o.servidor).trim(), usuario: String(o.usuario).trim() })); } catch { /* sin permiso */ }
       }
       r.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
-      const p = spawn(process.execPath, a, { cwd: aqui });
-      corriendo = p;
-      p.stdout.on("data", (d) => r.write(d));
-      p.stderr.on("data", (d) => r.write(d));
-      p.on("close", (c) => { corriendo = null; r.end(c === 0 ? "\n[LISTO]" : `\n[ERROR código ${c}]`); });
+      corriendo = true;
+      try {
+        await importar({ fuente: "wilpos", archivo, salida, aplicar: !!o.aplicar, sinFotos: !!o.sinFotos,
+          servidor: String(o.servidor ?? "").trim(), usuario: String(o.usuario ?? "").trim(), clave: String(o.clave ?? ""),
+          rnc: String(o.rnc ?? "").trim() || undefined, codigo: String(o.codigo ?? "").trim() || undefined, sucursal: String(o.sucursal ?? "").trim() || undefined },
+        (t) => r.write(t + "\n"));
+        r.end("\n[LISTO]");
+      } catch (e) { r.end(`\n[ERROR] ${e.message}`); }
+      corriendo = false;
     });
     return;
   }
   json(r, 404, { error: "No encontrado" });
 });
 
-srv.listen(0, "127.0.0.1", () => {
+srv.listen(Number(process.env.IMPORTADOR_PUERTO) || 0, "127.0.0.1", () => {
   const url = `http://127.0.0.1:${srv.address().port}/`;
   console.log(`Importador FactPOS abierto en ${url}\nCierre esta ventana para terminar.`);
-  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
-  try { const p = spawn(cmd, args, { stdio: "ignore", detached: true }); p.on("error", () => {}); p.unref(); } catch { /* se abre a mano */ }
+  const intentos = process.platform === "win32"
+    ? [["cmd", ["/c", "start", "", "msedge", `--app=${url}`]], ["cmd", ["/c", "start", "", url]]]
+    : process.platform === "darwin" ? [["open", [url]]] : [["xdg-open", [url]]];
+  const abrir = (i) => { // primero como ventana de aplicación (Edge); si no se puede, en el navegador normal
+    if (i >= intentos.length) return;
+    try { const p = spawn(intentos[i][0], intentos[i][1], { stdio: "ignore", detached: true }); p.on("error", () => abrir(i + 1)); p.on("exit", (c) => { if (c) abrir(i + 1); }); p.unref(); } catch { abrir(i + 1); }
+  };
+  if (!process.env.IMPORTADOR_SIN_VENTANA) abrir(0); // la variable existe para las pruebas automáticas
 });
