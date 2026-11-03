@@ -1077,7 +1077,6 @@ function Icono({ n }: { n: string }) {
     salir: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
     codigo: <><path d="M3 5v14M6 5v14M10 5v14M13 5v14M17 5v14M21 5v14" /></>,
     lupa: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
-    etiqueta: <><path d="M3 12V4h8l10 10-8 8L3 12z" /><circle cx="7.5" cy="8.5" r="1.3" /></>,
     persona: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
     pausa: <><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></>,
     documento: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></>,
