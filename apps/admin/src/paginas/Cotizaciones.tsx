@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, puede, rd, num, hoy } from "../api";
+import { imprimirCarta } from "../impresion";
 import { Aviso, Encabezado, SelectorProducto, SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
 /**
@@ -168,20 +169,18 @@ function Editor({ id, onCerrar }: { id: string | null; onCerrar: () => void }) {
   const cambiarEstado = async (e: Estado) => { try { await api(`/central/cotizaciones/${id}/estado`, { metodo: "PUT", cuerpo: { estado: e } }); det.recargar(); } catch (x) { setMsg((x as Error).message); } };
 
   const imprimir = () => {
-    const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-    const w = window.open("", "_blank");
-    if (!w) return setMsg("El navegador bloqueó la ventana. Permita las ventanas emergentes para imprimir.");
-    w.document.write(`<!doctype html><meta charset="utf-8"><title>${codigo(numero ?? 0)}</title>
-<style>body{font:14px Segoe UI,Arial,sans-serif;margin:32px;color:#1f2933}h1{margin:0 0 4px}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{padding:7px 6px;border-bottom:1px solid #ddd;text-align:left}th{font-size:12px;color:#555}.d{text-align:right}.t{font-size:16px;font-weight:700}.s{color:#666;font-size:12px;white-space:pre-line}</style>
-<h1>Cotización ${numero ? codigo(numero) : ""}</h1>
-<div>Cliente: <b>${esc(cab.clienteNombre)}</b>${cab.clienteDocumento ? ` · ${esc(cab.clienteDocumento)}` : ""}</div>
-<div>Fecha: ${fechaCorta(cab.fecha)} · Válida hasta: ${fechaCorta(cab.vence)}</div>
-<table><tr><th>Descripción</th><th class="d">Cant.</th><th class="d">Precio</th><th class="d">Total</th></tr>
-${lineas.map((l, i) => `<tr><td>${esc(l.descripcion)}</td><td class="d">${num(l.cantidad)}</td><td class="d">${rd(l.precio)}</td><td class="d">${rd(calc[i]!.total)}</td></tr>`).join("")}
-<tr><td colspan="3" class="d t">Total${lineas.some((l) => l.incluyeItbis) ? " (ITBIS incluido)" : ""}</td><td class="d t">${rd(total)}</td></tr></table>
-${cab.notas ? `<p><b>Notas:</b> ${esc(cab.notas)}</p>` : ""}<p class="s">${esc(cab.condiciones)}</p>
-<script>onload=()=>setTimeout(()=>print(),200)</script>`);
-    w.document.close();
+    let baseTotal = 0, itbisTotal = 0;
+    lineas.forEach((l, i) => { const t = calc[i]!.total; const b = t / (1 + l.tasaItbis); baseTotal += b; itbisTotal += t - b; });
+    void imprimirCarta({
+      titulo: "COTIZACIÓN", numero: numero ? codigo(numero) : "Borrador",
+      datos: [["Fecha", fechaCorta(cab.fecha)], ["Válida hasta", fechaCorta(cab.vence)]],
+      etiquetaCliente: "Cotizado a",
+      cliente: { nombre: cab.clienteNombre, documento: cab.clienteDocumento, telefono: cab.clienteTelefono, correo: cab.clienteCorreo },
+      lineas: lineas.map((l, i) => ({ descripcion: l.descripcion, cantidad: num(l.cantidad), precio: rd(l.precio), descuento: l.descuento ? rd(l.descuento) : undefined, total: rd(calc[i]!.total) })),
+      totales: [["Subtotal", rd(baseTotal)], ["ITBIS", rd(itbisTotal)]],
+      total: [lineas.some((l) => l.incluyeItbis) ? "Total (ITBIS incluido)" : "Total", rd(total)],
+      notas: cab.notas, pie: [cab.condiciones ?? ""],
+    });
   };
 
   return (

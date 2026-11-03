@@ -110,6 +110,20 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
   });
 
   // ---- Marca (tema camaleón) ----
+  /** Datos del emisor para los documentos en carta (cotizaciones, facturas): empresa + la sucursal indicada (o la principal) */
+  app.get("/central/empresa/impresion", async (req) => {
+    const q = z.object({ sucursalId: uuid.optional() }).parse(req.query);
+    const r = await pool.query(
+      `SELECT COALESCE(e.nombre_comercial, e.razon_social) AS nombre, e.razon_social AS "razonSocial", e.rnc, m.logo,
+              s.direccion, s.telefono
+         FROM empresas e LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
+         LEFT JOIN LATERAL (SELECT direccion, telefono FROM sucursales
+                             WHERE empresa_id = e.id AND activo AND ($2::uuid IS NULL OR id = $2)
+                             ORDER BY (tipo = 'TIENDA') DESC, codigo LIMIT 1) s ON true
+        WHERE e.id = $1`, [empresaDe(req), q.sucursalId ?? null]);
+    return r.rows[0] ?? {};
+  });
+
   app.get("/central/marca", async (req) => {
     const r = await pool.query(
       `SELECT e.nombre_comercial AS nombre, m.logo, COALESCE(m.color_primario, '#2dd4bf') AS primario,
