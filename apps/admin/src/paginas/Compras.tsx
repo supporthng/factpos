@@ -234,7 +234,7 @@ function CrearProductoCompra({ item, proveedorId, onCerrar, onCreado }: {
 
 /* ---------- Buscador rápido de líneas ---------- */
 /** Escribe nombre o SKU → flechas ↑↓ y Enter agregan la presentación (cada presentación es una fila: no hay que elegir dos veces). */
-function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: string) => void; inputRef: React.RefObject<HTMLInputElement> }) {
+export function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: string) => void; inputRef: React.RefObject<HTMLInputElement> }) {
   const { productos } = useCatalogo();
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);

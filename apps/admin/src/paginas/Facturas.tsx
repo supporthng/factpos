@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, esLocal, hoy, num, puede, rd } from "../api";
 import { imprimirCarta, imprimirHtml } from "../impresion";
+import { NuevaFactura } from "./NuevaFactura";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
 /**
@@ -74,10 +75,14 @@ export function Facturas() {
   const [ver, setVer] = useState<string | null>(null);
   const params = new URLSearchParams({ desde, hasta, ...(sucursalId ? { sucursalId } : {}), ...(familia ? { familia } : {}), ...(estado ? { estado } : {}), ...(q.trim() ? { q: q.trim() } : {}) });
   const lista = useDatos<Fila[]>(`/central/facturas?${params}`, [recarga]);
+  const [nueva, setNueva] = useState(false);
 
+  if (nueva) return <NuevaFactura onCerrar={() => setNueva(false)} onCreada={(id) => { setNueva(false); setRecarga((n) => n + 1); setVer(id); }} />;
   return (
     <>
-      <Encabezado titulo="Facturas" descripcion="Busque cualquier factura para reimprimirla, modificarla o anularla. Cada tipo se identifica por su prefijo: E (electrónico), B (NCF serie B) y FI- (sin comprobante)." />
+      <Encabezado titulo="Facturas" descripcion="Cree una factura, o busque cualquiera para reimprimirla, modificarla o anularla. Cada tipo se identifica por su prefijo: E (electrónico), B (NCF serie B) y FI- (sin comprobante).">
+        {esLocal() && <button className="boton primario" onClick={() => setNueva(true)}>Nueva factura</button>}
+      </Encabezado>
       <div className="fila-acciones" style={{ marginBottom: 12, flexWrap: "wrap" }}>
         <input type="date" aria-label="Desde" value={desde} onChange={(e) => setDesde(e.target.value)} />
         <input type="date" aria-label="Hasta" value={hasta} onChange={(e) => setHasta(e.target.value)} />
