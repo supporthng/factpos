@@ -121,6 +121,10 @@ export const esNeutro = (hex: string) => {
 };
 
 export interface Marca { primario: string; secundario?: string | null }
+/** Los colores de FactPOS: se usan cuando el cliente elige no usar los colores de su logo. */
+export const COLORES_FACTPOS: Marca = { primario: "#2dd4bf", secundario: "#0e1b26" };
+/** Los colores que de verdad se aplican: los de la marca, salvo que se haya apagado «usar los colores del logo». */
+export const marcaEfectiva = (m: Marca & { usarColores?: boolean }): Marca => (m.usarColores === false ? COLORES_FACTPOS : m);
 
 /** Variables CSS de la Administración (tema claro). */
 export function temaAdmin(m: Marca): Record<string, string> {

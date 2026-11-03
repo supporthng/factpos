@@ -83,7 +83,7 @@ const SECCIONES = [
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
   { id: "empresa", titulo: "Datos de la empresa", grupo: "Configuración", C: DatosEmpresa, i: "sucursales", p: ["admin.config"] },
-  { id: "marca", titulo: "Logo y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "marca", titulo: "Apariencia", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
   { id: "equipos", titulo: "Equipos de la caja", grupo: "Configuración", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
@@ -167,7 +167,7 @@ const DESCRIPCION: Record<string, string> = {
   equipos: "Impresora, gaveta, báscula y datáfono de cada terminal",
   correo: "Envío de reportes y facturas por correo",
   empresa: "Nombre, RNC, dirección, teléfono y correo de la empresa",
-  marca: "Suba el logo de su empresa; el sistema toma sus colores",
+  marca: "Logo de su empresa y colores: los de su logo o los de FactPOS",
   formatos: "Diseño del ticket: papel, logo, encabezado, pie y datos",
   respaldos: "Copias de seguridad: en este equipo, USB/OneDrive y la nube",
   licencia: "Plan, vigencia y activación de FactPOS",
@@ -224,7 +224,7 @@ function AppInterna() {
     const recargarCatalogo = () => { api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch(() => {}); };
     window.addEventListener("factpos:catalogo", recargarCatalogo);
     api<CfgMovil>("/central/movil").then(setCfgMovil).catch(() => {});
-    api<{ logo: string | null; primario: string; secundario: string | null; nombre: string }>("/central/marca")
+    api<{ logo: string | null; primario: string; secundario: string | null; nombre: string; usarColores?: boolean }>("/central/marca")
       .then((m) => { aplicarTemaAdmin(m); setLogo(m.logo); })
       .catch(() => {});
     return () => window.removeEventListener("factpos:catalogo", recargarCatalogo);

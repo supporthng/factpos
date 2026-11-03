@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Icono } from "../Iconos";
-import { extraerPaleta, temaAdmin, temaTerminal, contraste } from "@factpos/compartido";
+import { extraerPaleta, temaAdmin, temaTerminal, contraste, marcaEfectiva } from "@factpos/compartido";
 import { api } from "../api";
 import { aplicarTemaAdmin } from "../tema";
 import { Aviso, Encabezado } from "../ui";
 
-interface MarcaDatos { nombre: string; logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean }
+interface MarcaDatos { nombre: string; logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; usarColores: boolean }
 
 /** Reduce el logo (máx. 320 px) y extrae su paleta. */
 async function procesarLogo(archivo: File): Promise<{ dataUrl: string; paleta: string[] }> {
@@ -56,21 +56,22 @@ export function Marca() {
   };
   const guardar = async () => {
     try {
-      await api("/central/marca", { metodo: "PUT", cuerpo: { logo: m.logo, primario: m.primario, secundario: m.secundario, logoEnTicket: m.logoEnTicket } });
-      aplicarTemaAdmin({ primario: m.primario, secundario: m.secundario });
+      await api("/central/marca", { metodo: "PUT", cuerpo: { logo: m.logo, primario: m.primario, secundario: m.secundario, logoEnTicket: m.logoEnTicket, usarColores: m.usarColores !== false } });
+      aplicarTemaAdmin({ primario: m.primario, secundario: m.secundario, usarColores: m.usarColores });
       setMsg({ t: "Marca guardada. Las terminales la toman al iniciar.", tipo: "ok" });
     } catch (e) {
       setMsg({ t: (e as Error).message, tipo: "error" });
     }
   };
 
-  const ta = temaAdmin({ primario: m.primario, secundario: m.secundario });
-  const tt = temaTerminal({ primario: m.primario, secundario: m.secundario }, "claro"); // la terminal viene en tema claro
+  const efectiva = marcaEfectiva({ primario: m.primario, secundario: m.secundario, usarColores: m.usarColores });
+  const ta = temaAdmin(efectiva);
+  const tt = temaTerminal(efectiva, "claro"); // la terminal viene en tema claro
   const muestra = [...new Set([...paleta, m.primario, ...(m.secundario ? [m.secundario] : [])])];
 
   return (
     <>
-      <Encabezado titulo="Marca" descripcion="Suba el logo del negocio: el sistema toma sus colores y se adapta a ellos.">
+      <Encabezado titulo="Apariencia" descripcion="Logo del negocio y colores: los de su logo o los de FactPOS.">
         <button className="boton primario" onClick={guardar}>Guardar marca</button>
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
@@ -90,6 +91,11 @@ export function Marca() {
           </label>
 
           <h3 style={{ marginTop: 20 }}>Colores</h3>
+          <label className="check">
+            <input type="checkbox" checked={m.usarColores !== false} onChange={(e) => setM({ ...m, usarColores: e.target.checked })} /> Usar los colores de mi logo
+          </label>
+          {m.usarColores === false && <p className="suave pequeno">Se usan los colores de FactPOS en la administración y en la caja. Su logo se sigue mostrando.</p>}
+          <div style={m.usarColores === false ? { opacity: .45, pointerEvents: "none" } : undefined}>
           {muestra.length > 0 && <p className="suave pequeno">Del logo (toque para usarlo):</p>}
           <div className="paleta">
             {muestra.map((c) => (
@@ -106,6 +112,7 @@ export function Marca() {
             </label>
           </div>
           <p className="suave pequeno">Clic en una muestra = color principal · clic derecho = secundario. Si un color no se lee bien, el sistema ajusta su tono automáticamente.</p>
+          </div>
         </div>
 
         <div className="panel">
