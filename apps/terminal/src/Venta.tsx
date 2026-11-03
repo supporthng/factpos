@@ -1,4 +1,5 @@
 import { publicarMarca, publicarCarrito, publicarGracias } from "./pantalla-cliente";
+import { modoInicial } from "./vista";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cotizarCarrito, marcaEfectiva, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito,
@@ -322,18 +323,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   // La modalidad es una preferencia de esta caja, no de todo el navegador.
   // Se conserva F1 para alternar sin interrumpir una venta.
   const claveModo = `factpos.caja.${ajustes.cajaId}.modalidad`;
-  const [modo, setModo] = useState<"escaner" | "catalogo">(() => {
-    try {
-      const guardado = localStorage.getItem(claveModo) ?? localStorage.getItem("factpos.modo");
-      return guardado === "catalogo" ? "catalogo" : "escaner";
-    } catch { return "escaner"; }
-  });
-  useEffect(() => {
-    try {
-      const guardado = localStorage.getItem(claveModo) ?? localStorage.getItem("factpos.modo");
-      setModo(guardado === "catalogo" ? "catalogo" : "escaner");
-    } catch { setModo("escaner"); }
-  }, [claveModo]);
+  // Abre con la vista elegida en Ajustes (Caja clásica o táctil) o, si no se eligió ninguna, con la última que se usó
+  const [modo, setModo] = useState<"escaner" | "catalogo">(() => modoInicial(ajustes.cajaId));
+  useEffect(() => { setModo(modoInicial(ajustes.cajaId)); }, [ajustes.cajaId]);
   useEffect(() => { try { localStorage.setItem(claveModo, modo); } catch { /* sin almacenamiento */ } }, [claveModo, modo]);
   const verCatalogo = modo === "catalogo";
   const enCarrito = useMemo(() => {
