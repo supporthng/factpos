@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool } from "../db.js";
+import { normalizarAlias } from "../rutas/central-compras.js";
 import { llamarPortal } from "../licencia/cliente.js";
 import { credencialesPortal } from "../respaldo/respaldo.js";
 
@@ -125,6 +126,11 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
            JOIN presentaciones pr ON pr.producto_id = pp.producto_id AND pr.es_principal
           WHERE pp.proveedor_id = $1 AND pp.activo AND pp.codigo_proveedor = ANY($2)`, [prov.id, codigos])).rows) porProveedor.set(x.codigo_proveedor, x.presentacion_id);
     }
+    // Descripciones que ya se eligieron en compras anteriores de este proveedor
+    const porAlias = new Map<string, string>();
+    if (prov) {
+      for (const x of (await pool.query<{ alias: string; presentacion_id: string }>("SELECT alias, presentacion_id FROM alias_factura WHERE proveedor_id = $1", [prov.id])).rows) porAlias.set(x.alias, x.presentacion_id);
+    }
     const catalogo = (await pool.query<Candidato>(
       `SELECT pr.id AS "presentacionId", p.id AS "productoId", p.nombre, pr.nombre AS presentacion, pr.factor::text AS factor
          FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id
@@ -135,7 +141,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     let sumaNeto = 0;
     const items = f.items.map((i) => {
       const cod = (i.codigo ?? "").trim();
-      const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod);
+      const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod) ?? porAlias.get(normalizarAlias(i.descripcion));
       let elegido = exacto ? porId.get(exacto) : undefined;
       let confianza: "CODIGO" | "NOMBRE" | "NINGUNA" = elegido ? "CODIGO" : "NINGUNA";
       const sugeridos = catalogo.map((c) => ({ c, s: parecido(i.descripcion, `${c.nombre} ${c.presentacion === "Unidad" ? "" : c.presentacion}`) }))

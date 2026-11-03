@@ -17,6 +17,8 @@ interface Linea {
   cantidad: string; costo: string; enOferta: boolean; costoRegular: string; ref: Referencia | null;
   /** Lote y vencimiento de lo recibido (obligatorio si el producto controla lotes) */
   lote: string; vence: string;
+  /** Descripción de la factura del proveedor (la lectora la aprende al registrar) */
+  alias?: string;
 }
 
 /** Lo que devuelve el lector de facturas (borrador por revisar) */
@@ -308,7 +310,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   const [leidaInfo, setLeidaInfo] = useState<string>("");
 
   /** Agrega varias líneas de una vez (de la factura leída); si la presentación ya está, suma la cantidad */
-  const agregarLeidas = (items: { presentacionId: string; cantidad: number; costo: number }[]) => {
+  const agregarLeidas = (items: { presentacionId: string; cantidad: number; costo: number; alias?: string }[]) => {
     const nuevas: Linea[] = [];
     setLineas((ls) => {
       const sig = [...ls];
@@ -319,7 +321,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
         const ya = sig.findIndex((l) => l.presentacionId === it.presentacionId);
         if (ya >= 0) { sig[ya] = { ...sig[ya], cantidad: String(n(sig[ya].cantidad) + it.cantidad) }; continue; }
         const l: Linea = { clave: crypto.randomUUID(), presentacionId: it.presentacionId, nombre: p.nombre, presentacion: pr.nombre, factor: pr.factor,
-          cantidad: String(it.cantidad), costo: String(Math.round(it.costo * 100) / 100), enOferta: false, costoRegular: "", ref: null, lote: "", vence: "" };
+          cantidad: String(it.cantidad), costo: String(Math.round(it.costo * 100) / 100), enOferta: false, costoRegular: "", ref: null, lote: "", vence: "", alias: it.alias };
         sig.push(l); nuevas.push(l);
       }
       return sig;
@@ -372,7 +374,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
           condicion: r.condicion ?? c.condicion, venceEn: r.vence ?? c.venceEn,
         }));
         if (!r.proveedor.id && r.proveedor.nombreLeido) setProvNuevo((x) => x ?? r.proveedor.nombreLeido);
-        agregarLeidas(r.items.filter((i) => i.presentacionId).map((i) => ({ presentacionId: i.presentacionId!, cantidad: i.cantidad, costo: i.costo })));
+        agregarLeidas(r.items.filter((i) => i.presentacionId).map((i) => ({ presentacionId: i.presentacionId!, cantidad: i.cantidad, costo: i.costo, alias: i.descripcion })));
         setPend((p) => [...p, ...r.items.filter((i) => !i.presentacionId)]);
         if (archivos.length === 1 && r.aviso) setMsg(r.aviso);
       }
@@ -388,7 +390,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
     const p = productos.find((x) => x.id === porAgregar.productoId);
     const pr = p?.presentaciones[0];
     if (!pr) return;
-    agregarLeidas([{ presentacionId: pr.id, cantidad: porAgregar.item.cantidad, costo: porAgregar.item.costo }]);
+    agregarLeidas([{ presentacionId: pr.id, cantidad: porAgregar.item.cantidad, costo: porAgregar.item.costo, alias: porAgregar.item.descripcion }]);
     setPorAgregar(null);
   }, [porAgregar, productos]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -455,7 +457,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
           items: lineas.map((l) => ({
             presentacionId: l.presentacionId, cantidad: String(n(l.cantidad)), costoUnitario: String(n(l.costo)),
             enOferta: l.enOferta, costoRegular: l.enOferta && l.costoRegular ? String(n(l.costoRegular)) : null,
-            numeroLote: l.lote.trim() || null, loteVence: l.vence || null,
+            numeroLote: l.lote.trim() || null, loteVence: l.vence || null, descripcionFactura: l.alias ?? null,
           })),
         },
       });
@@ -539,7 +541,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
             <div key={i} className="en-linea" style={{ flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
               <span><b>{it.descripcion}</b> <span className="suave">{it.codigo ? `${it.codigo} · ` : ""}{it.cantidad} × {rd(it.costo)}{it.porUnidad ? " por unidad" : ""}</span>{it.empaque && <small className="suave bloque">{it.empaque}</small>}</span>
               {it.sugeridos.map((sg) => (
-                <button key={sg.presentacionId} className="chip" onClick={() => { agregarLeidas([{ presentacionId: sg.presentacionId, ...enPresentacion(it, sg.factor) }]); setPend((p) => p.filter((_, j) => j !== i)); }}>
+                <button key={sg.presentacionId} className="chip" onClick={() => { agregarLeidas([{ presentacionId: sg.presentacionId, alias: it.descripcion, ...enPresentacion(it, sg.factor) }]); setPend((p) => p.filter((_, j) => j !== i)); }}>
                   {sg.nombre}{sg.presentacion !== "Unidad" ? ` · ${sg.presentacion}` : ""}
                 </button>
               ))}
@@ -547,7 +549,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
                 const p = productos.find((x) => x.id === id);
                 const pr = p?.presentaciones[0];
                 if (!pr) return;
-                agregarLeidas([{ presentacionId: pr.id, ...enPresentacion(it, pr.factor) }]);
+                agregarLeidas([{ presentacionId: pr.id, alias: it.descripcion, ...enPresentacion(it, pr.factor) }]);
                 setPend((q) => q.filter((_, j) => j !== i));
               }} />
               <button className="boton" onClick={() => setCreando({ i, item: it })}>＋ Crear producto nuevo</button>
