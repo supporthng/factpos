@@ -278,6 +278,7 @@ async function syncUi() {
   finally { syncing = false; }
 }
 async function startCaja() {
+  mostrarEscritorio(); // por si la vez anterior se cerró a la fuerza con el escritorio oculto
   try { server = new URL(localUrl); } catch { server = null; }
   if (!await startUiServer()) {
     dialog.showErrorBox('FactPOS Caja', `No se pudo iniciar la caja: el puerto ${UI_PORT} de este equipo está ocupado por otro programa.`);
@@ -380,7 +381,7 @@ function openMain(onShown) {
   win.webContents.on('ipc-message', (_e, canal, modo) => {
     if (canal === 'factpos:turno') { turnoAbierto = !!modo; return; }
     if (canal === 'factpos:cerrar') { app.quit(); return; }
-    if (canal === 'factpos:minimizar') { minimizarAutorizado = true; try { win.setAlwaysOnTop(false); win.setKiosk(false); win.minimize(); } catch {} return; }
+    if (canal === 'factpos:minimizar') { minimizarAutorizado = true; mostrarEscritorio(); try { win.setAlwaysOnTop(false); win.setKiosk(false); win.minimize(); } catch {} return; }
     if (canal !== 'factpos:ventana' || selected !== 'admin' || win.isDestroyed() || win.isKiosk()) return;
     if (modo === 'entrar') {
       if (win.isMaximized()) win.unmaximize();
@@ -400,7 +401,7 @@ function openMain(onShown) {
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
-  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (kiosko) win.setKiosk(true); win.focus(); win.webContents.focus(); if (onShown) onShown();
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); if (kiosko) { win.setKiosk(true); ocultarEscritorio(); } win.focus(); win.webContents.focus(); if (onShown) onShown();
     // Con un segundo monitor, la pantalla del cliente se abre sola (se puede apagar con pantallaCliente:false en la configuración)
     if (selected === 'caja' && config.pantallaCliente !== false && screen.getAllDisplays().length > 1) setTimeout(() => { try { openCustomer(); win.focus(); } catch {} }, 1500);
   };
@@ -417,7 +418,7 @@ function openMain(onShown) {
     if (minimizarAutorizado) { minimizarAutorizado = false; return; }
     try { win.restore(); win.focus(); win.webContents.send('factpos:intento-minimizar'); } catch {}
   });
-  win.on('restore', () => { if (bloqueada()) setTimeout(fijar, 50); });
+  win.on('restore', () => { if (bloqueada()) { ocultarEscritorio(); setTimeout(fijar, 50); } });
   win.on('leave-full-screen', () => { if (bloqueada()) setTimeout(fijar, 50); });
   win.on('show', fijar);
   win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !win.isFocused() && !win.getChildWindows().length) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
@@ -453,6 +454,31 @@ function openMain(onShown) {
 // al terminar, el sistema se abre de nuevo (las pantallas piden usuario y contraseña porque la versión cambió).
 let mainWindow = null;
 let minimizarAutorizado = false;
+// ---- Escritorio oculto mientras la caja está abierta (solo Windows) ----
+// La tecla Windows, el menú Inicio y la barra de tareas son del Explorador de Windows: mientras la caja está en modo kiosko se
+// cierra el Explorador (y se desactiva el Administrador de tareas del usuario) y se devuelve al cerrar la caja, al minimizar con
+// permiso o al actualizar. Si la caja se cerrara a la fuerza, la próxima vez que abra lo recupera (marca en disco).
+const { spawn } = require('node:child_process');
+const MARCA_ESCRITORIO = path.join(app.getPath('userData'), 'escritorio-oculto.flag');
+const CLAVE_DIRECTIVA = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
+let escritorioOculto = false;
+function ocultarEscritorio() {
+  if (process.platform !== 'win32' || escritorioOculto) return;
+  escritorioOculto = true;
+  try { fs.writeFileSync(MARCA_ESCRITORIO, String(Date.now())); } catch {}
+  try { execFile('reg', ['add', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/t', 'REG_DWORD', '/d', '1', '/f'], { windowsHide: true }, () => {}); } catch {}
+  try { execFile('taskkill', ['/f', '/im', 'explorer.exe'], { windowsHide: true }, () => {}); } catch {}
+}
+function mostrarEscritorio() {
+  if (process.platform !== 'win32' || (!escritorioOculto && !fs.existsSync(MARCA_ESCRITORIO))) return;
+  escritorioOculto = false;
+  try { fs.rmSync(MARCA_ESCRITORIO, { force: true }); } catch {}
+  try { execFile('reg', ['delete', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/f'], { windowsHide: true }, () => {}); } catch {}
+  try { spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(); } catch {}
+}
+app.on('will-quit', mostrarEscritorio);
+process.on('exit', mostrarEscritorio);
+process.on('uncaughtException', (e) => { try { mostrarEscritorio(); } catch {} throw e; });
 let turnoAbierto = false; // lo informa la pantalla de la caja
 let saliendo = false;   // se está cerrando la aplicación a propósito
 let miniWindow = null;
@@ -497,6 +523,7 @@ function openMini() {
 function sendMini(msg) { if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('factpos:actualizacion', msg); }
 function beginUpdate(state) {
   updating = true; updateStartedAt = Date.now(); versionBefore = state.version;
+  mostrarEscritorio();
   mainOpened = false; // cerrar las ventanas no debe cerrar la aplicación
   closeCustomer();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
