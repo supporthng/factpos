@@ -39,7 +39,7 @@ export function parecido(factura: string, producto: string) {
 }
 
 /** La columna de unidad habla de un empaque (caja, paquete, fardo…) o de un «NxM» (24x350ML) */
-const ES_EMPAQUE = /^\s*(caja|caj|cj|cx|paq|pack|fardo|bulto|ca\s*$|\d+\s*[x×]\s*\d)/i;
+const ES_EMPAQUE = /^\s*(caja|caj|cj|cx|paq|pack|fardo|bulto|ca\s*$|\d+\s*pack|\d+\s*[x×]\s*\d)/i;
 export const esEmpaque = (unidad: string | null | undefined) => ES_EMPAQUE.test(unidad ?? "");
 
 /** Unidades por empaque: lo dice la IA o se deduce de «15x22 oz», «CJ6BOT», «CAJA06», «Caja-12», «CAJ / 24 PZA», «Paquete-10». Solo enteros de 2 a 1000. */
@@ -47,7 +47,7 @@ export function unidadesPorEmpaque(i: { unidadesPorEmpaque?: number | null; unid
   const d = Number(i.unidadesPorEmpaque);
   if (Number.isInteger(d) && d >= 2 && d <= 1000) return d;
   const u = i.unidad ?? "";
-  const m = /^\s*(\d{1,4})\s*[x×]\s*\d/i.exec(u) ?? /(?:caja|caj|cj|ca|paquete|paq|pack)\D{0,3}(\d{1,3})/i.exec(u);
+  const m = /^\s*(\d{1,4})\s*[x×]\s*\d/i.exec(u) ?? /(?:caja|caj|cj|ca|paquete|paq|pack)\D{0,3}(\d{1,3})/i.exec(u) ?? /(\d{1,3})\s*pack/i.exec(u);
   const n = m ? Number(m[1]) : 0;
   return n >= 2 && n <= 1000 ? n : null;
 }
