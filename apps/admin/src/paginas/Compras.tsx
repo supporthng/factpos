@@ -187,7 +187,18 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     setLeyendo(true); setMsg(""); setLeidaInfo("");
     try {
       const { tipo, datos } = await prepararArchivo(archivo);
-      const r = await api<FacturaLeida>("/central/compras/leer-factura", { cuerpo: { tipo, datos } });
+      const { trabajoId } = await api<{ trabajoId: string }>("/central/compras/leer-factura", { cuerpo: { tipo, datos } });
+      // La lectura corre en el servidor: se consulta cada 3 s (hasta 3 min) sin dejar una conexión larga abierta
+      let r: FacturaLeida | undefined;
+      for (let i = 0; i < 60 && !r; i++) {
+        await new Promise((ok) => setTimeout(ok, 3000));
+        let est: { estado: string; resultado?: FacturaLeida; error?: string };
+        try { est = await api(`/central/compras/leer-factura/${trabajoId}`); }
+        catch (e) { if (/conexi/i.test((e as Error).message)) continue; throw e; } // un corte breve del celular no cancela la lectura
+        if (est.estado === "ERROR") throw new Error(est.error ?? "No se pudo leer la factura");
+        if (est.estado === "LISTO") r = est.resultado;
+      }
+      if (!r) throw new Error("La lectura tardó demasiado. Intente de nuevo con una foto más liviana.");
       setCab((c) => ({
         ...c, proveedorId: r.proveedor.id ?? c.proveedorId, numeroFactura: r.numeroFactura ?? c.numeroFactura, ncfProveedor: r.ncf ?? c.ncfProveedor,
         fechaFactura: r.fecha && r.fecha <= hoy() ? r.fecha : c.fechaFactura,
