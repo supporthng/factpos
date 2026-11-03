@@ -50,7 +50,7 @@ export async function rutasTurnos(app: FastifyInstance) {
               e.nombre_comercial AS empresa, e.rnc,
               COALESCE(cs.modulos, '{}'::jsonb) AS modulos,
               jsonb_build_object('logo', m.logo, 'primario', COALESCE(m.color_primario, '#2dd4bf'),
-                                 'secundario', CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END, 'logoEnTicket', COALESCE(m.logo_en_ticket, true),
+                                 'secundario', CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END, 'logoEnTicket', COALESCE(m.logo_en_ticket, true), 'usarColores', COALESCE(m.usar_colores_logo, true),
                                  'formato', COALESCE(m.formato_ticket, '{}'::jsonb),
                                  'pantallaCliente', COALESCE(m.pantalla_cliente, '{}'::jsonb)) AS marca,
               s.direccion, s.telefono, e.id AS "empresaId"

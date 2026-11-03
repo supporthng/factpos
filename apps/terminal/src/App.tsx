@@ -7,7 +7,7 @@ import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinSer
 import { Venta, Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { TurnoCaja } from "./Turno";
-import { temaTerminal } from "@factpos/compartido";
+import { temaTerminal, marcaEfectiva } from "@factpos/compartido";
 import { SimboloFactPOS } from "./Logo";
 
 export interface ConfigCaja {
@@ -21,7 +21,7 @@ export interface ConfigCaja {
   modulos: { delivery: { activo: boolean } };
   /** Funciones de Seguridad que cambian la pantalla de venta */
   funciones?: { sinComprobante: boolean };
-  marca: { logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; formato?: Partial<import("@factpos/compartido").FormatoTicket>; pantallaCliente?: Partial<import("./pantalla-cliente").ConfigPantalla> };
+  marca: { logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; usarColores?: boolean; formato?: Partial<import("@factpos/compartido").FormatoTicket>; pantallaCliente?: Partial<import("./pantalla-cliente").ConfigPantalla> };
   direccion?: string | null;
   telefono?: string | null;
 }
@@ -29,7 +29,7 @@ export interface ConfigCaja {
 /** Tema camaleón: los colores del logo del cliente pintan la terminal. */
 function aplicarMarca(m: ConfigCaja["marca"]) {
   marcaActual = m;
-  for (const [k, v] of Object.entries(temaTerminal(m, leerTema()))) document.documentElement.style.setProperty(k, v);
+  for (const [k, v] of Object.entries(temaTerminal(marcaEfectiva(m), leerTema()))) document.documentElement.style.setProperty(k, v);
 }
 let marcaActual: ConfigCaja["marca"] | null = null;
 // Al cambiar de tema claro/oscuro, los colores de la marca se recalculan para ese fondo

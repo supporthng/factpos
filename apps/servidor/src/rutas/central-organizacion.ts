@@ -180,6 +180,7 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT e.nombre_comercial AS nombre, m.logo, COALESCE(m.color_primario, '#2dd4bf') AS primario,
               CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END AS secundario, COALESCE(m.logo_en_ticket, true) AS "logoEnTicket",
+              COALESCE(m.usar_colores_logo, true) AS "usarColores",
               COALESCE(m.formato_ticket, '{}'::jsonb) AS formato
          FROM empresas e LEFT JOIN configuracion_marca m ON m.empresa_id = e.id WHERE e.id = $1`,
       [empresaDe(req)],
@@ -191,13 +192,13 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color inválido");
     const b = z.object({
       logo: z.string().startsWith("data:image/").max(400000, "El logo es muy pesado").nullable(),
-      primario: color, secundario: color.nullable(), logoEnTicket: z.boolean().default(true),
+      primario: color, secundario: color.nullable(), logoEnTicket: z.boolean().default(true), usarColores: z.boolean().default(true),
     }).parse(req.body);
     await pool.query(
-      `INSERT INTO configuracion_marca (empresa_id, logo, color_primario, color_secundario, logo_en_ticket)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (empresa_id) DO UPDATE SET logo = $2, color_primario = $3, color_secundario = $4, logo_en_ticket = $5`,
-      [empresaDe(req), b.logo, b.primario.toLowerCase(), b.secundario?.toLowerCase() ?? null, b.logoEnTicket],
+      `INSERT INTO configuracion_marca (empresa_id, logo, color_primario, color_secundario, logo_en_ticket, usar_colores_logo)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (empresa_id) DO UPDATE SET logo = $2, color_primario = $3, color_secundario = $4, logo_en_ticket = $5, usar_colores_logo = $6`,
+      [empresaDe(req), b.logo, b.primario.toLowerCase(), b.secundario?.toLowerCase() ?? null, b.logoEnTicket, b.usarColores],
     );
     return { ok: true };
   });

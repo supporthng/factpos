@@ -1,7 +1,7 @@
 import { publicarMarca, publicarCarrito, publicarGracias } from "./pantalla-cliente";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  cotizarCarrito, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito,
+  cotizarCarrito, marcaEfectiva, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito,
   type Catalogo, type ProductoCatalogo, type Cupon, type Cotizacion,
 } from "@factpos/compartido";
 import { Decimal } from "decimal.js";
@@ -191,7 +191,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
   // Pantalla del cliente (segunda ventana): marca y ofertas, carrito en vivo y el «gracias» al terminar
   useEffect(() => {
-    publicarMarca({ empresa: config.empresa, logo: config.marca.logo, primario: config.marca.primario, secundario: config.marca.secundario, pantalla: config.marca.pantallaCliente ?? {} });
+    const ef = marcaEfectiva(config.marca); // sin «usar los colores del logo», la segunda pantalla también usa los de FactPOS
+    publicarMarca({ empresa: config.empresa, logo: config.marca.logo, primario: ef.primario, secundario: ef.secundario ?? null, pantalla: config.marca.pantallaCliente ?? {} });
   }, [config]);
   useEffect(() => {
     const r = cot.r;
