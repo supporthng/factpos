@@ -53,7 +53,9 @@ const srv = http.createServer((q, r) => {
         // Se recuerdan el servidor y el usuario para la próxima vez (la contraseña nunca se guarda)
         try { writeFileSync(rutaConexion, JSON.stringify({ servidor: String(o.servidor).trim(), usuario: String(o.usuario).trim() })); } catch { /* sin permiso */ }
       }
-      r.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+      // nosniff + relleno inicial: sin esto el navegador espera ~1 KB antes de mostrar nada y parece que está trabado
+      r.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      r.write(" ".repeat(2048) + "\nIniciando…\n");
       corriendo = true;
       try {
         await importar({ fuente: "wilpos", archivo, salida, aplicar: !!o.aplicar, sinFotos: !!o.sinFotos,
