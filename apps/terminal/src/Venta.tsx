@@ -61,7 +61,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "pausadas"
-  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes";
+  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -475,6 +475,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         e: () => catalogo && setModal("existencias"),
         g: () => setModal("gaveta"),
         o: () => setModal("pedidos"),
+        c: () => catalogo && setModal("consulta"),
       };
       if (e.altKey && conAlt[e.key.toLowerCase()]) { e.preventDefault(); conAlt[e.key.toLowerCase()](); return; }
       const mapa: Record<string, () => void> = {
@@ -694,7 +695,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
       <footer className="pv-funciones" aria-label="Funciones">
         <BotonFuncion tono="rojo" icono="x" texto="Cancelar venta" tecla="Esc" disabled={!lineas.length} onClick={() => setModal("cancelar")} />
-        <BotonFuncion tono="azul" icono="lupa" texto="Buscar producto" tecla="F2" onClick={() => { setBusqueda(""); setModal("buscar"); }} />
+        <BotonFuncion tono="azul" icono="etiqueta" texto="Consultar precio" tecla="Alt+C" disabled={!catalogo} onClick={() => setModal("consulta")} />
         <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
         <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturas")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
@@ -713,6 +714,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "buscar" && catalogo && (
         <Buscar catalogo={catalogo} inicial={busqueda} nivel={nivelPrecio}
           onElegir={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
+      )}
+      {modal === "consulta" && catalogo && (
+        <Buscar catalogo={catalogo} inicial="" nivel={nivelPrecio} consulta onElegir={() => {}} onCerrar={() => setModal(null)} />
       )}
       {modal === "cliente" && (
         <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} onElegir={(c) => { setCliente(c); if (c.nuevoParaFiscal && tipoComp === "E32") setTipoComp("E31"); setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} onCerrar={() => { setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} />
@@ -873,8 +877,10 @@ function normalizar(s: string) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar }: {
+function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar, consulta = false }: {
   catalogo: Catalogo; inicial: string; nivel: number; onElegir: (p: ProductoCatalogo) => void; onCerrar: () => void;
+  /** Solo consulta de precio y existencia: no agrega nada a la venta */
+  consulta?: boolean;
 }) {
   const [q, setQ] = useState(inicial);
   const [i, setI] = useState(0);
@@ -892,7 +898,7 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar }: {
   }, [q, todos]);
   useEffect(() => { lista.current?.querySelector(".resultado.activo")?.scrollIntoView({ block: "nearest" }); }, [i]);
   return (
-    <Modal titulo="Buscar producto" onCerrar={onCerrar} clase="buscar-todos">
+    <Modal titulo={consulta ? "Consultar precio" : "Buscar producto"} onCerrar={onCerrar} clase="buscar-todos">
       <input autoFocus className="entrada-grande entrada-texto" value={q} placeholder="Escriba para filtrar por nombre, SKU, código o categoría"
         onChange={(e) => { setQ(e.target.value); setI(0); }}
         onKeyDown={(e) => {
@@ -900,14 +906,14 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar }: {
           if (e.key === "ArrowUp") { e.preventDefault(); setI((x) => Math.max(0, x - 1)); }
           if (e.key === "PageDown") { e.preventDefault(); setI((x) => Math.min(res.length - 1, x + 10)); }
           if (e.key === "PageUp") { e.preventDefault(); setI((x) => Math.max(0, x - 10)); }
-          if (e.key === "Enter" && res[i]) onElegir(res[i]);
+          if (e.key === "Enter" && res[i] && !consulta) onElegir(res[i]);
         }} />
       <div className="resultados" ref={lista}>
         <div className="res-cab"><span>Producto</span><span>Categoría</span><span>SKU</span><span className="der">Existencia</span><span className="der">Precio</span></div>
         {res.map((p, j) => {
           const ex = p.controlaStock ? Number(p.existencia ?? 0) : null;
           return (
-            <button key={p.presentacionId} className={"resultado" + (j === i ? " activo" : "")} onClick={() => onElegir(p)} onMouseMove={() => j !== i && setI(j)}>
+            <button key={p.presentacionId} className={"resultado" + (j === i ? " activo" : "")} onClick={() => !consulta && onElegir(p)} onMouseMove={() => j !== i && setI(j)}>
               <span><b>{p.nombre}</b> <span className="suave">{p.presentacion}</span></span>
               <span className="suave">{p.categoria ?? ""}</span>
               <span className="suave">{p.sku}</span>
@@ -918,7 +924,7 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar }: {
         })}
         {!res.length && <p className="suave" style={{ padding: 12 }}>Sin resultados</p>}
       </div>
-      <p className="suave buscar-pie">{res.length} de {todos.length} productos · ↑↓ para moverse · Enter para agregar · Esc para cerrar</p>
+      <p className="suave buscar-pie">{res.length} de {todos.length} productos · {consulta ? "solo consulta: no se agrega a la venta · escanee o escriba el código" : "↑↓ para moverse · Enter para agregar"} · Esc para cerrar</p>
     </Modal>
   );
 }
@@ -1071,6 +1077,7 @@ function Icono({ n }: { n: string }) {
     salir: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
     codigo: <><path d="M3 5v14M6 5v14M10 5v14M13 5v14M17 5v14M21 5v14" /></>,
     lupa: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
+    etiqueta: <><path d="M3 12V4h8l10 10-8 8L3 12z" /><circle cx="7.5" cy="8.5" r="1.3" /></>,
     persona: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
     pausa: <><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></>,
     documento: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></>,

@@ -380,6 +380,7 @@ function openMain(onShown) {
   win.webContents.on('ipc-message', (_e, canal, modo) => {
     if (canal === 'factpos:turno') { turnoAbierto = !!modo; return; }
     if (canal === 'factpos:cerrar') { app.quit(); return; }
+    if (canal === 'factpos:minimizar') { minimizarAutorizado = true; try { win.setAlwaysOnTop(false); win.setKiosk(false); win.minimize(); } catch {} return; }
     if (canal !== 'factpos:ventana' || selected !== 'admin' || win.isDestroyed() || win.isKiosk()) return;
     if (modo === 'entrar') {
       if (win.isMaximized()) win.unmaximize();
@@ -410,7 +411,13 @@ function openMain(onShown) {
   // ni cambiar con F11. Para salir hace falta el permiso de un supervisor (Ctrl+Mayús+Q o Salir). Con --ventana no se bloquea.
   const bloqueada = () => kiosko && selected === 'caja' && !saliendo && !updating && !win.isDestroyed();
   const fijar = () => { if (!bloqueada()) return; try { win.setAlwaysOnTop(true, 'screen-saver'); if (!win.isKiosk()) win.setKiosk(true); } catch {} };
-  win.on('minimize', () => { if (bloqueada()) { try { win.restore(); win.focus(); } catch {} } });
+  // Minimizar solo con el permiso de un supervisor: si se intenta sin permiso, la ventana vuelve y la pantalla pide el PIN
+  win.on('minimize', () => {
+    if (!bloqueada()) return;
+    if (minimizarAutorizado) { minimizarAutorizado = false; return; }
+    try { win.restore(); win.focus(); win.webContents.send('factpos:intento-minimizar'); } catch {}
+  });
+  win.on('restore', () => { if (bloqueada()) setTimeout(fijar, 50); });
   win.on('leave-full-screen', () => { if (bloqueada()) setTimeout(fijar, 50); });
   win.on('show', fijar);
   win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !win.isFocused() && !win.getChildWindows().length) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
@@ -427,7 +434,7 @@ function openMain(onShown) {
   });
   const tope = setTimeout(mostrar, 12000);
   win.webContents.on('did-start-loading', () => clearTimeout(calma));
-  win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 1500); });
+  win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 400); });
   win.webContents.on('did-fail-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 500); });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -445,6 +452,7 @@ function openMain(onShown) {
 // Si el servidor se actualiza: se cierra todo, se muestra una ventana pequeña con el avance y,
 // al terminar, el sistema se abre de nuevo (las pantallas piden usuario y contraseña porque la versión cambió).
 let mainWindow = null;
+let minimizarAutorizado = false;
 let turnoAbierto = false; // lo informa la pantalla de la caja
 let saliendo = false;   // se está cerrando la aplicación a propósito
 let miniWindow = null;
