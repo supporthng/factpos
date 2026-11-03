@@ -216,13 +216,16 @@ export async function rutasPortal(app: FastifyInstance) {
     const cfg = (await pool.query<{ d: number; tasa: string | null; w: string | null; c: string | null; t: string | null; n: string | null }>(
       `SELECT descuento_anual AS d, ecf_tasa_dop::text AS tasa, contacto_whatsapp AS w, contacto_correo AS c, contacto_telefono AS t, contacto_nombre AS n FROM portal_config WHERE id = 1`)).rows[0];
     const d = cfg?.d ?? 10;
-    const planes = (await pool.query<{ codigo: string; nombre: string; descripcion: string | null; precio: number; periodo: string; sucursales: number; funciones: string[]; destacado: boolean; etiqueta: string | null }>(
-      `SELECT codigo, nombre, descripcion, precio_sucursal::float AS precio, periodo, sucursales_incluidas AS sucursales, funciones, destacado, etiqueta
+    const planes = (await pool.query<{ codigo: string; nombre: string; descripcion: string | null; precio: number; periodo: string; sucursales: number; funciones: string[]; destacado: boolean; etiqueta: string | null; permanente: boolean }>(
+      `SELECT codigo, nombre, descripcion, precio_sucursal::float AS precio, periodo, sucursales_incluidas AS sucursales, funciones, destacado, etiqueta, permanente
          FROM portal_planes WHERE activo ORDER BY orden, nombre`)).rows.map((p) => {
       // El portal cobra «precio por sucursal» por el período del plan; la web muestra el total mensual del plan
       const porSucursalMes = p.periodo === "ANUAL" ? p.precio / 12 / (1 - d / 100) : p.precio;
       return { codigo: p.codigo, nombre: p.nombre, descripcion: p.descripcion, sucursales: p.sucursales, funciones: p.funciones, destacado: p.destacado, etiqueta: p.etiqueta,
-        mensual: p.precio > 0 ? Math.round(porSucursalMes * p.sucursales) : null };
+        permanente: p.permanente,
+        // Plan de pago único: se cobra una vez (precio × sucursales) y no tiene mensualidad
+        pagoUnico: p.permanente && p.precio > 0 ? Math.round(p.precio * p.sucursales) : null,
+        mensual: !p.permanente && p.precio > 0 ? Math.round(porSucursalMes * p.sucursales) : null };
     });
     const comprobantes = (await pool.query(
       `SELECT nombre, max_mes AS "maxMes", precio_usd::float AS "precioUsd" FROM portal_ecf_planes WHERE activo ORDER BY orden, max_mes`)).rows;
@@ -572,6 +575,8 @@ export async function rutasPortal(app: FastifyInstance) {
     /** Lo que se lista en la página web como incluido en el plan */
     funciones: z.array(z.string().trim().min(1).max(120)).max(14).default([]),
     destacado: z.boolean().default(false),
+    /** Pago único: la licencia de sus clientes no vence */
+    permanente: z.boolean().default(false),
     etiqueta: z.string().trim().max(40).nullable().optional(),
     permiteActualizaciones: z.boolean().default(true),
     activo: z.boolean().default(true),
@@ -579,16 +584,16 @@ export async function rutasPortal(app: FastifyInstance) {
   });
   app.get("/central/portal/planes", async () => (await pool.query(
     `SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_sucursal::float AS "precioSucursal", p.periodo, p.sucursales_incluidas AS "sucursalesIncluidas",
-            p.modulos, p.funciones, p.destacado, p.etiqueta, p.permite_actualizaciones AS "permiteActualizaciones", p.activo, p.orden,
+            p.modulos, p.funciones, p.destacado, p.permanente, p.etiqueta, p.permite_actualizaciones AS "permiteActualizaciones", p.activo, p.orden,
             (SELECT COUNT(*)::int FROM portal_licencias l WHERE l.plan_id = p.id) AS clientes
        FROM portal_planes p ORDER BY p.orden, p.nombre`)).rows);
   app.post("/central/portal/planes", async (req, rep) => {
     const b = esquemaPlan.parse(req.body);
     try {
       const id = uuidv7();
-      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden, funciones, destacado, etiqueta)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null]);
+      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden, funciones, destacado, etiqueta, permanente)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null, b.permanente]);
       rep.code(201);
       return { id };
     } catch (e) {
@@ -602,8 +607,8 @@ export async function rutasPortal(app: FastifyInstance) {
     try {
       const r = await pool.query(
         `UPDATE portal_planes SET codigo = $2, nombre = $3, descripcion = $4, precio_sucursal = $5, periodo = $6, sucursales_incluidas = $7, modulos = $8,
-                permite_actualizaciones = $9, activo = $10, orden = $11, funciones = $12, destacado = $13, etiqueta = $14 WHERE id = $1 RETURNING id`,
-        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null]);
+                permite_actualizaciones = $9, activo = $10, orden = $11, funciones = $12, destacado = $13, etiqueta = $14, permanente = $15 WHERE id = $1 RETURNING id`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null, b.permanente]);
       if (!r.rowCount) throw new ErrorNegocio("Plan no encontrado", 404);
     } catch (e) {
       if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un plan con el código «${b.codigo}»`, 409);

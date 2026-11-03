@@ -23,7 +23,7 @@ const NOMBRES: Record<EstadoLicencia["estado"], string> = {
   VIGENTE: "Vigente", POR_VENCER: "Por vencer", GRACIA: "Vencida · en gracia", VENCIDA: "Vencida · solo consulta",
   PRUEBA: "Versión de prueba", PRUEBA_VENCIDA: "Prueba terminada · solo consulta",
 };
-const fecha = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" });
+const fecha = (iso: string) => iso >= "2099-01-01" ? "Sin vencimiento" : new Date(`${iso}T12:00:00`).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" });
 
 export function Licencia() {
   const { datos, error, recargar } = useDatos<EstadoLicencia>("/central/licencia");
@@ -322,10 +322,11 @@ function Traslado({ d, admin, onCambio }: { d: EstadoLicencia; admin: boolean; o
 
 function Vigencia({ d }: { d: EstadoLicencia }) {
   // Barra del tiempo que queda: 365 días (licencia) o 15 (prueba) como referencia visual
+  const permanente = !!d.vence && d.vence >= "2099-01-01";
   const total = d.vence ? 365 : 15;
-  const pct = Math.max(0, Math.min(100, Math.round((d.dias / total) * 100)));
+  const pct = permanente ? 100 : Math.max(0, Math.min(100, Math.round((d.dias / total) * 100)));
   const clase = !d.permiteVender || d.dias < 0 ? "grave" : d.dias < 15 ? "aviso" : "";
-  const texto = d.dias >= 0 ? `Quedan ${d.dias} día(s)` : `Venció hace ${-d.dias} día(s)`;
+  const texto = permanente ? "Licencia permanente" : d.dias >= 0 ? `Quedan ${d.dias} día(s)` : `Venció hace ${-d.dias} día(s)`;
   return (
     <div>
       <div className="lic-barra" role="img" aria-label={texto}><b className={clase} style={{ width: `${pct}%` }} /></div>
