@@ -17,14 +17,14 @@ interface Cliente {
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
-  sucursalesIncluidas: number; modulos: string[]; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
+  sucursalesIncluidas: number; modulos: string[]; funciones: string[]; destacado: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
 }
 interface Instalacion {
   id: string; estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA"; empresa: string | null; rnc: string | null; equipo: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; apiUrl: string | null; solicitadaEn: string; ultimoContacto: string; nota: string | null; clienteId: string | null; cliente: string | null; slug: string | null;
   correo: string | null; telefono: string | null; contacto: string | null; planId: string | null; plan: string | null; sucursalesSolicitadas: number | null; mensaje: string | null;
 }
-interface Reglas { pruebaActualiza: boolean; plazoHoras: number; contactoNombre: string | null; contactoTelefono: string | null; contactoWhatsapp: string | null; contactoCorreo: string | null }
+interface Reglas { pruebaActualiza: boolean; plazoHoras: number; contactoNombre: string | null; contactoTelefono: string | null; contactoWhatsapp: string | null; contactoCorreo: string | null; descuentoAnual: number }
 /** ¿Ya consumió el 80 % o más? */
 const cerca = (usado: number, tope: number) => tope > 0 && usado / tope >= 0.8;
 const rd = (n: number) => `RD$ ${n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -428,7 +428,7 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
 }
 
 /* ---------------- Planes ---------------- */
-const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], permiteActualizaciones: true, activo: true, orden: 0 };
+const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], funciones: [] as string[], destacado: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
 
 function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) {
   const [edit, setEdit] = useState<(Omit<Plan, "id" | "clientes" | "descripcion"> & { id: string; descripcion: string | null }) | null>(null);
@@ -465,6 +465,14 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
             <label className="campo"><span>Sucursales incluidas por defecto</span><input type="number" min={1} value={edit.sucursalesIncluidas} onChange={(e) => setEdit({ ...edit, sucursalesIncluidas: Math.max(1, Number(e.target.value) || 1) })} /></label>
           </div>
           <label className="campo"><span>Descripción (la ve usted al elegir el plan)</span><input value={edit.descripcion ?? ""} onChange={(e) => setEdit({ ...edit, descripcion: e.target.value })} /></label>
+          <div className="dos-col">
+            <label className="campo"><span>Funciones que incluye (una por línea; las ve la página web)</span>
+              <textarea rows={6} value={(edit.funciones ?? []).join("\n")} onChange={(e) => setEdit({ ...edit, funciones: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 14) })} placeholder={"1 tienda, con sus cajas y usuarios\nFacturación electrónica y NCF\nCompras con IA"} /></label>
+            <div>
+              <label className="campo"><span>Etiqueta en la página (opcional)</span><input value={edit.etiqueta ?? ""} maxLength={40} placeholder="Para 2 sucursales" onChange={(e) => setEdit({ ...edit, etiqueta: e.target.value })} /></label>
+              <label className="regla" style={{ marginTop: 8 }}><input type="checkbox" checked={edit.destacado} onChange={(e) => setEdit({ ...edit, destacado: e.target.checked })} /><span><b>Destacado</b><small>Se resalta en la página web</small></span></label>
+            </div>
+          </div>
           <div className="reglas">
             <label className="regla"><input type="checkbox" checked={edit.permiteActualizaciones} onChange={(e) => setEdit({ ...edit, permiteActualizaciones: e.target.checked })} /><span><b>Incluye actualizaciones</b><small>Puede descargar versiones nuevas desde su panel de Actualizaciones.</small></span></label>
             <label className="regla"><input type="checkbox" checked={edit.activo} onChange={(e) => setEdit({ ...edit, activo: e.target.checked })} /><span><b>Disponible para vender</b><small>Si lo desactiva, no aparece al crear clientes; los que ya lo tienen lo conservan.</small></span></label>
@@ -526,6 +534,10 @@ function ReglasPortal() {
         <label className="campo" style={{ maxWidth: 360 }}><span>Plazo con que se compromete a contactar al cliente (horas)</span>
           <input type="number" min={1} max={720} value={v.plazoHoras} onChange={(e) => set({ plazoHoras: Math.max(1, Number(e.target.value) || 24) })} /></label>
         <p className="suave pequeno">El cliente lo lee al enviar su solicitud: «en un plazo de {v.plazoHoras} horas se estarán comunicando con usted para confirmar el pago y activar su licencia».</p>
+        <h3>Descuento por pago anual</h3>
+        <label className="campo" style={{ maxWidth: 260 }}><span>Porcentaje (%)</span>
+          <input type="number" min={0} max={50} value={v.descuentoAnual ?? 10} onChange={(e) => set({ descuentoAnual: Math.min(50, Math.max(0, Math.round(Number(e.target.value) || 0))) })} /></label>
+        <p className="suave pequeno">La página web muestra el precio mensual y el precio pagando al año con este descuento. El precio, las sucursales y las funciones de cada plan se editan en «Planes y precios».</p>
         <h3>Contacto que ven sus clientes</h3>
         <p className="suave pequeno">Aparece en la pantalla Licencia de cada cliente, para que sepan a quién llamar para renovar o ampliar.</p>
         <div className="dos-col">

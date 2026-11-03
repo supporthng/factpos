@@ -208,6 +208,28 @@ export async function rutasPortal(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Planes y precios para la página web (públicos). Todo se maneja en Portal › Planes: precio, sucursales, funciones, etiqueta,
+   * descuento anual y rangos de comprobantes. Un plan sin precio sale como «Consultar».
+   */
+  app.get("/licencias/planes-web", async () => {
+    const cfg = (await pool.query<{ d: number; tasa: string | null; w: string | null; c: string | null; t: string | null; n: string | null }>(
+      `SELECT descuento_anual AS d, ecf_tasa_dop::text AS tasa, contacto_whatsapp AS w, contacto_correo AS c, contacto_telefono AS t, contacto_nombre AS n FROM portal_config WHERE id = 1`)).rows[0];
+    const d = cfg?.d ?? 10;
+    const planes = (await pool.query<{ codigo: string; nombre: string; descripcion: string | null; precio: number; periodo: string; sucursales: number; funciones: string[]; destacado: boolean; etiqueta: string | null }>(
+      `SELECT codigo, nombre, descripcion, precio_sucursal::float AS precio, periodo, sucursales_incluidas AS sucursales, funciones, destacado, etiqueta
+         FROM portal_planes WHERE activo ORDER BY orden, nombre`)).rows.map((p) => {
+      // El portal cobra «precio por sucursal» por el período del plan; la web muestra el total mensual del plan
+      const porSucursalMes = p.periodo === "ANUAL" ? p.precio / 12 / (1 - d / 100) : p.precio;
+      return { codigo: p.codigo, nombre: p.nombre, descripcion: p.descripcion, sucursales: p.sucursales, funciones: p.funciones, destacado: p.destacado, etiqueta: p.etiqueta,
+        mensual: p.precio > 0 ? Math.round(porSucursalMes * p.sucursales) : null };
+    });
+    const comprobantes = (await pool.query(
+      `SELECT nombre, max_mes AS "maxMes", precio_usd::float AS "precioUsd" FROM portal_ecf_planes WHERE activo ORDER BY orden, max_mes`)).rows;
+    return { descuentoAnual: d, tasa: cfg?.tasa ? Number(cfg.tasa) : null, planes, comprobantes,
+      contacto: { nombre: cfg?.n ?? null, whatsapp: cfg?.w ?? null, correo: cfg?.c ?? null, telefono: cfg?.t ?? null } };
+  });
+
   /** Planes que se pueden pedir (los ve el cliente en su formulario «Solicitar activación»). */
   app.get("/licencias/planes", async () => (await pool.query(
     `SELECT id, nombre, descripcion, precio_sucursal::float AS "precioSucursal", periodo, sucursales_incluidas AS "sucursalesIncluidas", permite_actualizaciones AS "permiteActualizaciones"
@@ -547,22 +569,26 @@ export async function rutasPortal(app: FastifyInstance) {
     periodo: z.enum(["MENSUAL", "ANUAL"]),
     sucursalesIncluidas: z.number().int().min(1).max(999),
     modulos: z.array(z.string().max(30)).max(30).default([]),
+    /** Lo que se lista en la página web como incluido en el plan */
+    funciones: z.array(z.string().trim().min(1).max(120)).max(14).default([]),
+    destacado: z.boolean().default(false),
+    etiqueta: z.string().trim().max(40).nullable().optional(),
     permiteActualizaciones: z.boolean().default(true),
     activo: z.boolean().default(true),
     orden: z.number().int().min(0).max(999).default(0),
   });
   app.get("/central/portal/planes", async () => (await pool.query(
     `SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_sucursal::float AS "precioSucursal", p.periodo, p.sucursales_incluidas AS "sucursalesIncluidas",
-            p.modulos, p.permite_actualizaciones AS "permiteActualizaciones", p.activo, p.orden,
+            p.modulos, p.funciones, p.destacado, p.etiqueta, p.permite_actualizaciones AS "permiteActualizaciones", p.activo, p.orden,
             (SELECT COUNT(*)::int FROM portal_licencias l WHERE l.plan_id = p.id) AS clientes
        FROM portal_planes p ORDER BY p.orden, p.nombre`)).rows);
   app.post("/central/portal/planes", async (req, rep) => {
     const b = esquemaPlan.parse(req.body);
     try {
       const id = uuidv7();
-      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden]);
+      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden, funciones, destacado, etiqueta)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null]);
       rep.code(201);
       return { id };
     } catch (e) {
@@ -576,8 +602,8 @@ export async function rutasPortal(app: FastifyInstance) {
     try {
       const r = await pool.query(
         `UPDATE portal_planes SET codigo = $2, nombre = $3, descripcion = $4, precio_sucursal = $5, periodo = $6, sucursales_incluidas = $7, modulos = $8,
-                permite_actualizaciones = $9, activo = $10, orden = $11 WHERE id = $1 RETURNING id`,
-        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden]);
+                permite_actualizaciones = $9, activo = $10, orden = $11, funciones = $12, destacado = $13, etiqueta = $14 WHERE id = $1 RETURNING id`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null]);
       if (!r.rowCount) throw new ErrorNegocio("Plan no encontrado", 404);
     } catch (e) {
       if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un plan con el código «${b.codigo}»`, 409);
@@ -589,16 +615,17 @@ export async function rutasPortal(app: FastifyInstance) {
   // ---- Reglas y contacto
   app.get("/central/portal/reglas", async () => (await pool.query(
     `SELECT prueba_actualiza AS "pruebaActualiza", plazo_horas AS "plazoHoras", contacto_nombre AS "contactoNombre", contacto_telefono AS "contactoTelefono",
-            contacto_whatsapp AS "contactoWhatsapp", contacto_correo AS "contactoCorreo" FROM portal_config WHERE id = 1`)).rows[0]);
+            contacto_whatsapp AS "contactoWhatsapp", contacto_correo AS "contactoCorreo", descuento_anual AS "descuentoAnual" FROM portal_config WHERE id = 1`)).rows[0]);
   app.put("/central/portal/reglas", async (req) => {
     const b = z.object({
       pruebaActualiza: z.boolean(), plazoHoras: z.number().int().min(1).max(720),
       contactoNombre: z.string().trim().max(80).nullable(), contactoTelefono: z.string().trim().max(30).nullable(),
       contactoWhatsapp: z.string().trim().max(30).nullable(), contactoCorreo: z.string().trim().max(120).nullable(),
+      descuentoAnual: z.number().int().min(0).max(50).default(10),
     }).parse(req.body);
     await pool.query(
-      `UPDATE portal_config SET prueba_actualiza = $1, contacto_nombre = $2, contacto_telefono = $3, contacto_whatsapp = $4, contacto_correo = $5, plazo_horas = $6, actualizado_en = now() WHERE id = 1`,
-      [b.pruebaActualiza, b.contactoNombre || null, b.contactoTelefono || null, b.contactoWhatsapp || null, b.contactoCorreo || null, b.plazoHoras]);
+      `UPDATE portal_config SET prueba_actualiza = $1, contacto_nombre = $2, contacto_telefono = $3, contacto_whatsapp = $4, contacto_correo = $5, plazo_horas = $6, descuento_anual = $7, actualizado_en = now() WHERE id = 1`,
+      [b.pruebaActualiza, b.contactoNombre || null, b.contactoTelefono || null, b.contactoWhatsapp || null, b.contactoCorreo || null, b.plazoHoras, b.descuentoAnual]);
     await evento(pool, { tipo: "REGLAS", detalle: { pruebaActualiza: b.pruebaActualiza }, usuarioId: usuarioDe(req) });
     return { ok: true };
   });
