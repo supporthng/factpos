@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { verificarCupoSucursal } from "../licencia/cliente.js";
 import { z } from "zod";
-import { uuidv7 } from "@factpos/compartido";
+import { uuidv7, rncValido } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 
 /** Sucursales y terminales (cajas) de la empresa. */
@@ -122,6 +122,58 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
                              ORDER BY (tipo = 'TIENDA') DESC, codigo LIMIT 1) s ON true
         WHERE e.id = $1`, [empresaDe(req), q.sucursalId ?? null]);
     return r.rows[0] ?? {};
+  });
+
+  // ---- Datos generales de la empresa ----
+  /** El RNC está en uso fiscal (comprobantes emitidos o certificado cargado): cambiarlo rompería la facturación electrónica. */
+  const rncBloqueado = async (e: string) =>
+    !!(await pool.query("SELECT 1 FROM ecf_documentos WHERE empresa_id = $1 LIMIT 1", [e]).catch(() => ({ rowCount: 0 }))).rowCount
+    || !!(await pool.query("SELECT 1 FROM certificados_digitales WHERE empresa_id = $1 LIMIT 1", [e]).catch(() => ({ rowCount: 0 }))).rowCount;
+
+  app.get("/central/empresa", async (req) => {
+    const e = empresaDe(req);
+    const r = await pool.query(
+      `SELECT rnc, razon_social AS "razonSocial", COALESCE(nombre_comercial, '') AS "nombreComercial", COALESCE(direccion, '') AS direccion,
+              COALESCE(municipio, '') AS municipio, COALESCE(provincia, '') AS provincia, COALESCE(telefono, '') AS telefono,
+              COALESCE(correo, '') AS correo, COALESCE(sitio_web, '') AS "sitioWeb", COALESCE(representante, '') AS representante
+         FROM empresas WHERE id = $1`, [e]);
+    if (!r.rows[0]) throw new ErrorNegocio("Empresa no encontrada", 404);
+    return { ...r.rows[0], rncBloqueado: await rncBloqueado(e) };
+  });
+
+  const texto = (max: number) => z.string().trim().max(max).transform((v) => v || null).nullable().default(null);
+  app.put("/central/empresa", async (req) => {
+    const e = empresaDe(req);
+    const b = z.object({
+      rnc: z.string().trim().regex(/^\d{9}(\d{2})?$/, "El RNC debe tener 9 dígitos (11 si es cédula)"),
+      razonSocial: z.string().trim().min(3, "Escriba la razón social").max(150),
+      nombreComercial: texto(150), direccion: texto(200), municipio: texto(80), provincia: texto(80),
+      telefono: z.string().trim().max(20).regex(/^[\d\s()+-]*$/, "El teléfono solo lleva números").transform((v) => v || null).nullable().default(null),
+      correo: z.string().trim().toLowerCase().email("Correo inválido").max(120).or(z.literal("")).transform((v) => v || null).nullable().default(null),
+      sitioWeb: texto(120), representante: texto(120),
+    }).parse(req.body);
+    const actual = (await pool.query<{ rnc: string }>("SELECT rnc FROM empresas WHERE id = $1", [e])).rows[0];
+    if (!actual) throw new ErrorNegocio("Empresa no encontrada", 404);
+    if (b.rnc !== actual.rnc) {
+      if (await rncBloqueado(e)) throw new ErrorNegocio("El RNC no se puede cambiar: ya hay comprobantes electrónicos o un certificado de esta empresa. Escriba a soporte.", 409);
+      if (b.rnc.length === 9 && !rncValido(b.rnc)) throw new ErrorNegocio("RNC inválido: el último dígito no coincide con el verificador de la DGII");
+    }
+    try {
+      await enTransaccion(async (c) => {
+        await c.query(
+          `UPDATE empresas SET rnc = $2, razon_social = $3, nombre_comercial = $4, direccion = $5, municipio = $6, provincia = $7,
+                  telefono = $8, correo = $9, sitio_web = $10, representante = $11, version = version + 1, actualizado_en = now()
+            WHERE id = $1`,
+          [e, b.rnc, b.razonSocial, b.nombreComercial, b.direccion, b.municipio, b.provincia, b.telefono, b.correo, b.sitioWeb, b.representante]);
+        // La dirección del emisor en los comprobantes electrónicos sale de aquí
+        const dir = [b.direccion, b.municipio, b.provincia].filter(Boolean).join(", ");
+        if (dir.length >= 5) await c.query("UPDATE configuracion_fiscal SET direccion_emisor = $2 WHERE empresa_id = $1", [e, dir.slice(0, 200)]);
+      });
+    } catch (err: any) {
+      if (err.code === "23505") throw new ErrorNegocio("Ese RNC ya está registrado en otra empresa", 409);
+      throw err;
+    }
+    return { ok: true };
   });
 
   app.get("/central/marca", async (req) => {
