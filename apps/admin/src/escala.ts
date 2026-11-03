@@ -3,8 +3,6 @@
  * «Automático» se adapta a la ventana: en una pantalla chica todo se reduce para que quepa y en una grande se deja
  * tal cual. Además se puede elegir más compacto o más grande.
  */
-const BASE_ANCHO = 1440;
-const BASE_ALTO = 810;
 const CLAVE = "factpos.admin.tamano";
 
 export type TamanoAdmin = "compacto" | "automatico" | "grande" | "muy-grande";
@@ -23,11 +21,9 @@ export function guardarTamanoAdmin(t: TamanoAdmin) {
   aplicarEscalaAdmin();
 }
 export function aplicarEscalaAdmin() {
-  // Las escalas fraccionarias vuelven borrosas las letras en Windows: «Automático» NO escala (1) salvo que la ventana sea muy chica,
-  // y entonces lo hace en pasos de 0.1. Los tamaños elegidos a mano (Compacto, Grande…) sí aplican su factor.
-  const bruto = Math.min(window.innerWidth / BASE_ANCHO, window.innerHeight / BASE_ALTO);
-  const auto = bruto >= 0.8 ? 1 : Math.max(0.7, Math.floor(bruto * 10) / 10);
-  const escala = Math.max(0.6, Math.min(1.6, auto * TAMANOS_ADMIN[leerTamanoAdmin()].factor));
+  // «Automático» ya NO reduce la pantalla (en ventanas chicas dejaba las letras diminutas y deformaba el diseño): se ve a tamaño normal y
+  // la página se desplaza si hace falta. Solo cambia el tamaño si la persona elige Compacto, Grande o Muy grande.
+  const escala = Math.max(0.6, Math.min(1.6, TAMANOS_ADMIN[leerTamanoAdmin()].factor));
   document.documentElement.style.setProperty("--escala", (Math.round(escala * 100) / 100).toString());
 }
 export function iniciarEscalaAdmin() {
