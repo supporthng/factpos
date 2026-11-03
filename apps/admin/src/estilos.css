@@ -986,7 +986,8 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .seg-fila { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--borde); }
 .seg-fila:last-child { border-bottom: none; }
 .interruptor { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; white-space: nowrap; cursor: pointer; }
-.interruptor input { position: absolute; opacity: 0; width: 0; height: 0; }
+/* El cuadro solo se oculta si el interruptor trae su propia perilla (<i>); sin ella queda la casilla normal */
+.interruptor:has(> i) input { position: absolute; opacity: 0; width: 0; height: 0; }
 .interruptor i { width: 44px; height: 24px; border-radius: 999px; background: var(--borde-fuerte); position: relative; transition: background .15s; flex: none; }
 .interruptor i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 .interruptor input:checked + i { background: var(--primario); }
