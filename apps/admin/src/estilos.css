@@ -1,4 +1,10 @@
 /* FactPOS Administración — claro, sobrio, para trabajar muchas horas con tablas */
+/* Base de visualización explícita: aunque el motor del equipo no aplique la hoja de estilos por omisión del navegador,
+   los bloques siguen siendo bloques (evita títulos pegados a su descripción y tarjetas encimadas). */
+head, script, style, title, meta, link { display: none; }
+html, body, div, main, section, article, header, footer, nav, aside, form, fieldset, p, h1, h2, h3, h4, h5, h6, ul, ol, dl, dt, dd, table, figure { display: block; }
+li { display: list-item; }
+table { display: table; } thead { display: table-header-group; } tbody { display: table-row-group; } tr { display: table-row; } th, td { display: table-cell; }
 :root {
   --fondo: #f3f5f8;
   --panel: #ffffff;
