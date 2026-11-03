@@ -47,7 +47,7 @@ const hace = (iso: string | null) => {
   return m < 60 ? `hace ${Math.max(m, 1)} min` : m < 2880 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
 };
 
-type Vista = "clientes" | "instalaciones" | "invitaciones" | "planes" | "gastos" | "reglas";
+type Vista = "clientes" | "prospectos" | "instalaciones" | "invitaciones" | "planes" | "gastos" | "reglas";
 type Filtro = "todos" | "atencion" | "vigentes" | "sin_activar" | "suspendidos";
 
 export function Portal() {
@@ -60,7 +60,7 @@ export function Portal() {
       <Encabezado titulo="Clientes y licencias"
         descripcion="Cada cliente instala su propio FactPOS con su propia nube. Aquí se manejan sus planes, licencias y cobros; sus datos nunca pasan por el portal." />
       <div className="pestanas">
-        {([["clientes", "Clientes"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["planes", "Planes y precios"], ["gastos", "Gastos y costos"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
+        {([["clientes", "Clientes"], ["prospectos", "Prospectos"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["planes", "Planes y precios"], ["gastos", "Gastos y costos"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
           <button key={v} className={vista === v ? "activa" : ""} onClick={() => { setVista(v); pendientes.recargar(); }}>
             {t}{v === "instalaciones" && nPend > 0 && <span className="insignia">{nPend}</span>}
           </button>
@@ -73,6 +73,7 @@ export function Portal() {
         </div>
       )}
       {vista === "clientes" && <Clientes planes={planes.datos ?? []} />}
+      {vista === "prospectos" && <Prospectos />}
       {vista === "instalaciones" && <Instalaciones planes={planes.datos ?? []} onCambio={pendientes.recargar} />}
       {vista === "invitaciones" && <Invitaciones />}
       {vista === "planes" && <Planes planes={planes.datos ?? []} recargar={planes.recargar} />}
@@ -173,6 +174,44 @@ function Clientes({ planes }: { planes: Plan[] }) {
             {!lista.length && <tr><td colSpan={7} className="suave">{datos ? (todos.length ? "Ningún cliente coincide con el filtro." : "Todavía no hay clientes. Cree el primero con «Nuevo cliente».") : "Cargando…"}</td></tr>}
           </tbody>
         </table>
+      </div>
+    </>
+  );
+}
+
+interface Prospecto { id: string; nombre: string; negocio: string; telefono: string; correo: string | null; sucursales: number | null; mensaje: string | null; estado: "NUEVO" | "CONTACTADO" | "CLIENTE" | "DESCARTADO"; nota: string | null; descargas: number; creadoEn: string }
+const ESTADOS_PROSPECTO: Prospecto["estado"][] = ["NUEVO", "CONTACTADO", "CLIENTE", "DESCARTADO"];
+
+/** Quien pidió la prueba desde la página web (su contacto queda aquí antes de que instale). */
+function Prospectos() {
+  const lista = useDatos<Prospecto[]>("/central/portal/prospectos");
+  const [msg, setMsg] = useState("");
+  const cambiar = async (id: string, estado: Prospecto["estado"]) => {
+    try { await api(`/central/portal/prospectos/${id}`, { metodo: "PATCH", cuerpo: { estado } }); lista.recargar(); } catch (e) { setMsg((e as Error).message); }
+  };
+  const wa = (t: string) => `https://wa.me/${t.replace(/\D/g, "")}`;
+  if (!lista.datos) return <p className="suave">Cargando…</p>;
+  return (
+    <>
+      <p className="suave">Personas que pidieron la prueba de 15 días desde la página web. Contáctalos por WhatsApp y márcalos según avance.</p>
+      {msg && <Aviso texto={msg} />}
+      {lista.datos.length === 0 && <p className="suave">Todavía no hay solicitudes.</p>}
+      <div className="lista-roles">
+        {lista.datos.map((p) => (
+          <div key={p.id} className="panel">
+            <div className="encabezado-sub">
+              <h3>{p.negocio} <span className="suave pequeno">· {p.nombre}</span></h3>
+              <select value={p.estado} onChange={(e) => cambiar(p.id, e.target.value as Prospecto["estado"])} aria-label="Estado">
+                {ESTADOS_PROSPECTO.map((e) => <option key={e} value={e}>{e === "NUEVO" ? "Nuevo" : e === "CONTACTADO" ? "Contactado" : e === "CLIENTE" ? "Ya es cliente" : "Descartado"}</option>)}
+              </select>
+            </div>
+            <p className="pequeno">
+              <a href={wa(p.telefono)} target="_blank" rel="noopener noreferrer">WhatsApp {p.telefono}</a>
+              {p.correo ? ` · ${p.correo}` : ""}{p.sucursales ? ` · ${p.sucursales} sucursal(es)` : ""} · {new Date(p.creadoEn).toLocaleString("es-DO", { dateStyle: "medium", timeStyle: "short" })}{p.descargas > 0 ? " · descargó el instalador" : ""}
+            </p>
+            {p.mensaje && <p className="suave pequeno">{p.mensaje}</p>}
+          </div>
+        ))}
       </div>
     </>
   );
