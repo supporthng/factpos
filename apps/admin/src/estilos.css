@@ -830,7 +830,7 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 /* Opción dentro de una función: recuadro horizontal */
 .mosaico-opcion { align-items: center; gap: 16px; padding: 18px 18px 18px 18px; min-height: 104px; }
 /* Las opciones usan los colores de la marca del cliente (no el color de cada función): icono sólido y recuadro con un tinte */
-.mosaico-opcion { background: color-mix(in srgb, var(--c) 6%, var(--panel)); border-color: color-mix(in srgb, var(--c) 24%, var(--borde)); }
+.mosaico-opcion { background: var(--panel); border-color: var(--borde); }
 .mosaico-opcion .mosaico-icono { color: #fff; background: var(--c); box-shadow: 0 6px 14px -8px var(--c); }
 .mosaico-opcion .mosaico-flecha { color: color-mix(in srgb, var(--c) 60%, var(--borde-fuerte)); }
 .mosaico-flecha { margin-left: auto; font-size: 24px; color: var(--borde-fuerte); transition: transform .16s, color .16s; }
