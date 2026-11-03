@@ -213,10 +213,14 @@ function AppInterna() {
       .catch(() => {});
     if (enPortal) { setCatalogo(CATALOGO_VACIO); return; }
     api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch((e) => setError(e.message));
+    // Otras pantallas (p. ej. Compras al crear un producto) piden refrescar el catálogo
+    const recargarCatalogo = () => { api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch(() => {}); };
+    window.addEventListener("factpos:catalogo", recargarCatalogo);
     api<CfgMovil>("/central/movil").then(setCfgMovil).catch(() => {});
     api<{ logo: string | null; primario: string; secundario: string | null; nombre: string }>("/central/marca")
       .then((m) => { aplicarTemaAdmin(m); setLogo(m.logo); })
       .catch(() => {});
+    return () => window.removeEventListener("factpos:catalogo", recargarCatalogo);
   }, [sesion]);
   useEffect(() => { if (location.hash.slice(1).split("?")[0] !== seccion) location.hash = seccion; window.scrollTo(0, 0); document.querySelector(".contenido")?.scrollTo(0, 0); }, [seccion]);
   // Enlaces internos (#seccion) desde cualquier pantalla, y atrás/adelante del navegador
