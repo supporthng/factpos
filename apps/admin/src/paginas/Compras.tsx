@@ -24,6 +24,8 @@ interface Sugerido { presentacionId: string; nombre: string; presentacion: strin
 interface ItemLeido {
   codigo: string | null; descripcion: string; cantidad: number; costo: number; presentacionId: string | null;
   confianza: "CODIGO" | "NOMBRE" | "NINGUNA"; sugeridos: Sugerido[];
+  /** true: cantidad y costo vienen por UNIDAD (la factura trae cajas de N); empaque = cómo se interpretó */
+  porUnidad?: boolean; empaque?: string | null;
 }
 interface FacturaLeida {
   cupo: number; usadas: number; proveedor: { id: string | null; nombreLeido: string | null; rncLeido: string | null };
@@ -53,6 +55,11 @@ async function prepararArchivo(f: File): Promise<{ tipo: string; datos: string }
   return { tipo: "image/jpeg", datos: await aBase64(blob) };
 }
 
+/** Cantidad y costo de una línea leída, expresados en la presentación elegida (si la factura venía en cajas, ya están por unidad) */
+const enPresentacion = (it: { cantidad: number; costo: number; porUnidad?: boolean }, factor: string) => {
+  const f = Number(factor) || 1;
+  return it.porUnidad ? { cantidad: Math.round((it.cantidad / f) * 10000) / 10000, costo: Math.round(it.costo * f * 100) / 100 } : { cantidad: it.cantidad, costo: it.costo };
+};
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 const fechaCorta = (f: string) => new Date(f.slice(0, 10) + "T12:00:00").toLocaleDateString("es-DO");
 
@@ -517,9 +524,9 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
           <p className="suave">No se encontró el producto en su inventario. Elija el que corresponde o créelo aquí mismo con «Crear producto nuevo».</p>
           {pend.map((it, i) => (
             <div key={i} className="en-linea" style={{ flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
-              <span><b>{it.descripcion}</b> <span className="suave">{it.codigo ? `${it.codigo} · ` : ""}{it.cantidad} × {rd(it.costo)}</span></span>
+              <span><b>{it.descripcion}</b> <span className="suave">{it.codigo ? `${it.codigo} · ` : ""}{it.cantidad} × {rd(it.costo)}{it.porUnidad ? " por unidad" : ""}</span>{it.empaque && <small className="suave bloque">{it.empaque}</small>}</span>
               {it.sugeridos.map((sg) => (
-                <button key={sg.presentacionId} className="chip" onClick={() => { agregarLeidas([{ presentacionId: sg.presentacionId, cantidad: it.cantidad, costo: it.costo }]); setPend((p) => p.filter((_, j) => j !== i)); }}>
+                <button key={sg.presentacionId} className="chip" onClick={() => { agregarLeidas([{ presentacionId: sg.presentacionId, ...enPresentacion(it, sg.factor) }]); setPend((p) => p.filter((_, j) => j !== i)); }}>
                   {sg.nombre}{sg.presentacion !== "Unidad" ? ` · ${sg.presentacion}` : ""}
                 </button>
               ))}
@@ -527,7 +534,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
                 const p = productos.find((x) => x.id === id);
                 const pr = p?.presentaciones[0];
                 if (!pr) return;
-                agregarLeidas([{ presentacionId: pr.id, cantidad: it.cantidad, costo: it.costo }]);
+                agregarLeidas([{ presentacionId: pr.id, ...enPresentacion(it, pr.factor) }]);
                 setPend((q) => q.filter((_, j) => j !== i));
               }} />
               <button className="boton" onClick={() => setCreando({ i, item: it })}>＋ Crear producto nuevo</button>

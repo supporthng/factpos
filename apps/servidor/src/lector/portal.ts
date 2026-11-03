@@ -35,7 +35,8 @@ const HERRAMIENTA = {
             codigo: { type: ["string", "null"], description: "Código o código de barras del producto si aparece" },
             descripcion: { type: "string" },
             cantidad: { type: "number" },
-            unidad: { type: ["string", "null"], description: "Unidad o presentación (caja, unidad, docena…) si aparece" },
+            unidad: { type: ["string", "null"], description: "Texto de la columna de unidad / presentación tal como está impreso (p. ej. «15x22 oz», «70cl», «CAJA»)" },
+            unidadesPorEmpaque: { type: ["integer", "null"], description: "Cuántas unidades trae cada empaque que se cobra en esta línea, SOLO si la columna de unidad lo indica (p. ej. «15x22 oz» → 15, «24 UND» → 24, «12x1L» → 12). Si cada cantidad es una unidad suelta (p. ej. «70cl», «UND»), null." },
             precioUnitario: { type: "number", description: "Precio por unidad tal como está impreso" },
             importe: { type: ["number", "null"], description: "Importe de la línea tal como está impreso" },
           },
@@ -49,6 +50,8 @@ const HERRAMIENTA = {
 
 const INSTRUCCIONES = "Eres un asistente que lee facturas de proveedores de la República Dominicana. Extrae SOLO lo que está impreso; " +
   "si un dato no aparece, usa null. No inventes productos ni cifras. Los números van sin separador de miles. " +
+  "En cada línea, «cantidad» es lo que se cobra (si la unidad es una caja o empaque, es el número de cajas) y «precioUnitario» es el precio de ESA cantidad tal como está impreso; " +
+  "si la columna de unidad indica un empaque de varias unidades (p. ej. 15x22 oz = caja de 15 botellas de 22 oz), anota cuántas en unidadesPorEmpaque sin cambiar cantidad ni precio. " +
   "Responde SIEMPRE y ÚNICAMENTE llamando a la herramienta registrar_factura con el resultado; no escribas texto.";
 
 export async function rutasPortalLector(app: FastifyInstance) {
