@@ -40,6 +40,7 @@ import { Verificador } from "./paginas/Verificador";
 import { ComprobantesNcf, Fiscal } from "./paginas/Fiscal";
 import { Sucursales } from "./paginas/Sucursales";
 import { Marca } from "./paginas/Marca";
+import { DatosEmpresa } from "./paginas/DatosEmpresa";
 import { PantallaCliente } from "./paginas/PantallaCliente";
 import { Respaldos } from "./paginas/Respaldos";
 import { FormatosImpresion } from "./paginas/FormatosImpresion";
@@ -81,6 +82,7 @@ const SECCIONES = [
   { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Configuración", C: Incidentes, i: "incidentes", p: ["admin.config"] },
   { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
   { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
+  { id: "empresa", titulo: "Datos de la empresa", grupo: "Configuración", C: DatosEmpresa, i: "sucursales", p: ["admin.config"] },
   { id: "marca", titulo: "Logo y colores", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
   { id: "equipos", titulo: "Equipos de la caja", grupo: "Configuración", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
@@ -164,6 +166,7 @@ const DESCRIPCION: Record<string, string> = {
   usuarios: "Cuentas, roles y permisos del personal",
   equipos: "Impresora, gaveta, báscula y datáfono de cada terminal",
   correo: "Envío de reportes y facturas por correo",
+  empresa: "Nombre, RNC, dirección, teléfono y correo de la empresa",
   marca: "Suba el logo de su empresa; el sistema toma sus colores",
   formatos: "Diseño del ticket: papel, logo, encabezado, pie y datos",
   respaldos: "Copias de seguridad: en este equipo, USB/OneDrive y la nube",
