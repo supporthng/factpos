@@ -1094,3 +1094,11 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .equipos-panel .casilla-permiso { padding: 0 0 8px; }
 .equipos-panel .suave.pequeno { margin: 6px 0 0; }
 @media (max-width: 1000px) { .equipos-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Menú de la cuenta (cambiar contraseña / usuario / salir) */
+.menu-usuario { position: relative; }
+.menu-usuario-fondo { position: fixed; inset: 0; z-index: 40; }
+.menu-usuario-lista { position: absolute; right: 0; top: calc(100% + 6px); z-index: 41; min-width: 220px; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; box-shadow: var(--sombra); padding: 6px; display: grid; gap: 2px; }
+.menu-usuario-nombre { display: grid; padding: 8px 10px 10px; border-bottom: 1px solid var(--borde); margin-bottom: 4px; }
+.menu-usuario-lista button { text-align: left; background: transparent; border: 0; padding: 9px 10px; border-radius: 8px; font: inherit; font-size: 14px; cursor: pointer; color: var(--texto, inherit); }
+.menu-usuario-lista button:hover, .menu-usuario-lista button:focus-visible { background: var(--fondo); outline: none; }
