@@ -5,7 +5,9 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, datosTicket } from "./facturas.js";
-import { registrarVenta } from "./ventas.js";
+import { registrarVenta, cotizar, resumen } from "./ventas.js";
+import { contextoCaja } from "../contexto.js";
+import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
 
 /**
@@ -210,5 +212,61 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       const r = await anularVenta(c, { cajaId: t.rows[0].caja_id, ventaId: id, usuarioId, supervisorId: usuarioId, motivo: b.motivo, corregir: false });
       return r;
     });
+  });
+  // ================= Crear facturas desde la administración =================
+  // Se factura contra una caja con el turno abierto (ahí entran el dinero y el cuadre); el inventario sale de su almacén.
+  const soloSucursal = () => {
+    if (config.modo !== "sucursal") throw new ErrorNegocio("Las facturas se crean en la administración de la sucursal (su servidor): allí están la caja, el inventario y la firma del e-CF.", 409);
+  };
+  /** La caja debe ser de esta empresa y de una sucursal permitida al usuario */
+  const cajaPermitida = async (req: { headers: Record<string, unknown> }, cajaId: string) => {
+    const ctx = await contextoCaja(cajaId);
+    if (ctx.empresaId !== empresaDe(req)) throw new ErrorNegocio("Caja no encontrada", 404);
+    const permitidas = sucursalesDe(req);
+    if (permitidas && !permitidas.includes(ctx.sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
+    return ctx;
+  };
+  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida") })).min(1, "La factura necesita al menos un producto").max(200);
+
+  /** Cajas con turno abierto: dónde se puede facturar */
+  app.get("/central/facturas/cajas-abiertas", async (req) => {
+    const permitidas = sucursalesDe(req);
+    const r = await pool.query(
+      `SELECT ca.id AS "cajaId", ca.nombre AS caja, s.id AS "sucursalId", s.nombre AS sucursal, u.nombre AS cajero, t.abierto_en AS "abiertoEn"
+         FROM turnos t JOIN cajas ca ON ca.id = t.caja_id JOIN sucursales s ON s.id = ca.sucursal_id LEFT JOIN usuarios u ON u.id = t.usuario_id
+        WHERE t.estado = 'ABIERTO' AND ca.activo AND s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[]))
+        ORDER BY s.nombre, ca.nombre`, [empresaDe(req), permitidas]);
+    return r.rows;
+  });
+
+  /** Precios, ofertas e ITBIS de lo que se va a facturar (con los precios del nivel del cliente) */
+  app.post("/central/facturas/cotizar", async (req) => {
+    const b = z.object({ cajaId: uuid, clienteId: uuid.optional(), items: ItemsSchema }).parse(req.body);
+    const ctx = await cajaPermitida(req, b.cajaId);
+    return resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false));
+  });
+
+  app.post("/central/facturas", async (req, rep) => {
+    soloSucursal();
+    const b = z.object({
+      cajaId: uuid, clienteId: uuid.optional(), tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]),
+      notas: z.string().trim().max(300).optional(), ventaId: uuid.optional(), items: ItemsSchema,
+      pagos: z.array(z.object({
+        formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]),
+        monto: z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido"), recibido: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), referencia: z.string().max(60).optional(),
+      })).min(1, "Falta la forma de pago"),
+    }).parse(req.body);
+    await cajaPermitida(req, b.cajaId);
+    await exigirLicenciaParaVender();
+    const usuarioId = usuarioDe(req);
+    const r = await enTransaccion((c) => registrarVenta(c, b.cajaId, {
+      usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
+    }));
+    await pool.query(
+      `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+       VALUES ($1,(SELECT sucursal_id FROM cajas WHERE id = $2),$3,$3,'venta.admin','venta',$4,$5)`,
+      [uuidv7(), b.cajaId, usuarioId, (r as { id: string }).id, JSON.stringify({ origen: "administración", tipo: b.tipoDocumento })]).catch(() => undefined);
+    rep.code(201);
+    return r;
   });
 }

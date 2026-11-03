@@ -72,7 +72,7 @@ interface LineaCotizada extends LineaCotizadaBase {
  * Cotiza con los datos de la base y el motor compartido (`cotizarCarrito`),
  * el mismo que usa la terminal con su catálogo en memoria.
  */
-async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito: Carrito, bloquearCupon: boolean, contingencia = false) {
+export async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito: Carrito, bloquearCupon: boolean, contingencia = false) {
   let listaCliente: string | null = null;
   let cliente: { tipo_documento: string; nombre: string } | null = null;
   if (carrito.clienteId) {
@@ -171,7 +171,7 @@ async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, carrito:
   return { lineas, totales: r.totales, cupon: r.cupon, cliente, nivelVenta, ofertasAgotadas: r.ofertasAgotadas };
 }
 
-function resumen(q: Awaited<ReturnType<typeof cotizar>>) {
+export function resumen(q: Awaited<ReturnType<typeof cotizar>>) {
   return {
     ...q.totales,
     cupon: q.cupon,
