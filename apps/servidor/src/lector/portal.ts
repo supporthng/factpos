@@ -19,7 +19,8 @@ const HERRAMIENTA = {
   input_schema: {
     type: "object",
     properties: {
-      proveedor: { type: "object", properties: { nombre: { type: ["string", "null"] }, rnc: { type: ["string", "null"], description: "RNC del proveedor, solo dígitos" } }, required: ["nombre", "rnc"] },
+      columnas: { type: "array", items: { type: "string" }, description: "PRIMERO: los encabezados de la tabla de productos, en orden, cada uno con lo que significa en esta factura. Ej.: «CANTIDAD (cajas)», «PRECIO (por caja, sin ITBIS)», «DESCUENTO % y valor», «ISCe+ISCav (selectivo, aparte)», «IMPORTE (sin ITBIS)». Así se decide si el precio es por caja o por unidad y si el importe incluye ITBIS." },
+            proveedor: { type: "object", properties: { nombre: { type: ["string", "null"] }, rnc: { type: ["string", "null"], description: "RNC del proveedor, solo dígitos" } }, required: ["nombre", "rnc"] },
       numeroFactura: { type: ["string", "null"] },
       ncf: { type: ["string", "null"], description: "Comprobante fiscal (NCF o e-NCF), p. ej. B0100000001 o E310000000001" },
       fecha: { type: ["string", "null"], description: "Fecha de la factura, AAAA-MM-DD" },
@@ -36,6 +37,11 @@ const HERRAMIENTA = {
             descripcion: { type: "string" },
             cantidad: { type: "number" },
             unidad: { type: ["string", "null"], description: "Texto de la columna de unidad / presentación tal como está impreso (p. ej. «15x22 oz», «70cl», «CAJA»)" },
+            unidadesTotales: { type: ["number", "null"], description: "Cuántas unidades sueltas (botellas, latas, fundas…) llegaron en TOTAL en esta línea. Si la cantidad está en cajas/paquetes: cantidad × unidades por empaque. Si la cantidad ya está en botellas/unidades, es igual a la cantidad." },
+            descuento: { type: ["number", "null"], description: "Descuento de la línea en MONTO (no %), tal como está impreso o calculado (cantidad × precio × %). 0 o null si no hay." },
+            impuestoSelectivo: { type: ["number", "null"], description: "Impuesto selectivo al consumo (ISC, «ISCe + ISCav», «Selectivo») de la línea en MONTO, SOLO si se imprime en una columna aparte y no está dentro del precio." },
+            itbisLinea: { type: ["number", "null"], description: "ITBIS de la línea en monto, si la línea lo trae." },
+            netoSinItbis: { type: ["number", "null"], description: "Valor de la línea SIN ITBIS = cantidad × precio − descuento + impuesto selectivo (si el precio impreso incluye ITBIS, divídelo entre 1.18). Debe cuadrar con la columna de importe/total de la línea y con itbisLinea ÷ 0.18." },
             unidadesPorEmpaque: { type: ["integer", "null"], description: "Cuántas unidades trae cada empaque que se cobra en esta línea, SOLO si la columna de unidad lo indica (p. ej. «15x22 oz» → 15, «24 UND» → 24, «12x1L» → 12). Si cada cantidad es una unidad suelta (p. ej. «70cl», «UND»), null." },
             precioUnitario: { type: "number", description: "Precio por unidad tal como está impreso" },
             importe: { type: ["number", "null"], description: "Importe de la línea tal como está impreso" },
@@ -44,14 +50,19 @@ const HERRAMIENTA = {
         },
       },
     },
-    required: ["items", "preciosIncluyenItbis"],
+    required: ["columnas", "items", "preciosIncluyenItbis"],
   },
 } as const;
 
 const INSTRUCCIONES = "Eres un asistente que lee facturas de proveedores de la República Dominicana. Extrae SOLO lo que está impreso; " +
   "si un dato no aparece, usa null. No inventes productos ni cifras. Los números van sin separador de miles. " +
-  "En cada línea, «cantidad» es lo que se cobra (si la unidad es una caja o empaque, es el número de cajas) y «precioUnitario» es el precio de ESA cantidad tal como está impreso; " +
-  "si la columna de unidad indica un empaque de varias unidades (p. ej. 15x22 oz = caja de 15 botellas de 22 oz), anota cuántas en unidadesPorEmpaque sin cambiar cantidad ni precio. " +
+  "GUÍA DE FACTURAS DE PROVEEDORES: " +
+  "(1) «cantidad» es lo que se cobra en la línea, en la unidad de la factura (cajas si la unidad es CAJA/CAJ/CJ/CA/CJ6BOT/CAJA06/Paquete; botellas o unidades si es BOT/UND/PZA). " +
+  "(2) El empaque se deduce de la unidad o la descripción: «6/750ML», «12/75 CL», «24x350ML», «15x22 oz» (15), «6X4X355ML» (6×4=24), «CAJ / 24 PZA», «CAJA06», «CJ12BOT», «Caja-12», «Paquete-10», «12 Pzas», «4P». Un volumen solo («700ML», «75cl», «1.75L») NO es empaque. Anótalo en unidadesPorEmpaque. " +
+  "(3) El «precio» puede ser por caja o por unidad aunque la columna diga «Precio Und.»: compruébalo con el importe de la línea (cantidad × precio ≈ importe antes de descuento). Si la cantidad viene en botellas pero el precio es por caja (p. ej. «6 BOT» de «12/700ML»), usa el ITBIS de la línea para deducir el valor real (ITBIS ÷ 0.18). " +
+  "(4) Descuentos por línea (%, «Desc. Línea», «Descuento comercial») y el impuesto selectivo al consumo (ISC) que algunas facturas de licores muestran en una columna aparte forman parte del COSTO: llénalos en descuento e impuestoSelectivo y calcula netoSinItbis. Un descuento general al pie (que no está por línea) no se reparte: déjalo fuera. " +
+  "(5) Hay facturas con precios que ya incluyen ITBIS (recibos de caja con marca «I18»): preciosIncluyenItbis = true. En otras, el importe de la línea ya es sin ITBIS. " +
+  "(6) Si es una página de varias («Página 1 / 2»), lee solo las líneas de esta página. " +
   "Responde SIEMPRE y ÚNICAMENTE llamando a la herramienta registrar_factura con el resultado; no escribas texto.";
 
 export async function rutasPortalLector(app: FastifyInstance) {
