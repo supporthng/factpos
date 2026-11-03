@@ -19,7 +19,7 @@ interface Leida {
   proveedor?: { nombre: string | null; rnc: string | null };
   numeroFactura?: string | null; ncf?: string | null; fecha?: string | null; vence?: string | null; condicion?: "CONTADO" | "CREDITO" | null;
   preciosIncluyenItbis: boolean; subtotal?: number | null; itbis?: number | null; total?: number | null;
-  items: { codigo?: string | null; descripcion: string; cantidad: number; unidad?: string | null; precioUnitario: number; importe?: number | null }[];
+  items: { codigo?: string | null; descripcion: string; cantidad: number; unidad?: string | null; unidadesPorEmpaque?: number | null; precioUnitario: number; importe?: number | null }[];
 }
 interface Candidato { presentacionId: string; productoId: string; nombre: string; presentacion: string; factor: string }
 
@@ -34,6 +34,15 @@ export function parecido(factura: string, producto: string) {
   let comunes = 0;
   for (const w of a) if (b.has(w)) comunes++;
   return (2 * comunes) / (a.size + b.size);
+}
+
+/** Unidades por empaque: lo dice la IA o se deduce de textos como «15x22 oz» o «12 x 1L». Solo enteros de 2 a 1000. */
+export function unidadesPorEmpaque(i: { unidadesPorEmpaque?: number | null; unidad?: string | null }): number | null {
+  const d = Number(i.unidadesPorEmpaque);
+  if (Number.isInteger(d) && d >= 2 && d <= 1000) return d;
+  const m = /^\s*(\d{1,4})\s*[x×]\s*\d/i.exec(i.unidad ?? "");
+  const n = m ? Number(m[1]) : 0;
+  return n >= 2 && n <= 1000 ? n : null;
 }
 
 export async function rutasLectorFacturas(app: FastifyInstance) {
@@ -118,10 +127,23 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
         .filter((x) => x.s > 0.25).sort((x, y) => y.s - x.s).slice(0, 4);
       if (!elegido && sugeridos[0] && sugeridos[0].s >= 0.75 && (!sugeridos[1] || sugeridos[0].s - sugeridos[1].s >= 0.1)) { elegido = sugeridos[0].c; confianza = "NOMBRE"; }
       // Costo SIN ITBIS: si la factura imprime precios con ITBIS se le quita
-      const costo = f.preciosIncluyenItbis ? i.precioUnitario / (1 + tasa) : i.precioUnitario;
+      let cantidad = i.cantidad;
+      let costo = f.preciosIncluyenItbis ? i.precioUnitario / (1 + tasa) : i.precioUnitario;
+      // Empaque («5 × 15x22 oz» = 5 cajas de 15 botellas): el costo que importa es el de CADA UNIDAD
+      const emp = unidadesPorEmpaque(i);
+      let porUnidad = false;
+      let empaque: string | null = null;
+      if (emp) {
+        empaque = `${i.cantidad} × empaque de ${emp} (${i.unidad ?? ""}) = ${i.cantidad * emp} unidades`.replace(" ()", "");
+        if (elegido) { const el = elegido; const caja = catalogo.find((c) => c.productoId === el.productoId && Number(c.factor) === emp); if (caja) elegido = caja; }
+        const fp = elegido ? Number(porId.get(elegido.presentacionId)?.factor ?? 1) : 1;
+        if (elegido && fp === emp) { /* ya es la presentación «caja»: cantidad y costo van por caja */ }
+        else if (elegido) { cantidad = (i.cantidad * emp) / fp; costo = (costo / emp) * fp; }
+        else { cantidad = i.cantidad * emp; costo = costo / emp; porUnidad = true; }
+      }
       return {
         codigo: cod || null, descripcion: i.descripcion, unidad: i.unidad ?? null,
-        cantidad: i.cantidad, costo: Math.round(costo * 10000) / 10000, importe: i.importe ?? null,
+        cantidad: Math.round(cantidad * 10000) / 10000, costo: Math.round(costo * 10000) / 10000, importe: i.importe ?? null, porUnidad, empaque,
         presentacionId: elegido?.presentacionId ?? null, producto: elegido ? { nombre: elegido.nombre, presentacion: elegido.presentacion, factor: elegido.factor } : null,
         confianza, sugeridos: sugeridos.filter((x) => x.c.presentacionId !== elegido?.presentacionId).map((x) => x.c),
       };
