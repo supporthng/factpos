@@ -176,6 +176,12 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     }), 0);
   };
 
+  // Por qué está apagado el lector (para decirlo en pantalla en vez de dejar los botones deshabilitados sin explicación)
+  const motivoLector = lector.datos?.disponible
+    ? `Facturas leídas este mes: ${lector.datos.usadas} de ${lector.datos.cupo}`
+    : (lector.datos as { error?: string } | undefined)?.error
+      ? `no se pudo consultar al portal (${(lector.datos as { error?: string }).error}).`
+      : "el portal de FactPOS todavía no tiene activada la lectura con IA (falta la llave ANTHROPIC_API_KEY en el portal).";
   const leerFactura = async (archivo: File | undefined) => {
     if (!archivo) return;
     setLeyendo(true); setMsg(""); setLeidaInfo("");
@@ -273,14 +279,19 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     <>
       <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La compra no se ha registrado. ¿Salir?")) && onCerrar()}>Compras</button><span>/</span><span>Registrar compra</span></div>
       <Encabezado titulo="Registrar compra" descripcion="Copie la factura del proveedor. Marque las líneas que el proveedor le dio en oferta para saber luego a cuánto las compró.">
-        <label className={"boton" + (!lector.datos?.disponible || leyendo ? " desactivado" : "")}
-          title={lector.datos?.disponible ? `Facturas leídas este mes: ${lector.datos.usadas} de ${lector.datos.cupo}` : "El lector de facturas no está activo en su plan. Pídalo a su proveedor de FactPOS."}>
+        <label className={"boton" + (!lector.datos?.disponible || leyendo ? " desactivado" : "")} title={motivoLector}>
           {leyendo ? "Leyendo la factura…" : "📷 Leer factura"}
+          <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} disabled={!lector.datos?.disponible || leyendo}
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
+        </label>
+        <label className={"boton" + (!lector.datos?.disponible || leyendo ? " desactivado" : "")} title={motivoLector}>
+          📄 Cargar factura
           <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={!lector.datos?.disponible || leyendo}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
         </label>
         <button className="boton primario" disabled={!completa || guardando} onClick={registrar}>{guardando ? "Registrando…" : `Registrar · ${rd(sub + itb)}`}</button>
       </Encabezado>
+      {lector.datos && !lector.datos.disponible && <Aviso tipo="info" texto={`El lector de facturas no está disponible: ${motivoLector}`} />}
       <Aviso texto={msg} />
       {leidaInfo && <p className="texto-ok">{leidaInfo}</p>}
       {pend.length > 0 && (
