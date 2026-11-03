@@ -857,10 +857,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   );
 }
 
-function Modal({ titulo, children, onCerrar, ancho }: { titulo: string; children: React.ReactNode; onCerrar: () => void; ancho?: boolean }) {
+function Modal({ titulo, children, onCerrar, ancho, clase }: { titulo: string; children: React.ReactNode; onCerrar: () => void; ancho?: boolean; clase?: string }) {
   return (
     <div className="fondo-modal" onMouseDown={onCerrar}>
-      <div className={"modal" + (ancho ? " ancho" : "")} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={"modal" + (ancho ? " ancho" : "") + (clase ? " " + clase : "")} onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-titulo"><h3>{titulo}</h3><button className="enlace" onClick={onCerrar}>Cerrar (Esc)</button></div>
         {children}
       </div>
@@ -878,33 +878,47 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar }: {
 }) {
   const [q, setQ] = useState(inicial);
   const [i, setI] = useState(0);
+  const lista = useRef<HTMLDivElement>(null);
+  // Sin texto se muestran TODOS los productos (ordenados por nombre); al escribir se filtran
+  const todos = useMemo(() => [...catalogo.productos].sort((a, b) => a.nombre.localeCompare(b.nombre, "es") || a.presentacion.localeCompare(b.presentacion, "es")), [catalogo]);
   const res = useMemo(() => {
     const t = normalizar(q.trim());
-    if (t.length < 2) return [];
+    if (!t) return todos;
     const partes = t.split(/\s+/);
-    return catalogo.productos.filter((p) => {
-      const h = normalizar(`${p.nombre} ${p.presentacion} ${p.sku}`);
+    return todos.filter((p) => {
+      const h = normalizar(`${p.nombre} ${p.presentacion} ${p.sku} ${p.categoria ?? ""} ${p.codigos.join(" ")}`);
       return partes.every((x) => h.includes(x));
-    }).slice(0, 40);
-  }, [q, catalogo]);
+    });
+  }, [q, todos]);
+  useEffect(() => { lista.current?.querySelector(".resultado.activo")?.scrollIntoView({ block: "nearest" }); }, [i]);
   return (
-    <Modal titulo="Buscar producto" onCerrar={onCerrar}>
-      <input autoFocus className="entrada-grande entrada-texto" value={q} placeholder="Nombre o SKU"
+    <Modal titulo="Buscar producto" onCerrar={onCerrar} clase="buscar-todos">
+      <input autoFocus className="entrada-grande entrada-texto" value={q} placeholder="Escriba para filtrar por nombre, SKU, código o categoría"
         onChange={(e) => { setQ(e.target.value); setI(0); }}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") setI((x) => Math.min(res.length - 1, x + 1));
-          if (e.key === "ArrowUp") setI((x) => Math.max(0, x - 1));
+          if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => Math.min(res.length - 1, x + 1)); }
+          if (e.key === "ArrowUp") { e.preventDefault(); setI((x) => Math.max(0, x - 1)); }
+          if (e.key === "PageDown") { e.preventDefault(); setI((x) => Math.min(res.length - 1, x + 10)); }
+          if (e.key === "PageUp") { e.preventDefault(); setI((x) => Math.max(0, x - 10)); }
           if (e.key === "Enter" && res[i]) onElegir(res[i]);
         }} />
-      <div className="resultados">
-        {res.map((p, j) => (
-          <button key={p.presentacionId} className={"resultado" + (j === i ? " activo" : "")} onClick={() => onElegir(p)}>
-            <span><b>{p.nombre}</b> <span className="suave">{p.presentacion} · {p.sku}</span></span>
-            <span>{rd(precioPara(p, nivel, catalogo.nivelPredeterminado).precio ?? 0)}</span>
-          </button>
-        ))}
-        {q.trim().length >= 2 && !res.length && <p className="suave">Sin resultados</p>}
+      <div className="resultados" ref={lista}>
+        <div className="res-cab"><span>Producto</span><span>Categoría</span><span>SKU</span><span className="der">Existencia</span><span className="der">Precio</span></div>
+        {res.map((p, j) => {
+          const ex = p.controlaStock ? Number(p.existencia ?? 0) : null;
+          return (
+            <button key={p.presentacionId} className={"resultado" + (j === i ? " activo" : "")} onClick={() => onElegir(p)} onMouseMove={() => j !== i && setI(j)}>
+              <span><b>{p.nombre}</b> <span className="suave">{p.presentacion}</span></span>
+              <span className="suave">{p.categoria ?? ""}</span>
+              <span className="suave">{p.sku}</span>
+              <span className={"der" + (ex != null && ex <= 0 ? " sin-stock" : "")}>{ex == null ? "—" : ex}</span>
+              <span className="der">{rd(precioPara(p, nivel, catalogo.nivelPredeterminado).precio ?? 0)}</span>
+            </button>
+          );
+        })}
+        {!res.length && <p className="suave" style={{ padding: 12 }}>Sin resultados</p>}
       </div>
+      <p className="suave buscar-pie">{res.length} de {todos.length} productos · ↑↓ para moverse · Enter para agregar · Esc para cerrar</p>
     </Modal>
   );
 }
