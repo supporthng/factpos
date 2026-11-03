@@ -654,7 +654,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
   .pv-total > b { font-size: 32px; letter-spacing: -.6px; }
 }
 
-.pos-hibrido ~ .aviso, .pos-hibrido .aviso { bottom: 92px; z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.pos-hibrido ~ .aviso, .pos-hibrido .aviso { top: auto; bottom: 92px; z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 .entrada-grande.entrada-texto { text-align: left; }
 
 /* Aviso de licencia (arriba, al centro; no tapa la barra de funciones) */
@@ -774,3 +774,14 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cobro2 .cliente-fiscal .entrada-grande { font-size: 16px; }
 .modal:has(.cobro2) .boton.cobrar { padding: 13px; font-size: 20px; margin: 10px 0 2px; }
 .modal:has(.cobro2) .modal-titulo { margin-bottom: 6px; }
+
+/* F2: ventana con todos los productos */
+.modal.buscar-todos { width: min(1000px, 100%); height: min(88vh, 760px); display: flex; flex-direction: column; overflow: hidden; }
+.buscar-todos .resultados { flex: 1; min-height: 0; max-height: none; margin-top: 10px; gap: 0; border: 1px solid var(--borde); border-radius: 10px; }
+.buscar-todos .res-cab, .buscar-todos .resultado { display: grid; grid-template-columns: minmax(0,3fr) minmax(0,1.2fr) minmax(0,1.2fr) 90px 110px; gap: 12px; align-items: center; border-radius: 0; border-width: 0 0 1px 0; border-color: var(--borde); }
+.buscar-todos .res-cab { position: sticky; top: 0; z-index: 1; background: var(--panel-2); padding: 8px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--suave, #7a8794); }
+.buscar-todos .resultado { padding: 9px 12px; }
+.buscar-todos .resultado span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buscar-todos .der { text-align: right; justify-content: flex-end; }
+.buscar-todos .sin-stock { color: var(--error); }
+.buscar-pie { margin-top: 8px; font-size: 13px; }
