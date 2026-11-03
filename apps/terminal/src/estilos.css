@@ -62,7 +62,7 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 
 
 .boton { border: 1px solid transparent; border-radius: var(--radio); padding: 10px 16px; font-weight: 600; background: var(--panel-2); color: var(--texto); }
 .boton:disabled { opacity: .45; cursor: not-allowed; }
-.boton.primario { background: var(--primario); }
+.boton.primario { background: var(--primario); color: #fff; }
 .boton.fantasma { background: transparent; border-color: var(--borde); }
 .boton.fantasma:hover:not(:disabled) { background: var(--panel-2); }
 .boton.ancho, .ancho { width: 100%; }
