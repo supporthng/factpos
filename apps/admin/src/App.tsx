@@ -406,7 +406,7 @@ function AppInterna() {
                   <span className="mosaico-icono"><Icono n={datosGrupo(grupoAbierto).i} tamano={26} /></span>
                   <div><h1>{grupoAbierto}</h1><p className="suave">{datosGrupo(grupoAbierto).d}</p></div>
                 </div>
-                <div className="cuadricula cuadricula-opciones" style={{ "--c": datosGrupo(grupoAbierto).color } as React.CSSProperties}>
+                <div className="cuadricula cuadricula-opciones">
                   {enGrupo(grupoAbierto).map((s) => (
                     <button key={s.id} className="mosaico mosaico-opcion" onClick={() => setSeccion(s.id)}>
                       <span className="mosaico-icono"><Icono n={s.i} tamano={24} /></span>
