@@ -32,6 +32,9 @@ for (const nombre of readdirSync(join(raiz, "instalador"))) {
   if (["escritorio", "setup"].includes(nombre)) continue;
   cpSync(join(raiz, "instalador", nombre), join(dir, "instalador", nombre), { recursive: true });
 }
+// Código de la ventana de escritorio, para que el servidor se lo ofrezca a las cajas (se actualizan solas, sin reinstalar)
+mkdirSync(join(dir, "instalador/escritorio-codigo"), { recursive: true });
+for (const f of ["app.cjs", "preload.cjs", "actualizando.html"]) cpSync(join(raiz, "instalador/escritorio", f), join(dir, "instalador/escritorio-codigo", f));
 // El ejecutable Electron se compila antes de empaquetar, en una carpeta fuera de paquete/.
 const escritorioDir = join(raiz, "instalador/escritorio/out");
 const ejecutables = existsSync(escritorioDir) ? readdirSync(escritorioDir).filter(n => /^FactPOS-Escritorio-.*\.exe$/i.test(n)) : [];

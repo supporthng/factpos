@@ -48,7 +48,7 @@ import { estadoSincronizacion, sincronizarAhora, syncActiva } from "./sync/sucur
 import { config } from "./config.js";
 import { datosDescubrimiento } from "./red.js";
 import fastifyStatic from "@fastify/static";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { leerToken, permisoDeRuta, tienePermiso } from "./sesion.js";
 import { rutasCajaMovimientos } from "./rutas/caja-movimientos.js";
@@ -94,7 +94,7 @@ export async function crearApp() {
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/verificador/descarga/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/fe/") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/verificador/descarga/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/escritorio-codigo/") || ruta.startsWith("/fe/") || ruta.startsWith("/central/")) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
@@ -280,6 +280,27 @@ export async function crearApp() {
     await app.register(rutasAltaLocal); // http://<servidor>:3000/alta → código para darlo de alta
     await app.register(rutasLicenciaSucursal);
   }
+
+  // Código de la ventana de escritorio (caja): las cajas con la aplicación instalada lo descargan y se actualizan solas.
+  // Solo archivos de una lista fija; la huella de cada uno va en manifest.json y la caja la verifica antes de usarlo.
+  const carpetaEscritorio = path.join(raiz, "../instalador/escritorio-codigo");
+  const ARCHIVOS_ESCRITORIO = ["app.cjs", "preload.cjs", "actualizando.html"];
+  app.get("/escritorio-codigo/manifest.json", async (_req, rep) => {
+    try {
+      const archivos: Record<string, string> = {};
+      for (const n of ARCHIVOS_ESCRITORIO) archivos[n] = createHash("sha256").update(readFileSync(path.join(carpetaEscritorio, n))).digest("hex");
+      const version = JSON.parse(readFileSync(path.join(raiz, "../package.json"), "utf8")).version as string;
+      rep.header("cache-control", "no-store");
+      return { version, archivos };
+    } catch { return rep.code(404).send({ error: "No disponible" }); }
+  });
+  app.get<{ Params: { archivo: string } }>("/escritorio-codigo/:archivo", async (req, rep) => {
+    if (!ARCHIVOS_ESCRITORIO.includes(req.params.archivo)) return rep.code(404).send({ error: "No disponible" });
+    try {
+      rep.header("cache-control", "no-store").type("application/octet-stream");
+      return readFileSync(path.join(carpetaEscritorio, req.params.archivo));
+    } catch { return rep.code(404).send({ error: "No disponible" }); }
+  });
 
   // Apps web servidas por este mismo servidor (si están compiladas):
   //   sucursal → http://<servidor>:3000/terminal/   (las cajas abren esta dirección)
