@@ -201,4 +201,46 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     if (!r.rowCount) throw new ErrorNegocio("Terminal no encontrada", 404);
     return r.rows[0];
   });
+
+  // ------------------------------------------------------------ Equipos de cada terminal
+  const EquiposSchema = z.object({
+    impresora: z.object({
+      modo: z.enum(["DRIVER", "ESCPOS_USB", "ESCPOS_RED"]), nombre: z.string().trim().max(80).default(""),
+      ip: z.string().trim().max(60).default(""), puerto: z.coerce.number().int().min(1).max(65535).default(9100),
+      papelMm: z.union([z.literal(58), z.literal(80)]).default(80), cortar: z.boolean().default(true), copias: z.coerce.number().int().min(1).max(3).default(1),
+    }),
+    gaveta: z.object({ modo: z.enum(["NINGUNA", "POR_IMPRESORA", "PULSO_DIRECTO"]), abrirAlCobrarEfectivo: z.boolean().default(true) }),
+    bascula: z.object({
+      modo: z.enum(["NINGUNA", "ETIQUETADORA", "SERIAL"]), puerto: z.string().trim().max(30).default(""),
+      baudios: z.coerce.number().int().min(1200).max(115200).default(9600), unidad: z.enum(["kg", "lb"]).default("kg"),
+    }),
+    datafono: z.object({
+      modo: z.enum(["MANUAL", "INTEGRADO"]), marca: z.string().trim().max(40).default("Verifone"), modelo: z.string().trim().max(40).default(""),
+      procesador: z.string().trim().max(40).default(""), ip: z.string().trim().max(60).default(""),
+      puerto: z.coerce.number().int().min(1).max(65535).default(8080), terminalId: z.string().trim().max(40).default(""),
+    }),
+  });
+
+  /** Terminales con la configuración de sus equipos */
+  app.get("/central/terminales/equipos", async (req) => {
+    const r = await pool.query(
+      `SELECT c.id, c.nombre, s.nombre AS sucursal, c.equipos
+         FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id
+        WHERE s.empresa_id = $1 AND c.activo ORDER BY s.codigo, c.numero`, [empresaDe(req)]);
+    return r.rows;
+  });
+
+  app.put("/central/terminales/:id/equipos", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = EquiposSchema.parse(req.body);
+    if (b.impresora.modo === "ESCPOS_RED" && !b.impresora.ip) throw new ErrorNegocio("Indique la dirección IP de la impresora de red");
+    if (b.bascula.modo === "SERIAL" && !b.bascula.puerto) throw new ErrorNegocio("Indique el puerto de la báscula (por ejemplo COM3)");
+    if (b.datafono.modo === "INTEGRADO" && !b.datafono.ip) throw new ErrorNegocio("Indique la dirección IP del datáfono");
+    const r = await pool.query(
+      `UPDATE cajas c SET equipos = $3 FROM sucursales s
+        WHERE c.id = $1 AND s.id = c.sucursal_id AND s.empresa_id = $2 RETURNING c.id`,
+      [id, empresaDe(req), JSON.stringify(b)]);
+    if (!r.rowCount) throw new ErrorNegocio("Terminal no encontrada", 404);
+    return { ok: true };
+  });
 }
