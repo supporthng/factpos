@@ -1057,3 +1057,24 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .cifras-filtro { grid-column: 1 / -1; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
 .chip-periodo { flex: none; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--borde, #d2dae3); background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .chip-periodo.activo { background: var(--primario, #0f766e); border-color: var(--primario, #0f766e); color: #fff; font-weight: 600; }
+
+/* Registrar compra: captura rápida */
+.cab-compra { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; align-items: end; }
+.cab-compra .campo-prov { grid-column: span 2; }
+@media (max-width: 560px) { .cab-compra .campo-prov { grid-column: auto; } }
+.segmentos { display: inline-flex; border: 1px solid var(--borde-fuerte); border-radius: 8px; overflow: hidden; }
+.segmentos button { flex: 1; border: 0; background: transparent; padding: 8px 12px; cursor: pointer; font: inherit; color: inherit; }
+.segmentos button.activo { background: var(--primario); color: #fff; }
+.buscador-linea { margin-bottom: 10px; }
+.buscador-linea input { width: 100%; font-size: 16px; padding: 10px 12px; }
+.buscador-linea .desplegable button.activo { background: color-mix(in srgb, var(--primario) 14%, transparent); }
+.vacio-compra { padding: 18px 4px; }
+.acciones-linea { white-space: nowrap; text-align: right; }
+.acciones-linea .con-extras { color: var(--primario); }
+.detalle-linea td { background: color-mix(in srgb, var(--primario) 3%, transparent); }
+.detalle-linea-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; padding: 4px 0; }
+.barra-compra { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 18px; align-items: baseline; justify-content: flex-end; flex-wrap: wrap;
+  padding: 10px 14px; margin-top: 10px; background: var(--panel); border: 1px solid var(--borde-fuerte); border-radius: 10px;
+  box-shadow: 0 -4px 14px rgba(0,0,0,.08); font-variant-numeric: tabular-nums; }
+.barra-compra .total-compra { font-size: 20px; }
+.barra-compra .boton { align-self: center; }

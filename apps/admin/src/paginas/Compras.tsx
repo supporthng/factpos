@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api, rd, num, hoy } from "../api";
 import { Aviso, Encabezado, SelectorAlmacen, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
 
@@ -130,6 +130,52 @@ function DetalleCompra({ id, onCerrar }: { id: string; onCerrar: () => void }) {
   );
 }
 
+/* ---------- Buscador rápido de líneas ---------- */
+/** Escribe nombre o SKU → flechas ↑↓ y Enter agregan la presentación (cada presentación es una fila: no hay que elegir dos veces). */
+function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionId: string) => void; inputRef: React.RefObject<HTMLInputElement> }) {
+  const { productos } = useCatalogo();
+  const [q, setQ] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const [activo, setActivo] = useState(0);
+  const filas = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return [];
+    const palabras = t.split(/\s+/);
+    const out: { id: string; nombre: string; sku: string; presentacion: string; factor: string }[] = [];
+    for (const p of productos) {
+      const h = `${p.nombre} ${p.sku}`.toLowerCase();
+      if (!palabras.every((w) => h.includes(w))) continue;
+      for (const pr of p.presentaciones) out.push({ id: pr.id, nombre: p.nombre, sku: p.sku, presentacion: pr.nombre, factor: pr.factor });
+      if (out.length >= 14) break;
+    }
+    return out.slice(0, 14);
+  }, [q, productos]);
+  const elegir = (id: string) => { onElegir(id); setQ(""); setActivo(0); setAbierto(false); };
+  return (
+    <div className="selector-producto buscador-linea">
+      <input ref={inputRef} value={q} placeholder="Buscar producto por nombre o SKU y presionar Enter…" autoComplete="off"
+        onFocus={() => setAbierto(true)} onBlur={() => setTimeout(() => setAbierto(false), 150)}
+        onChange={(e) => { setQ(e.target.value); setActivo(0); setAbierto(true); }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setActivo((a) => Math.min(a + 1, filas.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setActivo((a) => Math.max(a - 1, 0)); }
+          else if (e.key === "Enter" && filas[activo]) { e.preventDefault(); elegir(filas[activo].id); }
+          else if (e.key === "Escape") { setQ(""); setAbierto(false); }
+        }} />
+      {abierto && q.trim() && (
+        <div className="desplegable">
+          {filas.map((f, i) => (
+            <button key={f.id} className={i === activo ? "activo" : ""} onMouseEnter={() => setActivo(i)} onMouseDown={(e) => { e.preventDefault(); elegir(f.id); }}>
+              <b>{f.nombre}</b> <span className="suave">{f.presentacion}{n(f.factor) > 1 ? ` (${num(f.factor)} u.)` : ""} · {f.sku}</span>
+            </button>
+          ))}
+          {!filas.length && <span className="suave relleno">Sin resultados</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Nueva compra ---------- */
 function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegistrada: () => void }) {
   const { sucursales, productos } = useCatalogo();
@@ -139,7 +185,12 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     fechaFactura: hoy(), condicion: "CONTADO" as "CONTADO" | "CREDITO", venceEn: "", notas: "",
   });
   const [lineas, setLineas] = useState<Linea[]>([]);
-  const [prodElegido, setProdElegido] = useState("");
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const [foco, setFoco] = useState<string | null>(null);
+  const buscarRef = useRef<HTMLInputElement>(null);
+  const cantRefs = useRef(new Map<string, HTMLInputElement>());
+  const costoRefs = useRef(new Map<string, HTMLInputElement>());
+  const alternar = (clave: string) => setAbiertas((a) => { const x = new Set(a); if (x.has(clave)) x.delete(clave); else x.add(clave); return x; });
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [provNuevo, setProvNuevo] = useState<string | null>(null);
@@ -213,20 +264,22 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     finally { setLeyendo(false); }
   };
 
-  // Al elegir un producto: si tiene una sola presentación se agrega directo; si no, se elige
-  const producto = productos.find((p) => p.id === prodElegido);
+  // Cuando se agrega una línea, el cursor va directo a su cantidad (Enter → costo → Enter → vuelve al buscador)
   useEffect(() => {
-    if (producto && producto.presentaciones.length === 1) agregar(producto.presentaciones[0].id);
-  }, [prodElegido]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!foco) return;
+    const el = cantRefs.current.get(foco);
+    if (el) { el.focus(); el.select(); setFoco(null); }
+  }, [foco, lineas]);
 
   const agregar = async (presentacionId: string) => {
     const p = productos.find((x) => x.presentaciones.some((pr) => pr.id === presentacionId))!;
     const pr = p.presentaciones.find((x) => x.id === presentacionId)!;
-    setProdElegido("");
-    if (lineas.some((l) => l.presentacionId === presentacionId)) return setMsg(`${p.nombre} ${pr.nombre} ya está en la compra.`);
     setMsg("");
+    const ya = lineas.find((l) => l.presentacionId === presentacionId);
+    if (ya) { setFoco(ya.clave); return; } // ya está: se va a su cantidad para corregirla
     const clave = crypto.randomUUID();
     setLineas((ls) => [...ls, { clave, presentacionId, nombre: p.nombre, presentacion: pr.nombre, factor: pr.factor, cantidad: "", costo: "", enOferta: false, costoRegular: "", ref: null, lote: "", vence: "" }]);
+    setFoco(clave);
     try {
       const ref = await api<Referencia>(`/central/ofertas/referencia/${presentacionId}`);
       // Se propone el último costo normal (por presentación) como punto de partida
@@ -286,23 +339,33 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
     }
   };
 
+  useEffect(() => {
+    const t = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && completa && !guardando) { e.preventDefault(); void registrar(); } };
+    window.addEventListener("keydown", t);
+    return () => window.removeEventListener("keydown", t);
+  });
+
+  useEffect(() => { if (!cab.sucursalId && sucursales[0]) setCab((c) => ({ ...c, sucursalId: sucursales[0].id })); }, [sucursales, cab.sucursalId]);
+  const variasSuc = sucursales.length > 1;
+  const almacenes = sucursales.find((x) => x.id === cab.sucursalId)?.almacenes ?? [];
+  const lectorOk = !!lector.datos?.disponible && !leyendo;
   return (
     <>
       <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La compra no se ha registrado. ¿Salir?")) && onCerrar()}>Compras</button><span>/</span><span>Registrar compra</span></div>
-      <Encabezado titulo="Registrar compra" descripcion="Copie la factura del proveedor. Marque las líneas que el proveedor le dio en oferta para saber luego a cuánto las compró.">
-        <label className={"boton" + (!lector.datos?.disponible || leyendo ? " desactivado" : "")} title={motivoLector}>
+      <Encabezado titulo="Registrar compra" descripcion="Busque cada producto, escriba cantidad y costo, y Enter. También puede leer la factura con IA.">
+        <label className={"boton" + (!lectorOk ? " desactivado" : "")} title={motivoLector}>
           {leyendo ? "Leyendo la factura…" : "📷 Leer factura"}
-          <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} disabled={!lector.datos?.disponible || leyendo}
+          <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} disabled={!lectorOk}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
         </label>
-        <label className={"boton" + (!lector.datos?.disponible || leyendo ? " desactivado" : "")} title={motivoLector}>
+        <label className={"boton" + (!lectorOk ? " desactivado" : "")} title={motivoLector}>
           📄 Cargar factura
-          <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={!lector.datos?.disponible || leyendo}
+          <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={!lectorOk}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
         </label>
-        <button className="boton primario" disabled={!completa || guardando} onClick={registrar}>{guardando ? "Registrando…" : `Registrar · ${rd(sub + itb)}`}</button>
       </Encabezado>
       {lector.datos && !lector.datos.disponible && <Aviso tipo="info" texto={`El lector de facturas no está disponible: ${motivoLector}`} />}
+      {leyendo && <Aviso tipo="info" texto="Leyendo la factura con IA… tarda entre 15 y 40 segundos. Puede ir llenando los datos mientras tanto." />}
       <Aviso texto={msg} />
       {leidaInfo && <p className="texto-ok">{leidaInfo}</p>}
       {pend.length > 0 && (
@@ -330,52 +393,42 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
         </div>
       )}
 
-      <div className="panel">
-        <div className="tres-col">
-          <label className="campo"><span>Sucursal que recibe</span><SelectorSucursal valor={cab.sucursalId} onCambio={(v) => setCab({ ...cab, sucursalId: v, almacenId: "" })} todas={false} /></label>
-          <label className="campo"><span>Almacén donde entra</span><SelectorAlmacen sucursalId={cab.sucursalId} valor={cab.almacenId} onCambio={(v) => setCab({ ...cab, almacenId: v })} /></label>
-          <label className="campo"><span>Proveedor</span>
-            {provNuevo === null ? (
-              <select value={cab.proveedorId} onChange={(e) => (e.target.value === "+" ? setProvNuevo("") : setCab({ ...cab, proveedorId: e.target.value }))}>
-                <option value="">Elija el proveedor…</option>
-                {aux.datos?.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                <option value="+">+ Proveedor nuevo…</option>
-              </select>
-            ) : (
-              <span className="en-linea"><input autoFocus value={provNuevo} onChange={(e) => setProvNuevo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && crearProveedor()} placeholder="Nombre del proveedor" />
-                <button className="boton" onClick={crearProveedor}>Crear</button><button className="boton fantasma" onClick={() => setProvNuevo(null)}>✕</button></span>
-            )}
-          </label>
-          <label className="campo"><span>Fecha de la factura</span><input type="date" value={cab.fechaFactura} max={hoy()} onChange={(e) => setCab({ ...cab, fechaFactura: e.target.value })} /></label>
-        </div>
-        <div className="cuatro-col">
-          <label className="campo"><span>Número de factura</span><input value={cab.numeroFactura} onChange={(e) => setCab({ ...cab, numeroFactura: e.target.value })} /></label>
-          <label className="campo"><span>NCF del proveedor</span><input value={cab.ncfProveedor} onChange={(e) => setCab({ ...cab, ncfProveedor: e.target.value.toUpperCase().replace(/\s/g, "") })} placeholder="B0100000001" className="mono" /></label>
-          <label className="campo"><span>Condición</span>
-            <select value={cab.condicion} onChange={(e) => setCab({ ...cab, condicion: e.target.value as "CONTADO" | "CREDITO" })}><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></select>
-          </label>
-          {cab.condicion === "CREDITO"
-            ? <label className="campo"><span>Vence</span><input type="date" value={cab.venceEn} min={cab.fechaFactura} onChange={(e) => setCab({ ...cab, venceEn: e.target.value })} /></label>
-            : <div />}
-        </div>
+      {/* Datos de la factura: una sola fila; lo que casi nunca cambia (sucursal, almacén) solo aparece si hace falta */}
+      <div className="panel cab-compra">
+        <label className="campo campo-prov"><span>Proveedor</span>
+          {provNuevo === null ? (
+            <select value={cab.proveedorId} onChange={(e) => (e.target.value === "+" ? setProvNuevo("") : setCab({ ...cab, proveedorId: e.target.value }))}>
+              <option value="">Elija el proveedor…</option>
+              {aux.datos?.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              <option value="+">+ Proveedor nuevo…</option>
+            </select>
+          ) : (
+            <span className="en-linea"><input autoFocus value={provNuevo} onChange={(e) => setProvNuevo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && crearProveedor()} placeholder="Nombre del proveedor" />
+              <button className="boton" onClick={crearProveedor}>Crear</button><button className="boton fantasma" onClick={() => setProvNuevo(null)}>✕</button></span>
+          )}
+        </label>
+        <label className="campo"><span>N.º de factura</span><input value={cab.numeroFactura} onChange={(e) => setCab({ ...cab, numeroFactura: e.target.value })} /></label>
+        <label className="campo"><span>NCF del proveedor</span><input value={cab.ncfProveedor} onChange={(e) => setCab({ ...cab, ncfProveedor: e.target.value.toUpperCase().replace(/\s/g, "") })} placeholder="B0100000001" className="mono" /></label>
+        <label className="campo"><span>Fecha</span><input type="date" value={cab.fechaFactura} max={hoy()} onChange={(e) => setCab({ ...cab, fechaFactura: e.target.value })} /></label>
+        <label className="campo"><span>Condición</span>
+          <span className="segmentos">
+            <button type="button" className={cab.condicion === "CONTADO" ? "activo" : ""} onClick={() => setCab({ ...cab, condicion: "CONTADO" })}>Contado</button>
+            <button type="button" className={cab.condicion === "CREDITO" ? "activo" : ""} onClick={() => setCab({ ...cab, condicion: "CREDITO" })}>Crédito</button>
+          </span>
+        </label>
+        {cab.condicion === "CREDITO" && <label className="campo"><span>Vence</span><input type="date" value={cab.venceEn} min={cab.fechaFactura} onChange={(e) => setCab({ ...cab, venceEn: e.target.value })} /></label>}
+        {variasSuc && <label className="campo"><span>Sucursal que recibe</span><SelectorSucursal valor={cab.sucursalId} onCambio={(v) => setCab({ ...cab, sucursalId: v, almacenId: "" })} todas={false} /></label>}
+        {almacenes.length > 1 && <label className="campo"><span>Almacén donde entra</span><SelectorAlmacen sucursalId={cab.sucursalId} valor={cab.almacenId} onCambio={(v) => setCab({ ...cab, almacenId: v })} /></label>}
       </div>
 
       <div className="panel">
-        <div className="encabezado-sub">
-          <h3>Productos</h3>
-          <div className="agregar-linea">
-            <SelectorProducto valor={prodElegido} onCambio={setProdElegido} placeholder="Agregar producto…" />
-            {producto && producto.presentaciones.length > 1 && (
-              <div className="chips">{producto.presentaciones.map((pr) => (
-                <button key={pr.id} className="chip" onClick={() => agregar(pr.id)}>{pr.nombre}{n(pr.factor) > 1 ? ` (${num(pr.factor)})` : ""}</button>
-              ))}</div>
-            )}
-          </div>
-        </div>
-        {lineas.length === 0 ? <p className="suave">Agregue los productos de la factura.</p> : (
+        <BuscadorLinea inputRef={buscarRef} onElegir={agregar} />
+        {lineas.length === 0 ? (
+          <p className="suave vacio-compra">Agregue los productos de la factura con el buscador, o lea la factura con 📷 / 📄.</p>
+        ) : (
           <div className="tabla-contenedor">
             <table className="tabla tabla-edicion tabla-compra">
-              <thead><tr><th>Producto</th><th className="der">Cantidad</th><th className="der">Costo sin ITBIS</th><th>En oferta del proveedor</th><th>Lote y vencimiento</th><th>Compras anteriores</th><th className="der">Total</th><th /></tr></thead>
+              <thead><tr><th>#</th><th>Producto</th><th className="der">Cantidad</th><th className="der">Costo sin ITBIS</th><th className="der">Total</th><th /></tr></thead>
               <tbody>
                 {lineas.map((l, i) => {
                   const f = n(l.factor);
@@ -383,57 +436,85 @@ function NuevaCompra({ onCerrar, onRegistrada }: { onCerrar: () => void; onRegis
                   const ultOferta = l.ref?.ultimaCompraOferta ? n(l.ref.ultimaCompraOferta.costoUnidad) * f : null;
                   const comparado = l.enOferta ? null : ultNormal;
                   const dif = comparado && n(l.costo) ? ((n(l.costo) - comparado) / comparado) * 100 : null;
+                  const abierta = abiertas.has(l.clave);
+                  const conExtras = l.enOferta || !!l.lote.trim() || !!l.vence;
                   return (
-                    <tr key={l.clave} className={l.enOferta ? "fila-oferta" : ""}>
-                      <td><b>{l.nombre}</b> <span className="suave">{l.presentacion}{f > 1 ? ` · ${num(f)} u.` : ""}</span></td>
-                      <td className="der" style={{ width: 100 }}><input className="numero" inputMode="decimal" value={l.cantidad} autoFocus={i === lineas.length - 1}
-                        onChange={(e) => fijar(l.clave, { cantidad: e.target.value.replace(/[^\d.]/g, "") })} /></td>
-                      <td className="der" style={{ width: 130 }}>
-                        <input className="numero" inputMode="decimal" value={l.costo} onChange={(e) => fijar(l.clave, { costo: e.target.value.replace(/[^\d.]/g, "") })} />
-                        {dif !== null && Math.abs(dif) >= 0.5 && <small className={"bloque " + (dif > 0 ? "texto-alerta" : "texto-ok")}>{dif > 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(1)} % vs. última</small>}
-                      </td>
-                      <td style={{ width: 210 }}>
-                        <label className="check"><input type="checkbox" checked={l.enOferta} onChange={(e) => fijar(l.clave, {
-                          enOferta: e.target.checked,
-                          costoRegular: e.target.checked && !l.costoRegular && ultNormal ? ultNormal.toFixed(2) : l.costoRegular,
-                        })} /> En oferta</label>
-                        {l.enOferta && (
-                          <span className="costo-normal"><span className="suave pequeno">Costo normal</span>
-                            <input className="numero" inputMode="decimal" value={l.costoRegular} placeholder="Sin oferta"
-                              onChange={(e) => fijar(l.clave, { costoRegular: e.target.value.replace(/[^\d.]/g, "") })} /></span>
-                        )}
-                      </td>
-                      <td style={{ width: 170 }}>
-                        <span className="lote-linea">
-                          <input value={l.lote} placeholder="Lote (opcional)" maxLength={40} aria-label="Número de lote"
-                            onChange={(e) => fijar(l.clave, { lote: e.target.value })} />
-                          <input type="date" value={l.vence} min={hoy()} aria-label="Fecha de vencimiento" title="Vence"
-                            onChange={(e) => fijar(l.clave, { vence: e.target.value })} />
-                        </span>
-                      </td>
-                      <td className="pequeno referencia-linea">
-                        {!l.ref ? <span className="suave">…</span> : (
-                          <>
-                            <span>Normal: <b>{ultNormal !== null ? rd(ultNormal) : "—"}</b>{l.ref.ultimaCompraNormal && <span className="suave"> · {fechaCorta(l.ref.ultimaCompraNormal.fecha)}</span>}</span>
-                            <span>En oferta: <b className={ultOferta !== null ? "texto-oferta" : ""}>{ultOferta !== null ? rd(ultOferta) : "—"}</b>{l.ref.ultimaCompraOferta && <span className="suave"> · {fechaCorta(l.ref.ultimaCompraOferta.fecha)}</span>}</span>
-                          </>
-                        )}
-                      </td>
-                      <td className="der">{rd(calc[i]?.total ?? 0)}{calc[i]?.ahorro > 0 && <small className="bloque texto-ok">ahorro {rd(calc[i].ahorro)}</small>}</td>
-                      <td><button className="boton fantasma" aria-label="Quitar" onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}>✕</button></td>
-                    </tr>
+                    <Fragment key={l.clave}>
+                      <tr className={l.enOferta ? "fila-oferta" : ""}>
+                        <td className="suave">{i + 1}</td>
+                        <td><b>{l.nombre}</b> <span className="suave">{l.presentacion}{f > 1 ? ` · ${num(f)} u.` : ""}</span>
+                          {l.enOferta && <span className="pastilla en-oferta">En oferta</span>}
+                          {l.ref && (ultNormal !== null) && <small className="suave bloque">Última compra: {rd(ultNormal)} · {fechaCorta(l.ref.ultimaCompraNormal!.fecha)}</small>}
+                        </td>
+                        <td className="der" style={{ width: 110 }}><input className="numero" inputMode="decimal" value={l.cantidad} aria-label="Cantidad"
+                          ref={(el) => { if (el) cantRefs.current.set(l.clave, el); else cantRefs.current.delete(l.clave); }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const c = costoRefs.current.get(l.clave); c?.focus(); c?.select(); } }}
+                          onChange={(e) => fijar(l.clave, { cantidad: e.target.value.replace(/[^\d.]/g, "") })} /></td>
+                        <td className="der" style={{ width: 140 }}>
+                          <input className="numero" inputMode="decimal" value={l.costo} aria-label="Costo sin ITBIS"
+                            ref={(el) => { if (el) costoRefs.current.set(l.clave, el); else costoRefs.current.delete(l.clave); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarRef.current?.focus(); } }}
+                            onChange={(e) => fijar(l.clave, { costo: e.target.value.replace(/[^\d.]/g, "") })} />
+                          {dif !== null && Math.abs(dif) >= 0.5 && <small className={"bloque " + (dif > 0 ? "texto-alerta" : "texto-ok")}>{dif > 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(1)} % vs. última</small>}
+                        </td>
+                        <td className="der">{rd(calc[i]?.total ?? 0)}{calc[i]?.ahorro > 0 && <small className="bloque texto-ok">ahorro {rd(calc[i].ahorro)}</small>}</td>
+                        <td className="acciones-linea">
+                          <button className={"boton fantasma" + (conExtras ? " con-extras" : "")} title="Oferta, lote y vencimiento, compras anteriores" aria-expanded={abierta} onClick={() => alternar(l.clave)}>{abierta ? "▴" : "▾"} Detalle{conExtras && !abierta ? " •" : ""}</button>
+                          <button className="boton fantasma" aria-label="Quitar" onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}>✕</button>
+                        </td>
+                      </tr>
+                      {abierta && (
+                        <tr className="detalle-linea"><td />
+                          <td colSpan={5}>
+                            <div className="detalle-linea-grid">
+                              <div>
+                                <label className="check"><input type="checkbox" checked={l.enOferta} onChange={(e) => fijar(l.clave, {
+                                  enOferta: e.target.checked,
+                                  costoRegular: e.target.checked && !l.costoRegular && ultNormal ? ultNormal.toFixed(2) : l.costoRegular,
+                                })} /> El proveedor lo dio en oferta</label>
+                                {l.enOferta && (
+                                  <span className="costo-normal"><span className="suave pequeno">Costo normal</span>
+                                    <input className="numero" inputMode="decimal" value={l.costoRegular} placeholder="Sin oferta"
+                                      onChange={(e) => fijar(l.clave, { costoRegular: e.target.value.replace(/[^\d.]/g, "") })} /></span>
+                                )}
+                              </div>
+                              <div className="lote-linea">
+                                <input value={l.lote} placeholder="Lote (opcional)" maxLength={40} aria-label="Número de lote" onChange={(e) => fijar(l.clave, { lote: e.target.value })} />
+                                <input type="date" value={l.vence} min={hoy()} aria-label="Fecha de vencimiento" title="Vence" onChange={(e) => fijar(l.clave, { vence: e.target.value })} />
+                              </div>
+                              <div className="pequeno referencia-linea">
+                                {!l.ref ? <span className="suave">…</span> : (
+                                  <>
+                                    <span>Normal: <b>{ultNormal !== null ? rd(ultNormal) : "—"}</b>{l.ref.ultimaCompraNormal && <span className="suave"> · {l.ref.ultimaCompraNormal.proveedor} · {fechaCorta(l.ref.ultimaCompraNormal.fecha)}</span>}</span>
+                                    <span>En oferta: <b className={ultOferta !== null ? "texto-oferta" : ""}>{ultOferta !== null ? rd(ultOferta) : "—"}</b>{l.ref.ultimaCompraOferta && <span className="suave"> · {fechaCorta(l.ref.ultimaCompraOferta.fecha)}</span>}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
         )}
-        <div className="totales-compra">
-          <span>Subtotal {rd(sub)}</span><span>ITBIS {rd(itb)}</span><b>Total {rd(sub + itb)}</b>
-          {ahorro > 0 && <span className="texto-ok">Ahorro por ofertas {rd(ahorro)}</span>}
-        </div>
         <label className="campo"><span>Notas (opcional)</span><input value={cab.notas} onChange={(e) => setCab({ ...cab, notas: e.target.value })} /></label>
       </div>
+
+      {/* Barra fija: el total y el botón siempre a la vista, sin subir la pantalla */}
+      <div className="barra-compra">
+        <span className="suave">{lineas.length} línea(s)</span>
+        <span>Subtotal {rd(sub)}</span><span>ITBIS {rd(itb)}</span>
+        {ahorro > 0 && <span className="texto-ok">Ahorro por ofertas {rd(ahorro)}</span>}
+        <b className="total-compra">Total {rd(sub + itb)}</b>
+        <button className="boton primario" disabled={!completa || guardando} onClick={registrar} title="Ctrl + Enter">{guardando ? "Registrando…" : "Registrar compra"}</button>
+      </div>
+      {!completa && lineas.length > 0 && (
+        <p className="suave pequeno">Falta: {[!cab.proveedorId && "proveedor", cab.condicion === "CREDITO" && !cab.venceEn && "fecha de vencimiento", lineas.some((l) => !(n(l.cantidad) > 0)) && "cantidad en alguna línea", lineas.some((l) => !(n(l.costo) > 0)) && "costo en alguna línea"].filter(Boolean).join(", ")}.</p>
+      )}
     </>
   );
 }
