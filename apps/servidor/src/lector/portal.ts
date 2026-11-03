@@ -94,7 +94,8 @@ export async function rutasPortalLector(app: FastifyInstance) {
     } catch (e) {
       await devolver();
       app.log.warn(`Lector de facturas: ${(e as Error).message}`);
-      throw new ErrorNegocio("No se pudo leer la factura. Intente con una foto más nítida y de frente, o regístrela a mano. (No se descontó de su cupo.)", 502);
+      const motivo = (e as Error).message.replace(/\s+/g, " ").slice(0, 180);
+      throw new ErrorNegocio(`No se pudo leer la factura: ${motivo}. Si la foto es nítida, avise a su proveedor con este mensaje. (No se descontó de su cupo.)`, 502);
     }
   });
 
