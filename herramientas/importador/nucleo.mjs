@@ -72,7 +72,7 @@ if (aplicar) {
   const disp = o.dispositivo ? { "x-dispositivo": String(o.dispositivo) } : {};
   let token = "";
   const api = async (ruta, metodo = "GET", cuerpo) => {
-    const r = await fetch(servidor + ruta, { method: metodo, headers: { ...(cuerpo ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}), ...disp }, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+    const r = await fetch(servidor + ruta, { method: metodo, headers: { ...(cuerpo ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}), ...disp }, body: cuerpo ? JSON.stringify(cuerpo) : undefined, signal: AbortSignal.timeout(90000) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { const e = new Error(j.error ?? `Error ${r.status}`); e.estado = r.status; throw e; }
     return j;
@@ -93,6 +93,7 @@ if (aplicar) {
   if (!suc) { throw new Error(`No encontré la sucursal. Disponibles: ${sucs.map(nomSuc).join(", ")}`); }
   log(`Sucursal que recibe la existencia: ${nomSuc(suc)}.`);
 
+  log("Cargando categorías, proveedores y clientes…");
   // categorías
   const catId = new Map(aux.categorias.map((c) => [c.nombre.toLowerCase(), c.id]));
   for (const n of datos.categorias) {
@@ -122,7 +123,10 @@ if (aplicar) {
   }
   // productos (el SKU es el número que tenía en el sistema anterior, con prefijo, para poder volver a correr sin duplicar)
   const creados = [];
+  log(`Cargando ${productos.length} productos (puede tardar varios minutos)…`);
+  let hechos = 0;
   for (const p of productos) {
+    if (++hechos % 25 === 0) log(`  productos: ${hechos} de ${productos.length}…`);
     const sku = `${fuente.nombre.slice(0, 3).toUpperCase()}-${p.origenId}`;
     const imagen = !sinFotos && p.imagen && p.imagen.length <= 400000 ? p.imagen : null;
     if (!sinFotos && p.imagen && !imagen) problemas.push(["producto", p.origenId, p.nombre, "Foto demasiado pesada: se importa sin foto"]);
