@@ -470,7 +470,12 @@ function readStateFile() {
 function openMini() {
   miniWindow = new BrowserWindow({ icon: ICON, width: 440, height: 230, resizable: false, minimizable: false, maximizable: false, closable: false, alwaysOnTop: true, autoHideMenuBar: true, title: 'FactPOS · Actualizando', backgroundColor: '#102b3a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   miniWindow.removeMenu();
-  miniWindow.loadFile(path.join(__dirname, 'actualizando.html'));
+  // Se carga como data: con tipo text/html explícito: en equipos donde el registro de Windows asocia .html a otro tipo MIME,
+  // loadFile mostraba el código de la página como texto.
+  try {
+    const html = fs.readFileSync(path.join(__dirname, 'actualizando.html'));
+    miniWindow.loadURL('data:text/html;charset=utf-8;base64,' + html.toString('base64'));
+  } catch { miniWindow.loadFile(path.join(__dirname, 'actualizando.html')); }
 }
 function sendMini(msg) { if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('factpos:actualizacion', msg); }
 function beginUpdate(state) {

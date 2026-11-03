@@ -1111,3 +1111,6 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 .menu-usuario-nombre { display: grid; padding: 8px 10px 10px; border-bottom: 1px solid var(--borde); margin-bottom: 4px; }
 .menu-usuario-lista button { text-align: left; background: transparent; border: 0; padding: 9px 10px; border-radius: 8px; font: inherit; font-size: 14px; cursor: pointer; color: var(--texto, inherit); }
 .menu-usuario-lista button:hover, .menu-usuario-lista button:focus-visible { background: var(--fondo); outline: none; }
+
+/* La contraseña siempre se oculta, aunque el motor del navegador no lo haga por sí solo */
+input[type=password] { -webkit-text-security: disc; }
