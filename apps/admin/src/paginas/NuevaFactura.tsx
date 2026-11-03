@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, rd } from "../api";
+import { api, puede, rd } from "../api";
 import { Aviso, Encabezado, useCatalogo, useDatos } from "../ui";
 import { BuscadorLinea } from "./Compras";
 
@@ -10,10 +10,11 @@ import { BuscadorLinea } from "./Compras";
 interface CajaAbierta { cajaId: string; caja: string; sucursalId: string; sucursal: string; cajero: string | null; abiertoEn: string }
 interface ClienteB { id: string; nombre: string; documento: string | null; tipoDocumento?: string | null }
 interface Cotizacion {
-  subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown;
+  subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown; cupon?: { codigo: string; total: string } | null;
   lineas: { presentacionId: string; descripcion: string; cantidad: string; precio: string | null; oferta: string | null; descuento?: string; itbis?: string; total: string }[];
 }
-interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string }
+interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string; descuento: string }
+interface PagoF { id: string; forma: (typeof FORMAS)[number][0]; monto: string; recibido: string; referencia: string }
 
 const TIPOS: { id: string; nombre: string; fiscal: boolean; pideCliente: boolean }[] = [
   { id: "E32", nombre: "Factura de consumo electrónica (e-CF)", fiscal: true, pideCliente: false },
@@ -39,9 +40,11 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   const [lineas, setLineas] = useState<LineaF[]>([]);
   const [cot, setCot] = useState<Cotizacion | null>(null);
   const [errCot, setErrCot] = useState("");
-  const [forma, setForma] = useState<(typeof FORMAS)[number][0]>("EFECTIVO");
-  const [recibido, setRecibido] = useState("");
-  const [referencia, setReferencia] = useState("");
+  const [pagos, setPagos] = useState<PagoF[]>([{ id: crypto.randomUUID(), forma: "EFECTIVO", monto: "", recibido: "", referencia: "" }]);
+  const [cuponTxt, setCuponTxt] = useState("");
+  const [cupon, setCupon] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const puedeDescuento = puede("venta.descuento");
   const [notas, setNotas] = useState("");
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -59,18 +62,19 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   }, [busca]);
 
   const validas = lineas.filter((l) => n(l.cantidad) > 0);
+  const items = () => validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad, ...(n(l.descuento) > 0 ? { descuentoManual: n(l.descuento).toFixed(2) } : {}) }));
   // Precios del servidor: se recalculan al cambiar productos, cantidades o cliente
   useEffect(() => {
     if (!cajaId || !validas.length) { setCot(null); setErrCot(""); return; }
     let vivo = true;
     const t = setTimeout(async () => {
       try {
-        const r = await api<Cotizacion>("/central/facturas/cotizar", { cuerpo: { cajaId, clienteId: cliente?.id, items: validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad })) } });
+        const r = await api<Cotizacion>("/central/facturas/cotizar", { cuerpo: { cajaId, clienteId: cliente?.id, items: items() , ...(cupon ? { cuponCodigo: cupon } : {}) } });
         if (vivo) { setCot(r); setErrCot(""); }
       } catch (e) { if (vivo) { setCot(null); setErrCot((e as Error).message); } }
     }, 350);
     return () => { vivo = false; clearTimeout(t); };
-  }, [cajaId, cliente?.id, JSON.stringify(validas.map((l) => [l.presentacionId, l.cantidad]))]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cajaId, cliente?.id, cupon, JSON.stringify(validas.map((l) => [l.presentacionId, l.cantidad, l.descuento]))]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!foco) return;
@@ -85,23 +89,33 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
     const ya = lineas.find((l) => l.presentacionId === presentacionId);
     if (ya) { setLineas((ls) => ls.map((l) => (l.clave === ya.clave ? { ...l, cantidad: String(n(l.cantidad) + 1) } : l))); return; }
     const clave = crypto.randomUUID();
-    setLineas((ls) => [...ls, { clave, presentacionId, nombre: `${p.nombre}${pr.nombre !== "Unidad" ? ` · ${pr.nombre}` : ""}`, cantidad: "1" }]);
+    setLineas((ls) => [...ls, { clave, presentacionId, nombre: `${p.nombre}${pr.nombre !== "Unidad" ? ` · ${pr.nombre}` : ""}`, cantidad: "1", descuento: "" }]);
     setFoco(clave);
   };
 
   const t = TIPOS.find((x) => x.id === tipo)!;
   const total = n(cot?.total);
-  const cambio = forma === "EFECTIVO" && n(recibido) > total ? n(recibido) - total : 0;
+  const unico = pagos.length === 1;
+  const montoDe = (p: PagoF) => (unico ? total : n(p.monto));
+  const pagado = pagos.reduce((a, p) => a + montoDe(p), 0);
+  const falta = Math.round((total - pagado) * 100) / 100;
+  const hayDescuento = lineas.some((l) => n(l.descuento) > 0);
+  const cambio = pagos.reduce((a, p) => a + (p.forma === "EFECTIVO" && n(p.recibido) > montoDe(p) ? n(p.recibido) - montoDe(p) : 0), 0);
+  const cambiarPago = (id: string, c: Partial<PagoF>) => setPagos((ps) => ps.map((p) => (p.id === id ? { ...p, ...c } : p)));
+  const agregarPago = () => setPagos((ps) => [...(ps.length === 1 ? [{ ...ps[0], monto: total ? total.toFixed(2) : "" }] : ps), { id: crypto.randomUUID(), forma: "TARJETA", monto: "", recibido: "", referencia: "" }]);
   const problema = useMemo(() => {
     if (!cajas.datos?.length) return "";
     if (!validas.length) return "Agregue al menos un producto.";
     if (errCot) return errCot;
     if (!cot) return "Calculando…";
     if (t.pideCliente && !(cliente?.documento)) return "Este comprobante requiere un cliente con RNC o cédula.";
-    if (forma === "CREDITO" && !cliente) return "La venta a crédito requiere un cliente.";
-    if (forma === "EFECTIVO" && recibido && n(recibido) < total) return "El efectivo recibido es menor que el total.";
+    if (pagos.some((p) => p.forma === "CREDITO") && !cliente) return "La venta a crédito requiere un cliente.";
+    if (Math.abs(falta) >= 0.005) return falta > 0 ? `Faltan ${rd(falta)} por cobrar.` : `Los pagos se pasan por ${rd(-falta)}.`;
+    if (pagos.some((p) => montoDe(p) <= 0)) return "Cada pago debe tener un monto.";
+    if (pagos.some((p) => p.forma === "EFECTIVO" && p.recibido && n(p.recibido) < montoDe(p))) return "El efectivo recibido es menor que el monto en efectivo.";
+    if (hayDescuento && motivo.trim().length < 5) return "Escriba el motivo del descuento.";
     return "";
-  }, [cajas.datos, validas.length, errCot, cot, t.pideCliente, cliente, forma, recibido, total]);
+  }, [cajas.datos, validas.length, errCot, cot, t.pideCliente, cliente, pagos, falta, hayDescuento, motivo, total]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const crear = async () => {
     if (problema || !cot) return;
@@ -110,8 +124,12 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
     try {
       const r = await api<{ id: string }>("/central/facturas", { cuerpo: {
         cajaId, clienteId: cliente?.id, tipoDocumento: tipo, notas: notas.trim() || undefined, ventaId: ventaId.current,
-        items: validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad })),
-        pagos: [{ formaPago: forma, monto: cot.total, ...(forma === "EFECTIVO" && n(recibido) >= total ? { recibido: n(recibido).toFixed(2) } : {}), ...(referencia.trim() ? { referencia: referencia.trim() } : {}) }],
+        items: items(), ...(cupon ? { cuponCodigo: cupon } : {}), ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}),
+        pagos: pagos.map((p) => ({
+          formaPago: p.forma, monto: montoDe(p).toFixed(2),
+          ...(p.forma === "EFECTIVO" && n(p.recibido) >= montoDe(p) && p.recibido ? { recibido: n(p.recibido).toFixed(2) } : {}),
+          ...(p.referencia.trim() ? { referencia: p.referencia.trim() } : {}),
+        })),
       } });
       onCreada(r.id);
     } catch (e) { setMsg((e as Error).message); setGuardando(false); }
@@ -152,7 +170,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
         <BuscadorLinea inputRef={buscarRef} onElegir={agregar} />
         {!lineas.length ? <p className="suave vacio-compra">Busque los productos que lleva el cliente.</p> : (
           <div className="tabla-contenedor"><table className="tabla tabla-edicion">
-            <thead><tr><th>#</th><th>Producto</th><th className="der">Cantidad</th><th className="der">Precio</th><th className="der">Total</th><th /></tr></thead>
+            <thead><tr><th>#</th><th>Producto</th><th className="der">Cantidad</th><th className="der">Precio</th>{puedeDescuento && <th className="der">Descuento RD$</th>}<th className="der">Total</th><th /></tr></thead>
             <tbody>{lineas.map((l, i) => {
               const c = cot?.lineas.find((x) => x.presentacionId === l.presentacionId);
               return (
@@ -164,6 +182,8 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarRef.current?.focus(); } }}
                     onChange={(e) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, cantidad: limpiar(e.target.value) } : x)))} /></td>
                   <td className="der">{c?.precio ? rd(c.precio) : "…"}</td>
+                  {puedeDescuento && <td className="der" style={{ width: 120 }}><input className="numero" inputMode="decimal" value={l.descuento} placeholder="0" aria-label="Descuento"
+                    onChange={(e) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, descuento: limpiar(e.target.value) } : x)))} /></td>}
                   <td className="der">{c ? rd(c.total) : "…"}</td>
                   <td><button className="boton fantasma" aria-label="Quitar" onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}>✕</button></td>
                 </tr>
@@ -174,13 +194,35 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
         <label className="campo"><span>Notas (salen en la factura)</span><input value={notas} maxLength={300} onChange={(e) => setNotas(e.target.value)} /></label>
       </div>
 
+      <div className="panel">
+        <h3>Cobro</h3>
+        {pagos.map((p, i) => (
+          <div key={p.id} className="cab-compra" style={{ marginBottom: 8 }}>
+            <label className="campo"><span>{unico ? "Forma de pago" : `Pago ${i + 1}`}</span>
+              <select value={p.forma} onChange={(e) => cambiarPago(p.id, { forma: e.target.value as PagoF["forma"] })}>{FORMAS.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</select>
+            </label>
+            {!unico && <label className="campo"><span>Monto</span><span className="en-linea"><input className="numero" inputMode="decimal" value={p.monto} onChange={(e) => cambiarPago(p.id, { monto: limpiar(e.target.value) })} />
+              {falta > 0 && <button className="boton fantasma" title="Poner lo que falta" onClick={() => cambiarPago(p.id, { monto: (n(p.monto) + falta).toFixed(2) })}>+ resto</button>}</span></label>}
+            {p.forma === "EFECTIVO" && <label className="campo"><span>Efectivo recibido</span><input className="numero" inputMode="decimal" value={p.recibido} placeholder={montoDe(p) ? rd(montoDe(p)) : ""} onChange={(e) => cambiarPago(p.id, { recibido: limpiar(e.target.value) })} /></label>}
+            {(p.forma === "TARJETA" || p.forma === "TRANSFERENCIA" || p.forma === "OTRO") && <label className="campo"><span>Referencia (opcional)</span><input value={p.referencia} maxLength={60} onChange={(e) => cambiarPago(p.id, { referencia: e.target.value })} /></label>}
+            {!unico && <button className="boton fantasma" aria-label="Quitar pago" onClick={() => setPagos((ps) => ps.filter((x) => x.id !== p.id))}>✕</button>}
+          </div>
+        ))}
+        <div className="en-linea" style={{ flexWrap: "wrap", gap: 12 }}>
+          <button className="boton" onClick={agregarPago} disabled={!total}>＋ Pago mixto (agregar otra forma de pago)</button>
+          {!unico && <span className={falta === 0 ? "texto-ok" : "texto-alerta"}>{falta === 0 ? "Cobro completo" : falta > 0 ? `Faltan ${rd(falta)}` : `Se pasa por ${rd(-falta)}`}</span>}
+          {cambio > 0 && <span>Devuelta: <b>{rd(cambio)}</b></span>}
+        </div>
+      </div>
+
       <div className="panel cab-compra">
-        <label className="campo"><span>Forma de pago</span>
-          <select value={forma} onChange={(e) => setForma(e.target.value as typeof forma)}>{FORMAS.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</select>
+        <label className="campo"><span>Cupón de descuento</span>
+          {cupon ? <span className="en-linea"><b>{cupon}</b>{cot?.cupon ? <span className="texto-ok">−{rd(cot.cupon.total)}</span> : null}<button className="boton fantasma" onClick={() => { setCupon(""); setCuponTxt(""); }}>✕ Quitar</button></span>
+            : <span className="en-linea"><input value={cuponTxt} placeholder="Código del cupón" onChange={(e) => setCuponTxt(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cuponTxt.trim() && setCupon(cuponTxt.trim())} />
+              <button className="boton" disabled={!cuponTxt.trim()} onClick={() => setCupon(cuponTxt.trim())}>Aplicar</button></span>}
         </label>
-        {forma === "EFECTIVO" && <label className="campo"><span>Efectivo recibido</span><input className="numero" inputMode="decimal" value={recibido} placeholder={total ? rd(total) : ""} onChange={(e) => setRecibido(limpiar(e.target.value))} /></label>}
-        {(forma === "TARJETA" || forma === "TRANSFERENCIA" || forma === "OTRO") && <label className="campo"><span>Referencia (opcional)</span><input value={referencia} maxLength={60} onChange={(e) => setReferencia(e.target.value)} /></label>}
-        {cambio > 0 && <div className="campo"><span>Devuelta</span><b>{rd(cambio)}</b></div>}
+        {puedeDescuento && hayDescuento && <label className="campo campo-prov"><span>Motivo del descuento (queda en auditoría)</span><input value={motivo} maxLength={200} onChange={(e) => setMotivo(e.target.value)} /></label>}
+        {!puedeDescuento && <p className="suave pequeno">Para dar descuentos por línea se necesita el permiso «Aprobar descuentos».</p>}
       </div>
 
       <div className="barra-compra">

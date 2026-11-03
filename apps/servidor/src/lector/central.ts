@@ -20,7 +20,7 @@ interface Leida {
   proveedor?: { nombre: string | null; rnc: string | null };
   numeroFactura?: string | null; ncf?: string | null; fecha?: string | null; vence?: string | null; condicion?: "CONTADO" | "CREDITO" | null;
   preciosIncluyenItbis: boolean; subtotal?: number | null; itbis?: number | null; total?: number | null;
-  items: { codigo?: string | null; descripcion: string; cantidad: number; unidad?: string | null; unidadesPorEmpaque?: number | null; unidadesTotales?: number | null;
+  items: { codigo?: string | null; codigoBarras?: string | null; descripcion: string; cantidad: number; unidad?: string | null; unidadesPorEmpaque?: number | null; unidadesTotales?: number | null;
     precioUnitario: number; importe?: number | null; descuento?: number | null; impuestoSelectivo?: number | null; itbisLinea?: number | null; netoSinItbis?: number | null }[];
 }
 interface Candidato { presentacionId: string; productoId: string; nombre: string; presentacion: string; factor: string }
@@ -107,16 +107,23 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
 
     // ---- Productos: código de barras → código del proveedor → nombre
     const codigos = [...new Set(f.items.map((i) => (i.codigo ?? "").trim()).filter(Boolean))];
-    const porBarra = new Map<string, string>();
+    // Código de barras estándar (EAN/UPC/GTIN): se compara sin ceros a la izquierda, porque el mismo producto aparece como
+    // UPC-A de 12, EAN-13 o GTIN-14 según quién lo imprima.
+    const soloDig = (t: string | null | undefined) => (t ?? "").replace(/\D/g, "");
+    const clave = (t: string) => t.replace(/^0+/, "");
+    const barras = (i: { codigo?: string | null; codigoBarras?: string | null }) =>
+      [...new Set([soloDig(i.codigoBarras), soloDig(i.codigo)].filter((d) => d.length >= 8 && d.length <= 14))];
+    const variantes = [...new Set(f.items.flatMap((i) => barras(i)).flatMap((d) => [d, clave(d), clave(d).padStart(12, "0"), clave(d).padStart(13, "0"), clave(d).padStart(14, "0")]))];
+    const porBarra = new Map<string, string>();      // clave sin ceros → presentación
     const porProveedor = new Map<string, string>();
-    if (codigos.length) {
-      for (const x of (await pool.query<{ codigo: string; presentacion_id: string }>("SELECT codigo, presentacion_id FROM codigos_barra WHERE empresa_id = $1 AND activo AND codigo = ANY($2)", [empresaId, codigos])).rows) porBarra.set(x.codigo, x.presentacion_id);
-      if (prov) {
-        for (const x of (await pool.query<{ codigo_proveedor: string; presentacion_id: string }>(
-          `SELECT pp.codigo_proveedor, pr.id AS presentacion_id FROM producto_proveedores pp
-             JOIN presentaciones pr ON pr.producto_id = pp.producto_id AND pr.es_principal
-            WHERE pp.proveedor_id = $1 AND pp.activo AND pp.codigo_proveedor = ANY($2)`, [prov.id, codigos])).rows) porProveedor.set(x.codigo_proveedor, x.presentacion_id);
-      }
+    if (variantes.length) {
+      for (const x of (await pool.query<{ codigo: string; presentacion_id: string }>("SELECT codigo, presentacion_id FROM codigos_barra WHERE empresa_id = $1 AND activo AND codigo = ANY($2)", [empresaId, variantes])).rows) porBarra.set(clave(x.codigo), x.presentacion_id);
+    }
+    if (codigos.length && prov) {
+      for (const x of (await pool.query<{ codigo_proveedor: string; presentacion_id: string }>(
+        `SELECT pp.codigo_proveedor, pr.id AS presentacion_id FROM producto_proveedores pp
+           JOIN presentaciones pr ON pr.producto_id = pp.producto_id AND pr.es_principal
+          WHERE pp.proveedor_id = $1 AND pp.activo AND pp.codigo_proveedor = ANY($2)`, [prov.id, codigos])).rows) porProveedor.set(x.codigo_proveedor, x.presentacion_id);
     }
     const catalogo = (await pool.query<Candidato>(
       `SELECT pr.id AS "presentacionId", p.id AS "productoId", p.nombre, pr.nombre AS presentacion, pr.factor::text AS factor
@@ -128,7 +135,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     let sumaNeto = 0;
     const items = f.items.map((i) => {
       const cod = (i.codigo ?? "").trim();
-      const exacto = porBarra.get(cod) ?? porProveedor.get(cod);
+      const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod);
       let elegido = exacto ? porId.get(exacto) : undefined;
       let confianza: "CODIGO" | "NOMBRE" | "NINGUNA" = elegido ? "CODIGO" : "NINGUNA";
       const sugeridos = catalogo.map((c) => ({ c, s: parecido(i.descripcion, `${c.nombre} ${c.presentacion === "Unidad" ? "" : c.presentacion}`) }))
@@ -165,7 +172,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       const empaque = partes.length ? partes.join(" · ") : null;
       sumaNeto += neto;
       return {
-        codigo: cod || null, descripcion: i.descripcion, unidad: i.unidad ?? null,
+        codigo: cod || null, codigoBarras: barras(i)[0] ?? null, descripcion: i.descripcion, unidad: i.unidad ?? null,
         cantidad: Math.round(cantidad * 10000) / 10000, costo: Math.round(costo * 10000) / 10000, importe: i.importe ?? null, porUnidad, empaque,
         presentacionId: elegido?.presentacionId ?? null, producto: elegido ? { nombre: elegido.nombre, presentacion: elegido.presentacion, factor: elegido.factor } : null,
         confianza, sugeridos: sugeridos.filter((x) => x.c.presentacionId !== elegido?.presentacionId).map((x) => x.c),

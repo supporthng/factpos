@@ -22,7 +22,7 @@ interface Linea {
 /** Lo que devuelve el lector de facturas (borrador por revisar) */
 interface Sugerido { presentacionId: string; nombre: string; presentacion: string; factor: string }
 interface ItemLeido {
-  codigo: string | null; descripcion: string; cantidad: number; costo: number; presentacionId: string | null;
+  codigo: string | null; codigoBarras?: string | null; descripcion: string; cantidad: number; costo: number; presentacionId: string | null;
   confianza: "CODIGO" | "NOMBRE" | "NINGUNA"; sugeridos: Sugerido[];
   /** true: cantidad y costo vienen por UNIDAD (la factura trae cajas de N); empaque = cómo se interpretó */
   porUnidad?: boolean; empaque?: string | null;
@@ -186,11 +186,12 @@ function CrearProductoCompra({ item, proveedorId, onCerrar, onCreado }: {
     setGuardando(true); setMsg("");
     try {
       const cod = (item.codigo ?? "").trim();
+      const barras = /^\d{8,14}$/.test(item.codigoBarras ?? "") ? item.codigoBarras! : "";
       const r = await api<{ id: string }>("/central/productos", { metodo: "POST", cuerpo: {
-        sku: cod ? cod.slice(0, 30).toUpperCase() : "P" + Date.now().toString(36).slice(-6).toUpperCase(),
+        sku: (cod || barras) ? (cod || barras).slice(0, 30).toUpperCase() : "P" + Date.now().toString(36).slice(-6).toUpperCase(),
         nombre: nombre.trim(), categoriaId: categoriaId || null, tipo: "INVENTARIABLE", impuestoId: impuesto.id, precioIncluyeItbis: true,
         costoReferencia: String(Math.round(item.costo * 100) / 100),
-        presentaciones: [{ nombre: "Unidad", factor: "1", codigos: [], precios: { "1": n(precio).toFixed(2) }, porcentajes: {}, bases: {} }],
+        presentaciones: [{ nombre: "Unidad", factor: "1", codigos: barras ? [barras] : [], precios: { "1": n(precio).toFixed(2) }, porcentajes: {}, bases: {} }],
         sucursales: sucursales.map((s) => ({ sucursalId: s.id, stockMinimo: "0", stockMaximo: null, ubicacion: null, activo: true })),
         // Con el código del proveedor guardado, la próxima factura de este proveedor empareja este producto sola
         proveedores: proveedorId ? [{ proveedorId, codigoProveedor: cod ? cod.slice(0, 40) : null, ultimoCosto: String(Math.round(item.costo * 100) / 100), principal: true }] : [],
@@ -203,7 +204,7 @@ function CrearProductoCompra({ item, proveedorId, onCerrar, onCreado }: {
     <div className="fondo-modal" onMouseDown={onCerrar}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <h3>Crear producto nuevo</h3>
-        <p className="suave pequeno">De la factura: <b>{item.descripcion}</b>{item.codigo ? ` · código ${item.codigo}` : ""} · {item.cantidad} × {rd(item.costo)} (sin ITBIS)</p>
+        <p className="suave pequeno">De la factura: <b>{item.descripcion}</b>{item.codigoBarras ? ` · código de barras ${item.codigoBarras}` : item.codigo ? ` · código ${item.codigo}` : ""} · {item.cantidad} × {rd(item.costo)} (sin ITBIS)</p>
         <label className="campo"><span>Nombre</span><input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} /></label>
         <label className="campo"><span>Categoría</span>
           <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
@@ -302,6 +303,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   const [provNuevo, setProvNuevo] = useState<string | null>(null);
   const lector = useDatos<{ cupo: number; usadas: number; disponible: boolean; error?: string }>("/central/compras/lector/estado");
   const [leyendo, setLeyendo] = useState(false);
+  const [progreso, setProgreso] = useState("");
   const [pend, setPend] = useState<ItemLeido[]>(() => (borrador?.datos?.pend as ItemLeido[] | undefined) ?? []);
   const [leidaInfo, setLeidaInfo] = useState<string>("");
 
@@ -339,36 +341,46 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
     : (lector.datos as { error?: string } | undefined)?.error
       ? `no se pudo consultar al portal (${(lector.datos as { error?: string }).error}).`
       : "el portal de FactPOS todavía no tiene activada la lectura con IA (falta la llave ANTHROPIC_API_KEY en el portal).";
-  const leerFactura = async (archivo: File | undefined) => {
-    if (!archivo) return;
-    setLeyendo(true); setMsg(""); setLeidaInfo("");
+  /** Lee un archivo con la IA: el servidor trabaja en segundo plano y aquí se consulta cada 3 s (hasta 3 min) */
+  const leerUno = async (archivo: File): Promise<FacturaLeida> => {
+    const { tipo, datos } = await prepararArchivo(archivo);
+    const { trabajoId } = await api<{ trabajoId: string }>("/central/compras/leer-factura", { cuerpo: { tipo, datos } });
+    for (let i = 0; i < 60; i++) {
+      await new Promise((ok) => setTimeout(ok, 3000));
+      let est: { estado: string; resultado?: FacturaLeida; error?: string };
+      try { est = await api(`/central/compras/leer-factura/${trabajoId}`); }
+      catch (e) { if (/conexi/i.test((e as Error).message)) continue; throw e; } // un corte breve del celular no cancela la lectura
+      if (est.estado === "ERROR") throw new Error(est.error ?? "No se pudo leer la factura");
+      if (est.estado === "LISTO" && est.resultado) return est.resultado;
+    }
+    throw new Error("La lectura tardó demasiado. Intente de nuevo con una foto más liviana.");
+  };
+
+  /** Una o varias fotos/PDF (las páginas de una misma factura): cada una se lee y se suma a la compra */
+  const leerFactura = async (archivos: File[]) => {
+    if (!archivos.length) return;
+    setLeyendo(true); setMsg(""); setLeidaInfo(""); setPend([]);
+    let lineasLeidas = 0, ultima: FacturaLeida | undefined;
     try {
-      const { tipo, datos } = await prepararArchivo(archivo);
-      const { trabajoId } = await api<{ trabajoId: string }>("/central/compras/leer-factura", { cuerpo: { tipo, datos } });
-      // La lectura corre en el servidor: se consulta cada 3 s (hasta 3 min) sin dejar una conexión larga abierta
-      let r: FacturaLeida | undefined;
-      for (let i = 0; i < 60 && !r; i++) {
-        await new Promise((ok) => setTimeout(ok, 3000));
-        let est: { estado: string; resultado?: FacturaLeida; error?: string };
-        try { est = await api(`/central/compras/leer-factura/${trabajoId}`); }
-        catch (e) { if (/conexi/i.test((e as Error).message)) continue; throw e; } // un corte breve del celular no cancela la lectura
-        if (est.estado === "ERROR") throw new Error(est.error ?? "No se pudo leer la factura");
-        if (est.estado === "LISTO") r = est.resultado;
+      for (let k = 0; k < archivos.length; k++) {
+        setProgreso(archivos.length > 1 ? `Leyendo la página ${k + 1} de ${archivos.length}…` : "");
+        const r = await leerUno(archivos[k]);
+        ultima = r; lineasLeidas += r.items.length;
+        setCab((c) => ({
+          ...c, proveedorId: r.proveedor.id ?? c.proveedorId, numeroFactura: r.numeroFactura ?? c.numeroFactura, ncfProveedor: r.ncf ?? c.ncfProveedor,
+          fechaFactura: r.fecha && r.fecha <= hoy() ? r.fecha : c.fechaFactura,
+          condicion: r.condicion ?? c.condicion, venceEn: r.vence ?? c.venceEn,
+        }));
+        if (!r.proveedor.id && r.proveedor.nombreLeido) setProvNuevo((x) => x ?? r.proveedor.nombreLeido);
+        agregarLeidas(r.items.filter((i) => i.presentacionId).map((i) => ({ presentacionId: i.presentacionId!, cantidad: i.cantidad, costo: i.costo })));
+        setPend((p) => [...p, ...r.items.filter((i) => !i.presentacionId)]);
+        if (archivos.length === 1 && r.aviso) setMsg(r.aviso);
       }
-      if (!r) throw new Error("La lectura tardó demasiado. Intente de nuevo con una foto más liviana.");
-      setCab((c) => ({
-        ...c, proveedorId: r.proveedor.id ?? c.proveedorId, numeroFactura: r.numeroFactura ?? c.numeroFactura, ncfProveedor: r.ncf ?? c.ncfProveedor,
-        fechaFactura: r.fecha && r.fecha <= hoy() ? r.fecha : c.fechaFactura,
-        condicion: r.condicion ?? c.condicion, venceEn: r.vence ?? c.venceEn,
-      }));
-      if (!r.proveedor.id && r.proveedor.nombreLeido) setProvNuevo(r.proveedor.nombreLeido);
-      agregarLeidas(r.items.filter((i) => i.presentacionId).map((i) => ({ presentacionId: i.presentacionId!, cantidad: i.cantidad, costo: i.costo })));
-      setPend(r.items.filter((i) => !i.presentacionId));
-      setLeidaInfo(`Factura leída: ${r.items.length} líneas${r.total ? ` · total ${rd(r.total)}` : ""}. Revise cada dato antes de registrar. Facturas leídas este mes: ${r.usadas} de ${r.cupo}.`);
-      if (r.aviso) setMsg(r.aviso);
+      setLeidaInfo(`Factura leída: ${lineasLeidas} líneas${archivos.length > 1 ? ` en ${archivos.length} páginas` : ultima?.total ? ` · total ${rd(ultima.total)}` : ""}. Revise cada dato antes de registrar.${ultima ? ` Facturas leídas este mes: ${ultima.usadas} de ${ultima.cupo}.` : ""}`);
       lector.recargar();
-    } catch (e) { setMsg((e as Error).message); }
-    finally { setLeyendo(false); }
+    } catch (e) {
+      setMsg(`${(e as Error).message}${lineasLeidas ? ` (Ya se cargaron ${lineasLeidas} líneas de las páginas anteriores.)` : ""}`);
+    } finally { setLeyendo(false); setProgreso(""); }
   };
 
   useEffect(() => {
@@ -504,14 +516,14 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
       <div className="migas"><button className="enlace" onClick={onCerrar}>Compras</button><span>/</span><span>Registrar compra</span></div>
       <Encabezado titulo="Registrar compra" descripcion="Busque cada producto, escriba cantidad y costo, y Enter. También puede leer la factura con IA.">
         <label className={"boton" + (!lectorOk ? " desactivado" : "")} title={motivoLector}>
-          {leyendo ? "Leyendo la factura…" : "📷 Leer factura"}
+          {leyendo ? (progreso || "Leyendo la factura…") : "📷 Leer factura"}
           <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} disabled={!lectorOk}
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
+            onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ""; void leerFactura(f); }} />
         </label>
         <label className={"boton" + (!lectorOk ? " desactivado" : "")} title={motivoLector}>
-          📄 Cargar factura
-          <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={!lectorOk}
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void leerFactura(f); }} />
+          📄 Cargar factura (una o varias páginas)
+          <input type="file" accept="image/*,application/pdf" multiple style={{ display: "none" }} disabled={!lectorOk}
+            onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ""; void leerFactura(f); }} />
         </label>
       </Encabezado>
       {lector.datos && !lector.datos.disponible && <Aviso tipo="info" texto={`El lector de facturas no está disponible: ${motivoLector}`} />}

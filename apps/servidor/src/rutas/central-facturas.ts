@@ -226,7 +226,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     if (permitidas && !permitidas.includes(ctx.sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
     return ctx;
   };
-  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida") })).min(1, "La factura necesita al menos un producto").max(200);
+  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional() })).min(1, "La factura necesita al menos un producto").max(200);
 
   /** Cajas con turno abierto: dónde se puede facturar */
   app.get("/central/facturas/cajas-abiertas", async (req) => {
@@ -241,9 +241,9 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
 
   /** Precios, ofertas e ITBIS de lo que se va a facturar (con los precios del nivel del cliente) */
   app.post("/central/facturas/cotizar", async (req) => {
-    const b = z.object({ cajaId: uuid, clienteId: uuid.optional(), items: ItemsSchema }).parse(req.body);
+    const b = z.object({ cajaId: uuid, clienteId: uuid.optional(), cuponCodigo: z.string().trim().min(1).max(30).optional(), items: ItemsSchema }).parse(req.body);
     const ctx = await cajaPermitida(req, b.cajaId);
-    return resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false));
+    return resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, cuponCodigo: b.cuponCodigo, items: b.items }, false));
   });
 
   app.post("/central/facturas", async (req, rep) => {
@@ -251,6 +251,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const b = z.object({
       cajaId: uuid, clienteId: uuid.optional(), tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]),
       notas: z.string().trim().max(300).optional(), ventaId: uuid.optional(), items: ItemsSchema,
+      cuponCodigo: z.string().trim().min(1).max(30).optional(), motivoDescuento: z.string().trim().max(200).optional(),
       pagos: z.array(z.object({
         formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]),
         monto: z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido"), recibido: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), referencia: z.string().max(60).optional(),
@@ -259,8 +260,18 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
     const usuarioId = usuarioDe(req);
+    // Descuentos manuales: solo con el permiso de aprobar descuentos (la persona que factura es quien los autoriza) y con motivo
+    const hayDescuento = b.items.some((i) => Number(i.descuentoManual ?? 0) > 0);
+    let autorizacion: string | undefined;
+    if (hayDescuento) {
+      if (!tienePermiso(permisos(req), "venta.descuento")) throw new ErrorNegocio("Los descuentos requieren el permiso de aprobar descuentos (supervisor).", 403);
+      if (!b.motivoDescuento || b.motivoDescuento.length < 5) throw new ErrorNegocio("Indique el motivo del descuento (mínimo 5 caracteres).");
+      const yo = (await pool.query<{ nombre: string }>("SELECT nombre FROM usuarios WHERE id = $1", [usuarioId])).rows[0];
+      autorizacion = autorizacionDirecta(usuarioId, yo?.nombre ?? "Administración", "venta.descuento", b.cajaId);
+    }
     const r = await enTransaccion((c) => registrarVenta(c, b.cajaId, {
       usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
+      cuponCodigo: b.cuponCodigo, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: b.motivoDescuento } : {}),
     }));
     await pool.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)

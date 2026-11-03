@@ -33,7 +33,8 @@ const HERRAMIENTA = {
         items: {
           type: "object",
           properties: {
-            codigo: { type: ["string", "null"], description: "Código o código de barras del producto si aparece" },
+            codigo: { type: ["string", "null"], description: "Código INTERNO del proveedor para este producto (columna «Código», «Item», «Material», «SAP», «Artículo»)" },
+            codigoBarras: { type: ["string", "null"], description: "Código de barras estándar (EAN-13, UPC-A de 12 o GTIN de 8 a 14 dígitos) SOLO si la factura lo imprime (columna «Código de barras», «EAN», o debajo de la descripción). Solo dígitos. No lo confundas con el código interno." },
             descripcion: { type: "string" },
             cantidad: { type: "number" },
             unidad: { type: ["string", "null"], description: "Texto de la columna de unidad / presentación tal como está impreso (p. ej. «15x22 oz», «70cl», «CAJA»)" },
