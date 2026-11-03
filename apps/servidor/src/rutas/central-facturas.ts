@@ -83,7 +83,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await cargar(req, id);
     const t = await datosTicket(pool, id);
     const x = await pool.query(
-      `SELECT s.nombre AS sucursal, c.nombre AS caja, u.nombre AS cajero,
+      `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero,
               (SELECT jsonb_build_object('numero', n.numero_interno, 'fecha', n.creado_en, 'motivo', n.motivo, 'por', ua.nombre)
                  FROM ventas n LEFT JOIN usuarios ua ON ua.id = n.usuario_id
                 WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU') LIMIT 1) AS anulacion

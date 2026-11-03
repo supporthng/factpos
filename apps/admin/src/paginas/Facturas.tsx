@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, esLocal, hoy, num, puede, rd } from "../api";
+import { imprimirCarta } from "../impresion";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
 /**
@@ -15,7 +16,8 @@ interface Detalle {
   subtotal: string; descuento: string; itbis: string; total: string; notas: string | null; anulada: boolean;
   anulacion: { numero: number; fecha: string; motivo: string; por: string | null } | null;
   cliente: { id: string; nombre: string; documento: string | null } | null;
-  fiscal: { encf: string; codigoSeguridad: string | null } | null;
+  sucursalId?: string;
+  fiscal: { encf: string; codigoSeguridad: string | null; fechaFirma?: string | null; urlQr?: string | null; venceSecuencia?: string | null } | null;
   lineas: { descripcion: string; cantidad: string; precio: string; total: string }[] | null;
   pagos: { formaPago: string; monto: string }[] | null;
 }
@@ -27,6 +29,24 @@ const NOMBRE: Record<string, string> = {
 const prefijo = (t: string) => (t.startsWith("E") ? "E" : t.startsWith("B") ? "B" : "FI-");
 const fecha = (v: string) => new Date(v).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" });
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+
+/** Factura en CARTA (8½ × 11): encabezado de la empresa, cliente, detalle, totales y, en e-CF, el QR y datos de la firma. */
+function imprimirCartaFactura(d: Detalle) {
+  void imprimirCarta({
+    titulo: NOMBRE[d.tipoDocumento] ?? d.tipoDocumento,
+    numero: d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`,
+    datos: [["Fecha", fecha(d.fecha)], ["Factura interna", String(d.numero)], ["Sucursal", d.sucursal], ...(d.cajero ? [["Atendido por", d.cajero] as [string, string]] : [])],
+    etiquetaCliente: "Facturado a",
+    cliente: d.cliente ? { nombre: d.cliente.nombre, documento: d.cliente.documento } : { nombre: "Consumidor final" },
+    lineas: (d.lineas ?? []).map((l) => ({ descripcion: l.descripcion, cantidad: num(l.cantidad, 3), precio: rd(l.precio), total: rd(l.total) })),
+    totales: [["Subtotal", rd(d.subtotal)], ...(Number(d.descuento) ? [["Descuento", rd(d.descuento)] as [string, string]] : []), ["ITBIS", rd(d.itbis)]],
+    total: ["Total", rd(d.total)],
+    notas: d.notas,
+    pie: [(d.pagos ?? []).length ? `Forma de pago: ${(d.pagos ?? []).map((p) => `${p.formaPago} ${rd(p.monto)}`).join(" · ")}` : "", d.fiscal ? "" : "Documento sin comprobante fiscal."],
+    fiscal: d.fiscal ? { encf: d.fiscal.encf, codigoSeguridad: d.fiscal.codigoSeguridad, fechaFirma: d.fiscal.fechaFirma, venceSecuencia: d.fiscal.venceSecuencia, urlQr: d.fiscal.urlQr } : null,
+    anulada: d.anulada,
+  }, d.sucursalId);
+}
 
 /** Abre una página lista para imprimir (la representación con QR se reimprime desde la caja). */
 function imprimir(d: Detalle) {
@@ -149,7 +169,8 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
       <div className="modal ancho" onMouseDown={(e) => e.stopPropagation()}>
         <div className="fila-acciones" style={{ marginTop: 0 }}>
           <h2 style={{ margin: 0 }}>{d ? `${d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`}` : "Factura"}</h2><span className="flex" />
-          {d && <button className="boton chico" onClick={() => imprimir(d)}>Imprimir</button>}
+          {d && <button className="boton chico" onClick={() => imprimirCartaFactura(d)} title="Hoja carta 8½ × 11">Imprimir carta</button>}
+          {d && <button className="boton chico" onClick={() => imprimir(d)} title="Ticket angosto">Imprimir ticket</button>}
         </div>
         <Aviso texto={error} />
         {msg && <Aviso texto={msg} tipo={/modificada|anulada$|corregida/.test(msg) ? "ok" : "error"} />}
