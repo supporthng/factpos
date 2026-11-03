@@ -16,10 +16,12 @@ interface Trabajo { empresaId: string; creado: number; estado: "LEYENDO" | "LIST
 const trabajos = new Map<string, Trabajo>();
 
 interface Leida {
+  columnas?: string[];
   proveedor?: { nombre: string | null; rnc: string | null };
   numeroFactura?: string | null; ncf?: string | null; fecha?: string | null; vence?: string | null; condicion?: "CONTADO" | "CREDITO" | null;
   preciosIncluyenItbis: boolean; subtotal?: number | null; itbis?: number | null; total?: number | null;
-  items: { codigo?: string | null; descripcion: string; cantidad: number; unidad?: string | null; unidadesPorEmpaque?: number | null; precioUnitario: number; importe?: number | null }[];
+  items: { codigo?: string | null; descripcion: string; cantidad: number; unidad?: string | null; unidadesPorEmpaque?: number | null; unidadesTotales?: number | null;
+    precioUnitario: number; importe?: number | null; descuento?: number | null; impuestoSelectivo?: number | null; itbisLinea?: number | null; netoSinItbis?: number | null }[];
 }
 interface Candidato { presentacionId: string; productoId: string; nombre: string; presentacion: string; factor: string }
 
@@ -36,11 +38,16 @@ export function parecido(factura: string, producto: string) {
   return (2 * comunes) / (a.size + b.size);
 }
 
-/** Unidades por empaque: lo dice la IA o se deduce de textos como «15x22 oz» o «12 x 1L». Solo enteros de 2 a 1000. */
+/** La columna de unidad habla de un empaque (caja, paquete, fardo…) o de un «NxM» (24x350ML) */
+const ES_EMPAQUE = /^\s*(caja|caj|cj|cx|paq|pack|fardo|bulto|ca\s*$|\d+\s*[x×]\s*\d)/i;
+export const esEmpaque = (unidad: string | null | undefined) => ES_EMPAQUE.test(unidad ?? "");
+
+/** Unidades por empaque: lo dice la IA o se deduce de «15x22 oz», «CJ6BOT», «CAJA06», «Caja-12», «CAJ / 24 PZA», «Paquete-10». Solo enteros de 2 a 1000. */
 export function unidadesPorEmpaque(i: { unidadesPorEmpaque?: number | null; unidad?: string | null }): number | null {
   const d = Number(i.unidadesPorEmpaque);
   if (Number.isInteger(d) && d >= 2 && d <= 1000) return d;
-  const m = /^\s*(\d{1,4})\s*[x×]\s*\d/i.exec(i.unidad ?? "");
+  const u = i.unidad ?? "";
+  const m = /^\s*(\d{1,4})\s*[x×]\s*\d/i.exec(u) ?? /(?:caja|caj|cj|ca|paquete|paq|pack)\D{0,3}(\d{1,3})/i.exec(u);
   const n = m ? Number(m[1]) : 0;
   return n >= 2 && n <= 1000 ? n : null;
 }
@@ -118,6 +125,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     const porId = new Map(catalogo.map((c) => [c.presentacionId, c]));
 
     const tasa = f.itbis && f.subtotal && f.subtotal > 0 ? Math.min(0.18, Math.max(0, f.itbis / f.subtotal)) : 0.18;
+    let sumaNeto = 0;
     const items = f.items.map((i) => {
       const cod = (i.codigo ?? "").trim();
       const exacto = porBarra.get(cod) ?? porProveedor.get(cod);
@@ -126,21 +134,36 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       const sugeridos = catalogo.map((c) => ({ c, s: parecido(i.descripcion, `${c.nombre} ${c.presentacion === "Unidad" ? "" : c.presentacion}`) }))
         .filter((x) => x.s > 0.25).sort((x, y) => y.s - x.s).slice(0, 4);
       if (!elegido && sugeridos[0] && sugeridos[0].s >= 0.75 && (!sugeridos[1] || sugeridos[0].s - sugeridos[1].s >= 0.1)) { elegido = sugeridos[0].c; confianza = "NOMBRE"; }
-      // Costo SIN ITBIS: si la factura imprime precios con ITBIS se le quita
-      let cantidad = i.cantidad;
-      let costo = f.preciosIncluyenItbis ? i.precioUnitario / (1 + tasa) : i.precioUnitario;
-      // Empaque («5 × 15x22 oz» = 5 cajas de 15 botellas): el costo que importa es el de CADA UNIDAD
+      // ---- Costo REAL de la línea, sin ITBIS: precio × cantidad − descuento + impuesto selectivo (ISC), repartido entre las unidades que llegaron
+      const bruto = i.cantidad * i.precioUnitario;
+      const neto = i.netoSinItbis && i.netoSinItbis > 0
+        ? i.netoSinItbis
+        : i.itbisLinea && i.itbisLinea > 0 ? i.itbisLinea / tasa
+        : Math.max(0, bruto - (i.descuento ?? 0) + (i.impuestoSelectivo ?? 0)) / (f.preciosIncluyenItbis ? 1 + tasa : 1);
+      // ---- Unidades sueltas: lo dice la IA (si es coherente) o se deduce de la columna de unidad («CAJ / 24 PZA», «15x22 oz»…)
       const emp = unidadesPorEmpaque(i);
+      let unidades = i.cantidad;
+      const ut = Number(i.unidadesTotales);
+      if (ut > 0 && (Math.abs(ut - i.cantidad) < 1e-6 || (emp && Math.abs(ut - i.cantidad * emp) < 1e-6))) unidades = ut;
+      else if (emp && esEmpaque(i.unidad)) unidades = i.cantidad * emp;
+      const porEmpaque = unidades > i.cantidad + 1e-6 ? unidades / i.cantidad : 1; // unidades que trae cada empaque cobrado
+      const costoUnidad = unidades > 0 ? neto / unidades : 0;
+      let cantidad = i.cantidad;
+      let costo = i.cantidad > 0 ? neto / i.cantidad : 0; // sin empaque: por lo cobrado (ya con descuento e impuesto selectivo)
       let porUnidad = false;
-      let empaque: string | null = null;
-      if (emp) {
-        empaque = `${i.cantidad} × empaque de ${emp} (${i.unidad ?? ""}) = ${i.cantidad * emp} unidades`.replace(" ()", "");
-        if (elegido) { const el = elegido; const caja = catalogo.find((c) => c.productoId === el.productoId && Number(c.factor) === emp); if (caja) elegido = caja; }
+      const partes: string[] = [];
+      if (porEmpaque > 1) partes.push(`${i.cantidad} × empaque de ${Math.round(porEmpaque * 100) / 100} (${i.unidad ?? ""}) = ${unidades} unidades`.replace(" ()", ""));
+      if (i.descuento && i.descuento > 0) partes.push(`descuento −${i.descuento}`);
+      if (i.impuestoSelectivo && i.impuestoSelectivo > 0) partes.push(`incluye selectivo +${i.impuestoSelectivo}`);
+      if (porEmpaque > 1) {
+        // Si el producto ya tiene la presentación «caja» de ese tamaño, se usa; si no, la presentación elegida (o por unidad)
+        if (elegido) { const el = elegido; const caja = catalogo.find((c) => c.productoId === el.productoId && Math.abs(Number(c.factor) - porEmpaque) < 1e-6); if (caja) elegido = caja; }
         const fp = elegido ? Number(porId.get(elegido.presentacionId)?.factor ?? 1) : 1;
-        if (elegido && fp === emp) { /* ya es la presentación «caja»: cantidad y costo van por caja */ }
-        else if (elegido) { cantidad = (i.cantidad * emp) / fp; costo = (costo / emp) * fp; }
-        else { cantidad = i.cantidad * emp; costo = costo / emp; porUnidad = true; }
+        if (elegido) { cantidad = unidades / fp; costo = costoUnidad * fp; }
+        else { cantidad = unidades; costo = costoUnidad; porUnidad = true; }
       }
+      const empaque = partes.length ? partes.join(" · ") : null;
+      sumaNeto += neto;
       return {
         codigo: cod || null, descripcion: i.descripcion, unidad: i.unidad ?? null,
         cantidad: Math.round(cantidad * 10000) / 10000, costo: Math.round(costo * 10000) / 10000, importe: i.importe ?? null, porUnidad, empaque,
@@ -149,8 +172,13 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       };
     });
 
+    // Cuadre: las líneas (sin ITBIS, con descuento y selectivo) deben sumar el subtotal de la factura; si no, falta una línea o una página
+    const esperado = [f.subtotal, f.total != null && f.itbis != null ? f.total - f.itbis : null].filter((x): x is number => x != null && x > 0);
+    const cuadra = !esperado.length || esperado.some((e) => Math.abs(sumaNeto - e) / e <= 0.02);
+    const aviso = cuadra ? null : `Las líneas leídas suman ${Math.round(sumaNeto * 100) / 100} y la factura dice ${esperado[0]}: puede faltar una línea o una página (cada página se carga por separado), o algún precio quedó mal interpretado. Revise antes de registrar.`;
+
     return {
-      cupo: r.cupo, usadas: r.usadas,
+      cupo: r.cupo, usadas: r.usadas, aviso, columnas: f.columnas ?? [],
       proveedor: { id: prov?.id ?? null, nombreLeido: f.proveedor?.nombre ?? null, rncLeido: rnc || null },
       numeroFactura: f.numeroFactura ?? null, ncf: (f.ncf ?? "").replace(/\s/g, "").toUpperCase() || null,
       fecha: f.fecha ?? null, vence: f.vence ?? null, condicion: f.condicion ?? (f.vence ? "CREDITO" : null),

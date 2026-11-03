@@ -28,7 +28,7 @@ interface ItemLeido {
   porUnidad?: boolean; empaque?: string | null;
 }
 interface FacturaLeida {
-  cupo: number; usadas: number; proveedor: { id: string | null; nombreLeido: string | null; rncLeido: string | null };
+  cupo: number; usadas: number; aviso?: string | null; proveedor: { id: string | null; nombreLeido: string | null; rncLeido: string | null };
   numeroFactura: string | null; ncf: string | null; fecha: string | null; vence: string | null; condicion: "CONTADO" | "CREDITO" | null;
   total: number | null; items: ItemLeido[];
 }
@@ -365,6 +365,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
       agregarLeidas(r.items.filter((i) => i.presentacionId).map((i) => ({ presentacionId: i.presentacionId!, cantidad: i.cantidad, costo: i.costo })));
       setPend(r.items.filter((i) => !i.presentacionId));
       setLeidaInfo(`Factura leída: ${r.items.length} líneas${r.total ? ` · total ${rd(r.total)}` : ""}. Revise cada dato antes de registrar. Facturas leídas este mes: ${r.usadas} de ${r.cupo}.`);
+      if (r.aviso) setMsg(r.aviso);
       lector.recargar();
     } catch (e) { setMsg((e as Error).message); }
     finally { setLeyendo(false); }
