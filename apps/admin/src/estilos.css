@@ -33,7 +33,7 @@ html, body, #root { height: 100%; margin: 0; }
 .selector-modo button { border: 0; background: none; padding: 8px 14px; border-radius: 9px; font-weight: 600; color: var(--suave); cursor: pointer; }
 .selector-modo button.activo { background: var(--primario); color: var(--texto-sobre-primario, #fff); }
 /* Tamaño de la pantalla (Apariencia): toda la administración se escala con --escala */
-#root { zoom: var(--escala, 1); height: calc(100vh / var(--escala, 1)); }
+#root { zoom: var(--escala, 1); height: calc(100vh / var(--escala, 1)); text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 body { background: var(--fondo); }
 button { font: inherit; cursor: pointer; color: inherit; }
 input, select { font: inherit; color: var(--texto); background: var(--panel); border: 1px solid var(--borde-fuerte); border-radius: 8px; padding: 8px 10px; outline: none; min-width: 0; }
@@ -830,7 +830,7 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 /* Opción dentro de una función: recuadro horizontal */
 .mosaico-opcion { align-items: center; gap: 16px; padding: 18px 18px 18px 18px; min-height: 104px; }
 /* Las opciones usan los colores de la marca del cliente (no el color de cada función): icono sólido y recuadro con un tinte */
-.mosaico-opcion { background: color-mix(in srgb, var(--c) 6%, var(--panel)); border-color: color-mix(in srgb, var(--c) 24%, var(--borde)); }
+.mosaico-opcion { background: var(--panel); border-color: var(--borde); }
 .mosaico-opcion .mosaico-icono { color: #fff; background: var(--c); box-shadow: 0 6px 14px -8px var(--c); }
 .mosaico-opcion .mosaico-flecha { color: color-mix(in srgb, var(--c) 60%, var(--borde-fuerte)); }
 .mosaico-flecha { margin-left: auto; font-size: 24px; color: var(--borde-fuerte); transition: transform .16s, color .16s; }

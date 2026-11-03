@@ -185,6 +185,8 @@ const GRUPOS: Record<string, { slug: string; i: NombreIcono; color: string; d: s
   "Configuración": { slug: "configuracion", i: "ajustes", color: "#475569", d: "Sucursales, usuarios, marca y licencia" },
   "Portal FactPOS": { slug: "portal", i: "clientes", color: "#0f766e", d: "Clientes, licencias y equipo del portal" },
 };
+/** Cada opción lleva su propio color (en orden, para que las vecinas no se parezcan): así la pantalla no queda toda del mismo tono. */
+const PALETA_OPCIONES = ["#0f766e", "#2563eb", "#d97706", "#7c3aed", "#16a34a", "#db2777", "#0891b2", "#ea580c", "#4f46e5", "#65a30d"];
 const datosGrupo = (g: string) => GRUPOS[g] ?? { slug: g.toLowerCase(), i: "resumen" as NombreIcono, color: "#475569", d: "" };
 
 const CATALOGO_VACIO: CatalogoAdmin = { sucursales: [], productos: [], categorias: [], usuarios: [] };
@@ -407,8 +409,8 @@ function AppInterna() {
                   <div><h1>{grupoAbierto}</h1><p className="suave">{datosGrupo(grupoAbierto).d}</p></div>
                 </div>
                 <div className="cuadricula cuadricula-opciones">
-                  {enGrupo(grupoAbierto).map((s) => (
-                    <button key={s.id} className="mosaico mosaico-opcion" onClick={() => setSeccion(s.id)}>
+                  {enGrupo(grupoAbierto).map((s, k) => (
+                    <button key={s.id} className="mosaico mosaico-opcion" style={{ "--c": PALETA_OPCIONES[k % PALETA_OPCIONES.length] } as React.CSSProperties} onClick={() => setSeccion(s.id)}>
                       <span className="mosaico-icono"><Icono n={s.i} tamano={24} /></span>
                       <span className="mosaico-texto"><b>{s.titulo}</b><small>{DESCRIPCION[s.id] ?? ""}</small></span>
                       <span className="mosaico-flecha" aria-hidden="true">›</span>
