@@ -179,7 +179,7 @@ export async function rutasCentralInventario(app: FastifyInstance) {
   // -------------------------------------------------------------------
   /**
    * Existencia desde la pantalla de Productos (al crear, al editar o al importar): entrada al kardex como ajuste.
-   * Solo si un administrador activó «agregar_existencia» en Configuración › Seguridad.
+   * Solo si un administrador activó «agregar_existencia» en Sistema › Seguridad.
    */
   app.post("/central/productos-existencia", async (req, rep) => {
     const e = empresaDe(req);
@@ -326,7 +326,7 @@ export async function rutasCentralInventario(app: FastifyInstance) {
   });
 
   /**
-   * Borrar inventario (deja en cero el almacén). Está en Configuración › Seguridad: la función debe estar activada,
+   * Borrar inventario (deja en cero el almacén). Está en Sistema › Seguridad: la función debe estar activada,
    * el usuario debe ser administrador (la ruta exige «*»), escribir su contraseña y la frase de confirmación.
    * No borra productos ni historial: genera ajustes que quedan en el kardex.
    */

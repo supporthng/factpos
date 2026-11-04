@@ -4,7 +4,7 @@ import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 
 /**
- * DISPOSITIVOS REMOTOS. Con «Exigir dispositivo autorizado» (Configuración › Seguridad) encendido, quien entra a la
+ * DISPOSITIVOS REMOTOS. Con «Exigir dispositivo autorizado» (Sistema › Seguridad) encendido, quien entra a la
  * administración por internet (túnel) necesita que un administrador haya autorizado ese equipo: el app (o el navegador)
  * pide acceso una vez, el administrador lo autoriza o lo niega desde el servidor y, desde entonces, el equipo manda su
  * credencial en la cabecera x-dispositivo. En la red local no se pide.

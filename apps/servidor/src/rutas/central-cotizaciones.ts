@@ -166,7 +166,7 @@ export async function rutasCentralCotizaciones(app: FastifyInstance) {
     const id = uuid.parse((req.params as { id: string }).id);
     const empresaId = empresaDe(req);
     const b = z.object({ para: z.array(correo).min(1, "Escriba el correo del cliente").max(5), mensaje: z.string().trim().max(1000).optional() }).parse(req.body);
-    if (!(await correoListo(empresaId))) throw new ErrorNegocio("Falta configurar el correo: Configuración › Correo y envíos.");
+    if (!(await correoListo(empresaId))) throw new ErrorNegocio("Falta configurar el correo: Negocio › Correo y envíos.");
     const cot = await cargar(empresaId, id);
     const marca = await marcaDe(empresaId);
     const mail = correoCotizacion(marca, cot, b.mensaje);
