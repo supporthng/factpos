@@ -8,6 +8,7 @@ import { useConexion, venderSinServidor } from "./contingencia";
 import type { Usuario } from "./App";
 import type { Cliente } from "./Venta";
 import { Modal } from "./Venta";
+import { PinSupervisor, type Aprobacion } from "./Operaciones";
 
 import type { VentaRegistrada } from "./Ticket";
 export type ResultadoVenta = VentaRegistrada;
@@ -56,6 +57,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const [refTarjeta, setRefTarjeta] = useState("");
   const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
   const [credito, setCredito] = useState(metodo === "CREDITO" ? total : "");
+  /** Aprobación para vender a crédito: propia (si el cajero tiene el permiso) o de un supervisor con su PIN */
+  const [aprobCredito, setAprobCredito] = useState<Aprobacion | null>(null);
   const [recibido, setRecibido] = useState("");
   const tipoFactura = tipo;
   /** La venta se emite y se transmite igual; solo se omite el ticket al terminar */
@@ -92,10 +95,11 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
     if (n(tarjeta).gt(0) && !/^[A-Za-z0-9-]{4,}$/.test(refTarjeta.trim())) return "Escriba el número de aprobación del voucher de la tarjeta";
     if (efectivo.gt(0) && recibido && cambio.lt(0)) return "El efectivo recibido no alcanza";
     if (n(credito).gt(0) && !cliente) return "Para vender a crédito seleccione un cliente (F4)";
+    if (n(credito).gt(0) && !aprobCredito) return "La venta a crédito necesita la aprobación de un supervisor";
     if (!sinLimiteCredito && n(credito).gt(disponibleCredito)) return `Crédito disponible: ${rd(disponibleCredito.toFixed(2))}`;
     if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) return "El e-CF y el NCF requieren cliente con RNC o cédula y nombre";
     return "";
-  }, [otros, efectivo, recibido, cambio, credito, cliente, sinLimiteCredito, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
+  }, [otros, efectivo, recibido, cambio, credito, cliente, sinLimiteCredito, aprobCredito, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
   // e-CF y NCF exigen cliente: si falta, se abre sola la ventana de clientes (al elegirlos y al abrir el cobro)
   const pedirCliente = () => { if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) onBuscarCliente(); };
   const pidioCliente = useRef(false);
@@ -134,7 +138,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         cuerpo: {
           ventaId, usuarioId: usuario.id, clienteId: cliente?.id, cuponCodigo: cupon?.codigo,
           tipoDocumento: tipoFactura, items, pagos,
-          autorizacionDescuento: aprobacionDescuento, motivoDescuento, notas: notas || undefined,
+          autorizacionDescuento: aprobacionDescuento, autorizacionCredito: n(credito).gt(0) ? aprobCredito?.token : undefined, motivoDescuento, notas: notas || undefined,
         },
       });
       onVendido({ ...r, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null }, { sinImprimir });
@@ -205,6 +209,13 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
                 <div className="cobro-total" style={{ margin: "8px 0" }}><span>A crédito</span><b>{rd(total)}</b></div>
                 <button className="boton fantasma chico" onClick={onBuscarCliente}>{cliente ? "Cambiar cliente" : "Buscar cliente"}</button>
               </div>
+            )}
+            {n(credito).gt(0) && cliente && (
+              aprobCredito
+                ? <p className="suave" style={{ margin: "4px 0" }}>Venta a crédito autorizada por <b>{aprobCredito.supervisor}</b>.</p>
+                : <div className="cobro2-bloque">
+                    <PinSupervisor ajustes={ajustes} permiso="venta.credito" automatico textoBoton="Aprobar venta a crédito" onAprobado={setAprobCredito} />
+                  </div>
             )}
             {(forma === "TARJETA" || forma === "MIXTO") && (
               <div className="cobro2-bloque">

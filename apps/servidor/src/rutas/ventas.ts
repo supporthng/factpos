@@ -40,6 +40,8 @@ const VentaSchema = CarritoSchema.extend({
   ventaId: z.string().uuid().optional(),
   /** Autorización del supervisor (requerida si hay descuentos manuales) */
   autorizacionDescuento: z.string().max(2000).optional(),
+  /** Aprobación para vender a crédito (propia si el cajero tiene el permiso, o de un supervisor) */
+  autorizacionCredito: z.string().max(2000).optional(),
   motivoDescuento: z.string().trim().max(200).optional(),
   /** Observaciones de la venta (salen en el ticket) */
   notas: z.string().trim().max(300).optional(),
@@ -63,6 +65,7 @@ export interface VentaInput extends Carrito {
   usuarioId: string;
   ventaId?: string;
   autorizacionDescuento?: string;
+  autorizacionCredito?: string;
   motivoDescuento?: string;
   notas?: string;
   tipoDocumento: "E32" | "E31" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN";
@@ -254,8 +257,12 @@ export async function registrarVenta(
   }
 
   const credito = pagos.filter((p) => p.formaPago === "CREDITO").reduce((a, p) => a.plus(p.monto), new Decimal(0));
+  let aprobCredito: ReturnType<typeof verificarAutorizacion> | null = null;
   if (credito.gt(0)) {
     if (!body.clienteId) throw new ErrorNegocio("La venta a crédito requiere un cliente");
+    // Vender a crédito: permiso del cajero (aprobación propia) o PIN de un supervisor
+    if (!body.autorizacionCredito) throw new ErrorNegocio("La venta a crédito necesita el permiso del cajero o la aprobación de un supervisor", 403);
+    aprobCredito = verificarAutorizacion(body.autorizacionCredito, "venta.credito", cajaId);
     const s = await c.query<{ limite: string; saldo: string }>(
       `SELECT c.limite_credito AS limite, COALESCE((SELECT SUM(m.monto) FROM cxc_movimientos m WHERE m.cliente_id = c.id), 0) AS saldo
          FROM clientes c WHERE c.id = $1`,
@@ -370,6 +377,13 @@ export async function registrarVenta(
     );
   }
 
+  if (aprobCredito) {
+    await c.query(
+      `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
+       VALUES ($1,$2,$3,$4,'venta.credito','venta',$5,$6)`,
+      [uuidv7(), ctx.sucursalId, body.usuarioId, aprobCredito.supervisorId, ventaId, JSON.stringify({ monto: credito.toFixed(2), cliente: body.clienteId })],
+    );
+  }
   if (aprobacion) {
     await c.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
