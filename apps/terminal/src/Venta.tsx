@@ -645,7 +645,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
           <div className="pv-acciones-linea" aria-label="Acciones de la línea seleccionada">
             <button className="boton fantasma" disabled={!hayLinea} onClick={() => sel >= 0 && quitar(sel)}><Icono n="basura" />Quitar <kbd>Supr</kbd></button>
-            <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.esPesable} onClick={() => (document.querySelector(".pv-fila.seleccionada .celda-cantidad input") as HTMLInputElement | null)?.select()}>
+            <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.esPesable} onClick={() => { const q = document.querySelector(".pv-fila.seleccionada .celda-cantidad input") as HTMLInputElement | null; q?.focus(); q?.select(); if (q) window.dispatchEvent(new CustomEvent("factpos-teclado", { detail: q })); }}>
               <Icono n="editar" />Cantidad <kbd>+</kbd><kbd>−</kbd>
             </button>
             <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.precioVariable} onClick={() => setModal("cambiarPrecio")}><Icono n="etiqueta" />Precio <kbd>Alt+P</kbd></button>

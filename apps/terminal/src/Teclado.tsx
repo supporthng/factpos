@@ -105,6 +105,16 @@ export function TecladoPantalla() {
     return () => { document.removeEventListener("pointerdown", abajo, true); document.removeEventListener("focusin", adentro, true); };
   }, []);
 
+  // Otras pantallas pueden pedirlo por código (ej. el botón «Cantidad»): window.dispatchEvent(new CustomEvent("factpos-teclado", { detail: campo }))
+  useEffect(() => {
+    const abrirPara = (e: Event) => {
+      const el = (e as CustomEvent).detail;
+      if (modoAjuste() !== "nunca" && esCampoDeTexto(el)) { manual.current = false; setCampo(el); }
+    };
+    window.addEventListener("factpos-teclado", abrirPara);
+    return () => window.removeEventListener("factpos-teclado", abrirPara);
+  }, []);
+
   // El campo desapareció (se cerró la ventana): se cierra también el teclado.
   useEffect(() => {
     if (!campo) return;
