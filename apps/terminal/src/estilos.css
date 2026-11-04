@@ -248,9 +248,9 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 
 .tarjeta-producto:focus-visible { outline: 3px solid var(--info); outline-offset: 2px; }
 .tarjeta-producto.en-carrito { border-color: var(--primario); }
 .tarjeta-producto.agotado .arte { filter: grayscale(.8); opacity: .6; }
-.arte { position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center;
+.arte { position: relative; aspect-ratio: 1 / 1; overflow: hidden; display: grid; place-items: center;
   background: radial-gradient(120% 90% at 50% 100%, color-mix(in srgb, var(--cat) 30%, transparent), transparent 70%), var(--panel-2); }
-.arte img { width: 100%; height: 100%; object-fit: contain; padding: 10px; }
+.arte img { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; object-fit: contain; object-position: center; padding: 8px; mix-blend-mode: multiply; }
 .arte-svg { width: 62%; height: 72%; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
 .chip-cat { position: absolute; top: 8px; left: 8px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(15,25,35,.72); color: var(--texto); backdrop-filter: blur(4px); }
 .chip-oferta { position: absolute; top: 8px; right: 8px; max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: var(--oferta); color: #3a2600; }
