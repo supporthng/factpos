@@ -1223,3 +1223,15 @@ textarea { line-height: 1.35; }
 .mosaico-grupo .mosaico-texto b { grid-column: 2; grid-row: 1; font-size: 18px; }
 .mosaico-grupo .mosaico-texto small { grid-column: 1 / -1; grid-row: 2; }
 .mosaico-grupo .mosaico-pie { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+/* Precios: los tres niveles bien rotulados */
+.pn { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 12px; align-items: stretch; margin-top: 8px; }
+.pn-nivel { --n: var(--primario); display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--n) 35%, var(--borde)); border-left: 5px solid var(--n); border-radius: 12px; background: color-mix(in srgb, var(--n) 6%, var(--panel)); margin: 0; }
+.pn-nivel b { font-size: 18px; letter-spacing: -.2px; }
+.pn-nivel small { color: var(--suave); font-size: 12.5px; }
+.pn-nivel .con-sufijo { margin-top: 6px; max-width: 150px; }
+.pn-etiqueta { align-self: flex-start; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--n); border-radius: 999px; padding: 2px 10px; }
+.pn-1 { --n: #0f766e; }
+.pn-2 { --n: #2563eb; }
+.pn-3 { --n: #7c3aed; }
+.pn-guardar { align-self: end; }
+@media (max-width: 900px) { .pn { grid-template-columns: 1fr; } .pn-guardar { align-self: stretch; } }
