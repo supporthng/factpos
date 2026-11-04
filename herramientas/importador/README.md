@@ -16,7 +16,8 @@ Se puede volver a correr: los productos llevan SKU `WIL-<número anterior>` y lo
 
 ## Qué carga y qué no
 - Carga: categorías, proveedores, clientes (con RNC o cédula válidos), productos (precio 1, costo, código de barras, ITBIS, foto, proveedor) y la existencia inicial como un ajuste en el kardex.
-- No carga como documentos: ventas, compras ni cuentas por pagar. Quedan en CSV de consulta (no tienen e-NCF de FactPOS). Los saldos pendientes por pagar se cargan a mano.
+- Historial de ventas: se carga como **solo consulta y reportes** (Reportes › Historial anterior). No son facturas de FactPOS: sin e-NCF, no mueven existencias, caja ni cuentas por cobrar y no entran en los reportes fiscales. Se puede volver a correr sin duplicar. `--sin-historial` lo omite.
+- No carga como documentos: compras ni cuentas por pagar. Quedan en CSV de consulta. Los saldos pendientes por pagar se cargan a mano.
 - No trae claves de usuario (no sirven en FactPOS); `usuarios_del_sistema_anterior.csv` sirve de lista para crearlos.
 
 ## Agregar otro sistema

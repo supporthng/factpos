@@ -97,6 +97,8 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "traspasos": { vista: "rpt_traspasos", orden: "enviado_en DESC" },
   "delivery": { vista: "rpt_delivery", fecha: true, sucursal: true, orden: "fecha DESC" },
   "saldo-clientes": { vista: "rpt_saldo_clientes", orden: "saldo DESC" },
+  "historial-ventas": { vista: "rpt_historial_ventas", fecha: true, sucursal: true, orden: "fecha DESC, hora DESC" },
+  "historial-ventas-producto": { vista: "rpt_historial_ventas_producto", fecha: true, sucursal: true, orden: "fecha DESC, importe DESC" },
   "sucursales": { vista: "rpt_resumen_sucursales", sucursal: true, orden: "sucursal" },
   "ventas-sucursal": { vista: "rpt_ventas_sucursal", fecha: true, sucursal: true, orden: "fecha DESC, venta_total DESC" },
   "ventas-comprobante": { vista: "rpt_ventas_comprobante", fecha: true, sucursal: true, orden: "fecha DESC, prefijo, tipo" },
@@ -119,6 +121,33 @@ function enviarCsv(rep: FastifyReply, nombre: string, filas: Record<string, unkn
 
 export async function rutasCentralInventario(app: FastifyInstance) {
   const empresaDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-empresa-id"]);
+
+  // -------------------------------------------------------------------
+  // Historial de ventas de otro sistema (solo consulta y reportes; no es fiscal ni mueve inventario)
+  // -------------------------------------------------------------------
+  app.post("/central/historial-ventas/importar", async (req, rep) => {
+    const e = empresaDe(req);
+    const dec = z.union([z.string(), z.number()]).transform((v) => Number(v)).refine((v) => Number.isFinite(v), "Número inválido").transform((v) => Math.round(v * 100) / 100);
+    const b = z.object({
+      sucursalId: uuid, origen: z.string().trim().min(2).max(30),
+      ventas: z.array(z.object({
+        origenId: z.union([z.string(), z.number()]).transform(String), fecha: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Fecha inválida"),
+        cliente: z.string().max(160).default(""), metodo: z.string().max(40).default(""), estado: z.string().max(40).default(""),
+        descuento: dec.default(0), itbis: dec.default(0), total: dec.default(0),
+        lineas: z.array(z.object({ producto: z.string().max(200), cantidad: z.union([z.string(), z.number()]), precio: z.union([z.string(), z.number()]).nullish(), subtotal: z.union([z.string(), z.number()]).nullish() })).max(500).default([]),
+      })).min(1).max(500),
+    }).parse(req.body);
+    const ok = await pool.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, e]);
+    if (!ok.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    const r = await pool.query(
+      `INSERT INTO ventas_historicas (id, empresa_id, sucursal_id, origen, origen_id, fecha, cliente, metodo, estado, descuento, itbis, total, lineas)
+       SELECT uuidv7_id, $1, $2, $3, x.origen_id, x.fecha::timestamptz, COALESCE(x.cliente,''), COALESCE(x.metodo,''), COALESCE(x.estado,''), COALESCE(x.descuento,0), COALESCE(x.itbis,0), COALESCE(x.total,0), COALESCE(x.lineas,'[]')
+         FROM jsonb_to_recordset($4::jsonb) AS x(uuidv7_id uuid, origen_id text, fecha text, cliente text, metodo text, estado text, descuento numeric, itbis numeric, total numeric, lineas jsonb)
+       ON CONFLICT (empresa_id, origen, origen_id) DO NOTHING`,
+      [e, b.sucursalId, b.origen, JSON.stringify(b.ventas.map((v) => ({ uuidv7_id: uuidv7(), origen_id: v.origenId, fecha: v.fecha, cliente: v.cliente, metodo: v.metodo, estado: v.estado, descuento: v.descuento, itbis: v.itbis, total: v.total, lineas: v.lineas })))]);
+    rep.code(201);
+    return { nuevas: r.rowCount ?? 0, existentes: b.ventas.length - (r.rowCount ?? 0) };
+  });
 
   // -------------------------------------------------------------------
   // Ajustes de inventario

@@ -19,6 +19,6 @@ if (arg("ayuda") || !arg("archivo")) {
 }
 const v = (n) => { const x = arg(n); return x === true ? undefined : x; };
 try {
-  await importar({ fuente: v("fuente"), archivo: v("archivo"), salida: v("salida"), aplicar: !!arg("aplicar"), sinFotos: !!arg("sin-fotos"),
+  await importar({ fuente: v("fuente"), archivo: v("archivo"), salida: v("salida"), aplicar: !!arg("aplicar"), sinFotos: !!arg("sin-fotos"), sinHistorial: !!arg("sin-historial"),
     servidor: v("servidor"), usuario: v("usuario"), clave: v("clave"), rnc: v("rnc"), codigo: v("codigo"), dispositivo: v("dispositivo"), sucursal: v("sucursal") });
 } catch (e) { console.error(e.message); process.exit(1); }

@@ -159,6 +159,25 @@ if (aplicar) {
     try { await api("/central/productos-existencia", "POST", { sucursalId: idSuc(suc), motivo, items: lote.map(({ nombre, ...x }) => x) }); resultado.existencia += lote.length; }
     catch (e) { problemas.push(["existencia", "", `lote ${i / 500 + 1}`, e.message]); }
   }
+  // historial de ventas: solo consulta y reportes (no son facturas de FactPOS: sin e-NCF, sin tocar existencias, caja ni CxC)
+  if (!o.sinHistorial && datos.historialVentas.length) {
+    log(`Cargando ${datos.historialVentas.length} ventas del historial (solo consulta y reportes)…`);
+    resultado.historial = { nuevas: 0, existentes: 0 };
+    const validas = datos.historialVentas.filter((v) => v.fecha && !Number.isNaN(Date.parse(String(v.fecha).replace(" ", "T"))));
+    for (const v of datos.historialVentas) if (!validas.includes(v)) problemas.push(["venta", v.id, "", "Fecha inválida: no se carga al historial"]);
+    for (let i = 0; i < validas.length; i += 300) {
+      const lote = validas.slice(i, i + 300).map((v) => ({
+        origenId: String(v.id), fecha: new Date(String(v.fecha).replace(" ", "T")).toISOString(),
+        cliente: v.cliente ?? "", metodo: String(v.metodo ?? ""), estado: String(v.estado ?? ""),
+        descuento: Number(v.descuento) || 0, itbis: Number(v.itbis) || 0, total: Number(v.total) || 0,
+        lineas: v.lineas.map((l) => ({ producto: String(l.producto).slice(0, 200), cantidad: Number(l.cantidad) || 0, precio: Number(l.precio) || 0, subtotal: Number(l.subtotal) || 0 })),
+      }));
+      try { const r = await api("/central/historial-ventas/importar", "POST", { sucursalId: idSuc(suc), origen: fuente.nombre, ventas: lote }); resultado.historial.nuevas += r.nuevas; resultado.historial.existentes += r.existentes; }
+      catch (e) { problemas.push(["historial", "", `lote ${i / 300 + 1}`, e.message]); }
+      if ((i / 300) % 10 === 9) log(`  historial: ${Math.min(i + 300, validas.length)} de ${validas.length}…`);
+    }
+    log(`Historial de ventas: ${resultado.historial.nuevas} cargadas, ${resultado.historial.existentes} ya estaban.`);
+  }
   log(`Creados: ${JSON.stringify(resultado.creados)}  ·  Ya existían: ${JSON.stringify(resultado.existentes)}  ·  Existencia cargada en ${resultado.existencia} productos.`);
 }
 
