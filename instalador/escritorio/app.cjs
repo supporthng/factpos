@@ -547,12 +547,15 @@ function readStateFile() {
 function openMini() {
   miniWindow = new BrowserWindow({ icon: ICON, width: 440, height: 230, resizable: false, minimizable: false, maximizable: false, closable: false, alwaysOnTop: true, autoHideMenuBar: true, title: 'FactPOS · Actualizando', backgroundColor: '#102b3a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   miniWindow.removeMenu();
-  // Se carga como data: con tipo text/html explícito: en equipos donde el registro de Windows asocia .html a otro tipo MIME,
-  // loadFile mostraba el código de la página como texto.
-  try {
-    const html = fs.readFileSync(path.join(__dirname, 'actualizando.html'));
-    miniWindow.loadURL('data:text/html;charset=utf-8;base64,' + html.toString('base64'));
-  } catch { miniWindow.loadFile(path.join(__dirname, 'actualizando.html')); }
+  // La página se escribe directamente en el documento (about:blank): así no depende del tipo MIME que Windows asocie
+  // a .html ni a data: URL, que en algunos equipos mostraba el código de la página como texto.
+  let html = '';
+  try { html = fs.readFileSync(path.join(__dirname, 'actualizando.html'), 'utf8'); } catch {}
+  if (!html) { try { miniWindow.loadFile(path.join(__dirname, 'actualizando.html')); } catch {} return; }
+  miniWindow.webContents.once('did-finish-load', () => {
+    if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.executeJavaScript('document.open();document.write(' + JSON.stringify(html) + ');document.close();').catch(() => {});
+  });
+  miniWindow.loadURL('about:blank');
 }
 function sendMini(msg) { if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('factpos:actualizacion', msg); }
 function beginUpdate(state) {
