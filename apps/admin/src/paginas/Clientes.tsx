@@ -49,7 +49,7 @@ export function Clientes() {
           { titulo: "Documento", valor: (f) => (f.documento ? `${f.tipoDocumento} ${f.documento}` : <span className="suave">—</span>) },
           { titulo: "Teléfono", valor: (f) => f.telefono ?? <span className="suave">—</span> },
           { titulo: "Nivel de precio", valor: (f) => <span className={f.nivel && f.nivel > 1 ? "texto-ok" : "suave"}>{f.nivel ? `Precio ${f.nivel}` : "Precio 1"}</span> },
-          { titulo: "Límite de crédito", valor: (f) => (Number(f.limiteCredito) ? rd(f.limiteCredito) : <span className="suave">—</span>), der: true },
+          { titulo: "Límite de crédito", valor: (f) => (Number(f.limiteCredito) ? rd(f.limiteCredito) : <span className="suave">Sin límite</span>), der: true },
           { titulo: "Estado", valor: (f) => (f.activo ? "Activo" : <span className="suave">Inactivo</span>) },
         ]}
       />
@@ -113,7 +113,7 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
               {!cliente && <option value="">Elija el nivel…</option>}
               {NIVELES.map((x) => <option key={x.n} value={x.n}>{x.t}</option>)}
             </select></label>
-          <label className="campo"><span>Límite de crédito (RD$)</span><input className="numero" inputMode="decimal" value={f.limiteCredito} placeholder="0.00" onChange={(e) => setF({ ...f, limiteCredito: e.target.value.replace(/[^\d.]/g, "") })} /></label>
+          <label className="campo"><span>Límite de crédito (RD$) · 0 = sin límite</span><input className="numero" inputMode="decimal" value={f.limiteCredito} placeholder="Sin límite" onChange={(e) => setF({ ...f, limiteCredito: e.target.value.replace(/[^\d.]/g, "") })} /></label>
         </div>
         {cliente && <label className="interruptor"><input type="checkbox" checked={f.activo} onChange={(e) => setF({ ...f, activo: e.target.checked })} /><span>Cliente activo</span></label>}
         {msg && <Aviso texto={msg} />}

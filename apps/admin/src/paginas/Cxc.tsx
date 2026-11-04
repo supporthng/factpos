@@ -48,7 +48,7 @@ export function Cxc() {
           { titulo: "1-30 días vencido", valor: (f) => nada(f.vencido30), der: true },
           { titulo: "31-60", valor: (f) => nada(f.vencido60), der: true },
           { titulo: "Más de 60", valor: (f) => (Number(f.vencidoMas) ? <span className="texto-alerta">{rd(f.vencidoMas)}</span> : nada(0)), der: true },
-          { titulo: "Límite", valor: (f) => rd(f.limiteCredito), der: true },
+          { titulo: "Límite", valor: (f) => Number(f.limiteCredito) > 0 ? rd(f.limiteCredito) : "Sin límite", der: true },
           { titulo: "Último abono", valor: (f) => fecha(f.ultimoAbono) },
         ]}
       />
@@ -103,7 +103,7 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
               <div><span>1-30 vencido</span><b>{rd(d.vencido30 ?? 0)}</b></div>
               <div><span>31-60</span><b>{rd(d.vencido60 ?? 0)}</b></div>
               <div><span>Más de 60</span><b>{rd(d.vencidoMas ?? 0)}</b></div>
-              <div><span>Límite · días</span><b>{rd(d.limiteCredito)} · {d.diasCredito}</b></div>
+              <div><span>Límite · días</span><b>{Number(d.limiteCredito) > 0 ? rd(d.limiteCredito) : "Sin límite"} · {d.diasCredito}</b></div>
             </div>
             <table className="tabla">
               <thead><tr><th>Fecha</th><th>Concepto</th><th>Sucursal</th><th className="der">Cargo</th><th className="der">Abono</th><th className="der">Saldo</th></tr></thead>
@@ -195,7 +195,7 @@ function FormCredito({ clienteId, limite, dias, onListo }: { clienteId: string; 
   return (
     <>
       <div className="dos-col">
-        <label className="campo"><span>Límite de crédito (RD$)</span><input className="numero" inputMode="decimal" value={l} onChange={(e) => setL(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+        <label className="campo"><span>Límite de crédito (RD$) · 0 = sin límite</span><input className="numero" inputMode="decimal" value={l} onChange={(e) => setL(e.target.value.replace(/[^\d.]/g, ""))} /></label>
         <label className="campo"><span>Días para pagar</span><input className="numero" inputMode="numeric" value={d} onChange={(e) => setD(e.target.value.replace(/\D/g, ""))} /></label>
       </div>
       {error && <Aviso texto={error} />}
@@ -221,7 +221,7 @@ function DarCredito({ onCerrar, onListo }: { onCerrar: () => void; onListo: (cli
           <>
             <input autoFocus placeholder="Nombre, cédula o RNC" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "100%" }} />
             <div className="lista" style={{ marginTop: 10 }}>
-              {res.map((c) => <button key={c.clienteId} className="opcion" onClick={() => setElegido(c)}>{c.nombre} <span className="suave">{c.documento ?? ""} · límite {rd(c.limiteCredito)}</span></button>)}
+              {res.map((c) => <button key={c.clienteId} className="opcion" onClick={() => setElegido(c)}>{c.nombre} <span className="suave">{c.documento ?? ""} · {Number(c.limiteCredito) > 0 ? `límite ${rd(c.limiteCredito)}` : "sin límite"}</span></button>)}
             </div>
           </>
         ) : (

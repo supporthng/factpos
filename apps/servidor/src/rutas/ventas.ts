@@ -261,8 +261,9 @@ export async function registrarVenta(
          FROM clientes c WHERE c.id = $1`,
       [body.clienteId],
     );
-    const disponible = new Decimal(s.rows[0].limite).minus(s.rows[0].saldo);
-    if (credito.gt(disponible)) throw new ErrorNegocio(`Crédito insuficiente: disponible RD$${disponible.toFixed(2)}`);
+    // Límite 0 = sin límite de crédito
+    const disponible = new Decimal(s.rows[0].limite).gt(0) ? new Decimal(s.rows[0].limite).minus(s.rows[0].saldo) : null;
+    if (disponible && credito.gt(disponible)) throw new ErrorNegocio(`Crédito insuficiente: disponible RD$${disponible.toFixed(2)}`);
   }
 
   const ventaId = body.ventaId ?? uuidv7();

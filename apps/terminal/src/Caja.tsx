@@ -217,7 +217,7 @@ export function AbonoCliente({ ajustes, config, cliente, onVolver, onCerrar }: {
           <div className="cuadre-resumen">
             <div><span>Debe</span><b>{rd(cuenta.saldo)}</b></div>
             <div><span>Vencido</span><b className={Number(cuenta.vencido) > 0 ? "negativo" : ""}>{rd(cuenta.vencido ?? 0)}</b></div>
-            <div><span>Límite</span><b>{rd(cuenta.limiteCredito ?? 0)}</b></div>
+            <div><span>Límite</span><b>{Number(cuenta.limiteCredito ?? 0) > 0 ? rd(cuenta.limiteCredito ?? 0) : "Sin límite"}</b></div>
             <div><span>Días de crédito</span><b>{cuenta.diasCredito ?? "—"}</b></div>
           </div>
           {cuenta.movimientos.length > 0 && (
