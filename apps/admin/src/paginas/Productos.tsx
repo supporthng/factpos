@@ -260,7 +260,7 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
             {pestanas.map((p) => <button key={p.id} className={pestana === p.id ? "activa" : ""} onClick={() => setPestana(p.id)}>{p.t}</button>)}
           </div>
           {pestana === "principal" && <Principal f={f} cambiar={cambiar} nuevo={!id} setMsg={setMsg} tasa={tasa} />}
-          {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
+          {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} setMsg={setMsg} />}
           {pestana === "precios" && <PreciosFicha f={f} cambiar={cambiar} tasa={tasa} costo={costoUnidad} aux={aux} />}
           {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} id={id} tipo={f.tipo} alAgregar={refrescarExistencia} />}
           {pestana === "proveedores" && <ProveedoresFicha f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
@@ -391,7 +391,7 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
 }
 
 /* ---------- Más datos ---------- */
-function General({ f, cambiar, aux, recargarAux }: {
+function General({ f, cambiar, aux, recargarAux, setMsg }: {
   f: Ficha; cambiar: (p: Partial<Ficha>) => void; aux: Auxiliares; recargarAux: () => void; nuevo?: boolean;
   setMsg?: (m: { t: string; tipo: "ok" | "error" | "info" } | null) => void;
 }) {
