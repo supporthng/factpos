@@ -65,7 +65,7 @@ const srv = http.createServer((q, r) => {
       r.write(" ".repeat(2048) + "\nIniciando…\n");
       corriendo = true;
       try {
-        await importar({ fuente: "wilpos", archivo, salida, aplicar: !!o.aplicar, sinFotos: !!o.sinFotos,
+        await importar({ fuente: "wilpos", archivo, salida, aplicar: !!o.aplicar, sinFotos: !!o.sinFotos, reemplazar: !!o.reemplazar,
           servidor: String(o.servidor ?? "").trim(), usuario: String(o.usuario ?? "").trim(), clave: String(o.clave ?? ""),
           rnc: String(o.rnc ?? "").trim() || undefined, codigo: String(o.codigo ?? "").trim() || undefined, sucursal: String(o.sucursal ?? "").trim() || undefined },
         (t) => r.write(t + "\n"));

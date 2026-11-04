@@ -149,6 +149,31 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     return { nuevas: r.rowCount ?? 0, existentes: b.ventas.length - (r.rowCount ?? 0) };
   });
 
+  /** Borra el historial importado de un sistema (para cargarlo completo otra vez desde un backup nuevo). */
+  app.post("/central/historial-ventas/vaciar", async (req) => {
+    const e = empresaDe(req);
+    const b = z.object({ origen: z.string().trim().min(2).max(30) }).parse(req.body);
+    const r = await pool.query("DELETE FROM ventas_historicas WHERE empresa_id = $1 AND origen = $2", [e, b.origen]);
+    return { borradas: r.rowCount ?? 0 };
+  });
+
+  /**
+   * Lo que una importación anterior dejó en FactPOS (productos por prefijo de SKU y clientes con documento) con su existencia
+   * en la sucursal: el importador lo usa para ACTUALIZAR en vez de duplicar al cargar un backup nuevo (sin el tope de 500 de las listas).
+   */
+  app.get("/central/importacion/existentes", async (req) => {
+    const e = empresaDe(req);
+    const f = z.object({ prefijo: z.string().trim().min(2).max(10), sucursalId: uuid }).parse(req.query);
+    const productos = await pool.query(
+      `SELECT p.id, p.sku, p.activo, p.tipo,
+              COALESCE((SELECT SUM(x.cantidad) FROM existencias x JOIN almacenes a ON a.id = x.almacen_id WHERE x.producto_id = p.id AND a.sucursal_id = $3), 0)::text AS existencia
+         FROM productos p WHERE p.empresa_id = $1 AND p.sku LIKE $2 || '%'`, [e, f.prefijo.replace(/[%_]/g, ""), f.sucursalId]);
+    const clientes = await pool.query(
+      `SELECT c.id, c.documento, c.activo, COALESCE(lp.nivel, 1) AS nivel, c.limite_credito::text AS "limiteCredito"
+         FROM clientes c LEFT JOIN listas_precio lp ON lp.id = c.lista_precio_id WHERE c.empresa_id = $1 AND c.documento IS NOT NULL`, [e]);
+    return { productos: productos.rows, clientes: clientes.rows };
+  });
+
   // -------------------------------------------------------------------
   // Ajustes de inventario
   // -------------------------------------------------------------------
