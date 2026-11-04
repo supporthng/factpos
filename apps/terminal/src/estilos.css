@@ -794,3 +794,5 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 /* Teclado numérico en la ventana del PIN del supervisor (salir, minimizar, descuentos…) */
 .teclado-pin.compacto { gap: 6px; margin: 8px 0; }
 .teclado-pin.compacto .tecla { font-size: 20px; padding: 10px 0; }
+
+.version-caja { position: fixed; left: 8px; bottom: 4px; z-index: 50; font-size: 10px; color: var(--suave); opacity: .7; pointer-events: none; }

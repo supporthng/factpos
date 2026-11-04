@@ -433,11 +433,23 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
 }
 
 /** Aplicación + pantalla de actualización (tapa todo mientras el servidor se actualiza y pide el PIN de nuevo al terminar). */
+declare const __INTERFAZ__: string;
+/** Versión instalada, siempre visible en una esquina: la del servidor y la fecha de compilación de esta interfaz. */
+function VersionCaja() {
+  const [v, setV] = useState("");
+  useEffect(() => {
+    const url = leerAjustes()?.servidor; if (!url) return;
+    fetch(`${url.replace(/\/$/, "")}/actualizacion/estado`, { cache: "no-store" }).then((r) => r.json()).then((d) => setV(String(d.version ?? ""))).catch(() => {});
+  }, []);
+  return <div className="version-caja" title="Versión del servidor · fecha de compilación de esta pantalla">FactPOS {v ? `v${v.replace(/\.0$/, "")}` : ""} · {__INTERFAZ__}</div>;
+}
+
 export function App() {
   const listo = usePreparado(() => leerAjustes()?.servidor ?? "", () => fijarSesionCaja(null));
   return (
     <>
       {listo ? <AppInterna /> : <div className="cargando" style={{ padding: 40, textAlign: "center" }}>Iniciando…</div>}
+      <VersionCaja />
       <PantallaActualizacion servidor={() => leerAjustes()?.servidor ?? ""} alCambiarVersion={() => fijarSesionCaja(null)} />
     </>
   );
