@@ -171,12 +171,12 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
 }
 
 /* ---------- Editor ---------- */
-type Pestana = "general" | "precios" | "inventario" | "proveedores" | "combo";
+type Pestana = "principal" | "general" | "precios" | "inventario" | "proveedores" | "combo";
 
 function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; borrador?: Ficha | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
   const { sucursales, productos } = useCatalogo();
   const [f, setF] = useState<Ficha | null>(id ? null : borrador ?? fichaNueva(aux, sucursales));
-  const [pestana, setPestana] = useState<Pestana>("general");
+  const [pestana, setPestana] = useState<Pestana>("principal");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [sucio, setSucio] = useState(!id && !!borrador);
@@ -239,7 +239,7 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
   };
 
   const pestanas: { id: Pestana; t: string }[] = [
-    { id: "general", t: "General" }, { id: "precios", t: "Precios" },
+    { id: "principal", t: "Principal" }, { id: "general", t: "Más datos" }, { id: "precios", t: "Precios" },
     ...(f.tipo === "INVENTARIABLE" ? [{ id: "inventario" as const, t: "Inventario" }] : []),
     { id: "proveedores", t: "Proveedores" },
     ...(f.tipo === "COMBO" ? [{ id: "combo" as const, t: "Componentes" }] : []),
@@ -259,7 +259,8 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
           <div className="pestanas">
             {pestanas.map((p) => <button key={p.id} className={pestana === p.id ? "activa" : ""} onClick={() => setPestana(p.id)}>{p.t}</button>)}
           </div>
-          {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} nuevo={!id} setMsg={setMsg} />}
+          {pestana === "principal" && <Principal f={f} cambiar={cambiar} nuevo={!id} setMsg={setMsg} tasa={tasa} />}
+          {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} setMsg={setMsg} />}
           {pestana === "precios" && <PreciosFicha f={f} cambiar={cambiar} tasa={tasa} costo={costoUnidad} aux={aux} />}
           {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} id={id} tipo={f.tipo} alAgregar={refrescarExistencia} />}
           {pestana === "proveedores" && <ProveedoresFicha f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
@@ -271,15 +272,44 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
   );
 }
 
-/* ---------- General ---------- */
-function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
-  f: Ficha; cambiar: (p: Partial<Ficha>) => void; aux: Auxiliares; recargarAux: () => void; nuevo: boolean;
+/* ---------- Principal ---------- */
+function ZonaImagen({ f, cambiar }: { f: Ficha; cambiar: (p: Partial<Ficha>) => void }) {
+  const [errImg, setErrImg] = useState("");
+  const subir = (archivo: File) => {
+    setErrImg("");
+    const lector = new FileReader();
+    lector.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        // Se reduce a 320 px en WebP: liviano para sincronizar a las cajas
+        const lado = 320, k = Math.min(1, lado / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext("2d")!.drawImage(img, 0, 0, cv.width, cv.height);
+        cambiar({ imagen: cv.toDataURL("image/webp", 0.82) });
+      };
+      img.onerror = () => setErrImg("No se pudo leer la imagen.");
+      img.src = String(lector.result);
+    };
+    lector.readAsDataURL(archivo);
+  };
+  return (
+    <div className="campo">
+      <span>Imagen {f.imagen && <button type="button" className="enlace" onClick={() => cambiar({ imagen: null })}>Quitar</button>}</span>
+      <label className="zona-imagen">
+        {f.imagen ? <img src={f.imagen} alt="" /> : <span className="suave">Arrastre o elija una foto<br /><small>Se ajusta sola a 320 px</small></span>}
+        <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0])} />
+      </label>
+      <Aviso texto={errImg} />
+    </div>
+  );
+}
+
+function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
+  f: Ficha; cambiar: (p: Partial<Ficha>) => void; nuevo: boolean; tasa: number;
   setMsg: (m: { t: string; tipo: "ok" | "error" | "info" } | null) => void;
 }) {
   const [codigo, setCodigo] = useState("");
-  const [nuevaCat, setNuevaCat] = useState<string | null>(null);
-  const esLicor = /licor|ron|whisky|vino|cerveza|vodka|alcohol/i.test(aux.categorias.find((c) => c.id === f.categoriaId)?.nombre ?? "");
-
   const buscarCodigo = async () => {
     const c = codigo.trim();
     if (!/^\d{6,14}$/.test(c)) return setMsg({ t: "El código debe tener de 6 a 14 dígitos.", tipo: "error" });
@@ -300,21 +330,15 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
   };
 
-  const crearCategoria = async () => {
-    if (!nuevaCat?.trim()) return;
-    try {
-      const r = await api<{ id: string }>("/central/categorias", { cuerpo: { nombre: nuevaCat.trim() } });
-      recargarAux();
-      cambiar({ categoriaId: r.id });
-      setNuevaCat(null);
-    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
-  };
-
+  const p0 = f.presentaciones[0];
+  const fijarPres = (x: Partial<Presentacion>) => cambiar({ presentaciones: f.presentaciones.map((y, j) => (j === 0 ? { ...y, ...x } : y)) });
+  const fijarSuc = (i: number, x: Partial<Ficha["sucursales"][number]>) => cambiar({ sucursales: f.sucursales.map((y, j) => (j === i ? { ...y, ...x } : y)) });
+  const sinStock = f.tipo !== "INVENTARIABLE";
   return (
     <>
       {nuevo && (
         <div className="panel alta-rapida">
-          <label className="campo flex"><span>Alta rápida por código de barras</span>
+          <label className="campo flex"><span>Alta rápida: escanee el código para traer nombre e imagen</span>
             <input value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} placeholder="Escanee o escriba el código" inputMode="numeric"
               onKeyDown={(e) => e.key === "Enter" && buscarCodigo()} autoFocus />
           </label>
@@ -329,8 +353,65 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
             </button>
           ))}
         </div>
+        <div className="campo codigos"><span>Código de barras</span>
+          <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
+          <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
+        </div>
+        <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
         <div className="dos-col">
-          <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
+          <label className="campo"><span>Precio de costo (sin ITBIS)</span>
+            <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
+            <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex."}</small>
+          </label>
+          <label className="campo"><span>Precio de venta {f.precioIncluyeItbis && tasa > 0 ? "(con ITBIS)" : ""}</span>
+            <input className="numero" inputMode="decimal" value={p0.precios["1"] ?? ""} disabled={f.precioVariable}
+              onChange={(e) => fijarPres({ precios: { ...p0.precios, "1": e.target.value.replace(/[^\d.]/g, "") }, porcentajes: { ...p0.porcentajes, "1": null } })} />
+            <small className="suave">{f.precioVariable ? "Precio variable: lo escribe la cajera." : "Los precios 2 y 3 están en la pestaña Precios."}</small>
+          </label>
+        </div>
+        {!sinStock && (
+          <table className="tabla tabla-edicion">
+            <thead><tr><th>Sucursal</th><th className="der">Stock</th><th className="der">Cantidad mínima</th></tr></thead>
+            <tbody>
+              {f.sucursales.map((s, i) => (
+                <tr key={s.sucursalId}>
+                  <td><b>{s.sucursal}</b></td>
+                  <td className="der"><b>{num(s.existencia, n(s.existencia) % 1 ? 2 : 0)}</b></td>
+                  <td className="der" style={{ width: 130 }}><input className="numero" inputMode="decimal" value={s.stockMinimo} onChange={(e) => fijarSuc(i, { stockMinimo: e.target.value.replace(/[^\d.]/g, "") })} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {!sinStock && <p className="suave pequeno">{nuevo ? "El stock inicial se agrega después de crear el producto (pestaña Inventario › Agregar existencia), para que el kardex cuadre." : "El stock cambia con compras, ventas, ajustes o «Agregar existencia» en la pestaña Inventario."}</p>}
+        <ZonaImagen f={f} cambiar={cambiar} />
+      </div>
+    </>
+  );
+}
+
+/* ---------- Más datos ---------- */
+function General({ f, cambiar, aux, recargarAux, setMsg }: {
+  f: Ficha; cambiar: (p: Partial<Ficha>) => void; aux: Auxiliares; recargarAux: () => void; nuevo?: boolean;
+  setMsg?: (m: { t: string; tipo: "ok" | "error" | "info" } | null) => void;
+}) {
+  const [nuevaCat, setNuevaCat] = useState<string | null>(null);
+  const esLicor = /licor|ron|whisky|vino|cerveza|vodka|alcohol/i.test(aux.categorias.find((c) => c.id === f.categoriaId)?.nombre ?? "");
+
+  const crearCategoria = async () => {
+    if (!nuevaCat?.trim()) return;
+    try {
+      const r = await api<{ id: string }>("/central/categorias", { cuerpo: { nombre: nuevaCat.trim() } });
+      recargarAux();
+      cambiar({ categoriaId: r.id });
+      setNuevaCat(null);
+    } catch (e) { setMsg?.({ t: (e as Error).message, tipo: "error" }); }
+  };
+
+  return (
+    <>
+      <div className="panel">
+        <div className="dos-col">
           <label className="campo"><span>Nombre en el ticket <em className="suave">({(f.nombreCorto || f.nombre).length}/32)</em></span>
             <input value={f.nombreCorto ?? ""} maxLength={32} onChange={(e) => cambiar({ nombreCorto: e.target.value })} placeholder={f.nombre.slice(0, 32) || "Corto, para el papel de 80 mm"} /></label>
         </div>
@@ -355,10 +436,6 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
             <select value={f.impuestoId} onChange={(e) => cambiar({ impuestoId: e.target.value })}>
               {aux.impuestos.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
             </select>
-          </label>
-          <label className="campo"><span>Costo de referencia (unidad, sin ITBIS)</span>
-            <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
-            <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex (promedio ponderado)."}</small>
           </label>
           <label className="campo"><span>Estado</span>
             <select value={f.activo ? "1" : "0"} onChange={(e) => cambiar({ activo: e.target.value === "1" })}><option value="1">Activo</option><option value="0">Inactivo (no se vende)</option></select>
@@ -402,9 +479,9 @@ function General({ f, cambiar, aux, recargarAux, nuevo, setMsg }: {
             <label className="campo"><span>{i === 0 ? "Principal" : "Presentación"}</span><input value={p.nombre} onChange={(e) => cambiar({ presentaciones: f.presentaciones.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)) })} /></label>
             <label className="campo"><span>Unidades</span><input className="numero" inputMode="decimal" value={p.factor} disabled={i === 0 && !f.esPesable}
               onChange={(e) => cambiar({ presentaciones: f.presentaciones.map((x, j) => (j === i ? { ...x, factor: e.target.value.replace(/[^\d.]/g, "") } : x)) })} /></label>
-            <div className="campo codigos"><span>Códigos de barra</span>
+            {i > 0 && <div className="campo codigos"><span>Códigos de barra</span>
               <Codigos valores={p.codigos} onCambio={(codigos) => cambiar({ presentaciones: f.presentaciones.map((x, j) => (j === i ? { ...x, codigos } : x)) })} />
-            </div>
+            </div>}
             {i > 0 && <button className="boton fantasma quitar" title="Quitar presentación" onClick={() => cambiar({ presentaciones: f.presentaciones.filter((_, j) => j !== i) })}>✕</button>}
           </div>
         ))}
@@ -788,27 +865,6 @@ function Vista({ f, aux, tasa, cambiar }: { f: Ficha; aux: Auxiliares; tasa: num
   const cat = aux.categorias.find((c) => c.id === f.categoriaId);
   const precio = n(f.presentaciones[0]?.precios["1"]);
   const nombreTicket = (f.nombreCorto || f.nombre || "Nombre del producto").slice(0, 32);
-  const [errImg, setErrImg] = useState("");
-
-  const subir = (archivo: File) => {
-    setErrImg("");
-    const lector = new FileReader();
-    lector.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        // Se reduce a 320 px en WebP: liviano para sincronizar a las cajas
-        const lado = 320, k = Math.min(1, lado / Math.max(img.width, img.height));
-        const cv = document.createElement("canvas");
-        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
-        cv.getContext("2d")!.drawImage(img, 0, 0, cv.width, cv.height);
-        cambiar({ imagen: cv.toDataURL("image/webp", 0.82) });
-      };
-      img.onerror = () => setErrImg("No se pudo leer la imagen.");
-      img.src = String(lector.result);
-    };
-    lector.readAsDataURL(archivo);
-  };
-
   const etiquetaPres = useMemo(() => {
     const p = f.presentaciones[0];
     return n(p?.factor) > 1 ? `${p.nombre} · ${n(p.factor)} unidades` : f.esPesable ? "Por libra" : " ";
@@ -816,15 +872,6 @@ function Vista({ f, aux, tasa, cambiar }: { f: Ficha; aux: Auxiliares; tasa: num
 
   return (
     <aside className="vista-producto">
-      <div className="panel">
-        <div className="encabezado-sub"><h3>Imagen</h3>{f.imagen && <button className="enlace" onClick={() => cambiar({ imagen: null })}>Quitar</button>}</div>
-        <label className="zona-imagen">
-          {f.imagen ? <img src={f.imagen} alt="" /> : <span className="suave">Arrastre o elija una foto<br /><small>Se ajusta sola a 320 px</small></span>}
-          <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0])} />
-        </label>
-        <Aviso texto={errImg} />
-      </div>
-
       <div className="panel">
         <div className="encabezado-sub"><h3>Así se ve en la caja</h3></div>
         <div className="previa-tarjeta" style={{ "--cat": cat?.color ?? "#64748b" } as React.CSSProperties}>
