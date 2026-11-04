@@ -816,3 +816,5 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cobro2 .formas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cobro2 .entrada-grande { font-size: 24px; padding: 14px 14px; }
 .modal:has(.cobro2) .boton.cobrar { padding: 18px; font-size: 24px; margin: 14px 0 2px; }
+.cobro-teclado-barra { text-align: right; margin: -2px 0 -4px; font-size: 13px; }
+.cobro-teclado .tecla { font-size: 22px; padding: 12px 0; }
