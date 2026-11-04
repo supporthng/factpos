@@ -800,11 +800,11 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 /* Pantalla de venta: sin forma de pago ni comprobante (se eligen al cobrar); total y botón de cobro más grandes */
 .pv-cobro .pv-total { padding: 18px 18px 16px; }
 .pv-cobro .pv-total > span { font-size: 15px; }
-.pv-cobro .pv-total > b, .con-catalogo .pv-cobro .pv-total > b { font-size: 50px; letter-spacing: -1.5px; }
+.pv-cobro .pv-total > b, .con-catalogo .pv-cobro .pv-total > b { font-size: 40px; letter-spacing: -1px; white-space: nowrap; }
 .pv-cobro .pv-total > small { font-size: 15px; }
 .pv-cobro .pv-desglose { padding: 10px 16px; }
 .pv-cobro .pv-desglose > div { font-size: 18px; padding: 6px 0; }
-.pv-cobro .boton.cobrar { flex: 1; min-height: 120px; max-height: 220px; font-size: 38px; margin: 2px 0 0; border-radius: 18px; }
+.pv-cobro .boton.cobrar { flex: 1; min-height: 120px; max-height: 320px; font-size: 40px; margin: 2px 0 0; border-radius: 18px; }
 .pv-cobro-ayuda { margin: 0; font-size: 12px; color: var(--suave); text-align: center; }
 /* Ventana de cobro vertical, una sola columna */
 .modal:has(.cobro2) { width: min(500px, 100%); padding: 18px 20px; }
