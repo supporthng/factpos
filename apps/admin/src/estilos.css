@@ -1200,6 +1200,7 @@ textarea { line-height: 1.35; }
 .rp-filtros { display: flex; flex-wrap: wrap; gap: 14px 16px; align-items: flex-end; background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 16px; }
 .rp-campo { display: flex; flex-direction: column; gap: 4px; margin: 0; }
 .rp-campo > span { font-size: 12px; font-weight: 600; color: var(--suave); }
+.rp-campo.rp-periodo { flex: 1 1 100%; }
 .rp-cargando { align-self: center; }
 .rp-barra { display: flex; align-items: center; gap: 12px; }
 .rp-barra input { max-width: 340px; }

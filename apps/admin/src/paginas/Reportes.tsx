@@ -121,13 +121,15 @@ export function Reportes() {
             <p className="suave">{def.desc}</p>
           </header>
           <div className="rp-filtros">
-            <label className="rp-campo"><span>Sucursal</span><SelectorSucursal valor={sucursalId} onCambio={setSucursalId} /></label>
-            {def.fechas && <>
-              <div className="rp-campo"><span>Período</span>
+            {def.fechas && (
+              <div className="rp-campo rp-periodo"><span>Período</span>
                 <div className="rp-chips rp-rangos">
                   {RANGOS.map(([k, t]) => <button key={k} className={k === rangoActivo ? "activo" : ""} onClick={() => { const [a, b] = rango(k); setDesde(a); setHasta(b); }}>{t}</button>)}
                 </div>
               </div>
+            )}
+            <label className="rp-campo"><span>Sucursal</span><SelectorSucursal valor={sucursalId} onCambio={setSucursalId} /></label>
+            {def.fechas && <>
               <label className="rp-campo"><span>Desde</span><input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} /></label>
               <label className="rp-campo"><span>Hasta</span><input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} /></label>
             </>}
