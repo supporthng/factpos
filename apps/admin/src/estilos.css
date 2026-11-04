@@ -1136,12 +1136,12 @@ input[type=password] { -webkit-text-security: disc; }
 .paso input.invalido { border-color: #dc2626; }
 
 /* Editor de producto: campos y foto más compactos */
-.editor-producto .panel .campo { margin-bottom: 8px; gap: 3px; }
-.editor-producto .panel input, .editor-producto .panel select { padding: 6px 10px; font-size: 14px; border-radius: 8px; }
-.editor-producto .panel .campo > span { font-size: 12.5px; }
-.editor-producto .panel .campo small { font-size: 12px; }
-.editor-producto .codigos-caja { min-height: 34px; padding: 2px 6px; }
-.editor-producto .codigos-caja input { padding: 3px 4px; }
+.editor-producto .panel .campo { margin-bottom: 5px; gap: 2px; }
+.editor-producto .panel input, .editor-producto .panel select { padding: 3px 8px; font-size: 13.5px; border-radius: 6px; }
+.editor-producto .panel .campo > span { font-size: 12px; }
+.editor-producto .panel .campo small { font-size: 11.5px; line-height: 1.25; }
+.editor-producto .codigos-caja { min-height: 28px; padding: 1px 5px; gap: 4px; border-radius: 6px; }
+.editor-producto .codigos-caja input { padding: 2px 4px; }
 .principal-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 16px; align-items: start; }
 .principal-cuerpo .zona-imagen { aspect-ratio: 1; width: 150px; max-height: 150px; }
 .principal-cuerpo .zona-imagen img { padding: 4px; box-sizing: border-box; }
@@ -1149,7 +1149,11 @@ input[type=password] { -webkit-text-security: disc; }
 @media (max-width: 700px) { .principal-cuerpo { grid-template-columns: 1fr; } .principal-cuerpo .zona-imagen { margin: 0 auto; } }
 
 /* Compactar TODOS los campos del admin (textos, selects, áreas) y los botones que los acompañan */
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea { padding: 6px 10px; font-size: 14px; border-radius: 8px; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea { padding: 4px 8px; font-size: 13.5px; border-radius: 6px; }
 textarea { line-height: 1.35; }
-.boton { padding: 6px 14px; font-size: 14px; border-radius: 8px; }
-.campo { margin-bottom: 10px; gap: 3px; }
+.boton { padding: 4px 12px; font-size: 13.5px; border-radius: 6px; }
+.campo { margin-bottom: 7px; gap: 2px; }
+.panel { padding: 14px; }
+.campo > span { font-size: 12.5px; }
+.editor-producto .panel .tabla-edicion td, .editor-producto .panel .tabla-edicion th { padding-top: 5px; padding-bottom: 5px; }
+.editor-producto .panel .tabla-edicion { font-size: 13.5px; }
