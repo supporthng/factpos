@@ -843,3 +843,20 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 /* Código de barras bajo el nombre en la línea de venta */
 .pv-codigo { color: var(--suave); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .pv-codigo + .pv-precio-mini::before { content: "· "; }
+
+/* Teclado en pantalla flotante (un solo componente para toda la caja) */
+.teclado-pantalla { position: fixed; z-index: 5000; background: var(--panel, #fff); border: 1px solid var(--borde, #d6dbe3); border-radius: 14px; box-shadow: 0 12px 40px rgba(15, 23, 42, .35); padding: 8px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.teclado-pantalla.num { width: 292px; }
+.teclado-pantalla.abc { width: min(720px, calc(100vw - 20px)); }
+.tp-barra { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 4px 8px; font-size: 12px; color: var(--suave); cursor: grab; }
+.tp-cerrar { border: 0; background: none; color: var(--primario); font-weight: 700; font-size: 13px; cursor: pointer; padding: 4px 6px; }
+.tp-filas { display: flex; flex-direction: column; gap: 6px; }
+.tp-fila { display: flex; gap: 6px; }
+.tp-tecla { flex: 1 1 0; min-width: 0; height: 52px; font-size: 20px; font-weight: 600; border-radius: 10px; border: 1px solid var(--borde, #d6dbe3); background: var(--panel-2, #f1f4f8); color: var(--texto, #0f172a); cursor: pointer; }
+.tp-tecla:active:not(:disabled) { background: var(--primario); color: var(--texto-sobre-primario, #fff); border-color: var(--primario); }
+.tp-tecla:disabled { opacity: .35; }
+.tp-tecla.activa { background: var(--primario); color: var(--texto-sobre-primario, #fff); border-color: var(--primario); }
+.tp-esp { flex: 1.5 1 0; }
+.tp-ancha { flex: 2 1 0; }
+.tp-espacio { flex: 5 1 0; font-size: 15px; font-weight: 500; }
+.tp-listo { flex: 1.6 1 0; background: var(--primario); border-color: var(--primario); color: var(--texto-sobre-primario, #fff); font-size: 17px; }

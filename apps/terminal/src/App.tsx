@@ -1,3 +1,4 @@
+import { TecladoPantalla } from "./Teclado";
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
@@ -450,6 +451,7 @@ export function App() {
     <>
       {listo ? <AppInterna /> : <div className="cargando" style={{ padding: 40, textAlign: "center" }}>Iniciando…</div>}
       <VersionCaja />
+      <TecladoPantalla />
       <PantallaActualizacion servidor={() => leerAjustes()?.servidor ?? ""} alCambiarVersion={() => fijarSesionCaja(null)} />
     </>
   );

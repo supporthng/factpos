@@ -55,15 +55,6 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
   const [credito, setCredito] = useState("");
   const [recibido, setRecibido] = useState("");
-  // Teclado numérico en pantalla para el monto del campo activo (útil en pantallas táctiles)
-  const [activo, setActivo] = useState<"recibido" | "tarjeta" | "transferencia" | "credito">("recibido");
-  const [verTeclado, setVerTeclado] = useState(() => { try { return localStorage.getItem("factpos.cobro.teclado") !== "0"; } catch { return true; } });
-  const alternarTeclado = () => setVerTeclado((v) => { try { localStorage.setItem("factpos.cobro.teclado", v ? "0" : "1"); } catch { /* sin almacenamiento */ } return !v; });
-  const campos = { recibido: [recibido, setRecibido], tarjeta: [tarjeta, setTarjeta], transferencia: [transferencia, setTransferencia], credito: [credito, setCredito] } as const;
-  const teclear = (t: string) => {
-    const [v, set] = campos[forma === "EFECTIVO" ? "recibido" : activo];
-    set(t === "⌫" ? v.slice(0, -1) : t === "C" ? "" : t === "." ? (v.includes(".") ? v : (v || "0") + ".") : /\.\d\d$/.test(v) || (t === "00" && v.includes(".")) ? v : v + t);
-  };
   const tipoFactura = tipo;
   /** La venta se emite y se transmite igual; solo se omite el ticket al terminar */
   const [sinImprimir, setSinImprimir] = useState(false);
@@ -156,7 +147,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
     <label className="campo fila-campo">
       <span>{etiqueta}</span>
       <input inputMode="decimal" value={valor} placeholder="0.00"
-        onChange={(e) => set(e.target.value.replace(/[^\d.]/g, ""))} onFocus={() => setActivo(etiqueta.startsWith("Tarjeta") ? "tarjeta" : etiqueta.startsWith("Transf") ? "transferencia" : "credito")} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+        onChange={(e) => set(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
       {extra}
     </label>
   );
@@ -185,7 +176,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
                 <label className="campo">
                   <span>Efectivo recibido {efectivo.gt(0) && <em>· a cobrar {rd(efectivo.toFixed(2))}</em>}</span>
                   <input autoFocus className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
-                    onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onFocus={() => setActivo("recibido")} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+                    onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
                 </label>
                 <div className="billetes">
                   <button className="boton fantasma chico" onClick={() => setRecibido(efectivo.toFixed(2))}>Exacto</button>
@@ -210,14 +201,6 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
               </div>
             )}
             {forma === "TRANSFERENCIA" && <p className="suave">Se cobra el total por transferencia.</p>}
-            {(forma === "EFECTIVO" || forma === "MIXTO") && <div className="cobro-teclado-barra"><button type="button" className="enlace" onClick={alternarTeclado}>{verTeclado ? "Ocultar teclado" : "Mostrar teclado"}</button></div>}
-            {verTeclado && (forma === "EFECTIVO" || forma === "MIXTO") && (
-              <div className="teclado-pin compacto cobro-teclado">
-                {["7", "8", "9", "⌫", "4", "5", "6", "C", "1", "2", "3", ".", "0", "00"].map((t) => (
-                  <button key={t} type="button" className={"tecla" + (t === "0" || t === "00" ? " ancha" : "")} onClick={() => teclear(t)}>{t}</button>
-                ))}
-              </div>
-            )}
           </div>
           <div className="cobro2-col">
             <div className="cobro-seccion">
