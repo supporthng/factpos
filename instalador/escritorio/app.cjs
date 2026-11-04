@@ -496,16 +496,22 @@ const { spawn } = require('node:child_process');
 const MARCA_ESCRITORIO = path.join(app.getPath('userData'), 'escritorio-oculto.flag');
 const CLAVE_DIRECTIVA = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
 let escritorioOculto = false;
+let vigilanteEscritorio = null;
+// Windows reinicia el Explorador solo cuando se cierra a la fuerza (por eso reaparecían la barra de tareas y el menú Inicio):
+// mientras la caja esté bloqueada se vuelve a cerrar cada segundo.
+const cerrarExplorador = () => { try { execFile('taskkill', ['/f', '/im', 'explorer.exe'], { windowsHide: true }, () => {}); } catch {} };
 function ocultarEscritorio() {
   if (process.platform !== 'win32' || escritorioOculto) return;
   escritorioOculto = true;
   try { fs.writeFileSync(MARCA_ESCRITORIO, String(Date.now())); } catch {}
   try { execFile('reg', ['add', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/t', 'REG_DWORD', '/d', '1', '/f'], { windowsHide: true }, () => {}); } catch {}
-  try { execFile('taskkill', ['/f', '/im', 'explorer.exe'], { windowsHide: true }, () => {}); } catch {}
+  cerrarExplorador();
+  if (!vigilanteEscritorio) vigilanteEscritorio = setInterval(cerrarExplorador, 1000);
 }
 function mostrarEscritorio() {
   if (process.platform !== 'win32' || (!escritorioOculto && !fs.existsSync(MARCA_ESCRITORIO))) return;
   escritorioOculto = false;
+  if (vigilanteEscritorio) { clearInterval(vigilanteEscritorio); vigilanteEscritorio = null; }
   try { fs.rmSync(MARCA_ESCRITORIO, { force: true }); } catch {}
   try { execFile('reg', ['delete', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/f'], { windowsHide: true }, () => {}); } catch {}
   try { spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(); } catch {}
