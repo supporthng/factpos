@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, rd, num, sesionActual } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
 import { useFuncionSeguridad } from "../seguridad";
@@ -283,7 +283,6 @@ function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAb
           {pestana === "proveedores" && <ProveedoresFicha f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
           {pestana === "combo" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} />}
         </div>
-        <Vista f={f} aux={aux} tasa={tasa} cambiar={cambiar} />
       </div>
     </>
   );
@@ -377,7 +376,7 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
             <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
           </div>
           <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
-          <div className="dos-col">
+          <div className="dos-col precios-compactos">
             <label className="campo"><span>Precio de costo (sin ITBIS)</span>
               <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
               <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex."}</small>
@@ -882,40 +881,6 @@ function ComboFicha({ f, cambiar, productos, id }: { f: Ficha; cambiar: (p: Part
 }
 
 /* ---------- Vista previa e imagen ---------- */
-function Vista({ f, aux, tasa, cambiar }: { f: Ficha; aux: Auxiliares; tasa: number; cambiar: (p: Partial<Ficha>) => void }) {
-  const cat = aux.categorias.find((c) => c.id === f.categoriaId);
-  const precio = n(f.presentaciones[0]?.precios["1"]);
-  const nombreTicket = (f.nombreCorto || f.nombre || "Nombre del producto").slice(0, 32);
-  const etiquetaPres = useMemo(() => {
-    const p = f.presentaciones[0];
-    return n(p?.factor) > 1 ? `${p.nombre} · ${n(p.factor)} unidades` : f.esPesable ? "Por libra" : " ";
-  }, [f.presentaciones, f.esPesable]);
-
-  return (
-    <aside className="vista-producto">
-      <div className="panel">
-        <div className="encabezado-sub"><h3>Así se ve en la caja</h3></div>
-        <div className="previa-tarjeta" style={{ "--cat": cat?.color ?? "#64748b" } as React.CSSProperties}>
-          <div className="arte">
-            {f.imagen ? <img src={f.imagen} alt="" /> : <span className="arte-vacio" />}
-            {cat && <span className="chip-cat">{cat.nombre}</span>}
-          </div>
-          <div className="info">
-            <b>{f.nombre || "Nombre del producto"}</b>
-            <span className="suave">{etiquetaPres}</span>
-            <span className="precio">{f.precioVariable ? "Precio libre" : precio ? rd(precio) : "Sin precio"}{f.esPesable && <small>/lb</small>}</span>
-          </div>
-        </div>
-        <div className="previa-ticket mono">
-          <div className="linea"><span>{nombreTicket}</span></div>
-          <div className="linea"><span>  1 x {precio.toFixed(2)}</span><span>{precio.toFixed(2)}{tasa > 0 ? "" : " E"}</span></div>
-          <small className="suave">Papel de 80 mm · 32 caracteres</small>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 /* =================================================================== */
 /* Ventana de creación directa: lo mínimo para vender, con los 3 niveles de precio. */
 type Niv = { precio: string; pct: string; origen: "pct" | "monto" | null };
