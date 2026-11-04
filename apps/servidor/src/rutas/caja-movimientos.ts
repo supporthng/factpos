@@ -8,6 +8,7 @@ import { verificarAutorizacion } from "../autorizacion.js";
 import { encolarFilas } from "../sync/outbox.js";
 import { tienePermiso, type SesionCaja } from "../sesion.js";
 import { reporteTurno } from "./cierre.js";
+import { aplicarAbono } from "./cxc-aplicar.js";
 
 /**
  * Entradas y salidas de dinero en la caja, fuera de las ventas:
@@ -145,6 +146,7 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
       formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA"]),
       referencia: z.string().trim().max(40).optional(),
       recibido: monto.optional(),
+      modo: z.enum(["CUENTA", "FACTURA"]).default("CUENTA"), ventaId: uuid.optional(),
     }).parse(req.body);
     const s = sesionCaja(req);
     if (!tienePermiso(s.p, "cxc.abono")) throw new ErrorNegocio("Su usuario no puede cobrar abonos", 403);
@@ -153,7 +155,7 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
     if (valor.lte(0)) throw new ErrorNegocio("El monto debe ser mayor que cero");
     if (b.formaPago === "EFECTIVO" && b.recibido && new Decimal(b.recibido).lt(valor)) throw new ErrorNegocio("Lo recibido es menos que el abono");
     const ctx = await contextoCaja(cajaId);
-    const cxcId = uuidv7(), movId = uuidv7();
+    const movId = uuidv7();
 
     const res = await enTransaccion(async (c) => {
       const turnoId = await turnoAbierto(c, cajaId);
@@ -166,17 +168,16 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
       const saldo = new Decimal(cl.rows[0].saldo);
       if (saldo.lte(0)) throw new ErrorNegocio(`${cl.rows[0].nombre} no tiene deuda`);
       if (valor.gt(saldo)) throw new ErrorNegocio(`El cliente debe ${saldo.toFixed(2)}: el abono no puede ser mayor`);
-      await c.query(
-        `INSERT INTO cxc_movimientos (id, sucursal_id, cliente_id, tipo, monto, turno_id, usuario_id, forma_pago, referencia)
-         VALUES ($1,$2,$3,'ABONO',$4,$5,$6,$7,$8)`,
-        [cxcId, ctx.sucursalId, clienteId, valor.neg().toFixed(2), turnoId, b.usuarioId, b.formaPago, b.referencia ?? null],
-      );
+      const partes = await aplicarAbono(c, {
+        clienteId, sucursalId: ctx.sucursalId, usuarioId: b.usuarioId, turnoId, monto: valor, formaPago: b.formaPago, referencia: b.referencia ?? null,
+        modo: b.modo, ventaId: b.ventaId ?? null,
+      });
       await c.query(
         `INSERT INTO movimientos_caja (id, sucursal_id, turno_id, tipo, monto, concepto, usuario_id, forma_pago, referencia, cliente_id)
          VALUES ($1,$2,$3,'ABONO_CLIENTE',$4,$5,$6,$7,$8,$9)`,
         [movId, ctx.sucursalId, turnoId, valor.toFixed(2), `Abono de ${cl.rows[0].nombre}`, b.usuarioId, b.formaPago, b.referencia ?? null, clienteId],
       );
-      await encolarFilas(c, "cxc_movimientos", [cxcId]);
+      await encolarFilas(c, "cxc_movimientos", partes.map((x) => x.id));
       await encolarFilas(c, "movimientos_caja", [movId]);
       return {
         recibo: movId.slice(-8).toUpperCase(),

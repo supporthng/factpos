@@ -5,6 +5,7 @@ import { Decimal } from "decimal.js";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { SQL_MOVIMIENTO } from "./caja-movimientos.js";
+import { aplicarAbono } from "./cxc-aplicar.js";
 
 /**
  * Cuentas por cobrar (clientes a crédito / fiado) y movimientos de caja, vistos
@@ -90,28 +91,46 @@ export async function rutasCentralCxc(app: FastifyInstance) {
     return { ...c.rows[0], saldo: c.rows[0].saldo ?? "0.00", movimientos: m.rows };
   });
 
+  /** Facturas a crédito pendientes de un cliente (lo que debe cada una y cuándo vence). */
+  app.get("/central/cxc/:clienteId/facturas", async (req) => {
+    const { clienteId } = z.object({ clienteId: uuid }).parse(req.params);
+    const empresaId = empresaDe(req);
+    await clienteDe(empresaId, clienteId);
+    const r = await pool.query(
+      `SELECT f.venta_id AS "ventaId", v.numero_interno AS factura, COALESCE(d.encf, v.numero_documento) AS documento, s.nombre AS sucursal,
+              f.creado_en AS fecha, (f.creado_en + make_interval(days => cl.dias_credito)) AS vence,
+              f.cargo, f.cargo - f.pendiente AS pagado, f.pendiente
+         FROM rpt_cxc_facturas f
+         JOIN clientes cl ON cl.id = f.cliente_id
+         JOIN ventas v ON v.id = f.venta_id
+         JOIN sucursales s ON s.id = f.sucursal_id
+         LEFT JOIN ecf_documentos d ON d.venta_id = f.venta_id
+        WHERE f.cliente_id = $1 AND f.pendiente > 0
+        ORDER BY f.creado_en, f.venta_id`, [clienteId]);
+    return r.rows;
+  });
+
   /** Abono recibido en la oficina (transferencia, cheque, efectivo en la oficina). */
   app.post("/central/cxc/:clienteId/abonos", async (req, rep) => {
     const { clienteId } = z.object({ clienteId: uuid }).parse(req.params);
     const b = z.object({
       monto, formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CHEQUE"]),
       referencia: z.string().trim().max(40).optional(), notas: z.string().trim().max(200).optional(), sucursalId: uuid.optional(),
+      modo: z.enum(["CUENTA", "FACTURA"]).default("CUENTA"), ventaId: uuid.optional(),
     }).parse(req.body);
     const empresaId = empresaDe(req);
     const valor = new Decimal(b.monto);
     if (valor.lte(0)) throw new ErrorNegocio("El monto debe ser mayor que cero");
-    const id = uuidv7();
     const r = await enTransaccion(async (c) => {
       await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [clienteId, empresaId]);
       const saldo = new Decimal((await c.query("SELECT COALESCE(SUM(monto), 0) AS s FROM cxc_movimientos WHERE cliente_id = $1", [clienteId])).rows[0].s);
       if (valor.gt(saldo)) throw new ErrorNegocio(`El cliente debe ${saldo.toFixed(2)}: el abono no puede ser mayor`);
       const suc = b.sucursalId ?? (await c.query("SELECT id FROM sucursales WHERE empresa_id = $1 AND activo ORDER BY tipo = 'ALMACEN', codigo LIMIT 1", [empresaId])).rows[0]?.id;
-      await c.query(
-        `INSERT INTO cxc_movimientos (id, sucursal_id, cliente_id, tipo, monto, usuario_id, forma_pago, referencia, notas)
-         VALUES ($1,$2,$3,'ABONO',$4,$5,$6,$7,$8)`,
-        [id, suc, clienteId, valor.neg().toFixed(2), usuarioDe(req), b.formaPago, b.referencia ?? null, b.notas ?? "Abono en la oficina"],
-      );
-      return { id, saldoNuevo: saldo.minus(valor).toFixed(2) };
+      const partes = await aplicarAbono(c, {
+        clienteId, sucursalId: suc, usuarioId: usuarioDe(req), monto: valor, formaPago: b.formaPago, referencia: b.referencia ?? null,
+        notas: b.notas ?? "Abono en la oficina", modo: b.modo, ventaId: b.ventaId ?? null,
+      });
+      return { id: partes[0]!.id, partes, saldoNuevo: saldo.minus(valor).toFixed(2) };
     });
     rep.code(201);
     return r;

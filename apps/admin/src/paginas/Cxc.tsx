@@ -10,6 +10,7 @@ interface FilaCxc {
   clienteId: string; nombre: string; documento: string | null; telefono: string | null; limiteCredito: string; diasCredito: number;
   saldo: string; alDia: string; vencido30: string; vencido60: string; vencidoMas: string; deudaDesde: string | null; ultimoAbono: string | null; excedido: boolean;
 }
+interface FacturaPend { ventaId: string; factura: number; documento: string | null; sucursal: string; fecha: string; vence: string; cargo: string; pagado: string; pendiente: string }
 const fecha = (v: string | null) => (v ? new Date(v).toLocaleDateString("es-DO") : "—");
 const nada = (v: string | number) => (Number(v) ? rd(v) : <span className="suave">—</span>);
 
@@ -60,9 +61,11 @@ export function Cxc() {
 
 function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; onCerrar: () => void; onCambio: () => void }) {
   const { datos: d, recargar } = useDatos<any>(`/central/cxc/${clienteId}`);
+  const fac = useDatos<FacturaPend[]>(`/central/cxc/${clienteId}/facturas`);
   const [accion, setAccion] = useState<"abono" | "ajuste" | "credito" | null>(null);
+  const [facturaElegida, setFacturaElegida] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
-  const listo = (t: string) => { setAccion(null); setMsg({ t, tipo: "ok" }); recargar(); onCambio(); };
+  const listo = (t: string) => { setAccion(null); setFacturaElegida(null); setMsg({ t, tipo: "ok" }); recargar(); fac.recargar(); onCambio(); };
   const TIPO: Record<string, string> = { CARGO: "Factura a crédito", ABONO: "Abono", AJUSTE: "Ajuste" };
   return (
     <div className="fondo-modal" onMouseDown={onCerrar}>
@@ -81,7 +84,7 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
         {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
         {accion && d && (
           <div className="panel no-imprimir" style={{ marginTop: 12 }}>
-            {accion === "abono" && <FormAbono clienteId={clienteId} saldo={d.saldo} onListo={listo} />}
+            {accion === "abono" && <FormAbono key={facturaElegida ?? "cuenta"} clienteId={clienteId} saldo={d.saldo} facturas={fac.datos ?? []} inicial={facturaElegida} onListo={listo} />}
             {accion === "ajuste" && <FormAjuste clienteId={clienteId} onListo={listo} />}
             {accion === "credito" && <FormCredito clienteId={clienteId} limite={d.limiteCredito} dias={d.diasCredito} onListo={listo} />}
           </div>
@@ -105,6 +108,26 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
               <div><span>Más de 60</span><b>{rd(d.vencidoMas ?? 0)}</b></div>
               <div><span>Límite · días</span><b>{Number(d.limiteCredito) > 0 ? rd(d.limiteCredito) : "Sin límite"} · {d.diasCredito}</b></div>
             </div>
+            <h3 style={{ margin: "16px 0 6px" }}>Facturas pendientes</h3>
+            {(fac.datos ?? []).length === 0 ? <p className="suave pequeno">No hay facturas a crédito pendientes.</p> : (
+              <table className="tabla">
+                <thead><tr><th>Factura</th><th>Fecha</th><th>Vence</th><th className="der">Total</th><th className="der">Pagado</th><th className="der">Debe</th><th className="no-imprimir" /></tr></thead>
+                <tbody>
+                  {(fac.datos ?? []).map((f) => (
+                    <tr key={f.ventaId}>
+                      <td>{f.documento ?? `#${f.factura}`}<div className="suave pequeno">{f.sucursal}</div></td>
+                      <td>{fecha(f.fecha)}</td>
+                      <td className={new Date(f.vence) < new Date() ? "texto-alerta" : ""}>{fecha(f.vence)}{new Date(f.vence) < new Date() ? " · vencida" : ""}</td>
+                      <td className="der">{rd(f.cargo)}</td>
+                      <td className="der">{Number(f.pagado) ? rd(f.pagado) : <span className="suave">—</span>}</td>
+                      <td className="der"><b>{rd(f.pendiente)}</b></td>
+                      <td className="der no-imprimir">{puede("admin.cxc") && <button className="boton chico" onClick={() => { setFacturaElegida(f.ventaId); setAccion("abono"); }}>Pagar</button>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <h3 style={{ margin: "16px 0 6px" }}>Movimientos</h3>
             <table className="tabla">
               <thead><tr><th>Fecha</th><th>Concepto</th><th>Sucursal</th><th className="der">Cargo</th><th className="der">Abono</th><th className="der">Saldo</th></tr></thead>
               <tbody>
@@ -128,21 +151,38 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
   );
 }
 
-function FormAbono({ clienteId, saldo, onListo }: { clienteId: string; saldo: string; onListo: (t: string) => void }) {
-  const [monto, setMonto] = useState("");
+function FormAbono({ clienteId, saldo, facturas, inicial, onListo }: { clienteId: string; saldo: string; facturas: FacturaPend[]; inicial: string | null; onListo: (t: string) => void }) {
+  const [aplicar, setAplicar] = useState<"CUENTA" | "FACTURA">(inicial ? "FACTURA" : "CUENTA");
+  const [ventaId, setVentaId] = useState(inicial ?? "");
+  const elegida = facturas.find((f) => f.ventaId === ventaId);
+  const [monto, setMonto] = useState(inicial ? (facturas.find((f) => f.ventaId === inicial)?.pendiente ?? "") : "");
   const [forma, setForma] = useState("TRANSFERENCIA");
   const [referencia, setReferencia] = useState("");
   const [error, setError] = useState("");
   const ok = async () => {
     try {
-      const r = await api(`/central/cxc/${clienteId}/abonos`, { cuerpo: { monto: Number(monto).toFixed(2), formaPago: forma, referencia: referencia || undefined } });
+      const r = await api(`/central/cxc/${clienteId}/abonos`, { cuerpo: { monto: Number(monto).toFixed(2), formaPago: forma, referencia: referencia || undefined, modo: aplicar, ...(aplicar === "FACTURA" ? { ventaId } : {}) } });
       onListo(`Abono registrado. Ahora debe ${rd(r.saldoNuevo)}.`);
     } catch (e) { setError((e as Error).message); }
   };
   return (
     <>
+      <div className="campo"><span>Aplicar el pago a</span>
+        <div className="rp-chips" role="radiogroup">
+          <button type="button" className={aplicar === "CUENTA" ? "activo" : ""} onClick={() => setAplicar("CUENTA")}>La cuenta (la factura más antigua primero)</button>
+          <button type="button" className={aplicar === "FACTURA" ? "activo" : ""} onClick={() => setAplicar("FACTURA")} disabled={!facturas.length}>Una factura</button>
+        </div>
+        <small className="suave">{aplicar === "CUENTA" ? "Si el pago cubre la factura más antigua, lo que sobre se aplica a la siguiente. Si no alcanza, queda como abono a esa factura." : "El pago se aplica solo a la factura elegida."}</small>
+      </div>
+      {aplicar === "FACTURA" && (
+        <label className="campo"><span>Factura</span>
+          <select value={ventaId} onChange={(e) => { setVentaId(e.target.value); const f = facturas.find((x) => x.ventaId === e.target.value); if (f) setMonto(f.pendiente); }}>
+            <option value="">Elija la factura…</option>
+            {facturas.map((f) => <option key={f.ventaId} value={f.ventaId}>{f.documento ?? `#${f.factura}`} · {fecha(f.fecha)} · debe {rd(f.pendiente)}</option>)}
+          </select></label>
+      )}
       <div className="tres-col">
-        <label className="campo"><span>Monto (debe {rd(saldo)})</span><input className="numero" autoFocus inputMode="decimal" value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+        <label className="campo"><span>Monto ({aplicar === "FACTURA" && elegida ? `la factura debe ${rd(elegida.pendiente)}` : `debe ${rd(saldo)}`})</span><input className="numero" autoFocus inputMode="decimal" value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))} /></label>
         <label className="campo"><span>Forma de pago</span>
           <select value={forma} onChange={(e) => setForma(e.target.value)}>
             <option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option><option value="EFECTIVO">Efectivo en la oficina</option><option value="TARJETA">Tarjeta</option>
@@ -151,7 +191,7 @@ function FormAbono({ clienteId, saldo, onListo }: { clienteId: string; saldo: st
         <label className="campo"><span>Referencia</span><input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="No. de transferencia o cheque" /></label>
       </div>
       {error && <Aviso texto={error} />}
-      <button className="boton primario" disabled={!(Number(monto) > 0)} onClick={ok}>Registrar abono de {rd(monto || 0)}</button>
+      <button className="boton primario" disabled={!(Number(monto) > 0) || (aplicar === "FACTURA" && !ventaId)} onClick={ok}>Registrar abono de {rd(monto || 0)}</button>
     </>
   );
 }
