@@ -224,6 +224,8 @@ export async function rutasCentralProductos(app: FastifyInstance) {
               (SELECT x.precio FROM presentaciones pr JOIN precios x ON x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL
                  JOIN listas_precio lp ON lp.id = x.lista_precio_id AND lp.es_predeterminada
                 WHERE pr.producto_id = p.id ORDER BY pr.es_principal DESC, pr.factor LIMIT 1) AS precio,
+              (SELECT cb.codigo FROM presentaciones pr JOIN codigos_barra cb ON cb.presentacion_id = pr.id AND cb.activo
+                WHERE pr.producto_id = p.id ORDER BY pr.es_principal DESC, pr.factor, cb.codigo LIMIT 1) AS barras,
               (SELECT COUNT(*) FROM presentaciones pr WHERE pr.producto_id = p.id) AS presentaciones,
               COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.producto_id = p.id), 0) AS existencia,
               CASE WHEN p.tipo = 'COMBO'
