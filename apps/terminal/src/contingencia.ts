@@ -59,7 +59,7 @@ export const leerCache = <T,>(ajustes: Ajustes, que: "config" | "catalogo" | "tu
 /**
  * Con servidor, la caja guarda su cupo de cada producto (su parte de la existencia entre las cajas abiertas).
  * Sin servidor solo vende hasta ese cupo: dos cajas nunca venden la misma última unidad.
- * Solo aplica si el administrador lo activó en Configuración › Seguridad.
+ * Solo aplica si el administrador lo activó en Sistema › Seguridad.
  */
 let cupos: Record<string, number> | null = null;   // null = función apagada
 let usado: Record<string, number> = {};            // unidades base vendidas sin servidor desde el último reparto

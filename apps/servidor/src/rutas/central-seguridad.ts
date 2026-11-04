@@ -49,7 +49,7 @@ export const FUNCIONES = [
   {
     clave: "exigir_dispositivo",
     titulo: "Exigir dispositivo autorizado para entrar desde internet",
-    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Configuración › Acceso remoto. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Viene activada. Desactivada: basta el usuario y la clave.",
+    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Sistema › Acceso remoto. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Viene activada. Desactivada: basta el usuario y la clave.",
     porDefecto: true,
   },
 ] as const;
@@ -83,7 +83,7 @@ export async function exigirFuncion(empresaId: string, clave: ClaveFuncion) {
     if (SOLO_CON_LICENCIA.includes(clave) && (await enVersionDePrueba())) {
       throw new ErrorNegocio("Esta función no está disponible en la versión de prueba. Se habilita al activar la licencia.", 403);
     }
-    throw new ErrorNegocio("Esta función está desactivada. Un administrador puede activarla en Configuración › Seguridad.", 403);
+    throw new ErrorNegocio("Esta función está desactivada. Un administrador puede activarla en Sistema › Seguridad.", 403);
   }
 }
 

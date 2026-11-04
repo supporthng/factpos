@@ -304,7 +304,7 @@ export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCe
       <div className="campo">
         <span>Pantalla del cliente</span>
         <div><button className="boton" onClick={abrirPantallaCliente}>Abrir pantalla del cliente</button></div>
-        <small className="suave">Segunda pantalla que muestra al cliente los productos y el total, y las ofertas del negocio mientras no se cobra. Las ofertas se arman en Administración › Configuración › Pantalla del cliente.</small>
+        <small className="suave">Segunda pantalla que muestra al cliente los productos y el total, y las ofertas del negocio mientras no se cobra. Las ofertas se arman en Administración › Cajas y equipos › Pantalla del cliente.</small>
       </div>
       {principal && (
         <label className="campo">

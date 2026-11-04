@@ -306,7 +306,7 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
 
     // 1. Datos del emisor
     const rnc = String(emp.rnc ?? "").replace(/\D/g, "");
-    if (!rnc || !rncValido(rnc)) poner("rnc", "RNC del emisor", "falta", rnc ? `El RNC «${emp.rnc}» no es válido.` : "La empresa no tiene RNC.", "Corrija el RNC de la empresa (Configuración › Marca / datos de la empresa).");
+    if (!rnc || !rncValido(rnc)) poner("rnc", "RNC del emisor", "falta", rnc ? `El RNC «${emp.rnc}» no es válido.` : "La empresa no tiene RNC.", "Corrija el RNC de la empresa (Negocio › Apariencia / datos de la empresa).");
     else poner("rnc", "RNC del emisor", "ok", `RNC ${rnc} · ${emp.razon_social}`);
     if (String(emp.direccion).trim().length < 5) poner("direccion", "Dirección del emisor", "falta", "Falta la dirección fiscal que sale en el comprobante.", "Escríbala en Fiscal › Configuración.");
     else poner("direccion", "Dirección del emisor", "ok", String(emp.direccion));

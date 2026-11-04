@@ -1,76 +1,77 @@
-import { Seguridad } from "./paginas/Seguridad";
-import { AccesoRemoto } from "./paginas/AccesoRemoto";
+const Seguridad = lazy(() => import("./paginas/Seguridad").then((m) => ({ default: m.Seguridad })));
+const AccesoRemoto = lazy(() => import("./paginas/AccesoRemoto").then((m) => ({ default: m.AccesoRemoto })));
 import { AvisoAcceso } from "./AvisoAcceso";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
-import { Instaladores } from "./paginas/Instaladores";
-import { VersionesEquipos } from "./paginas/VersionesEquipos";
-import { Pedidos } from "./paginas/Pedidos";
-import { Facturas } from "./paginas/Facturas";
-import { CertificacionDgii } from "./paginas/CertificacionDgii";
-import { FacturacionElectronica } from "./paginas/FacturacionElectronica";
+const Instaladores = lazy(() => import("./paginas/Instaladores").then((m) => ({ default: m.Instaladores })));
+const VersionesEquipos = lazy(() => import("./paginas/VersionesEquipos").then((m) => ({ default: m.VersionesEquipos })));
+const Pedidos = lazy(() => import("./paginas/Pedidos").then((m) => ({ default: m.Pedidos })));
+const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
+const CertificacionDgii = lazy(() => import("./paginas/CertificacionDgii").then((m) => ({ default: m.CertificacionDgii })));
+const FacturacionElectronica = lazy(() => import("./paginas/FacturacionElectronica").then((m) => ({ default: m.FacturacionElectronica })));
 import { DosPasos } from "./paginas/DosPasos";
-import { ConfigMovil } from "./paginas/ConfigMovil";
+const ConfigMovil = lazy(() => import("./paginas/ConfigMovil").then((m) => ({ default: m.ConfigMovil })));
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
-import { Correo } from "./paginas/Correo";
+const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.Correo })));
 import { SelectorEmpresa } from "./paginas/Empresas";
-import { useEffect, useState, type ComponentType } from "react";
+import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
-import { Portal } from "./paginas/Portal";
+const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
 import { Actualizaciones, AvisoActualizacion } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, useCatalogo, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
 import { EstadoSistema } from "./paginas/InicioCifras";
-import { Inventario } from "./paginas/Inventario";
-import { Productos } from "./paginas/Productos";
-import { Compras } from "./paginas/Compras";
-import { Ajustes } from "./paginas/Ajustes";
-import { Conteos } from "./paginas/Conteos";
-import { Precios } from "./paginas/Precios";
-import { Ofertas } from "./paginas/Ofertas";
-import { Clientes } from "./paginas/Clientes";
-import { Cierres } from "./paginas/Cierres";
-import { Cotizaciones } from "./paginas/Cotizaciones";
-import { Traspasos } from "./paginas/Traspasos";
-import { Delivery } from "./paginas/Delivery";
-import { Reportes } from "./paginas/Reportes";
-import { Kardex } from "./paginas/Kardex";
-import { Verificador } from "./paginas/Verificador";
-import { ComprobantesNcf, Fiscal } from "./paginas/Fiscal";
-import { Sucursales } from "./paginas/Sucursales";
-import { Marca } from "./paginas/Marca";
-import { DatosEmpresa } from "./paginas/DatosEmpresa";
-import { PantallaCliente } from "./paginas/PantallaCliente";
-import { Respaldos } from "./paginas/Respaldos";
-import { FormatosImpresion } from "./paginas/FormatosImpresion";
-import { EquiposCaja } from "./paginas/EquiposCaja";
-import { Padron } from "./paginas/Padron";
-import { Usuarios } from "./paginas/Usuarios";
-import { Cxc } from "./paginas/Cxc";
-import { MovimientosCaja } from "./paginas/MovimientosCaja";
-import { Incidentes } from "./paginas/Incidentes";
+const Inventario = lazy(() => import("./paginas/Inventario").then((m) => ({ default: m.Inventario })));
+const Productos = lazy(() => import("./paginas/Productos").then((m) => ({ default: m.Productos })));
+const Compras = lazy(() => import("./paginas/Compras").then((m) => ({ default: m.Compras })));
+const Ajustes = lazy(() => import("./paginas/Ajustes").then((m) => ({ default: m.Ajustes })));
+const Conteos = lazy(() => import("./paginas/Conteos").then((m) => ({ default: m.Conteos })));
+const Precios = lazy(() => import("./paginas/Precios").then((m) => ({ default: m.Precios })));
+const Ofertas = lazy(() => import("./paginas/Ofertas").then((m) => ({ default: m.Ofertas })));
+const Clientes = lazy(() => import("./paginas/Clientes").then((m) => ({ default: m.Clientes })));
+const Cierres = lazy(() => import("./paginas/Cierres").then((m) => ({ default: m.Cierres })));
+const Cotizaciones = lazy(() => import("./paginas/Cotizaciones").then((m) => ({ default: m.Cotizaciones })));
+const Traspasos = lazy(() => import("./paginas/Traspasos").then((m) => ({ default: m.Traspasos })));
+const Delivery = lazy(() => import("./paginas/Delivery").then((m) => ({ default: m.Delivery })));
+const Reportes = lazy(() => import("./paginas/Reportes").then((m) => ({ default: m.Reportes })));
+const Kardex = lazy(() => import("./paginas/Kardex").then((m) => ({ default: m.Kardex })));
+const Verificador = lazy(() => import("./paginas/Verificador").then((m) => ({ default: m.Verificador })));
+const ComprobantesNcf = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.ComprobantesNcf })));
+const Fiscal = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.Fiscal })));
+const Sucursales = lazy(() => import("./paginas/Sucursales").then((m) => ({ default: m.Sucursales })));
+const Marca = lazy(() => import("./paginas/Marca").then((m) => ({ default: m.Marca })));
+const DatosEmpresa = lazy(() => import("./paginas/DatosEmpresa").then((m) => ({ default: m.DatosEmpresa })));
+const PantallaCliente = lazy(() => import("./paginas/PantallaCliente").then((m) => ({ default: m.PantallaCliente })));
+const Respaldos = lazy(() => import("./paginas/Respaldos").then((m) => ({ default: m.Respaldos })));
+const FormatosImpresion = lazy(() => import("./paginas/FormatosImpresion").then((m) => ({ default: m.FormatosImpresion })));
+const EquiposCaja = lazy(() => import("./paginas/EquiposCaja").then((m) => ({ default: m.EquiposCaja })));
+const Padron = lazy(() => import("./paginas/Padron").then((m) => ({ default: m.Padron })));
+const Usuarios = lazy(() => import("./paginas/Usuarios").then((m) => ({ default: m.Usuarios })));
+const Cxc = lazy(() => import("./paginas/Cxc").then((m) => ({ default: m.Cxc })));
+const MovimientosCaja = lazy(() => import("./paginas/MovimientosCaja").then((m) => ({ default: m.MovimientosCaja })));
+const Incidentes = lazy(() => import("./paginas/Incidentes").then((m) => ({ default: m.Incidentes })));
 import { aplicarTemaAdmin } from "./tema";
 import { SimboloFactPOS } from "./Logo";
 import { Icono, type NombreIcono } from "./Iconos";
 
 const SECCIONES = [
   { id: "resumen", titulo: "Resumen", grupo: "General", C: Resumen, i: "resumen", p: ["admin.reportes"] },
+  { id: "facturas", titulo: "Facturas", grupo: "Ventas", C: Facturas, i: "venta", p: ["admin.facturas"] },
+  { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Ventas", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
+  { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Ventas", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
+  { id: "delivery", titulo: "Delivery", grupo: "Ventas", C: Delivery, i: "delivery", p: ["admin.config"] },
+  { id: "clientela", titulo: "Clientes", grupo: "Ventas", C: Clientes, i: "clientes", p: ["admin.clientes", "admin.cxc"] },
   { id: "productos", titulo: "Productos", grupo: "Inventario", C: Productos, i: "productos", p: ["admin.productos"] },
-  { id: "compras", titulo: "Compras", grupo: "Inventario", C: Compras, i: "compras", p: ["admin.compras"] },
   { id: "inventario", titulo: "Existencias", grupo: "Inventario", C: Inventario, i: "inventario", p: ["admin.inventario", "admin.reportes"] },
-  { id: "ajustes", titulo: "Ajustes", grupo: "Inventario", C: Ajustes, i: "ajustes", p: ["admin.inventario"] },
-  { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario", C: Conteos, i: "conteos", p: ["admin.inventario"] },
+  { id: "compras", titulo: "Compras", grupo: "Inventario", C: Compras, i: "compras", p: ["admin.compras"] },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", C: Traspasos, i: "traspasos", p: ["admin.traspasos", "admin.recibir"] },
+  { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario", C: Conteos, i: "conteos", p: ["admin.inventario"] },
+  { id: "ajustes", titulo: "Ajustes", grupo: "Inventario", C: Ajustes, i: "ajustes", p: ["admin.inventario"] },
   { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, i: "kardex", p: ["admin.inventario"] },
-  { id: "precios", titulo: "Precios", grupo: "Comercial", C: Precios, i: "precios", p: ["admin.precios"] },
-  { id: "verificador", titulo: "Verificador de precios", grupo: "Comercial", C: Verificador, i: "precios", p: ["admin.precios"] },
-  { id: "ofertas", titulo: "Ofertas", grupo: "Comercial", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
-  { id: "clientela", titulo: "Clientes", grupo: "Comercial", C: Clientes, i: "clientes", p: ["admin.clientes", "admin.cxc"] },
-  { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Comercial", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
-  { id: "facturas", titulo: "Facturas", grupo: "Comercial", C: Facturas, i: "ticket", p: ["admin.facturas"] },
-  { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Comercial", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
-  { id: "delivery", titulo: "Delivery", grupo: "Comercial", C: Delivery, i: "delivery", p: ["admin.config"] },
+  { id: "precios", titulo: "Precios", grupo: "Precios", C: Precios, i: "precios", p: ["admin.precios"] },
+  { id: "ofertas", titulo: "Ofertas", grupo: "Precios", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
+  { id: "verificador", titulo: "Verificador de precios", grupo: "Precios", C: Verificador, i: "precios", p: ["admin.precios"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
@@ -78,23 +79,23 @@ const SECCIONES = [
   { id: "ncf", titulo: "Comprobantes (NCF)", grupo: "Fiscal", C: ComprobantesNcf, i: "fiscal", p: ["admin.fiscal"] },
   { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, i: "reportes", p: ["admin.reportes"] },
-  { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Configuración", C: Sucursales, i: "sucursales", p: ["admin.config"] },
-  { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Configuración", C: Incidentes, i: "incidentes", p: ["admin.config"] },
-  { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Configuración", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
-  { id: "correo", titulo: "Correo y envíos", grupo: "Configuración", C: Correo, i: "correo", p: ["admin.config"] },
-  { id: "empresa", titulo: "Datos de la empresa", grupo: "Configuración", C: DatosEmpresa, i: "sucursales", p: ["admin.config"] },
-  { id: "marca", titulo: "Apariencia", grupo: "Configuración", C: Marca, i: "marca", p: ["admin.config"] },
-  { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
-  { id: "equipos", titulo: "Equipos de la caja", grupo: "Configuración", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
-  { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
-  { id: "accesoremoto", titulo: "Acceso remoto", grupo: "Configuración", C: AccesoRemoto, i: "web", p: ["*"] },
-  { id: "versiones", titulo: "Versiones de los equipos", grupo: "Configuración", C: VersionesEquipos, i: "actualizaciones", p: ["admin.config"] },
-  { id: "instaladores", titulo: "Instaladores", grupo: "Configuración", C: Instaladores, i: "actualizaciones", p: ["admin.config"] },
-  { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
-  { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
-  { id: "respaldos", titulo: "Respaldos", grupo: "Configuración", C: Respaldos, i: "actualizaciones", p: ["admin.config"] },
-  { id: "licencia", titulo: "Licencia", grupo: "Configuración", C: Licencia, i: "licencia", p: ["admin.config"] },
-  { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Configuración", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
+  { id: "empresa", titulo: "Datos de la empresa", grupo: "Negocio", C: DatosEmpresa, i: "ajustes", p: ["admin.config"] },
+  { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Negocio", C: Sucursales, i: "sucursales", p: ["admin.config"] },
+  { id: "usuarios", titulo: "Usuarios y permisos", grupo: "Negocio", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
+  { id: "marca", titulo: "Apariencia", grupo: "Negocio", C: Marca, i: "marca", p: ["admin.config"] },
+  { id: "correo", titulo: "Correo y envíos", grupo: "Negocio", C: Correo, i: "correo", p: ["admin.config"] },
+  { id: "equipos", titulo: "Equipos de la caja", grupo: "Cajas y equipos", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
+  { id: "formatos", titulo: "Formatos de impresión", grupo: "Cajas y equipos", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
+  { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Cajas y equipos", C: PantallaCliente, i: "resumen", p: ["admin.config"] },
+  { id: "versiones", titulo: "Versiones de los equipos", grupo: "Cajas y equipos", C: VersionesEquipos, i: "actualizaciones", p: ["admin.config"] },
+  { id: "instaladores", titulo: "Instaladores", grupo: "Cajas y equipos", C: Instaladores, i: "actualizaciones", p: ["admin.config"] },
+  { id: "accesoremoto", titulo: "Acceso remoto", grupo: "Sistema", C: AccesoRemoto, i: "web", p: ["*"] },
+  { id: "movil", titulo: "Configuración móvil", grupo: "Sistema", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
+  { id: "seguridad", titulo: "Seguridad", grupo: "Sistema", C: Seguridad, i: "llave", p: ["*"] },
+  { id: "respaldos", titulo: "Respaldos", grupo: "Sistema", C: Respaldos, i: "actualizaciones", p: ["admin.config"] },
+  { id: "licencia", titulo: "Licencia", grupo: "Sistema", C: Licencia, i: "licencia", p: ["admin.config"] },
+  { id: "actualizaciones", titulo: "Actualizaciones", grupo: "Sistema", C: Actualizaciones, i: "actualizaciones", p: ["admin.config"] },
+  { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Sistema", C: Incidentes, i: "incidentes", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
 const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "cierres", "caja", "reportes"];
@@ -124,7 +125,7 @@ const SECCIONES_PORTAL = [
   { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];
-type Item = { id: string; titulo: string; grupo: string; C: ComponentType; i: NombreIcono; p: readonly string[] };
+type Item = { id: string; titulo: string; grupo: string; C: ComponentType | LazyExoticComponent<ComponentType>; i: NombreIcono; p: readonly string[] };
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
@@ -175,12 +176,15 @@ const DESCRIPCION: Record<string, string> = {
 /** Las funciones principales del inicio, en este orden. */
 const GRUPOS: Record<string, { slug: string; i: NombreIcono; color: string; d: string }> = {
   "General": { slug: "general", i: "resumen", color: "#0f766e", d: "Cómo va el día en todas las sucursales" },
-  "Inventario": { slug: "inventario", i: "productos", color: "#2563eb", d: "Productos, compras, existencias y traspasos" },
-  "Comercial": { slug: "comercial", i: "precios", color: "#d97706", d: "Precios, ofertas y delivery" },
-  "Finanzas": { slug: "finanzas", i: "cxc", color: "#16a34a", d: "Cuentas por cobrar, retiros y gastos" },
-  "Fiscal": { slug: "fiscal", i: "fiscal", color: "#7c3aed", d: "Facturación electrónica y padrón de la DGII" },
+  "Ventas": { slug: "ventas", i: "venta", color: "#d97706", d: "Facturas, cotizaciones, pedidos, delivery y clientes" },
+  "Inventario": { slug: "inventario", i: "productos", color: "#2563eb", d: "Productos, existencias, compras y traspasos" },
+  "Precios": { slug: "precios", i: "precios", color: "#db2777", d: "Precios por nivel, ofertas y verificadores" },
+  "Finanzas": { slug: "finanzas", i: "cxc", color: "#16a34a", d: "Cuentas por cobrar, cierres, retiros y gastos" },
+  "Fiscal": { slug: "fiscal", i: "fiscal", color: "#7c3aed", d: "Facturación electrónica, NCF y padrón de la DGII" },
   "Reportes": { slug: "reportes", i: "reportes", color: "#0891b2", d: "Todos los informes del negocio" },
-  "Configuración": { slug: "configuracion", i: "ajustes", color: "#475569", d: "Sucursales, usuarios, marca y licencia" },
+  "Negocio": { slug: "negocio", i: "sucursales", color: "#475569", d: "Empresa, sucursales, usuarios, apariencia y correo" },
+  "Cajas y equipos": { slug: "equipos", i: "ticket", color: "#0d9488", d: "Impresoras, ticket, pantalla del cliente y versiones" },
+  "Sistema": { slug: "sistema", i: "ajustes", color: "#64748b", d: "Acceso remoto, seguridad, respaldos, licencia y actualizaciones" },
   "Portal FactPOS": { slug: "portal", i: "clientes", color: "#0f766e", d: "Clientes, licencias y equipo del portal" },
 };
 /** Cada opción lleva su propio color (en orden, para que las vecinas no se parezcan): así la pantalla no queda toda del mismo tono. */
@@ -421,7 +425,7 @@ function AppInterna() {
               </>
             )}
 
-            {vista === "seccion" && <Actual />}
+            {vista === "seccion" && <Suspense fallback={<p className="suave" style={{ padding: 24 }}>Cargando…</p>}><Actual /></Suspense>}
           </main>
           {cambiarClave && <CambiarClave onCerrar={() => setCambiarClave(false)} />}
         </div>

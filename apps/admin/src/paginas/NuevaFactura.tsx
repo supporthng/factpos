@@ -31,7 +31,7 @@ const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 const limpiar = (v: string) => v.replace(/[^\d.]/g, "");
 
 export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (id: string) => void }) {
-  // «Sin comprobante» solo si un administrador lo activó en Configuración › Seguridad
+  // «Sin comprobante» solo si un administrador lo activó en Sistema › Seguridad
   const { habilitada: sinComprobante } = useFuncionSeguridad("venta_sin_comprobante");
   const { productos } = useCatalogo();
   const cajas = useDatos<CajaAbierta[]>("/central/facturas/cajas-abiertas");

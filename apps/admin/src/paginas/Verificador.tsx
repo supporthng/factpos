@@ -94,7 +94,7 @@ function AjustesVerificador() {
       </label>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
         Apagado: la pantalla solo dice «Consulta de precios» y el producto que se pase por el lector. Encendido: además muestra las ofertas vigentes
-        (en Comercial › Ofertas se elige cuáles). Las ofertas se siguen aplicando en la caja en ambos casos.
+        (en Precios › Ofertas se elige cuáles). Las ofertas se siguen aplicando en la caja en ambos casos.
       </p>
       <label className="campo" style={{ marginTop: 14, maxWidth: 260 }}>
         <span>Segundos que se ve cada oferta (si hay varias)</span>

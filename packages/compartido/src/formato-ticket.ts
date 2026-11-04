@@ -1,5 +1,5 @@
 /**
- * Formato de impresión del ticket: lo diseña el administrador (Configuración › Formatos de impresión)
+ * Formato de impresión del ticket: lo diseña el administrador (Cajas y equipos › Formatos de impresión)
  * y lo usan la caja al imprimir y la vista previa de la administración.
  */
 export interface FormatoTicket {

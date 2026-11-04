@@ -81,7 +81,7 @@ export async function rutasContingencia(app: FastifyInstance) {
   /**
    * Cupo de existencia de esta caja por producto (unidades base), para vender sin servidor sin pasarse:
    * la existencia del almacén se reparte entre las cajas con turno abierto (esta incluida).
-   * Solo si el administrador lo activó en Configuración › Seguridad.
+   * Solo si el administrador lo activó en Sistema › Seguridad.
    */
   app.get("/cajas/:cajaId/contingencia/cupos", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);

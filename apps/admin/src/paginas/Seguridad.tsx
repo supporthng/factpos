@@ -30,7 +30,7 @@ export function Seguridad() {
       <Aviso texto={error} />
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       {!admin && <Aviso tipo="info" texto="Solo un administrador puede cambiar estas opciones." />}
-      <p className="suave pequeno">El acceso desde internet (acceso web y dispositivos autorizados) se maneja en <b>Configuración › Acceso remoto</b>.</p>
+      <p className="suave pequeno">El acceso desde internet (acceso web y dispositivos autorizados) se maneja en <b>Sistema › Acceso remoto</b>.</p>
       <div className="panel">
         {(datos?.funciones ?? []).filter((f) => !FUNCIONES_ACCESO_REMOTO.includes(f.clave)).map((f) => (
           <div key={f.clave} className="seg-fila">

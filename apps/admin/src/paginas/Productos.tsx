@@ -675,7 +675,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
                   const p1 = n(p.precios["1"]);
                   return <span key={k} style={{ marginRight: 16 }}>Precio {k}: {d > 0 ? <b>{d} % menos que el precio 1{p1 ? ` = ${rd(Math.round(p1 * (1 - d / 100) * 100) / 100)}` : ""}</b> : "sin descuento definido"}</span>;
                 })}
-                · Se definen una sola vez en Comercial › Precios y en la factura salen como descuento.
+                · Se definen una sola vez en Precios › Precios y en la factura salen como descuento.
               </p>
               {NIVELES.some((k) => { const pr = n(p.precios[k]); return pr && costoP && base(pr, tasa, f.precioIncluyeItbis) < costoP; }) &&
                 <p className="texto-alerta pequeno">Hay precios por debajo del costo.</p>}
@@ -698,8 +698,8 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
       </div>
 
       {aux.preciosPorSucursal
-        ? <p className="suave pequeno">Precios por sucursal activados: los precios propios de cada sucursal se editan en Comercial › Precios. Aquí se edita el precio general.</p>
-        : <p className="suave pequeno">Todas las sucursales usan estos precios. Si alguna necesita precios propios, active la opción en Comercial › Precios.</p>}
+        ? <p className="suave pequeno">Precios por sucursal activados: los precios propios de cada sucursal se editan en Precios › Precios. Aquí se edita el precio general.</p>
+        : <p className="suave pequeno">Todas las sucursales usan estos precios. Si alguna necesita precios propios, active la opción en Precios › Precios.</p>}
 
       {!!f.historialPrecios?.length && (
         <div className="panel">
@@ -731,13 +731,13 @@ function InventarioFicha({ f, cambiar, id, tipo, alAgregar }: { f: Ficha; cambia
         <span className="en-linea">
           {id && tipo === "INVENTARIABLE" && (
             <button className="boton" disabled={!habilitada} onClick={() => setAbrir(true)}
-              title={habilitada ? "Sumar existencia con una entrada en el kardex" : "Desactivado. Un administrador puede activarlo en Configuración › Seguridad."}>Agregar existencia</button>
+              title={habilitada ? "Sumar existencia con una entrada en el kardex" : "Desactivado. Un administrador puede activarlo en Sistema › Seguridad."}>Agregar existencia</button>
           )}
           <a className="enlace" href="#ajustes" onClick={() => setTimeout(() => location.reload(), 0)}>Corregir existencia con un ajuste</a>
         </span>
       </div>
       {aviso && <Aviso texto={aviso} tipo="ok" />}
-      {id && tipo === "INVENTARIABLE" && !habilitada && <p className="suave pequeno">«Agregar existencia» está desactivado. Un administrador puede activarlo en Configuración › Seguridad.</p>}
+      {id && tipo === "INVENTARIABLE" && !habilitada && <p className="suave pequeno">«Agregar existencia» está desactivado. Un administrador puede activarlo en Sistema › Seguridad.</p>}
       {abrir && id && <AgregarExistencia productoId={id} sucursales={f.sucursales} costo={f.costoReferencia} onCerrar={() => setAbrir(false)}
         onListo={async (m) => { setAbrir(false); setAviso(m); await alAgregar(); }} />}
       <p className="suave pequeno">Cada sucursal tiene su propio inventario. La existencia solo cambia con compras, ventas, traspasos o ajustes, para que el kardex cuadre siempre.</p>
@@ -1164,7 +1164,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
                 </div>
               );
             })}
-            <small className="suave">La ganancia es sobre el precio de venta sin ITBIS: con 25 % el margen que se ve es 25 %. Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Comercial › Precios).</small>
+            <small className="suave">La ganancia es sobre el precio de venta sin ITBIS: con 25 % el margen que se ve es 25 %. Escriba el % para que el precio se calcule, o escriba el precio y verá su ganancia. Los precios 2 y 3 se calculan solos como descuento sobre este precio (Precios › Precios).</small>
           </div>
         </div>
 

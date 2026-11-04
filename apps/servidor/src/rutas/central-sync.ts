@@ -199,7 +199,7 @@ export async function rutasCentralSync(app: FastifyInstance) {
       versionPrincipal: versionActual() };
   });
 
-  /** La sucursal avisa su versión y la de las apps del verificador que la consultan (se ve en Configuración › Versiones de los equipos). */
+  /** La sucursal avisa su versión y la de las apps del verificador que la consultan (se ve en Cajas y equipos › Versiones de los equipos). */
   app.post("/central/sync/equipo", async (req) => {
     const b = z.object({
       sucursalId: uuid, equipo: z.string().max(80).optional(), appVersion: z.string().max(20).optional(),
