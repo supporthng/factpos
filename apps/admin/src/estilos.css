@@ -1134,3 +1134,44 @@ input[type=password] { -webkit-text-security: disc; }
 .paso button { width: 30px; height: 34px; border: 1px solid var(--borde-fuerte); background: var(--panel); border-radius: 8px; font-size: 16px; }
 .paso input { width: 64px; text-align: center; }
 .paso input.invalido { border-color: #dc2626; }
+
+/* Editor de producto: campos y foto más compactos */
+.editor-producto .panel .campo { margin-bottom: 5px; gap: 2px; }
+.editor-producto .panel input, .editor-producto .panel select { padding: 3px 8px; font-size: 13.5px; border-radius: 6px; }
+.editor-producto .panel .campo > span { font-size: 12px; }
+.editor-producto .panel .campo small { font-size: 11.5px; line-height: 1.25; }
+.editor-producto .codigos-caja { min-height: 28px; padding: 1px 5px; gap: 4px; border-radius: 6px; }
+.editor-producto .codigos-caja input { padding: 2px 4px; }
+.principal-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 16px; align-items: start; }
+.principal-cuerpo .zona-imagen { aspect-ratio: 1; width: 150px; max-height: 150px; }
+.principal-cuerpo .zona-imagen img { padding: 4px; box-sizing: border-box; }
+.principal-cuerpo .zona-imagen > span { font-size: 12px; padding: 6px; }
+@media (max-width: 700px) { .principal-cuerpo { grid-template-columns: 1fr; } .principal-cuerpo .zona-imagen { margin: 0 auto; } }
+
+/* Compactar TODOS los campos del admin (textos, selects, áreas) y los botones que los acompañan */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea { padding: 4px 8px; font-size: 13.5px; border-radius: 6px; }
+textarea { line-height: 1.35; }
+.boton { padding: 4px 12px; font-size: 13.5px; border-radius: 6px; }
+.campo { margin-bottom: 7px; gap: 2px; }
+.panel { padding: 14px; }
+.campo > span { font-size: 12.5px; }
+.editor-producto .panel .tabla-edicion td, .editor-producto .panel .tabla-edicion th { padding-top: 5px; padding-bottom: 5px; }
+.editor-producto .panel .tabla-edicion { font-size: 13.5px; }
+
+/* Campos con sufijo (%): conservar el espacio del símbolo pese al relleno compacto */
+.con-sufijo > input { padding-right: 28px !important; }
+/* Ventana de producto (nuevo / modificar): cómoda en el celular */
+.modal.producto-rapido { max-height: 94vh; overflow-y: auto; }
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea { font-size: 16px; padding: 8px 10px; }
+  .con-sufijo > input { padding-right: 30px !important; }
+  .modal.producto-rapido { max-height: 100dvh; border-radius: 14px 14px 0 0; }
+  .pr-acciones { flex-wrap: wrap; position: sticky; bottom: -1px; background: var(--panel); padding: 8px 0 2px; gap: 8px; }
+  .pr-acciones .boton { flex: 1 1 auto; }
+  .pr-espacio { display: none; }
+  .pr-nivel-cab { display: none; }
+  .pr-nivel { grid-template-columns: 1fr 1fr; }
+  .pr-nombre { grid-column: 1 / -1; flex-direction: row; gap: 8px; align-items: baseline; }
+}
+
+.pr-existencia { font-size: 18px; font-variant-numeric: tabular-nums; min-width: 40px; }

@@ -93,6 +93,8 @@ function fichaNueva(aux: Auxiliares, sucursales: { id: string; nombre: string }[
 export function Productos() {
   const [editando, setEditando] = useState<string | "nuevo" | null>(null);
   const [rapido, setRapido] = useState(false);
+  const [editarRapido, setEditarRapido] = useState<string | null>(null);
+  const [pestanaIni, setPestanaIni] = useState<Pestana | undefined>(undefined);
   const [importar, setImportar] = useState(false);
   const [borrador, setBorrador] = useState<Ficha | null>(null);
   const [version, setVersion] = useState(0);
@@ -100,19 +102,46 @@ export function Productos() {
   const aux = useDatos<Auxiliares>("/central/productos-auxiliares");
   if (!aux.datos) return <div className="cargando">Cargando…</div>;
   return editando
-    ? <Editor id={editando === "nuevo" ? null : editando} borrador={editando === "nuevo" ? borrador : null} aux={aux.datos} recargarAux={aux.recargar}
-        onCerrar={() => { setEditando(null); setBorrador(null); }} onAbrir={(id) => { setBorrador(null); setEditando(id); }} />
+    ? <Editor id={editando === "nuevo" ? null : editando} pestanaInicial={pestanaIni} borrador={editando === "nuevo" ? borrador : null} aux={aux.datos} recargarAux={aux.recargar}
+        onCerrar={() => { setEditando(null); setBorrador(null); setPestanaIni(undefined); }} onAbrir={(id) => { setBorrador(null); setEditando(id); }} />
     : (
       <>
-        <Listado onAbrir={setEditando} onNuevo={() => setRapido(true)} onImportar={() => setImportar(true)} aux={aux.datos} version={version} creado={creado} />
+        <Listado onAbrir={setEditarRapido} onNuevo={() => setRapido(true)} onImportar={() => setImportar(true)} aux={aux.datos} version={version} creado={creado} />
         {importar && <ImportarProductos aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setImportar(false)} onTerminado={() => setVersion((v) => v + 1)} />}
         {rapido && (
           <ProductoRapido aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setRapido(false)}
-            onCreado={(nombre) => { setVersion((v) => v + 1); setCreado(nombre); setTimeout(() => setCreado(""), 5000); }}
+            onCreado={(nombre) => { setVersion((v) => v + 1); setCreado(`Producto “${nombre}” creado. Las terminales lo reciben en la próxima sincronización.`); setTimeout(() => setCreado(""), 5000); }}
             onCompleta={(b) => { setBorrador(b); setRapido(false); setEditando("nuevo"); }} />
+        )}
+        {editarRapido && (
+          <EditarRapido id={editarRapido} aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setEditarRapido(null)}
+            onFichaCompleta={(pt) => { const i = editarRapido; setPestanaIni(pt); setEditarRapido(null); setEditando(i); }}
+            onGuardado={(nombre) => { setVersion((v) => v + 1); setCreado(`Producto “${nombre}” guardado. Las terminales lo reciben en la próxima sincronización.`); setTimeout(() => setCreado(""), 5000); }} />
         )}
       </>
     );
+}
+
+/** Cuerpo que se envía al servidor al guardar una ficha (compartido por el editor completo y la edición rápida). */
+function cuerpoGuardar(f: Ficha) {
+  const cuerpo = {
+    ...f,
+    nombreCorto: f.nombreCorto || null, marca: f.marca || null,
+    precioVariableMin: f.precioVariable ? f.precioVariableMin : null,
+    precioVariableMax: f.precioVariable ? f.precioVariableMax : null,
+    presentaciones: f.presentaciones.map((p) => ({
+      ...p,
+      precios: Object.fromEntries(NIVELES.map((k) => [k, p.precios[k] ? String(n(p.precios[k]).toFixed(2)) : null])),
+      porcentajes: Object.fromEntries(NIVELES.map((k) => [k, (esPct(p, k) || esDesc(p, k)) && p.precios[k] && p.porcentajes![k] !== "" ? n(p.porcentajes![k]) : null])),
+      bases: Object.fromEntries((["2", "3"] as const).map((k) => [k, esDesc(p, k) ? "PRECIO1" : "COSTO"])),
+    })),
+    sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: stockMinimo || "0", stockMaximo: stockMaximo || null, ubicacion: ubicacion || null, activo })),
+    proveedores: f.proveedores.map(({ proveedorId, codigoProveedor, ultimoCosto, principal }) => ({ proveedorId, codigoProveedor: codigoProveedor || null, ultimoCosto: ultimoCosto || null, principal })),
+    componentes: f.componentes.map(({ productoId, cantidad }) => ({ productoId, cantidad })),
+    costoReferencia: String(n(f.costoReferencia)),
+  };
+  delete (cuerpo as any).historialPrecios;
+  return cuerpo;
 }
 
 /* ---------- Listado ---------- */
@@ -144,7 +173,7 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
         <span className="suave pequeno">{datos ? `${datos.length} producto(s)` : ""}</span>
       </div>
       <Aviso texto={error} />
-      {creado && <Aviso texto={`Producto “${creado}” creado. Las terminales lo reciben en la próxima sincronización.`} tipo="ok" />}
+      {creado && <Aviso texto={creado} tipo="ok" />}
       {datos && (
         <Tabla
           tarjetas
@@ -177,10 +206,10 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
 /* ---------- Editor ---------- */
 type Pestana = "principal" | "general" | "precios" | "inventario" | "proveedores" | "combo";
 
-function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; borrador?: Ficha | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
+function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; pestanaInicial?: Pestana; borrador?: Ficha | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
   const { sucursales, productos } = useCatalogo();
   const [f, setF] = useState<Ficha | null>(id ? null : borrador ?? fichaNueva(aux, sucursales));
-  const [pestana, setPestana] = useState<Pestana>("principal");
+  const [pestana, setPestana] = useState<Pestana>(pestanaInicial ?? "principal");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [sucio, setSucio] = useState(!id && !!borrador);
@@ -204,23 +233,7 @@ function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: str
     setGuardando(true);
     setMsg(null);
     try {
-      const cuerpo = {
-        ...f,
-        nombreCorto: f.nombreCorto || null, marca: f.marca || null,
-        precioVariableMin: f.precioVariable ? f.precioVariableMin : null,
-        precioVariableMax: f.precioVariable ? f.precioVariableMax : null,
-        presentaciones: f.presentaciones.map((p) => ({
-          ...p,
-          precios: Object.fromEntries(NIVELES.map((k) => [k, p.precios[k] ? String(n(p.precios[k]).toFixed(2)) : null])),
-          porcentajes: Object.fromEntries(NIVELES.map((k) => [k, (esPct(p, k) || esDesc(p, k)) && p.precios[k] && p.porcentajes![k] !== "" ? n(p.porcentajes![k]) : null])),
-          bases: Object.fromEntries((["2", "3"] as const).map((k) => [k, esDesc(p, k) ? "PRECIO1" : "COSTO"])),
-        })),
-        sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: stockMinimo || "0", stockMaximo: stockMaximo || null, ubicacion: ubicacion || null, activo })),
-        proveedores: f.proveedores.map(({ proveedorId, codigoProveedor, ultimoCosto, principal }) => ({ proveedorId, codigoProveedor: codigoProveedor || null, ultimoCosto: ultimoCosto || null, principal })),
-        componentes: f.componentes.map(({ productoId, cantidad }) => ({ productoId, cantidad })),
-        costoReferencia: String(n(f.costoReferencia)),
-      };
-      delete (cuerpo as any).historialPrecios;
+      const cuerpo = cuerpoGuardar(f);
       const r = await api<{ id: string }>(id ? `/central/productos/${id}` : "/central/productos", { metodo: id ? "PUT" : "POST", cuerpo });
       setSucio(false);
       if (!id) onAbrir(r.id);
@@ -357,21 +370,26 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
             </button>
           ))}
         </div>
-        <div className="campo codigos"><span>Código de barras</span>
-          <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
-          <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
-        </div>
-        <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
-        <div className="dos-col">
-          <label className="campo"><span>Precio de costo (sin ITBIS)</span>
-            <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
-            <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex."}</small>
-          </label>
-          <label className="campo"><span>Precio de venta {f.precioIncluyeItbis && tasa > 0 ? "(con ITBIS)" : ""}</span>
-            <input className="numero" inputMode="decimal" value={p0.precios["1"] ?? ""} disabled={f.precioVariable}
-              onChange={(e) => fijarPres({ precios: { ...p0.precios, "1": e.target.value.replace(/[^\d.]/g, "") }, porcentajes: { ...p0.porcentajes, "1": null } })} />
-            <small className="suave">{f.precioVariable ? "Precio variable: lo escribe la cajera." : "Los precios 2 y 3 están en la pestaña Precios."}</small>
-          </label>
+        <div className="principal-cuerpo">
+          <div className="principal-datos">
+          <div className="campo codigos"><span>Código de barras</span>
+            <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
+            <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
+          </div>
+          <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
+          <div className="dos-col">
+            <label className="campo"><span>Precio de costo (sin ITBIS)</span>
+              <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
+              <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex."}</small>
+            </label>
+            <label className="campo"><span>Precio de venta {f.precioIncluyeItbis && tasa > 0 ? "(con ITBIS)" : ""}</span>
+              <input className="numero" inputMode="decimal" value={p0.precios["1"] ?? ""} disabled={f.precioVariable}
+                onChange={(e) => fijarPres({ precios: { ...p0.precios, "1": e.target.value.replace(/[^\d.]/g, "") }, porcentajes: { ...p0.porcentajes, "1": null } })} />
+              <small className="suave">{f.precioVariable ? "Precio variable: lo escribe la cajera." : "Los precios 2 y 3 están en la pestaña Precios."}</small>
+            </label>
+          </div>
+          </div>
+          <ZonaImagen f={f} cambiar={cambiar} />
         </div>
         {!sinStock && (
           <table className="tabla tabla-edicion">
@@ -388,7 +406,6 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
           </table>
         )}
         {!sinStock && <p className="suave pequeno">{nuevo ? "El stock inicial se agrega después de crear el producto (pestaña Inventario › Agregar existencia), para que el kardex cuadre." : "El stock cambia con compras, ventas, ajustes o «Agregar existencia» en la pestaña Inventario."}</p>}
-        <ZonaImagen f={f} cambiar={cambiar} />
       </div>
     </>
   );
@@ -915,25 +932,54 @@ function recalcular(nv: Record<string, Niv>, costo: number, tasa: number, incluy
   })) as Record<string, Niv>;
 }
 
-function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
-  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void;
+/** Abre la misma ventana compacta de «Nuevo producto» para modificar uno existente. Combos y precio libre van directo a la ficha completa. */
+function EditarRapido({ id, aux, recargarAux, onCerrar, onFichaCompleta, onGuardado }: {
+  id: string; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onFichaCompleta: (pestana?: Pestana) => void; onGuardado: (nombre: string) => void;
+}) {
+  const [ficha, setFicha] = useState<Ficha | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api<Ficha>(`/central/productos/${id}`).then((d) => {
+      if (d.tipo === "COMBO" || d.precioVariable) return onFichaCompleta();
+      setFicha({ ...d, id, costoReferencia: String(Number(d.costoReferencia).toFixed(2)) });
+    }).catch((e) => setError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+  if (error) return <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}><div className="modal"><Aviso texto={error} tipo="error" /><button className="boton" onClick={onCerrar}>Cerrar</button></div></div>;
+  if (!ficha) return null;
+  return <ProductoRapido aux={aux} recargarAux={recargarAux} onCerrar={onCerrar} onCreado={onGuardado} onCompleta={() => onFichaCompleta()} onAjustar={() => onFichaCompleta("inventario")} editar={ficha} />;
+}
+
+function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, onAjustar, editar }: {
+  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void; onAjustar?: () => void; editar?: Ficha;
 }) {
   const { sucursales } = useCatalogo();
-  const [codigo, setCodigo] = useState("");
-  const [nombre, setNombre] = useState("");
-  const [marca, setMarca] = useState("");
-  const [imagen, setImagen] = useState<string | null>(null);
-  const [tipo, setTipo] = useState<Tipo>("INVENTARIABLE");
-  const [categoriaId, setCategoriaId] = useState("");
+  const p0e = editar?.presentaciones[0];
+  const [codigo, setCodigo] = useState(p0e?.codigos[0] ?? "");
+  const [nombre, setNombre] = useState(editar?.nombre ?? "");
+  const [marca, setMarca] = useState(editar?.marca ?? "");
+  const [imagen, setImagen] = useState<string | null>(editar?.imagen ?? null);
+  const [tipo, setTipo] = useState<Tipo>(editar?.tipo ?? "INVENTARIABLE");
+  const [categoriaId, setCategoriaId] = useState(editar?.categoriaId ?? "");
   const [nuevaCat, setNuevaCat] = useState<string | null>(null);
-  const [impuestoId, setImpuestoId] = useState(() => aux.impuestos.find((i) => i.tasa === 0.18)?.id ?? aux.impuestos[0]?.id ?? "");
-  const [incluye, setIncluye] = useState(true);
-  const [costo, setCosto] = useState("");
-  const [minimo, setMinimo] = useState("");
-  const [sinExistencia, setSinExistencia] = useState(false);
+  const [impuestoId, setImpuestoId] = useState(() => editar?.impuestoId ?? aux.impuestos.find((i) => i.tasa === 0.18)?.id ?? aux.impuestos[0]?.id ?? "");
+  const [incluye, setIncluye] = useState(editar?.precioIncluyeItbis ?? true);
+  const [costo, setCosto] = useState(editar && n(editar.costoReferencia) > 0 ? n(editar.costoReferencia).toFixed(2) : "");
+  const minimoInicial = editar && n(editar.sucursales[0]?.stockMinimo) > 0 ? String(n(editar.sucursales[0].stockMinimo)) : "";
+  const [minimo, setMinimo] = useState(minimoInicial);
+  const [sinExistencia, setSinExistencia] = useState(editar?.permiteSinExistencia ?? false);
   const [existencia, setExistencia] = useState("");
   const [sucExist, setSucExist] = useState("");
-  const [nv, setNv] = useState<Record<string, Niv>>(nivVacio);
+  const [nv, setNv] = useState<Record<string, Niv>>(() => {
+    const v = nivVacio();
+    if (!editar || !p0e) return v;
+    const precio = p0e.precios["1"] ? n(p0e.precios["1"]).toFixed(2) : "";
+    const tasaE = aux.impuestos.find((i) => i.id === editar.impuestoId)?.tasa ?? 0;
+    const pctGuardado = p0e.porcentajes?.["1"];
+    const m = precio ? margen(n(precio), n(editar.costoReferencia), tasaE, editar.precioIncluyeItbis) : null;
+    v["1"] = { precio, pct: pctGuardado != null && pctGuardado !== "" ? String(n(pctGuardado)) : m == null ? "" : m.toFixed(1), origen: precio ? (pctGuardado != null && pctGuardado !== "" ? "pct" : "monto") : null };
+    return v;
+  });
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const refCodigo = useRef<HTMLInputElement>(null);
@@ -964,7 +1010,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
 
   const buscarCodigo = async () => {
     const d = codigo.trim();
-    if (!d) return;
+    if (!d || (editar && d === (p0e?.codigos[0] ?? ""))) return;
     if (!/^\d{6,14}$/.test(d)) return setMsg({ t: "El código debe tener de 6 a 14 dígitos.", tipo: "error" });
     try {
       const r = await api<{ existe: boolean; producto?: { nombre: string }; sugerencia?: { nombre: string | null; marca: string | null; imagen: string | null; fuente: string } | null; sinConexion?: boolean }>(`/central/productos/codigo/${d}`);
@@ -1037,25 +1083,51 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
     } finally { setGuardando(false); }
   };
 
+  const guardarCambios = async () => {
+    if (!editar) return;
+    if (nombre.trim().length < 2) return setMsg({ t: "Escriba el nombre del producto.", tipo: "error" });
+    if (n(nv["1"].precio) <= 0) return setMsg({ t: `Falta el precio ${nombreNivel("1").toLowerCase()}: es el que se cobra por defecto en caja.`, tipo: "error" });
+    setGuardando(true); setMsg(null);
+    try {
+      const p0 = editar.presentaciones[0];
+      const codigos = [...new Set([codigo.trim(), ...p0.codigos.slice(1)].filter(Boolean))];
+      const n1 = nv["1"];
+      const pres0 = derivar({ ...p0, codigos, precios: { ...p0.precios, "1": n1.precio || null }, porcentajes: { ...p0.porcentajes, "1": n1.origen === "pct" && n1.precio ? n(n1.pct) : null } });
+      const f: Ficha = {
+        ...editar, nombre: nombre.trim(), marca: marca.trim() || null, imagen, categoriaId: categoriaId || null, impuestoId, precioIncluyeItbis: incluye,
+        costoReferencia: costo || "0", permiteSinExistencia: tipo === "INVENTARIABLE" && sinExistencia,
+        presentaciones: editar.presentaciones.map((x, i) => (i === 0 ? pres0 : x)),
+        sucursales: minimo !== minimoInicial ? editar.sucursales.map((s) => ({ ...s, stockMinimo: minimo || "0" })) : editar.sucursales,
+      };
+      await api(`/central/productos/${editar.id}`, { metodo: "PUT", cuerpo: cuerpoGuardar(f) });
+      onCreado(f.nombre);
+      onCerrar();
+    } catch (e) {
+      setMsg({ t: (e as Error).message, tipo: "error" });
+    } finally { setGuardando(false); }
+  };
+
   const pasos: { v: Tipo; t: string }[] = [{ v: "INVENTARIABLE", t: "Inventariable" }, { v: "SERVICIO", t: "Servicio" }, { v: "COMBO", t: "Combo" }];
 
   return (
     <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
-      <div className="modal producto-rapido" role="dialog" aria-modal="true" aria-label="Nuevo producto">
+      <div className="modal producto-rapido" role="dialog" aria-modal="true" aria-label={editar ? "Modificar producto" : "Nuevo producto"}>
         <div className="pr-cabecera">
-          <div><h2>Nuevo producto</h2><p className="suave">Lo necesario para venderlo. Lo demás se completa después en la ficha.</p></div>
+          <div><h2>{editar ? "Modificar producto" : "Nuevo producto"}</h2><p className="suave">{editar ? `SKU ${editar.sku} · lo demás (presentaciones, proveedores, lotes) está en la ficha completa.` : "Lo necesario para venderlo. Lo demás se completa después en la ficha."}</p></div>
           <button className="boton fantasma" onClick={onCerrar} aria-label="Cerrar">✕</button>
         </div>
         {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
 
-        <div className="pr-tipos" role="radiogroup" aria-label="Tipo de producto">
-          {pasos.map((p) => (
-            <button key={p.v} role="radio" aria-checked={tipo === p.v} className={tipo === p.v ? "activo" : ""}
-              onClick={() => (p.v === "COMBO" ? onCompleta({ ...armar(), tipo: "COMBO" }) : setTipo(p.v))}>
-              {p.t}{p.v === "COMBO" && <small>ficha completa →</small>}
-            </button>
-          ))}
-        </div>
+        {!editar && (
+          <div className="pr-tipos" role="radiogroup" aria-label="Tipo de producto">
+            {pasos.map((p) => (
+              <button key={p.v} role="radio" aria-checked={tipo === p.v} className={tipo === p.v ? "activo" : ""}
+                onClick={() => (p.v === "COMBO" ? onCompleta({ ...armar(), tipo: "COMBO" }) : setTipo(p.v))}>
+                {p.t}{p.v === "COMBO" && <small>ficha completa →</small>}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="pr-fila pr-fila-2">
           <label className="campo"><span>Código de barras <em className="suave">(opcional)</em></span>
@@ -1114,20 +1186,31 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta }: {
           <div className="pr-fila pr-fila-2">
             <label className="campo"><span>Existencia mínima <em className="suave">(alerta de reposición)</em></span>
               <input className="numero" inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => setMinimo(limpiar(e.target.value))} /></label>
-            <label className="campo"><span>Existencia actual <em className="suave">(queda en el kardex como existencia inicial)</em></span>
-              <span className="en-linea">
-                <input className="numero" inputMode="decimal" value={existencia} placeholder="0" onChange={(e) => setExistencia(limpiar(e.target.value))} />
-                {sucursales.length > 1 && <select value={sucExist || sucursales[0]?.id} onChange={(e) => setSucExist(e.target.value)} aria-label="Sucursal de la existencia">{sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>}
-              </span></label>
+            {editar && (
+              <div className="campo"><span>Existencia actual <em className="suave">(se cambia con un ajuste, para que quede en el kardex)</em></span>
+                <span className="en-linea">
+                  <b className="pr-existencia">{num(editar.sucursales.reduce((t, s) => t + n(s.existencia), 0), editar.sucursales.some((s) => n(s.existencia) % 1) ? 2 : 0)}</b>
+                  {editar.sucursales.length > 1 && <small className="suave">{editar.sucursales.map((s) => `${s.sucursal ?? "Sucursal"}: ${num(n(s.existencia), n(s.existencia) % 1 ? 2 : 0)}`).join(" · ")}</small>}
+                  <button type="button" className="boton" onClick={() => onAjustar?.()}>Ajustar existencia…</button>
+                </span>
+              </div>
+            )}
+            {!editar && (
+              <label className="campo"><span>Existencia actual <em className="suave">(queda en el kardex como existencia inicial)</em></span>
+                <span className="en-linea">
+                  <input className="numero" inputMode="decimal" value={existencia} placeholder="0" onChange={(e) => setExistencia(limpiar(e.target.value))} />
+                  {sucursales.length > 1 && <select value={sucExist || sucursales[0]?.id} onChange={(e) => setSucExist(e.target.value)} aria-label="Sucursal de la existencia">{sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>}
+                </span></label>
+            )}
             <label className="pr-check" style={{ gridColumn: "1 / -1" }}><input type="checkbox" checked={sinExistencia} onChange={(e) => setSinExistencia(e.target.checked)} /><span>Permitir facturar sin existencia <em className="suave">(desactivado: no se factura lo que no hay)</em></span></label>
           </div>
         )}
 
         <div className="acciones-modal pr-acciones">
-          <button className="boton fantasma" onClick={() => onCompleta(armar())} title="Imágenes, presentaciones, proveedores, lotes y más">Ficha completa…</button>
+          <button className="boton fantasma" onClick={() => onCompleta(editar ?? armar())} title="Imágenes, presentaciones, proveedores, lotes y más">Ficha completa…</button>
           <span className="pr-espacio" />
-          <button className="boton" disabled={guardando} onClick={() => crear(true)}>Crear y agregar otro</button>
-          <button className="boton primario" disabled={guardando} onClick={() => crear(false)}>{guardando ? "Guardando…" : "Crear producto"}</button>
+          {!editar && <button className="boton" disabled={guardando} onClick={() => crear(true)}>Crear y agregar otro</button>}
+          <button className="boton primario" disabled={guardando} onClick={() => (editar ? guardarCambios() : crear(false))}>{guardando ? "Guardando…" : editar ? "Guardar cambios" : "Crear producto"}</button>
         </div>
       </div>
     </div>
