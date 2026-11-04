@@ -38,7 +38,7 @@ export async function reporteTurno(c: Q, turnoId: string) {
   )).rows[0];
   if (!t) throw new ErrorNegocio("Turno no encontrado", 404);
 
-  const [ventas, pagos, anuladas, movs] = await Promise.all([
+  const [ventas, pagos, anuladas, movs, anuDetalle] = await Promise.all([
     c.query(
       `SELECT COUNT(*) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS facturas,
               COUNT(*) FILTER (WHERE tipo_documento IN ('E31','B01','B14','B15')) AS "creditoFiscal",
@@ -67,6 +67,14 @@ export async function reporteTurno(c: Q, turnoId: string) {
         WHERE m.turno_id = $1 ORDER BY m.creado_en`,
       [turnoId],
     ),
+    // Detalle de las facturas anuladas del turno: cuál factura, cuánto, el motivo y quién autorizó
+    c.query(
+      `SELECT n.numero_interno AS numero, o.numero_interno AS factura, n.total::text AS monto, n.motivo, n.creado_en AS "creadoEn",
+              a.nombre AS "autorizadoPor"
+         FROM ventas n JOIN ventas o ON o.id = n.venta_origen_id LEFT JOIN usuarios a ON a.id = n.autorizado_por
+        WHERE n.turno_id = $1 AND n.tipo_documento IN ('E34','ANU') ORDER BY n.creado_en`,
+      [turnoId],
+    ),
   ]);
   // Abonos de clientes cobrados con tarjeta o transferencia: no van a la gaveta, pero se cuadran
   const abonosPor = (f: string) => movs.rows.filter((m) => m.tipo === "ABONO_CLIENTE" && m.formaPago === f)
@@ -85,6 +93,7 @@ export async function reporteTurno(c: Q, turnoId: string) {
     ventas: ventas.rows[0],
     formasPago: pagos.rows,
     anulaciones: anuladas.rows[0],
+    anuladas: anuDetalle.rows,
     efectivo: { fondo: t.fondoInicial, ventas: t.ventasEfectivo, entradas: t.entradas, salidas: t.salidas, esperado: efectivoEsperado.toFixed(2) },
     movimientos: movs.rows,
     resumenMovimientos: {

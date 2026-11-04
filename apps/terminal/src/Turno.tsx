@@ -22,6 +22,8 @@ interface Reporte {
   ventas: { facturas: string; creditoFiscal: string; total: string; itbis: string; descuentos: string; primeraFactura: string | null; ultimaFactura: string | null };
   formasPago: { formaPago: string; monto: string; operaciones: number }[];
   anulaciones: { cantidad: number; monto: string };
+  anuladas?: { numero: number; factura: number; monto: string; motivo: string | null; creadoEn: string; autorizadoPor: string | null }[];
+  movimientos?: { tipo: string; monto: string; formaPago: string | null; concepto: string | null; creadoEn: string; autorizadoPor: string | null }[];
   efectivo: { fondo: string; ventas: string; entradas: string; salidas: string; esperado: string };
   resumenMovimientos?: { retiros: string; gastos: string; sencillo: string; abonos: string; delivery: string };
   esperado: Record<string, string>;
@@ -239,6 +241,34 @@ function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar }: { r: Repor
             <div key={k} className="t-fila"><span>{{ abonos: "Abonos de clientes", sencillo: "Entrada de sencillo", delivery: "Liquidación delivery", retiros: "Retiros", gastos: "Gastos" }[k]}</span>
               <span>{k === "retiros" || k === "gastos" ? "−" : ""}{rd(r.resumenMovimientos![k])}</span></div>
           ))}
+          {(r.movimientos ?? []).some((m) => m.tipo !== "APERTURA_GAVETA") && (
+            <>
+              <div className="t-linea" />
+              <div className="t-fila t-cab"><span>Entradas y salidas de efectivo</span><span></span></div>
+              {r.movimientos!.filter((m) => m.tipo !== "APERTURA_GAVETA").map((m, i) => {
+                const sale = m.tipo === "RETIRO" || m.tipo === "GASTO";
+                const nombre = ({ RETIRO: "Retiro", GASTO: "Gasto", DEPOSITO: "Entrada de sencillo", ABONO_CLIENTE: "Abono de cliente", LIQUIDACION_DELIVERY: "Liquidación delivery", APERTURA_GAVETA: "Apertura de gaveta" } as Record<string, string>)[m.tipo] ?? m.tipo;
+                return (
+                  <div key={i}>
+                    <div className="t-fila"><span>{hora(m.creadoEn).slice(-5)} {nombre}</span><span>{sale ? "−" : "+"}{rd(m.monto)}</span></div>
+                    {(m.concepto || m.autorizadoPor) && <div className="suave pequeno">{m.concepto}{m.autorizadoPor ? ` · aut. ${m.autorizadoPor}` : ""}</div>}
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {(r.anuladas?.length ?? 0) > 0 && (
+            <>
+              <div className="t-linea" />
+              <div className="t-fila t-cab"><span>Facturas anuladas</span><span></span></div>
+              {r.anuladas!.map((a) => (
+                <div key={a.numero}>
+                  <div className="t-fila"><span>{hora(a.creadoEn).slice(-5)} Factura #{a.factura}</span><span>{rd(a.monto)}</span></div>
+                  <div className="suave pequeno">{a.motivo || "Sin motivo"}{a.autorizadoPor ? ` · aut. ${a.autorizadoPor}` : ""}</div>
+                </div>
+              ))}
+            </>
+          )}
           {cerrado && r.turno.declarado ? (
             <>
               <div className="t-fila t-cab"><span>Cuadre</span><span>Esperado / Contado</span></div>
