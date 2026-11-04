@@ -854,7 +854,11 @@ function ComboFicha({ f, cambiar, productos, id }: { f: Ficha; cambiar: (p: Part
   const agregar = (pid: string) => {
     const p = productos.find((x) => x.id === pid);
     if (!p || pid === id || f.componentes.some((c) => c.productoId === pid)) return;
-    cambiar({ componentes: [...f.componentes, { productoId: pid, nombre: p.nombre, sku: p.sku, cantidad: "1" }] });
+    const componentes = [...f.componentes, { productoId: pid, nombre: p.nombre, sku: p.sku, cantidad: "1" }];
+    // El nombre del combo se arma solo con sus componentes mientras no se haya escrito uno propio
+    const auto = (l: typeof componentes) => l.map((c) => c.nombre).join(" + ").slice(0, 120);
+    const sugerido = !f.nombre.trim() || f.nombre === auto(f.componentes);
+    cambiar(sugerido ? { componentes, nombre: auto(componentes) } : { componentes });
     setElegido("");
   };
   return (
