@@ -615,6 +615,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                   <span className="pv-desc">
                     <b>{l.prod.nombre}</b> <span className="suave">{l.prod.presentacion}</span>
                     <span className="pv-etiquetas">
+                      {l.prod.codigos[0] && <span className="pv-codigo" title="Código de barras">{l.prod.codigos[0]}</span>}
                       <span className="pv-precio-mini">{rd(precio)}{l.prod.esPesable ? "/lb" : " c/u"}</span>
                       {c?.oferta && <em className="t-oferta">{c.oferta.nombre}{c.oferta.agotada && ` · solo ${Number(c.oferta.unidades)} en oferta`}</em>}
                       {l.precioCambiado && <em className="t-desc">Precio cambiado a {rd(l.precioCambiado)}</em>}
