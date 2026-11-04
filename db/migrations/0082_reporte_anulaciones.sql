@@ -1,5 +1,5 @@
 -- Reportes de control: anulaciones de facturas (notas de crédito E34 y anulaciones internas) por cajero y supervisor.
-CREATE VIEW rpt_anulaciones AS
+CREATE VIEW rpt_control_anulaciones AS
 SELECT n.sucursal_id, s.nombre AS sucursal,
        (n.creado_en AT TIME ZONE 'America/Santo_Domingo')::date AS fecha,
        n.creado_en AS hora, c.nombre AS caja,
@@ -15,8 +15,8 @@ LEFT JOIN usuarios ua ON ua.id = n.usuario_id
 LEFT JOIN usuarios us ON us.id = n.autorizado_por
 WHERE n.tipo_documento IN ('E34', 'ANU');
 
-CREATE VIEW rpt_anulaciones_cajero AS
+CREATE VIEW rpt_control_anulaciones_cajero AS
 SELECT sucursal_id, sucursal, fecha, anulo AS cajero, COUNT(*) AS anulaciones, SUM(total) AS total,
        COUNT(DISTINCT autorizo) AS supervisores
-FROM rpt_anulaciones
+FROM rpt_control_anulaciones
 GROUP BY sucursal_id, sucursal, fecha, anulo;
