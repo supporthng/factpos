@@ -37,7 +37,8 @@ export function PantallaCliente() {
   const segundos = Math.max(4, marca?.pantalla.segundos ?? 10);
   useEffect(() => {
     if (ofertas.length < 2) return;
-    const t = setInterval(() => setOferta((x) => x + 1), segundos * 1000);
+    // al azar (sin repetir la misma dos veces seguidas)
+    const t = setInterval(() => setOferta((x) => { const n = ofertas.length; return (x % n + 1 + Math.floor(Math.random() * (n - 1))) % n; }), segundos * 1000);
     return () => clearInterval(t);
   }, [ofertas.length, segundos]);
 
@@ -95,6 +96,17 @@ export function PantallaCliente() {
         ))}
       </section>
       <aside className="pc-total">
+        <div className="pc-promo">
+          {ofertas.length ? (() => { const o = ofertas[oferta % ofertas.length]!; return (
+            <div className="pc-promo-oferta" key={o.id}>
+              <span className="pc-etiqueta">Oferta</span>
+              {o.imagen && <img src={o.imagen} alt="" />}
+              <b>{o.titulo}</b>
+              {o.texto && <p>{o.texto}</p>}
+              {o.precio && <div className="pc-promo-precio">{o.precio}</div>}
+            </div>); })()
+            : logo}
+        </div>
         {Number(c.descuento) > 0 && <div className="pc-fila"><span>Descuento</span><span>-{rd(c.descuento)}</span></div>}
         <div className="pc-fila"><span>ITBIS</span><span>{rd(c.itbis)}</span></div>
         <div className="pc-pagar">{c.fase === "cobro" ? "Total a pagar" : "Total"}</div>

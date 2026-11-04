@@ -881,3 +881,13 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 /* Comprobante de impresión directa: fuera de la vista en pantalla, presente al imprimir */
 @media screen { .fondo-modal.ticket-auto { position: fixed; left: -99999px; top: 0; pointer-events: none; } }
 @media print { .fondo-modal.ticket-auto { position: static !important; width: auto; height: auto; padding: 0; background: none; } .ticket-auto .modal { overflow: visible; max-height: none; box-shadow: none; } }
+
+/* Pantalla del cliente: espacio sobre los totales para el logo o las ofertas activas (al azar) */
+.pc-promo { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+.pc-promo .pc-logo { max-height: 70%; max-width: 85%; }
+.pc-promo-oferta { display: flex; flex-direction: column; align-items: center; gap: 8px; max-height: 100%; animation: pc-entra .6s ease; }
+.pc-promo-oferta img { max-height: 38%; max-width: 100%; object-fit: contain; border-radius: 10px; }
+.pc-promo-oferta b { font-size: clamp(20px, 2.4vw, 32px); line-height: 1.15; }
+.pc-promo-oferta p { margin: 0; font-size: clamp(14px, 1.5vw, 20px); opacity: .8; }
+.pc-promo-precio { font-size: clamp(32px, 4vw, 56px); font-weight: 800; color: var(--acento-marca, #2dd4bf); line-height: 1; }
+@media (max-width: 800px) { .pc-promo { display: none; } }
