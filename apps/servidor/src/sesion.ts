@@ -84,6 +84,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "caja.retiro", grupo: "Caja", nombre: "Aprobar retiros de efectivo" },
   { id: "caja.salir", grupo: "Caja", nombre: "Aprobar que se cierre la caja con el turno abierto" },
   { id: "caja.gasto", grupo: "Caja", nombre: "Aprobar gastos pagados desde la caja" },
+  { id: "venta.credito", grupo: "Caja", nombre: "Vender a crédito (sin este permiso la caja pide el PIN de un supervisor)" },
   { id: "cxc.abono", grupo: "Caja", nombre: "Cobrar abonos de clientes a crédito" },
   { id: "admin.productos", grupo: "Administración", nombre: "Productos, categorías y proveedores" },
   { id: "admin.precios", grupo: "Administración", nombre: "Precios y ofertas" },

@@ -19,7 +19,7 @@ import { ErrorNegocio } from "./db.js";
 const secreto = () => process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
 const VIGENCIA_MS = 10 * 60 * 1000;
 
-export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto" | "caja.salir";
+export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto" | "caja.salir" | "venta.credito";
 
 export const hashPin = (empresaId: string, pin: string) =>
   createHmac("sha256", secreto()).update(`${empresaId}:${pin}`).digest("hex");
