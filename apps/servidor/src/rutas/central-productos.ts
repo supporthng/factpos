@@ -219,6 +219,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     const f = z.object({ q: z.string().trim().max(60).optional(), categoriaId: uuid.optional(), estado: z.enum(["activos", "inactivos", "todos"]).default("activos") }).parse(req.query);
     const r = await pool.query(
       `SELECT p.id, p.sku, p.nombre, p.marca, p.tipo, p.activo, p.imagen IS NOT NULL AS "tieneImagen",
+              COALESCE((SELECT i.tasa FROM impuestos i WHERE i.id = p.impuesto_id), 0) AS tasa, p.precio_incluye_impuesto AS "incluye",
               c.nombre AS categoria, c.color AS "categoriaColor",
               (SELECT x.precio FROM presentaciones pr JOIN precios x ON x.presentacion_id = pr.id AND x.activo AND x.sucursal_id IS NULL
                  JOIN listas_precio lp ON lp.id = x.lista_precio_id AND lp.es_predeterminada
