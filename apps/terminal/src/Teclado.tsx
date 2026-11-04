@@ -6,8 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * activo, así que no hay que cablearlo pantalla por pantalla. Es flotante (se arrastra) y se aparta del campo.
  *
  *  · Numérico si el campo declara inputMode numeric / decimal / tel; alfanumérico en el resto.
- *  · Solo se abre con un toque o lápiz, nunca con el lector de códigos ni por autoFocus (así no estorba al escanear).
- *    Ajuste «teclado.modo»: "tactil" (por defecto) | "siempre" (también con mouse) | "nunca".
+ *  · Se abre al tocar o hacer clic en el campo, nunca con el lector de códigos ni por autoFocus (así no estorba al escanear).
+ *    Ajuste «teclado.modo»: "siempre" (por defecto: también con mouse, salvo en los campos de escaneo) | "tactil" (solo dedo) | "nunca".
  *  · Los campos de PIN (type=password) no lo abren: ya traen su propio teclado.
  */
 
@@ -17,8 +17,8 @@ type Modo = "num" | "dec" | "abc";
 const SIN_TEXTO = new Set(["checkbox", "radio", "button", "submit", "range", "file", "color", "date", "time", "hidden", "image", "reset"]);
 
 function modoAjuste(): "tactil" | "siempre" | "nunca" {
-  try { const v = localStorage.getItem("factpos.teclado.modo"); if (v === "siempre" || v === "nunca") return v; } catch { /* sin almacenamiento */ }
-  return "tactil";
+  try { const v = localStorage.getItem("factpos.teclado.modo"); if (v === "tactil" || v === "nunca") return v; } catch { /* sin almacenamiento */ }
+  return "siempre";
 }
 
 function esCampoDeTexto(el: EventTarget | null): el is Campo {
@@ -87,7 +87,9 @@ export function TecladoPantalla() {
       const m = modoAjuste();
       if (m === "nunca") { setCampo(null); return; }
       const el = (e.target as HTMLElement | null)?.closest?.("input,textarea") ?? null;
-      if (esCampoDeTexto(el) && (e.pointerType !== "mouse" || m === "siempre")) { manual.current = false; setCampo(el); }
+      // Los campos de escaneo (data-teclado="tactil") solo abren el teclado con el dedo: con mouse o lector no estorba.
+      const soloTactil = (el as HTMLElement | null)?.dataset?.teclado === "tactil";
+      if (esCampoDeTexto(el) && (e.pointerType !== "mouse" || (m === "siempre" && !soloTactil))) { manual.current = false; setCampo(el); }
       else if (!el) setCampo(null);
     };
     const adentro = (e: FocusEvent) => {
@@ -101,6 +103,16 @@ export function TecladoPantalla() {
     document.addEventListener("pointerdown", abajo, true);
     document.addEventListener("focusin", adentro, true);
     return () => { document.removeEventListener("pointerdown", abajo, true); document.removeEventListener("focusin", adentro, true); };
+  }, []);
+
+  // Otras pantallas pueden pedirlo por código (ej. el botón «Cantidad»): window.dispatchEvent(new CustomEvent("factpos-teclado", { detail: campo }))
+  useEffect(() => {
+    const abrirPara = (e: Event) => {
+      const el = (e as CustomEvent).detail;
+      if (modoAjuste() !== "nunca" && esCampoDeTexto(el)) { manual.current = false; setCampo(el); }
+    };
+    window.addEventListener("factpos-teclado", abrirPara);
+    return () => window.removeEventListener("factpos-teclado", abrirPara);
   }, []);
 
   // El campo desapareció (se cerró la ventana): se cierra también el teclado.
