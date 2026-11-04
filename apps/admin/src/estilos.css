@@ -1160,11 +1160,13 @@ textarea { line-height: 1.35; }
 
 /* Campos con sufijo (%): conservar el espacio del símbolo pese al relleno compacto */
 .con-sufijo > input { padding-right: 28px !important; }
+.con-sufijo.con-rd > input { padding-right: 44px !important; }
 /* Ventana de producto (nuevo / modificar): cómoda en el celular */
 .modal.producto-rapido { max-height: 94vh; overflow-y: auto; }
 @media (max-width: 640px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea { font-size: 16px; padding: 8px 10px; }
   .con-sufijo > input { padding-right: 30px !important; }
+  .con-sufijo.con-rd > input { padding-right: 46px !important; }
   .modal.producto-rapido { max-height: 100dvh; border-radius: 14px 14px 0 0; }
   .pr-acciones { flex-wrap: wrap; position: sticky; bottom: -1px; background: var(--panel); padding: 8px 0 2px; gap: 8px; }
   .pr-acciones .boton { flex: 1 1 auto; }
