@@ -1191,7 +1191,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
                 <div key={k} className={"pr-nivel" + (bajo ? " alerta" : "")}>
                   <span className="pr-nombre"><b>{nombreNivel(k)}</b><small className="suave">{k === "1" ? "obligatorio" : "opcional"}</small></span>
                   <span className="con-sufijo"><input className="numero" inputMode="decimal" value={x.pct} placeholder="—" aria-label={`% de ganancia ${nombreNivel(k)}`} onChange={(e) => cambiarPct(k, e.target.value)} /><i>%</i></span>
-                  <span className="con-sufijo"><input className={"numero" + (bajo ? " alerta" : "")} inputMode="decimal" value={x.precio} placeholder="0.00" aria-label={`Precio ${nombreNivel(k)}`} onChange={(e) => cambiarPrecio(k, e.target.value)} /><i>RD$</i></span>
+                  <span className="con-sufijo con-rd"><input className={"numero" + (bajo ? " alerta" : "")} inputMode="decimal" value={x.precio} placeholder="0.00" aria-label={`Precio ${nombreNivel(k)}`} onChange={(e) => cambiarPrecio(k, e.target.value)} /><i>RD$</i></span>
                   <span className={"pr-margen" + (bajo ? " texto-alerta" : " suave")}>{bajo ? "bajo el costo" : m == null ? "—" : `${m.toFixed(1)} %`}</span>
                 </div>
               );
