@@ -55,7 +55,17 @@ export const FUNCIONES = [
 ] as const;
 export type ClaveFuncion = (typeof FUNCIONES)[number]["clave"];
 
+/** Funciones que no existen en la versión de prueba (sin licencia): ni se muestran ni se pueden activar ni usar. */
+const SOLO_CON_LICENCIA: ClaveFuncion[] = ["venta_sin_comprobante"];
+/** ¿Esta instalación está en prueba (sin licencia, o con la prueba vencida)? Ante la duda (error al consultar) se trata como prueba. */
+export async function enVersionDePrueba(): Promise<boolean> {
+  try {
+    const { estadoLicencia } = await import("../licencia/cliente.js");
+    return String((await estadoLicencia()).estado).startsWith("PRUEBA");
+  } catch { return true; }
+}
 export async function funcionHabilitada(empresaId: string, clave: ClaveFuncion) {
+  if (SOLO_CON_LICENCIA.includes(clave) && (await enVersionDePrueba())) return false;
   const r = await pool.query<{ habilitada: boolean }>("SELECT habilitada FROM seguridad_funciones WHERE empresa_id = $1 AND clave = $2", [empresaId, clave]);
   return r.rows[0]?.habilitada ?? FUNCIONES.find((f) => f.clave === clave)!.porDefecto;
 }
@@ -70,6 +80,9 @@ export async function accesoWebPermitido() {
 }
 export async function exigirFuncion(empresaId: string, clave: ClaveFuncion) {
   if (!(await funcionHabilitada(empresaId, clave))) {
+    if (SOLO_CON_LICENCIA.includes(clave) && (await enVersionDePrueba())) {
+      throw new ErrorNegocio("Esta función no está disponible en la versión de prueba. Se habilita al activar la licencia.", 403);
+    }
     throw new ErrorNegocio("Esta función está desactivada. Un administrador puede activarla en Configuración › Seguridad.", 403);
   }
 }
@@ -81,8 +94,10 @@ export async function rutasCentralSeguridad(app: FastifyInstance) {
     const filas = (await pool.query<{ clave: string; habilitada: boolean; actualizado_en: string; usuario: string | null }>(
       `SELECT s.clave, s.habilitada, s.actualizado_en, u.nombre AS usuario FROM seguridad_funciones s LEFT JOIN usuarios u ON u.id = s.usuario_id WHERE s.empresa_id = $1`,
       [empresaDe(req)])).rows;
+    const prueba = await enVersionDePrueba();
     return {
-      funciones: FUNCIONES.map((f) => {
+      // En la versión de prueba las funciones «solo con licencia» ni aparecen en la lista (el servidor tampoco las deja usar).
+      funciones: FUNCIONES.filter((f) => !(prueba && SOLO_CON_LICENCIA.includes(f.clave))).map((f) => {
         const x = filas.find((r) => r.clave === f.clave);
         return { clave: f.clave, titulo: f.titulo, descripcion: f.descripcion, habilitada: x?.habilitada ?? f.porDefecto, porDefecto: f.porDefecto,
           cambiadaEn: x?.actualizado_en ?? null, cambiadaPor: x?.usuario ?? null };
@@ -93,6 +108,9 @@ export async function rutasCentralSeguridad(app: FastifyInstance) {
   app.put("/central/seguridad/:clave", async (req) => {
     const { clave } = z.object({ clave: z.enum(FUNCIONES.map((f) => f.clave) as [ClaveFuncion, ...ClaveFuncion[]]) }).parse(req.params);
     const b = z.object({ habilitada: z.boolean() }).parse(req.body);
+    if (b.habilitada && SOLO_CON_LICENCIA.includes(clave) && (await enVersionDePrueba())) {
+      throw new ErrorNegocio("Esta función no está disponible en la versión de prueba. Se habilita al activar la licencia.", 403);
+    }
     await pool.query(
       `INSERT INTO seguridad_funciones (empresa_id, clave, habilitada, usuario_id) VALUES ($1,$2,$3,$4)
        ON CONFLICT (empresa_id, clave) DO UPDATE SET habilitada = $3, usuario_id = $4, actualizado_en = now()`,
