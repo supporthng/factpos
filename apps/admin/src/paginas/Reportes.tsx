@@ -2,30 +2,49 @@ import { useState } from "react";
 import { descargarCsv, rd, num, hoy } from "../api";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
-const REPORTES: { id: string; titulo: string; grupo: string; fechas?: boolean }[] = [
-  { id: "ventas-sucursal", titulo: "Ventas por sucursal", grupo: "Ventas", fechas: true },
-  { id: "ventas-comprobante", titulo: "Ventas por tipo de comprobante (E · B · FI-)", grupo: "Ventas", fechas: true },
-  { id: "ventas-diarias", titulo: "Ventas por día y caja", grupo: "Ventas", fechas: true },
-  { id: "utilidad-productos", titulo: "Utilidad por producto", grupo: "Ventas", fechas: true },
-  { id: "formas-pago", titulo: "Ventas por forma de pago", grupo: "Ventas", fechas: true },
-  { id: "niveles-precio", titulo: "Ventas por nivel de precio", grupo: "Ventas", fechas: true },
-  { id: "ofertas", titulo: "Rendimiento de ofertas", grupo: "Ventas", fechas: true },
-  { id: "cupones", titulo: "Uso de cupones", grupo: "Ventas" },
-  { id: "valorizacion", titulo: "Valorización del inventario", grupo: "Inventario" },
-  { id: "bajo-minimo", titulo: "Bajo mínimo (sugerido de compra)", grupo: "Inventario" },
-  { id: "reposicion", titulo: "Reposición inteligente (qué comprar)", grupo: "Inventario" },
-  { id: "por-vencer", titulo: "Vencidos y próximos a vencer (60 días)", grupo: "Inventario" },
-  { id: "perdidas", titulo: "Pérdidas: mermas, vencidos y ajustes", grupo: "Inventario", fechas: true },
-  { id: "ajustes", titulo: "Detalle de ajustes", grupo: "Inventario", fechas: true },
-  { id: "traspasos", titulo: "Traspasos", grupo: "Inventario" },
-  { id: "anulaciones", titulo: "Anulaciones de facturas (quién anuló y quién autorizó)", grupo: "Control", fechas: true },
-  { id: "historial-ventas", titulo: "Ventas del sistema anterior (historial, solo consulta)", grupo: "Historial anterior", fechas: true },
-  { id: "historial-ventas-producto", titulo: "Ventas por producto del sistema anterior", grupo: "Historial anterior", fechas: true },
-  { id: "anulaciones-cajero", titulo: "Anulaciones por cajero y día", grupo: "Control", fechas: true },
-  { id: "cierres-caja", titulo: "Cierres de caja (cuadres)", grupo: "Operación", fechas: true },
-  { id: "delivery", titulo: "Delivery", grupo: "Operación", fechas: true },
-  { id: "saldo-clientes", titulo: "Saldo de clientes (fiado)", grupo: "Operación" },
+type Rep = { id: string; titulo: string; grupo: string; desc: string; fechas?: boolean };
+const REPORTES: Rep[] = [
+  { id: "ventas-sucursal", titulo: "Ventas por sucursal", grupo: "Ventas", fechas: true, desc: "Cuánto vendió cada sucursal en el período: facturas, descuentos, ITBIS y total." },
+  { id: "ventas-comprobante", titulo: "Ventas por tipo de comprobante", grupo: "Ventas", fechas: true, desc: "Separa lo facturado con e-CF (E), NCF serie B y facturas internas (FI-)." },
+  { id: "ventas-diarias", titulo: "Ventas por día y caja", grupo: "Ventas", fechas: true, desc: "Día a día, cuánto vendió cada caja." },
+  { id: "utilidad-productos", titulo: "Utilidad por producto", grupo: "Ventas", fechas: true, desc: "Qué productos dejan más ganancia: venta menos costo." },
+  { id: "formas-pago", titulo: "Formas de pago", grupo: "Ventas", fechas: true, desc: "Cuánto entró en efectivo, tarjeta, transferencia y crédito." },
+  { id: "niveles-precio", titulo: "Ventas por nivel de precio", grupo: "Ventas", fechas: true, desc: "Cuánto se vendió con el precio 1, 2 y 3." },
+  { id: "ofertas", titulo: "Rendimiento de ofertas", grupo: "Ventas", fechas: true, desc: "Qué ofertas se usaron y cuánto descuento dieron." },
+  { id: "cupones", titulo: "Uso de cupones", grupo: "Ventas", desc: "Cupones emitidos y cuántas veces se canjearon." },
+  { id: "valorizacion", titulo: "Valorización del inventario", grupo: "Inventario", desc: "Cuánto dinero hay en mercancía, a costo, por sucursal." },
+  { id: "bajo-minimo", titulo: "Bajo mínimo", grupo: "Inventario", desc: "Productos por debajo de su existencia mínima, con la cantidad sugerida a comprar." },
+  { id: "reposicion", titulo: "Reposición inteligente", grupo: "Inventario", desc: "Qué comprar según lo que se vende y lo que queda." },
+  { id: "por-vencer", titulo: "Vencidos y por vencer", grupo: "Inventario", desc: "Lotes vencidos o que vencen en los próximos 60 días." },
+  { id: "perdidas", titulo: "Pérdidas", grupo: "Inventario", fechas: true, desc: "Mermas, vencidos y ajustes de salida: lo que se perdió y cuánto costó." },
+  { id: "ajustes", titulo: "Detalle de ajustes", grupo: "Inventario", fechas: true, desc: "Todos los ajustes de existencia: quién, cuándo y por qué." },
+  { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", desc: "Mercancía movida entre sucursales o almacenes." },
+  { id: "anulaciones", titulo: "Anulaciones de facturas", grupo: "Control", fechas: true, desc: "Facturas anuladas, quién las anuló y quién lo autorizó." },
+  { id: "anulaciones-cajero", titulo: "Anulaciones por cajero", grupo: "Control", fechas: true, desc: "Cuántas anulaciones hace cada cajero por día. Sirve para detectar abusos." },
+  { id: "cierres-caja", titulo: "Cierres de caja", grupo: "Operación", fechas: true, desc: "Cuadre de cada turno: esperado, contado y diferencia." },
+  { id: "delivery", titulo: "Delivery", grupo: "Operación", fechas: true, desc: "Pedidos a domicilio y su estado." },
+  { id: "saldo-clientes", titulo: "Saldo de clientes (fiado)", grupo: "Operación", desc: "Lo que cada cliente debe en este momento." },
+  { id: "historial-ventas", titulo: "Ventas del sistema anterior", grupo: "Historial anterior", fechas: true, desc: "Ventas importadas de WilPOS. Son solo de consulta: no son facturas de FactPOS." },
+  { id: "historial-ventas-producto", titulo: "Productos vendidos (sistema anterior)", grupo: "Historial anterior", fechas: true, desc: "Cuánto se vendió de cada producto en el historial importado." },
 ];
+const GRUPOS = ["Ventas", "Inventario", "Control", "Operación", "Historial anterior"];
+
+const dia = (d: Date) => d.toISOString().slice(0, 10);
+const sumar = (f: string, n: number) => dia(new Date(new Date(`${f}T12:00:00Z`).getTime() + n * 86400e3));
+function rango(k: string): [string, string] {
+  const h = hoy();
+  const [y, m] = [Number(h.slice(0, 4)), Number(h.slice(5, 7))];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  switch (k) {
+    case "hoy": return [h, h];
+    case "ayer": return [sumar(h, -1), sumar(h, -1)];
+    case "semana": { const dow = new Date(`${h}T12:00:00Z`).getUTCDay(); return [sumar(h, -((dow + 6) % 7)), h]; }
+    case "mes": return [`${y}-${pad(m)}-01`, h];
+    case "mes-ant": { const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1; return [`${py}-${pad(pm)}-01`, sumar(`${y}-${pad(m)}-01`, -1)]; }
+    default: return [`${y}-01-01`, h];
+  }
+}
+const RANGOS: [string, string][] = [["hoy", "Hoy"], ["ayer", "Ayer"], ["semana", "Esta semana"], ["mes", "Este mes"], ["mes-ant", "Mes anterior"], ["anio", "Este año"]];
 
 // Columnas técnicas que no se muestran
 const OCULTAR = new Set(["sucursal_id", "almacen_id", "producto_id", "caja_id", "turno_id", "categoria_id", "empresa_id", "oferta_id", "cliente_id", "id"]);
@@ -39,10 +58,13 @@ const etiqueta = (c: string) => {
 
 export function Reportes() {
   const [rep, setRep] = useState(REPORTES[0].id);
+  const [grupo, setGrupo] = useState("Todos");
+  const [buscarRep, setBuscarRep] = useState("");
+  const [buscarFila, setBuscarFila] = useState("");
   const [sucursalId, setSucursalId] = useState("");
-  const inicioMes = hoy().slice(0, 8) + "01";
-  const [desde, setDesde] = useState(inicioMes);
-  const [hasta, setHasta] = useState(hoy());
+  const [r0, r1] = rango("mes");
+  const [desde, setDesde] = useState(r0);
+  const [hasta, setHasta] = useState(r1);
   const def = REPORTES.find((r) => r.id === rep)!;
   const params = new URLSearchParams({
     ...(sucursalId ? { sucursalId } : {}),
@@ -64,44 +86,71 @@ export function Reportes() {
   };
   const totales = cols.filter((c) => DINERO.test(c) && filas.every((f) => f[c] === null || /^-?\d+(\.\d+)?$/.test(String(f[c]))) && !/costo_unitario|precio|promedio|limite/.test(c));
 
+  const q = buscarFila.trim().toLowerCase();
+  const visibles = q ? filas.filter((f) => cols.some((c) => formato(c, f[c]).toLowerCase().includes(q))) : filas;
+  const qr = buscarRep.trim().toLowerCase();
+  const lista = REPORTES.filter((r) => (grupo === "Todos" || r.grupo === grupo) && (!qr || (r.titulo + " " + r.desc).toLowerCase().includes(qr)));
+  const rangoActivo = def.fechas ? RANGOS.find(([k]) => { const [a, b] = rango(k); return a === desde && b === hasta; })?.[0] : undefined;
+  const elegir = (id: string) => { setRep(id); setBuscarFila(""); };
+
   return (
     <>
-      <Encabezado titulo="Reportes" descripcion="Todas las sucursales o una sola. Exporte a Excel con el botón CSV.">
-        <button className="boton fantasma" disabled={!filas.length} onClick={() => descargarCsv(ruta, `${rep}-${hasta}`)}>Exportar CSV</button>
+      <Encabezado titulo="Reportes" descripcion="Elija un reporte, el período y la sucursal. Se puede exportar a Excel (CSV).">
+        <button className="boton" disabled={!filas.length} onClick={() => descargarCsv(ruta, `${rep}-${hasta}`)}>Exportar a Excel (CSV)</button>
       </Encabezado>
-      <div className="reportes">
-        <nav className="lista-reportes">
-          {[...new Set(REPORTES.map((r) => r.grupo))].map((g) => (
-            <div key={g}>
-              <span className="grupo-titulo">{g}</span>
-              {REPORTES.filter((r) => r.grupo === g).map((r) => (
-                <button key={r.id} className={r.id === rep ? "activo" : ""} onClick={() => setRep(r.id)}>{r.titulo}</button>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <section>
-          <div className="filtros">
-            <SelectorSucursal valor={sucursalId} onCambio={setSucursalId} />
+      <div className="rp">
+        <aside className="rp-menu">
+          <input type="search" className="rp-buscar" placeholder="Buscar reporte…" value={buscarRep} onChange={(e) => setBuscarRep(e.target.value)} aria-label="Buscar reporte" />
+          <div className="rp-chips" role="tablist">
+            {["Todos", ...GRUPOS].map((g) => <button key={g} className={g === grupo ? "activo" : ""} onClick={() => setGrupo(g)}>{g}</button>)}
+          </div>
+          <div className="rp-lista">
+            {lista.map((r) => (
+              <button key={r.id} className={"rp-item" + (r.id === rep ? " activo" : "")} onClick={() => elegir(r.id)}>
+                <b>{r.titulo}</b>
+                <span>{r.grupo}</span>
+              </button>
+            ))}
+            {!lista.length && <p className="suave rp-vacio">Ningún reporte coincide.</p>}
+          </div>
+        </aside>
+        <section className="rp-panel">
+          <header className="rp-cabecera">
+            <span className="rp-grupo">{def.grupo}</span>
+            <h2>{def.titulo}</h2>
+            <p className="suave">{def.desc}</p>
+          </header>
+          <div className="rp-filtros">
+            <label className="rp-campo"><span>Sucursal</span><SelectorSucursal valor={sucursalId} onCambio={setSucursalId} /></label>
             {def.fechas && <>
-              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+              <div className="rp-campo"><span>Período</span>
+                <div className="rp-chips rp-rangos">
+                  {RANGOS.map(([k, t]) => <button key={k} className={k === rangoActivo ? "activo" : ""} onClick={() => { const [a, b] = rango(k); setDesde(a); setHasta(b); }}>{t}</button>)}
+                </div>
+              </div>
+              <label className="rp-campo"><span>Desde</span><input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} /></label>
+              <label className="rp-campo"><span>Hasta</span><input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} /></label>
             </>}
-            {cargando && <span className="suave">Cargando…</span>}
+            {cargando && <span className="suave rp-cargando">Cargando…</span>}
           </div>
           <Aviso texto={error} />
-          <h2>{def.titulo}</h2>
           {totales.length > 0 && (
             <div className="kpis">
               {totales.slice(0, 4).map((c) => (
-                <div key={c} className="kpi"><span className="suave">{etiqueta(c)}</span><b>{rd(filas.reduce((a, f) => a + Number(f[c] ?? 0), 0))}</b></div>
+                <div key={c} className="kpi"><span className="suave">{etiqueta(c)}</span><b>{rd(visibles.reduce((a, f) => a + Number(f[c] ?? 0), 0))}</b></div>
               ))}
             </div>
           )}
+          {filas.length > 0 && (
+            <div className="rp-barra">
+              <input type="search" placeholder="Filtrar los resultados…" value={buscarFila} onChange={(e) => setBuscarFila(e.target.value)} aria-label="Filtrar los resultados" />
+              <span className="suave">{q ? `${visibles.length} de ${filas.length}` : filas.length} {filas.length === 1 ? "fila" : "filas"}</span>
+            </div>
+          )}
           <Tabla
-            filas={filas}
+            filas={visibles}
             clave={(_, i) => String(i)}
-            vacio="Sin datos para este filtro"
+            vacio={filas.length ? "Ninguna fila coincide con el filtro" : def.fechas ? "No hay datos en este período. Pruebe con otras fechas u otra sucursal." : "No hay datos para mostrar."}
             columnas={cols.map((c) => ({
               titulo: etiqueta(c),
               der: filas.some((f) => /^-?\d+(\.\d+)?$/.test(String(f[c]))),
