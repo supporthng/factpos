@@ -16,7 +16,7 @@ const REPORTES: Rep[] = [
   { id: "bajo-minimo", titulo: "Bajo mínimo", grupo: "Inventario", desc: "Productos por debajo de su existencia mínima, con la cantidad sugerida a comprar." },
   { id: "reposicion", titulo: "Reposición inteligente", grupo: "Inventario", desc: "Qué comprar según lo que se vende y lo que queda." },
   { id: "por-vencer", titulo: "Vencidos y por vencer", grupo: "Inventario", desc: "Lotes vencidos o que vencen en los próximos 60 días." },
-  { id: "perdidas", titulo: "Pérdidas", grupo: "Inventario", fechas: true, desc: "Mermas, vencidos y ajustes de salida: lo que se perdió y cuánto costó." },
+  { id: "perdidas", titulo: "Pérdidas", grupo: "Inventario", fechas: true, desc: "Mermas, vencidos, ajustes de salida, consumo interno y faltantes de conteo: lo que se perdió y cuánto costó. No incluye entradas." },
   { id: "ajustes", titulo: "Detalle de ajustes", grupo: "Inventario", fechas: true, desc: "Todos los ajustes de existencia: quién, cuándo y por qué." },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", desc: "Mercancía movida entre sucursales o almacenes." },
   { id: "anulaciones", titulo: "Anulaciones de facturas", grupo: "Control", fechas: true, desc: "Facturas anuladas, quién las anuló y quién lo autorizó." },
