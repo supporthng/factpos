@@ -49,8 +49,8 @@ export const FUNCIONES = [
   {
     clave: "exigir_dispositivo",
     titulo: "Exigir dispositivo autorizado para entrar desde internet",
-    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Configuración › Dispositivos remotos. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Desactivado: basta el usuario y la clave.",
-    porDefecto: false,
+    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Configuración › Dispositivos remotos. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Viene activada. Desactivada: basta el usuario y la clave.",
+    porDefecto: true,
   },
 ] as const;
 export type ClaveFuncion = (typeof FUNCIONES)[number]["clave"];
