@@ -796,3 +796,21 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .teclado-pin.compacto .tecla { font-size: 20px; padding: 10px 0; }
 
 .version-caja { position: fixed; left: 8px; bottom: 4px; z-index: 50; font-size: 10px; color: var(--suave); opacity: .7; pointer-events: none; }
+
+/* Pantalla de venta: sin forma de pago ni comprobante (se eligen al cobrar); total y botón de cobro más grandes */
+.pv-cobro .pv-total { padding: 18px 18px 16px; }
+.pv-cobro .pv-total > span { font-size: 15px; }
+.pv-cobro .pv-total > b, .con-catalogo .pv-cobro .pv-total > b { font-size: 50px; letter-spacing: -1.5px; }
+.pv-cobro .pv-total > small { font-size: 15px; }
+.pv-cobro .pv-desglose { padding: 10px 16px; }
+.pv-cobro .pv-desglose > div { font-size: 18px; padding: 6px 0; }
+.pv-cobro .boton.cobrar { flex: 1; min-height: 120px; max-height: 220px; font-size: 38px; margin: 2px 0 0; border-radius: 18px; }
+.pv-cobro-ayuda { margin: 0; font-size: 12px; color: var(--suave); text-align: center; }
+/* Ventana de cobro vertical, una sola columna */
+.modal:has(.cobro2) { width: min(500px, 100%); padding: 18px 20px; }
+.cobro2-grid { grid-template-columns: 1fr; gap: 10px; }
+.cobro2 .cobro-total b { font-size: 40px; }
+.cobro2 .cobro-total { margin-bottom: 10px; }
+.cobro2 .formas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cobro2 .entrada-grande { font-size: 24px; padding: 14px 14px; }
+.modal:has(.cobro2) .boton.cobrar { padding: 18px; font-size: 24px; margin: 14px 0 2px; }

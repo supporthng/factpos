@@ -207,7 +207,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
               <span className="cobro-etiqueta">Comprobante</span>
               <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} compacto permitirSin={permitirSin} />
               <label className="cobro-sin-imprimir" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, cursor: "pointer" }} title="El comprobante se emite y se envía igual; solo no sale el ticket">
-                <input type="checkbox" checked={sinImprimir} onChange={(e) => setSinImprimir(e.target.checked)} /> No imprimir comprobante
+                <input type="checkbox" checked={sinImprimir} onChange={(e) => setSinImprimir(e.target.checked)} /> No imprimir
               </label>
             </div>
             <div className="cobro-seccion">

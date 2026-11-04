@@ -47,7 +47,7 @@ import { Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada 
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
 import { PanelPedidos, type PedidoDetalle } from "./Pedidos";
-import { SelectorComprobante, requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from "./Comprobante";
+import { requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from "./Comprobante";
 
 export interface Cliente {
   id: string; nombre: string; tipoDocumento: string; documento: string | null; telefono: string | null;
@@ -670,22 +670,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </dl>
           {cot.error && <p className="error">{cot.error}</p>}
 
-          <span className="pv-titulo-pago">Comprobante</span>
-          <SelectorComprobante tipo={tipoComp} compacto permitirSin={!!config.funciones?.sinComprobante} onTipo={(t) => {
-            setTipoComp(t);
-            if (requiereDocumento(t) && !tieneDocumentoFiscal(cliente)) { avisar("Crédito fiscal: elija un cliente con RNC o cédula", "ok"); setModal("cliente"); }
-          }} />
-          <span className="pv-titulo-pago">Forma de pago</span>
-          <div className="pv-metodos">
-            {([["EFECTIVO", "Efectivo", "billete"], ["TARJETA", "Tarjeta", "tarjeta"], ["TRANSFERENCIA", "Transferencia", "banco"], ["MIXTO", "Mixto", "mixto"]] as const).map(([m, t, ic]) => (
-              <button key={m} className="pv-metodo" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon(m)}>
-                <Icono n={ic} /><span>{t}</span>
-              </button>
-            ))}
-          </div>
           <button className="boton cobrar" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>
           </button>
+          <p className="pv-cobro-ayuda">Forma de pago, comprobante y cliente se eligen en la ventana de cobro.</p>
           {ultima && (
             <div className="pv-ultima">
               <span>Última: #{ultima.numero} · {rd(ultima.total)}{Number(ultima.cambio) > 0 && <> · <b className="cambio">cambio {rd(ultima.cambio)}</b></>}</span>
