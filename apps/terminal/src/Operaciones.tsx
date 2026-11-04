@@ -35,6 +35,12 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton }: {
         <input type="password" inputMode="numeric" autoComplete="off" className="entrada-grande pin" value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} onKeyDown={(e) => e.key === "Enter" && aprobar()} />
       </label>
+      <div className="teclado-pin compacto">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "C"].map((t) => (
+          <button key={t} type="button" className="tecla" disabled={enviando}
+            onClick={() => setPin((p) => (t === "⌫" ? p.slice(0, -1) : t === "C" ? "" : p.length < 8 ? p + t : p))}>{t}</button>
+        ))}
+      </div>
       {msg && <p className="error">{msg}</p>}
       <button className="boton primario ancho" disabled={pin.length < 4 || enviando} onClick={aprobar}>{textoBoton}</button>
     </div>

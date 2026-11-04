@@ -16,7 +16,7 @@
     "appId": "com.factpos.escritorio",
     "productName": "FactPOS Escritorio",
     "asar": true,
-    "files": ["main.cjs", "preload.cjs", "actualizando.html", "factpos.ico", "package.json"],
+    "files": ["main.cjs", "app.cjs", "preload.cjs", "actualizando.html", "factpos.ico", "codigo-version.txt", "package.json"],
     "directories": { "output": "out" },
     "extraResources": [{ "from": "../../apps/terminal/dist", "to": "terminal-ui" }],
     "win": { "target": ["portable"], "icon": "factpos.ico", "artifactName": "FactPOS-Escritorio-${version}.exe" }

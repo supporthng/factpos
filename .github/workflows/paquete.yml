@@ -64,6 +64,8 @@ jobs:
       - name: Compilar Electron
         shell: pwsh
         run: |
+          # versión del código de la ventana de escritorio (el servidor ofrece una más nueva a las cajas ya instaladas)
+          node -p "require('./package.json').version" | Out-File -Encoding ascii -NoNewline instalador/escritorio/codigo-version.txt
           npm install --prefix instalador/escritorio --no-audit --no-fund
           npm run dist:win --prefix instalador/escritorio
         env:
