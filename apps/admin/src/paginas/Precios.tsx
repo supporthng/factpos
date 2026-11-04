@@ -104,12 +104,25 @@ export function Precios() {
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Precios 2 y 3: descuento sobre el precio 1</h3>
         <p className="suave pequeno">Al crear un producto solo se pone el precio 1. Aquí define una sola vez cuánto menos cuestan el precio 2 y el precio 3. En la caja, el cliente con ese nivel paga el precio 1 y la factura muestra el descuento. En 0 % se usan los precios por producto de siempre.</p>
-        <div className="en-linea" style={{ flexWrap: "wrap", gap: 12 }}>
-          <label className="campo" style={{ margin: 0 }}><span>Precio 2 · % menos que el precio 1</span>
-            <span className="con-sufijo"><input className="numero" inputMode="decimal" value={valorNivel(2, pct2)} onChange={(e) => setPct2(e.target.value.replace(/[^\d.]/g, ""))} /><i>%</i></span></label>
-          <label className="campo" style={{ margin: 0 }}><span>Precio 3 · % menos que el precio 1</span>
-            <span className="con-sufijo"><input className="numero" inputMode="decimal" value={valorNivel(3, pct3)} onChange={(e) => setPct3(e.target.value.replace(/[^\d.]/g, ""))} /><i>%</i></span></label>
-          <button className="boton primario" disabled={pct2 === null && pct3 === null} onClick={guardarNiveles}>Guardar</button>
+        <div className="pn">
+          <div className="pn-nivel pn-1">
+            <span className="pn-etiqueta">Precio 1</span>
+            <b>Detalle</b>
+            <small>Precio de venta normal. Es el que se define en cada producto.</small>
+          </div>
+          <label className="pn-nivel pn-2">
+            <span className="pn-etiqueta">Precio 2</span>
+            <b>Mayorista</b>
+            <small>Descuento sobre el precio 1</small>
+            <span className="con-sufijo"><input className="numero" inputMode="decimal" aria-label="Porcentaje menos que el precio 1 para el precio 2" value={valorNivel(2, pct2)} onChange={(e) => setPct2(e.target.value.replace(/[^\d.]/g, ""))} /><i>%</i></span>
+          </label>
+          <label className="pn-nivel pn-3">
+            <span className="pn-etiqueta">Precio 3</span>
+            <b>Distribuidor</b>
+            <small>Descuento sobre el precio 1</small>
+            <span className="con-sufijo"><input className="numero" inputMode="decimal" aria-label="Porcentaje menos que el precio 1 para el precio 3" value={valorNivel(3, pct3)} onChange={(e) => setPct3(e.target.value.replace(/[^\d.]/g, ""))} /><i>%</i></span>
+          </label>
+          <button className="boton primario pn-guardar" disabled={pct2 === null && pct3 === null} onClick={guardarNiveles}>Guardar descuentos</button>
         </div>
         {msgNiv && <p className="suave pequeno">{msgNiv}</p>}
       </div>
