@@ -33,7 +33,7 @@ interface Auxiliares {
   listas: { nivel: number; nombre: string; descuentoPct?: number }[];
   preciosPorSucursal: boolean;
 }
-interface FilaLista { id: string; sku: string; nombre: string; marca: string | null; tipo: Tipo; activo: boolean; categoria: string | null; categoriaColor: string | null; precio: string | null; existencia: string; costo: string; presentaciones: string }
+interface FilaLista { id: string; sku: string; nombre: string; marca: string | null; tipo: Tipo; activo: boolean; categoria: string | null; categoriaColor: string | null; precio: string | null; tasa?: string | number; incluye?: boolean; existencia: string; costo: string; presentaciones: string }
 
 const NIVELES = ["1", "2", "3"] as const;
 const NOMBRE_NIVEL: Record<string, string> = { "1": "Detalle", "2": "Mayorista", "3": "Distribuidor" };
@@ -161,6 +161,10 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
             { titulo: "Tipo", ocultoMovil: true, valor: (f) => <span className={"pastilla t-" + f.tipo.toLowerCase()}>{TIPOS.find((t) => t.v === f.tipo)?.t}</span> },
             { titulo: "Venta", der: true, valor: (f) => (f.precio ? rd(f.precio) : <span className="texto-alerta">Sin precio</span>) },
             { titulo: "Costo", der: true, valor: (f) => rd(f.costo) },
+            { titulo: "Margen", der: true, valor: (f) => {
+              const m = f.margen(n(f.precio), n(f.costo), n(f.tasa), f.incluye ?? true);
+              return m === null ? <span className="suave">—</span> : <span className={m < 10 ? "texto-alerta" : m >= 25 ? "texto-ok" : ""} title="Ganancia sobre la venta sin ITBIS">{m.toFixed(1)}%</span>;
+            } },
             { titulo: "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
             { titulo: "Estado", ocultoMovil: true, valor: (f) => (f.activo ? <span className="texto-ok">Activo</span> : <span className="suave">Inactivo</span>) },
           ]}
