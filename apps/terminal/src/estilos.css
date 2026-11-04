@@ -834,3 +834,8 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 .pv-caja-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pv-caja-panel .pv-funcion { min-height: 58px; padding: 8px 6px; font-size: 14px; text-align: center; }
+/* Ficha del catálogo compacta: nombre, y en una sola fila el precio y la existencia */
+.pv-catalogo .info { gap: 4px; padding: 7px 9px 8px; }
+.pv-catalogo .info .nombre { font-size: 12px; line-height: 1.25; min-height: 2.5em; -webkit-line-clamp: 4; }
+.info .pie { flex-wrap: wrap; align-items: baseline; padding-top: 2px; border-top: 0; }
+.info .pie .stock b { font-size: 13px; color: var(--texto, inherit); }
