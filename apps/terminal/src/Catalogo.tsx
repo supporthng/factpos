@@ -100,14 +100,14 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
               </div>
               <div className="info">
                 <b className="nombre">{p.nombre}</b>
-                <span className="presentacion">{Number(p.factor) > 1 ? `${p.presentacion} · ${Number(p.factor)} unidades` : p.esPesable ? "Por libra" : "\u00a0"}</span>
-                {estado && (
-                  <span className={"stock fila " + estado} title={estado === "agotado" ? "Agotado" : estado === "bajo" ? "Existencia baja" : "En existencia"}>
-                    <i />Existencia: <b>{fmt(stock)}</b>{estado === "agotado" && " · agotado"}{estado === "bajo" && " · baja"}
-                  </span>
-                )}
+                {(Number(p.factor) > 1 || p.esPesable) && <span className="presentacion">{Number(p.factor) > 1 ? `${p.presentacion} · ${Number(p.factor)} unidades` : "Por libra"}</span>}
                 <div className="pie">
                   <span className="precio">{p.precioVariable ? "Precio libre" : precio ? rd(precio) : "Sin precio"}{p.esPesable && <small>/lb</small>}</span>
+                  {estado && (
+                    <span className={"stock " + estado} title={estado === "agotado" ? "Agotado" : estado === "bajo" ? "Existencia baja" : "En existencia"}>
+                      <i /><b>{fmt(stock)}</b>{estado === "agotado" && " · agotado"}
+                    </span>
+                  )}
                 </div>
               </div>
             </button>
