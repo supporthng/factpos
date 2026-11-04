@@ -415,8 +415,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       id: crypto.randomUUID(), hora: new Date().toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" }),
       lineas, cliente, cupon, total: cot.r?.totales.total ?? "0", descuentos: aprobacion, notas,
     }]);
-    // Queda en la auditoría (quién la pausó y por cuánto) aunque luego se borre el almacenamiento de la caja
-    api(ajustes.servidor, `/cajas/${ajustes.cajaId}/pausa-evento`, { cuerpo: { usuarioId: usuario.id, accion: "PAUSAR", total: String(cot.r?.totales.total ?? "0"), productos: lineas.length, cliente: cliente?.nombre } }).catch(() => {});
     nuevaVenta();
     avisar("Venta en pausa. F5 para retomarla.", "ok");
   };
@@ -880,13 +878,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       )}
       {modal === "pausadas" && (
         <Pausadas ajustes={ajustes} pausadas={pausadas} onRetomar={retomar} onCerrar={() => setModal(null)}
-          onDescartar={async (p, a) => {
-            try {
-              await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/pausa-evento`, { cuerpo: { usuarioId: usuario.id, accion: "DESCARTAR", total: String(p.total), productos: p.lineas.length, cliente: p.cliente?.nombre, autorizacion: a.token } });
-              setPausadas((ps) => ps.filter((x) => x.id !== p.id));
-              avisar(`Venta en pausa descartada · autorizó ${a.supervisor}`, "ok");
-              return null;
-            } catch (e) { return (e as Error).message; }
+          onDescartar={(p, a) => {
+            setPausadas((ps) => ps.filter((x) => x.id !== p.id));
+            avisar(`Venta en pausa descartada · autorizó ${a.supervisor}`, "ok");
           }} />
       )}
       {modal === "turno" && (

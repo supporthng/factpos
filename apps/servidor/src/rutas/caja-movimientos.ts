@@ -68,33 +68,6 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
     return { ok: true, supervisor: aprob.supervisor };
   });
 
-  /**
-   * Ventas en pausa: cada pausa y cada descarte quedan en la auditoría. Descartar una venta en pausa exige la aprobación
-   * de un supervisor (si no, un cajero podría cobrar, pasar la venta a pausa y borrarla).
-   */
-  app.post("/cajas/:cajaId/pausa-evento", async (req, rep) => {
-    const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const b = z.object({
-      usuarioId: uuid, accion: z.enum(["PAUSAR", "DESCARTAR"]),
-      total: z.string().regex(/^\d+(\.\d{1,2})?$/), productos: z.number().int().min(0).max(5000), cliente: z.string().max(160).optional(),
-      autorizacion: z.string().max(2000).optional(),
-    }).parse(req.body);
-    const aprob = b.accion === "DESCARTAR" ? verificarAutorizacion(b.autorizacion, "venta.anular", cajaId) : null;
-    const ctx = await contextoCaja(cajaId);
-    const id = uuidv7();
-    await enTransaccion(async (c) => {
-      await c.query(
-        `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
-         VALUES ($1,$2,$3,$4,$5,'caja',$6,$7)`,
-        [id, ctx.sucursalId, b.usuarioId, aprob?.supervisorId ?? null, b.accion === "PAUSAR" ? "venta.pausa" : "venta.pausa.descartada", cajaId,
-          JSON.stringify({ total: b.total, productos: b.productos, cliente: b.cliente ?? null })],
-      );
-      await encolarFilas(c, "auditoria", [id]);
-    });
-    rep.code(201);
-    return { ok: true, supervisor: aprob?.supervisor ?? null };
-  });
-
   app.get("/cajas/:cajaId/movimientos", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
     const turnoId = await turnoAbierto(pool, cajaId);
