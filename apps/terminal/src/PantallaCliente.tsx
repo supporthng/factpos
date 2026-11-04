@@ -89,8 +89,8 @@ export function PantallaCliente() {
       <section className="pc-lineas" aria-label="Productos">
         {c.lineas.map((l, i) => (
           <div key={i} className={"pc-linea" + (i === c.lineas.length - 1 ? " nueva" : "")} ref={i === c.lineas.length - 1 ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}>
-            <div><b>{l.nombre}</b><span>{Number(l.cantidad)} × {rd(l.precio)}{Number(l.descuento) > 0 && <em> · ahorra {rd(l.descuento)}</em>}</span></div>
-            <strong>{rd(l.total)}</strong>
+            <b>{l.nombre}</b>
+            <div className="pc-det"><span>{Number(l.cantidad)} × {rd(l.precio)}{Number(l.descuento) > 0 && <em> · ahorra {rd(l.descuento)}</em>}</span><strong>{rd(l.total)}</strong></div>
           </div>
         ))}
       </section>
