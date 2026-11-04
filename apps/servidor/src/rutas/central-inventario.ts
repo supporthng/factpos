@@ -100,6 +100,8 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "sucursales": { vista: "rpt_resumen_sucursales", sucursal: true, orden: "sucursal" },
   "ventas-sucursal": { vista: "rpt_ventas_sucursal", fecha: true, sucursal: true, orden: "fecha DESC, venta_total DESC" },
   "ventas-comprobante": { vista: "rpt_ventas_comprobante", fecha: true, sucursal: true, orden: "fecha DESC, prefijo, tipo" },
+  "anulaciones": { vista: "rpt_control_anulaciones", fecha: true, sucursal: true, orden: "hora DESC" },
+  "anulaciones-cajero": { vista: "rpt_control_anulaciones_cajero", fecha: true, sucursal: true, orden: "fecha DESC, anulaciones DESC" },
   "cierres-caja": { vista: "rpt_cierres_caja", fecha: true, sucursal: true, orden: "cerrado_en DESC" },
 };
 

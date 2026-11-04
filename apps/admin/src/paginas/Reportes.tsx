@@ -18,6 +18,8 @@ const REPORTES: { id: string; titulo: string; grupo: string; fechas?: boolean }[
   { id: "perdidas", titulo: "Pérdidas: mermas, vencidos y ajustes", grupo: "Inventario", fechas: true },
   { id: "ajustes", titulo: "Detalle de ajustes", grupo: "Inventario", fechas: true },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario" },
+  { id: "anulaciones", titulo: "Anulaciones de facturas (quién anuló y quién autorizó)", grupo: "Control", fechas: true },
+  { id: "anulaciones-cajero", titulo: "Anulaciones por cajero y día", grupo: "Control", fechas: true },
   { id: "cierres-caja", titulo: "Cierres de caja (cuadres)", grupo: "Operación", fechas: true },
   { id: "delivery", titulo: "Delivery", grupo: "Operación", fechas: true },
   { id: "saldo-clientes", titulo: "Saldo de clientes (fiado)", grupo: "Operación" },
