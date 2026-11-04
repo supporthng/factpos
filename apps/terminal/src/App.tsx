@@ -60,6 +60,7 @@ function AppInterna() {
 
   // Seguridad de la caja: con el turno abierto, salir de FactPOS necesita la aprobación de un supervisor
   const [saliendo, setSaliendo] = useState(false);
+  const [bienvenida, setBienvenida] = useState<{ usuario: string; fondo: string } | null>(null);
   const [minimizando, setMinimizando] = useState(false);
   const [bloqueada, setBloqueada] = useState(false);
   const electron = (window as unknown as { factpos?: { turno?: (v: boolean) => void; alIntentarCerrar?: (f: () => void) => void; cerrar?: () => void; alIntentarMinimizar?: (f: () => void) => void; minimizar?: () => void } }).factpos;
@@ -161,13 +162,13 @@ function AppInterna() {
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
   if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />{ventanaSalir}{ventanaMin}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
-  if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={() => setTurno(undefined)} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
+  if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
 
   // El turno es de quien lo abrió: otro cajero no vende dentro de un turno ajeno (el cuadre sería de dos personas)
   if (turno.usuarioId !== usuario.id) {
     return <><TurnoAjeno ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} onCerrado={() => { guardarCache(ajustes, "turno", null); setTurno(null); }} />{ventanaSalir}</>;
   }
-  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}{ventanaMin}{pantallaBloqueo}</>;
+  return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}{ventanaMin}{pantallaBloqueo}{bienvenida && <BienvenidaTurno {...bienvenida} onCerrar={() => setBienvenida(null)} />}</>;
 }
 
 function TurnoAjeno({ ajustes, config, usuario, turno, onSalir, onCerrado }: {
@@ -403,15 +404,27 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajuste
   );
 }
 
+/** Mensaje al abrir el turno: quién lo inicia y con cuánto. Se cierra solo. */
+function BienvenidaTurno({ usuario, fondo, onCerrar }: { usuario: string; fondo: string; onCerrar: () => void }) {
+  useEffect(() => { const t = setTimeout(onCerrar, 6000); return () => clearTimeout(t); }, [onCerrar]);
+  return (
+    <Modal titulo={`¡Bienvenido, ${usuario}!`} onCerrar={onCerrar}>
+      <p>Su turno quedó abierto.</p>
+      <p>Monto inicial en caja: <b>{rd(fondo)}</b></p>
+      <button className="boton primario ancho" autoFocus onClick={onCerrar}>Comenzar a vender</button>
+    </Modal>
+  );
+}
+
 function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
-  ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: () => void; recargar: () => void;
+  ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: (fondo: string) => void; recargar: () => void;
 }) {
   const [fondo, setFondo] = useState("2000");
   const [msg, setMsg] = useState("");
   const abrir = async () => {
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno/abrir`, { cuerpo: { usuarioId: usuario.id, fondoInicial: fondo || "0" } });
-      onAbierto();
+      onAbierto(fondo || "0");
       recargar();
     } catch (e) {
       setMsg((e as Error).message);
