@@ -817,4 +817,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cobro2 .entrada-grande { font-size: 24px; padding: 14px 14px; }
 .modal:has(.cobro2) .boton.cobrar { padding: 18px; font-size: 24px; margin: 14px 0 2px; }
 .cobro-teclado-barra { text-align: right; margin: -2px 0 -4px; font-size: 13px; }
-.cobro-teclado .tecla { font-size: 22px; padding: 12px 0; }
+.cobro-teclado { grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 4px 0 2px; }
+.cobro-teclado .tecla.ancha { grid-column: span 2; }
+.cobro-teclado .tecla { font-size: 19px; padding: 5px 0; }
+.cobro2 .entrada-grande { padding: 9px 12px; }
+.cobro2 .cobro-seccion { margin: 0 0 2px; }
+.modal:has(.cobro2) { max-height: 96vh; overflow-y: auto; }
