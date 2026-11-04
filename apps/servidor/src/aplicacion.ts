@@ -109,7 +109,7 @@ export async function crearApp() {
       const ruta = req.url.split("?")[0];
       if (ruta.startsWith("/fe/")) return; // la DGII llama aquí (recepción, aprobación comercial y autenticación)
       if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
-      if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Configuración › Conexión web, desde la red local." });
+      if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Configuración › Acceso remoto, desde la red local." });
       // Con «Exigir dispositivo autorizado» solo entran los equipos que un administrador autorizó (la web de la app sí carga: pide el acceso)
       if (ruta !== "/salud" && ruta !== "/actualizacion/estado" && !ruta.startsWith("/admin") && !rutaDeAltaDispositivo(ruta) && (await dispositivoExigido())) {
         const est = await estadoDispositivo(req.headers["x-dispositivo"]);

@@ -73,6 +73,15 @@ export async function rutasDispositivos(app: FastifyInstance) {
         WHERE d.empresa_id = $1 ORDER BY (d.estado = 'PENDIENTE') DESC, d.solicitado_en DESC LIMIT 200`, [empresaId]);
     return r.rows;
   });
+  /** Solicitudes esperando respuesta (para la campana de avisos del admin; se consulta cada pocos segundos). */
+  app.get("/central/dispositivos/pendientes", async (req) => {
+    soloAdmin(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const r = await pool.query(
+      `SELECT id, nombre, plataforma, ip, solicitado_en AS "solicitadoEn" FROM dispositivos_remotos
+        WHERE empresa_id = $1 AND estado = 'PENDIENTE' ORDER BY solicitado_en DESC LIMIT 20`, [empresaId]);
+    return { pendientes: r.rowCount ?? 0, solicitudes: r.rows };
+  });
   app.put("/central/dispositivos/:id", async (req) => {
     soloAdmin(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);

@@ -14,7 +14,7 @@ const GRUPOS: Grupo[] = [
       { titulo: "Verificador para Android", para: "Tabletas y pantallas Android", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "android" } },
       { titulo: "Verificador para Windows", para: "PC con pantalla táctil", plataforma: "Windows", descarga: { tipo: "portal", so: "windows" } },
     ] },
-  { titulo: "FactPOS Admin (administración remota)", nota: "Para administrar el negocio desde fuera de la oficina. El enlace con QR que la deja configurada está en Configuración › Dispositivos remotos.",
+  { titulo: "FactPOS Admin (administración remota)", nota: "Para administrar el negocio desde fuera de la oficina. El enlace con QR que la deja configurada está en Configuración › Acceso remoto.",
     items: [
       { titulo: "FactPOS Admin para Android", para: "Celular o tableta", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "admin-android" } },
       { titulo: "FactPOS Admin para Windows", para: "Computadora", plataforma: "Windows", descarga: { tipo: "portal", so: "admin-windows" } },
