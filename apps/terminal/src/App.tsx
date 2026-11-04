@@ -5,7 +5,7 @@ import { AvisoLicencia } from "./AvisoLicencia";
 import { useEffect, useRef, useState } from "react";
 import { api, equipoId, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
 import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
-import { Venta, Modal } from "./Venta";
+import { Venta, Modal, ConsultaPrecios } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { TurnoCaja } from "./Turno";
 import { temaTerminal, marcaEfectiva } from "@factpos/compartido";
@@ -408,6 +408,7 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
 }) {
   const [fondo, setFondo] = useState("2000");
   const [msg, setMsg] = useState("");
+  const [consultando, setConsultando] = useState(false);
   const abrir = async () => {
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno/abrir`, { cuerpo: { usuarioId: usuario.id, fondoInicial: fondo || "0" } });
@@ -428,7 +429,10 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
       </label>
       <p className="suave">Fondo: {rd(fondo || 0)}</p>
       <button className="boton primario ancho" onClick={abrir}>Abrir turno</button>
+      <button className="boton ancho" onClick={() => setConsultando(true)}>Consultar precios</button>
+      <p className="suave pequeno">Sin turno abierto solo se pueden consultar precios y existencias; para facturar hay que abrir el turno.</p>
       {msg && <p className="error">{msg}</p>}
+      {consultando && <ConsultaPrecios ajustes={ajustes} onCerrar={() => setConsultando(false)} />}
     </Pantalla>
   );
 }

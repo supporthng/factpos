@@ -903,6 +903,20 @@ function normalizar(s: string) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+/** Consulta de precio y existencia sin venta ni turno (solo lectura): la caja sin turno abierto puede consultar, no facturar. */
+export function ConsultaPrecios({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar: () => void }) {
+  const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api<Catalogo>(ajustes.servidor, `/cajas/${ajustes.cajaId}/catalogo`).then(setCatalogo).catch(async (e) => {
+      const c = await leerCache<Catalogo>(ajustes, "catalogo");
+      if (c) setCatalogo(c); else setError((e as Error).message);
+    });
+  }, [ajustes]);
+  if (catalogo) return <Buscar catalogo={catalogo} inicial="" nivel={catalogo.nivelPredeterminado} consulta onElegir={() => {}} onCerrar={onCerrar} />;
+  return <Modal titulo="Consultar precio" onCerrar={onCerrar}><p className={error ? "error" : "suave"}>{error || "Cargando productos…"}</p></Modal>;
+}
+
 function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar, consulta = false }: {
   catalogo: Catalogo; inicial: string; nivel: number; onElegir: (p: ProductoCatalogo) => void; onCerrar: () => void;
   /** Solo consulta de precio y existencia: no agrega nada a la venta */
