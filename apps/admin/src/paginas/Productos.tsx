@@ -357,21 +357,26 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
             </button>
           ))}
         </div>
-        <div className="campo codigos"><span>Código de barras</span>
-          <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
-          <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
-        </div>
-        <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
-        <div className="dos-col">
-          <label className="campo"><span>Precio de costo (sin ITBIS)</span>
-            <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
-            <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex."}</small>
-          </label>
-          <label className="campo"><span>Precio de venta {f.precioIncluyeItbis && tasa > 0 ? "(con ITBIS)" : ""}</span>
-            <input className="numero" inputMode="decimal" value={p0.precios["1"] ?? ""} disabled={f.precioVariable}
-              onChange={(e) => fijarPres({ precios: { ...p0.precios, "1": e.target.value.replace(/[^\d.]/g, "") }, porcentajes: { ...p0.porcentajes, "1": null } })} />
-            <small className="suave">{f.precioVariable ? "Precio variable: lo escribe la cajera." : "Los precios 2 y 3 están en la pestaña Precios."}</small>
-          </label>
+        <div className="principal-cuerpo">
+          <div className="principal-datos">
+          <div className="campo codigos"><span>Código de barras</span>
+            <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
+            <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
+          </div>
+          <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
+          <div className="dos-col">
+            <label className="campo"><span>Precio de costo (sin ITBIS)</span>
+              <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
+              <small className="suave">{f.tipo === "COMBO" ? "Suma del costo de sus componentes." : "Con existencia, el costo real lo calcula el kardex."}</small>
+            </label>
+            <label className="campo"><span>Precio de venta {f.precioIncluyeItbis && tasa > 0 ? "(con ITBIS)" : ""}</span>
+              <input className="numero" inputMode="decimal" value={p0.precios["1"] ?? ""} disabled={f.precioVariable}
+                onChange={(e) => fijarPres({ precios: { ...p0.precios, "1": e.target.value.replace(/[^\d.]/g, "") }, porcentajes: { ...p0.porcentajes, "1": null } })} />
+              <small className="suave">{f.precioVariable ? "Precio variable: lo escribe la cajera." : "Los precios 2 y 3 están en la pestaña Precios."}</small>
+            </label>
+          </div>
+          </div>
+          <ZonaImagen f={f} cambiar={cambiar} />
         </div>
         {!sinStock && (
           <table className="tabla tabla-edicion">
@@ -388,7 +393,6 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
           </table>
         )}
         {!sinStock && <p className="suave pequeno">{nuevo ? "El stock inicial se agrega después de crear el producto (pestaña Inventario › Agregar existencia), para que el kardex cuadre." : "El stock cambia con compras, ventas, ajustes o «Agregar existencia» en la pestaña Inventario."}</p>}
-        <ZonaImagen f={f} cambiar={cambiar} />
       </div>
     </>
   );
