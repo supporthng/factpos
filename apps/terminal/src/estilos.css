@@ -823,3 +823,10 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cobro2 .entrada-grande { padding: 9px 12px; }
 .cobro2 .cobro-seccion { margin: 0 0 2px; }
 .modal:has(.cobro2) { max-height: 96vh; overflow-y: auto; }
+
+.pv-cliente-panel { position: relative; display: flex; }
+.pv-cliente-panel .pv-cliente { flex: 1; width: 100%; min-width: 0; }
+.pv-cliente-panel .pv-quitar-cliente { position: absolute; right: -6px; top: -6px; }
+.pv-entrada, .pv-entrada:not(:has(.pv-quitar-cliente)) { grid-template-columns: minmax(0, 1fr); }
+.pv-cliente-panel .pv-quitar-cliente { width: 28px; height: 28px; font-size: 18px; line-height: 1; padding: 0; border-radius: 50%; }
+.pv-cliente-panel .pv-cliente { padding: 8px 12px; }

@@ -566,16 +566,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <Icono n="lupa" /><kbd>F2</kbd>
           </button>
         </div>
-        <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
-          <Icono n="persona" />
-          <span className="pv-cliente-texto">
-            <small>Cliente · Precio {nivelCliente}</small>
-            <b>{cliente ? cliente.nombre : "Consumidor final"}</b>
-            {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
-          </span>
-          <span className="pv-cliente-accion">{cliente ? "Cambiar" : "RNC / Cédula"} <kbd>F4</kbd></span>
-        </button>
-        {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a consumidor final" onClick={() => setCliente(null)}>×</button>}
       </div>
 
       <main className={"pv-cuerpo" + (verCatalogo && anchoCat ? " con-ancho" : "")} style={verCatalogo && anchoCat ? ({ "--ancho-cat": anchoCat } as React.CSSProperties) : undefined}>
@@ -669,6 +659,20 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <button className="boton cobrar" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>
           </button>
+          <span className="pv-titulo-pago">Cliente</span>
+          <div className="pv-cliente-panel">
+            <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
+              <Icono n="persona" />
+              <span className="pv-cliente-texto">
+                <small>Precio {nivelCliente}</small>
+                <b>{cliente ? cliente.nombre : "Consumidor final"}</b>
+                {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
+              </span>
+              <span className="pv-cliente-accion">{cliente ? "Cambiar" : "RNC / Cédula"} <kbd>F4</kbd></span>
+            </button>
+            {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a consumidor final" onClick={() => setCliente(null)}>×</button>}
+          </div>
+          <span className="pv-titulo-pago">Atajos</span>
           <div className="pv-atajos" aria-label="Atajos de la venta">
             <button disabled={!lineas.length} onClick={pausar}>Suspender<small>F3</small></button>
             <button disabled={!lineas.length || !cot.r} onClick={() => setModal("cotizacion")}>Cotización<small>Alt+Q</small></button>
