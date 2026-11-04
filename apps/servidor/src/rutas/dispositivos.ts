@@ -20,7 +20,7 @@ export async function dispositivoExigido() {
   if (cache && Date.now() - cache.t < 5_000) return cache.v;
   const r = await pool.query<{ habilitada: boolean }>("SELECT habilitada FROM seguridad_funciones WHERE clave = 'exigir_dispositivo' ORDER BY actualizado_en DESC LIMIT 1")
     .catch(() => ({ rows: [] as { habilitada: boolean }[] }));
-  const v = r.rows[0]?.habilitada ?? false;
+  const v = r.rows[0]?.habilitada ?? true; // viene activada: solo se apaga si un administrador la desactiva
   cache = { v, t: Date.now() };
   return v;
 }
