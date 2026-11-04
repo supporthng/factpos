@@ -22,7 +22,7 @@ a{color:var(--p)}details{margin-top:10px}summary{cursor:pointer;color:var(--s)}
  <input type="file" id="arch" accept=".sql,.txt" hidden>
  <div class="res" id="res"></div>
  <div id="datos" hidden>
-  <label>Servidor de FactPOS</label><input type="text" id="servidor" placeholder="http://192.168.1.10:3000">
+  <label>Servidor de FactPOS</label><input type="text" id="servidor" placeholder="Dirección de la PC del servidor (se busca sola)"><small id="hallado" class="s"></small>
   <div class="fila"><div><label>Usuario administrador</label><input type="text" id="usuario"></div><div><label>Contraseña</label><input type="password" id="clave"></div></div>
   <details><summary>Más opciones</summary>
    <div class="fila"><div><label>RNC de la empresa (si el usuario está en varias)</label><input type="text" id="rnc"></div><div><label>Código de verificación (dos pasos)</label><input type="text" id="codigo"></div></div>
@@ -50,7 +50,7 @@ async function subir(f){if(!f)return;$("nombre").textContent="Leyendo "+f.name+"
  try{await fetch("/subir",{method:"POST",body:f});$("zona").classList.add("si");$("nombre").textContent=f.name+" ("+(f.size/1048576).toFixed(1)+" MB)";
   $("res").textContent="Revisando el respaldo…";const t=await correr(false);
   const m=t.match(/Se importar[^\n]*/);$("res").textContent=m?m[0]:"";$("log").hidden=true;$("datos").hidden=false;
-  const s=await(await fetch("/estado")).json();$("servidor").value=s.conexion.servidor||"";$("usuario").value=s.conexion.usuario||"";
+  const s=await(await fetch("/estado")).json();$("servidor").value=s.conexion.servidor||"";if(!$("servidor").value)fetch("/detectar").then(r=>r.json()).then(d=>{if(d.servidor&&!$("servidor").value){$("servidor").value=d.servidor;$("hallado").textContent="Servidor FactPOS encontrado"+(d.empresa?" ("+d.empresa+")":"")+". Si no es el correcto, cámbielo."}else if(!d.servidor&&!$("servidor").value){$("hallado").textContent="No encontré un servidor en esta PC. Escriba la dirección de la PC donde está FactPOS Servidor (en ella: ipconfig › Dirección IPv4), con :3000 al final."}}).catch(()=>{});$("usuario").value=s.conexion.usuario||"";
  }catch{$("nombre").textContent="No se pudo leer el archivo"}}
 $("zona").onclick=()=>$("arch").click();$("arch").onchange=e=>subir(e.target.files[0]);
 $("zona").ondragover=e=>e.preventDefault();$("zona").ondrop=e=>{e.preventDefault();subir(e.dataTransfer.files[0])};

@@ -69,6 +69,13 @@ const resultado = { creados: { categorias: 0, proveedores: 0, clientes: 0, produ
 if (aplicar) {
   const servidor = String(o.servidor ?? "").replace(/\/$/, "");
   if (!servidor || !o.usuario || !o.clave) { throw new Error("Para --aplicar hacen falta --servidor, --usuario y --clave."); }
+  // Antes de entrar: ¿ahí hay de verdad un servidor FactPOS? (evita esperar minutos a una dirección equivocada)
+  try {
+    const d = await (await fetch(servidor + "/descubrir", { signal: AbortSignal.timeout(8000) })).json();
+    if (d?.producto !== "FactPOS") throw new Error("no es FactPOS");
+  } catch {
+    throw new Error(`No encontré un servidor FactPOS en ${servidor}. Revise la dirección: es la de la PC donde está instalado FactPOS Servidor (en ella: ipconfig › Dirección IPv4, con :3000 al final). Si el importador corre en esa misma PC, use http://127.0.0.1:3000.`);
+  }
   const disp = o.dispositivo ? { "x-dispositivo": String(o.dispositivo) } : {};
   let token = "";
   const api = async (ruta, metodo = "GET", cuerpo) => {

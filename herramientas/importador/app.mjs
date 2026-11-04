@@ -25,6 +25,13 @@ const conexion = () => { try { return JSON.parse(readFileSync(rutaConexion, "utf
 const srv = http.createServer((q, r) => {
   const u = new URL(q.url, "http://x");
   if (q.method === "GET" && u.pathname === "/") { r.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return r.end(PAGINA); }
+  if (q.method === "GET" && u.pathname === "/detectar") {
+    // Busca un servidor FactPOS en esta misma PC o con el nombre factpos.local
+    Promise.all(["http://127.0.0.1:3000", "http://localhost:3000", "http://factpos.local:3000"].map((url) =>
+      fetch(url + "/descubrir", { signal: AbortSignal.timeout(1500) }).then((x) => x.json()).then((d) => (d?.producto === "FactPOS" ? { servidor: url, empresa: d.empresa ?? null } : null)).catch(() => null)))
+      .then((hallado) => json(r, 200, hallado.find(Boolean) ?? {}));
+    return;
+  }
   if (q.method === "GET" && u.pathname === "/estado") {
     return json(r, 200, { conexion: conexion(), salida, archivos: existsSync(salida) ? readdirSync(salida).filter((f) => f.endsWith(".csv") || f.endsWith(".md")) : [] });
   }
