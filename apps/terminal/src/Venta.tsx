@@ -594,8 +594,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <h2>Venta en curso</h2>
             <span className="suave">{lineas.length ? `${lineas.length} línea(s) · ${articulos % 1 ? articulos.toFixed(2) : articulos} artículo(s)` : "Sin productos"}</span>
             <span className="flex" />
-            <button className="boton fantasma" disabled={!lineas.length} onClick={pausar}><Icono n="pausa" />Suspender <kbd>F3</kbd></button>
-            <button className="boton fantasma" disabled={!lineas.length || !cot.r} onClick={() => setModal("cotizacion")}><Icono n="documento" />Cotización <kbd>Alt+Q</kbd></button>
           </header>
 
           <div className="pv-tabla" role="table" aria-label="Detalle de la venta">
@@ -651,8 +649,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             </button>
             <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.precioVariable} onClick={() => setModal("cambiarPrecio")}><Icono n="etiqueta" />Precio <kbd>Alt+P</kbd></button>
             <button className="boton fantasma" disabled={!lineas.length} onClick={() => abrirDescuento("linea")}><Icono n="porciento" />Descuento <kbd>F7</kbd></button>
-            <button className={"boton fantasma" + (notas ? " con-nota" : "")} onClick={() => setModal("nota")}><Icono n="nota" />{notas ? "Nota ✓" : "Nota"} <kbd>Alt+N</kbd></button>
-            <button className={"boton fantasma" + (cupon ? " con-nota" : "")} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}><Icono n="cupon" />{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"} <kbd>F6</kbd></button>
           </div>
           {notas && <p className="pv-nota-texto"><b>Nota:</b> {notas}</p>}
         </section>
@@ -673,7 +669,12 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <button className="boton cobrar" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>
           </button>
-          <p className="pv-cobro-ayuda">Forma de pago, comprobante y cliente se eligen en la ventana de cobro.</p>
+          <div className="pv-atajos" aria-label="Atajos de la venta">
+            <button disabled={!lineas.length} onClick={pausar}>Suspender<small>F3</small></button>
+            <button disabled={!lineas.length || !cot.r} onClick={() => setModal("cotizacion")}>Cotización<small>Alt+Q</small></button>
+            <button className={cupon ? "activo" : ""} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}>{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"}<small>F6</small></button>
+            <button className={notas ? "activo" : ""} onClick={() => setModal("nota")}>{notas ? "Nota ✓" : "Nota"}<small>Alt+N</small></button>
+          </div>
           {ultima && (
             <div className="pv-ultima">
               <span>Última: #{ultima.numero} · {rd(ultima.total)}{Number(ultima.cambio) > 0 && <> · <b className="cambio">cambio {rd(ultima.cambio)}</b></>}</span>
