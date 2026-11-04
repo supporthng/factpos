@@ -790,3 +790,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Caja bloqueada por inactividad: tapa toda la pantalla y pide el PIN */
 .bloqueo-caja { position: fixed; inset: 0; z-index: 300; background: var(--fondo); overflow: auto; }
+
+/* Teclado numérico en la ventana del PIN del supervisor (salir, minimizar, descuentos…) */
+.teclado-pin.compacto { gap: 6px; margin: 8px 0; }
+.teclado-pin.compacto .tecla { font-size: 20px; padding: 10px 0; }
