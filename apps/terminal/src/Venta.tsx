@@ -647,6 +647,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             </button>
             <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.precioVariable} onClick={() => setModal("cambiarPrecio")}><Icono n="etiqueta" />Precio <kbd>Alt+P</kbd></button>
             <button className="boton fantasma" disabled={!lineas.length} onClick={() => abrirDescuento("linea")}><Icono n="porciento" />Descuento <kbd>F7</kbd></button>
+            <button className="boton fantasma pv-cancelar" disabled={!lineas.length} onClick={() => setModal("cancelar")}><Icono n="x" />Cancelar venta <kbd>Esc</kbd></button>
           </div>
           {notas && <p className="pv-nota-texto"><b>Nota:</b> {notas}</p>}
         </section>
@@ -705,7 +706,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       </main>
 
       <footer className="pv-funciones" aria-label="Funciones">
-        <BotonFuncion tono="rojo" icono="x" texto="Cancelar venta" tecla="Esc" disabled={!lineas.length} onClick={() => setModal("cancelar")} />
         <BotonFuncion tono="azul" icono="etiqueta" texto="Consultar precio" tecla="Alt+C" disabled={!catalogo} onClick={() => setModal("consulta")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />

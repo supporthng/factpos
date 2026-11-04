@@ -23,7 +23,7 @@ export interface FormatoTicket {
 
 export const FORMATO_TICKET_BASE: FormatoTicket = {
   papel: "80", letra: "normal", logoTamano: "mediano",
-  mostrarRnc: true, mostrarSucursal: true, mostrarDireccion: false, mostrarTelefono: false, encabezadoExtra: "",
+  mostrarRnc: true, mostrarSucursal: true, mostrarDireccion: true, mostrarTelefono: true, encabezadoExtra: "",
   mostrarCajero: true, mostrarCliente: true, mostrarAhorro: true, mostrarQr: true,
   pie: "¡Gracias por su compra!", pieExtra: "",
 };

@@ -94,8 +94,8 @@ export function FormatosImpresion() {
             <div className="vt-centro">
               {m.logo && m.logoEnTicket && <img src={m.logo} alt="" style={{ maxWidth: med.logoAncho, maxHeight: med.logoAlto }} />}
               <b style={{ fontSize: "1.25em" }}>{m.nombre}</b>
-              {f.mostrarRnc && <div>RNC 1-31-00000-0</div>}
               {f.mostrarSucursal && <div>Sucursal Principal</div>}
+              {f.mostrarRnc && <div>RNC 1-31-00000-0</div>}
               {f.mostrarDireccion && <div>Calle Principal #1, Santo Domingo</div>}
               {f.mostrarTelefono && <div>Tel. 809-555-0100</div>}
               {f.encabezadoExtra.split("\n").filter((l) => l.trim()).map((l, i) => <div key={i}>{l}</div>)}
