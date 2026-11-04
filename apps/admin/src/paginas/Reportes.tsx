@@ -19,6 +19,8 @@ const REPORTES: { id: string; titulo: string; grupo: string; fechas?: boolean }[
   { id: "ajustes", titulo: "Detalle de ajustes", grupo: "Inventario", fechas: true },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario" },
   { id: "anulaciones", titulo: "Anulaciones de facturas (quién anuló y quién autorizó)", grupo: "Control", fechas: true },
+  { id: "historial-ventas", titulo: "Ventas del sistema anterior (historial, solo consulta)", grupo: "Historial anterior", fechas: true },
+  { id: "historial-ventas-producto", titulo: "Ventas por producto del sistema anterior", grupo: "Historial anterior", fechas: true },
   { id: "anulaciones-cajero", titulo: "Anulaciones por cajero y día", grupo: "Control", fechas: true },
   { id: "cierres-caja", titulo: "Cierres de caja (cuadres)", grupo: "Operación", fechas: true },
   { id: "delivery", titulo: "Delivery", grupo: "Operación", fechas: true },
