@@ -142,7 +142,7 @@ export async function rutasVerificador(app: FastifyInstance) {
 
   /** Descarga de las apps del verificador: este servidor no las tiene; las pide al portal, que las entrega desde GitHub. */
   app.get("/verificador/descarga/:so", async (req, rep) => {
-    const { so } = z.object({ so: z.enum(["android", "windows", "admin-android", "admin-windows"]) }).parse(req.params);
+    const { so } = z.object({ so: z.enum(["android", "windows", "admin-android", "admin-windows", "importador"]) }).parse(req.params);
     return rep.redirect(`${PORTAL_URL()}/licencias/descargar-verificador/${so}`);
   });
 

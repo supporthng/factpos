@@ -19,6 +19,8 @@ const GRUPOS: Grupo[] = [
       { titulo: "FactPOS Admin para Android", para: "Celular o tableta", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "admin-android" } },
       { titulo: "FactPOS Admin para Windows", para: "Computadora", plataforma: "Windows", descarga: { tipo: "portal", so: "admin-windows" } },
     ] },
+  { titulo: "Importador de datos (WilPOS)", nota: "Pasa productos, clientes, proveedores, existencias e historial de ventas desde un respaldo del sistema anterior. No se instala: se abre y se usa. Con «Reemplazar lo importado antes» marcado, un respaldo nuevo deja FactPOS igual a él.",
+    items: [{ titulo: "Importador de FactPOS", para: "Computadora con el respaldo del sistema anterior", plataforma: "Windows (portable)", descarga: { tipo: "portal", so: "importador" } }] },
 ];
 
 export function Instaladores() {
