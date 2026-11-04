@@ -131,7 +131,7 @@ function cuerpoGuardar(f: Ficha) {
     precioVariableMax: f.precioVariable ? f.precioVariableMax : null,
     presentaciones: f.presentaciones.map((p) => ({
       ...p,
-      precios: Object.fromEntries(NIVELES.map((k) => [k, p.precios[k] ? String(n(p.precios[k]).toFixed(2)) : null])),
+      precios: Object.fromEntries(NIVELES.map((k) => [k, p.precios[k] ? (Math.round(n(p.precios[k]) / 5) * 5).toFixed(2) : null])),
       porcentajes: Object.fromEntries(NIVELES.map((k) => [k, (esPct(p, k) || esDesc(p, k)) && p.precios[k] && p.porcentajes![k] !== "" ? n(p.porcentajes![k]) : null])),
       bases: Object.fromEntries((["2", "3"] as const).map((k) => [k, esDesc(p, k) ? "PRECIO1" : "COSTO"])),
     })),

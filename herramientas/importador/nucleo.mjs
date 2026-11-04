@@ -171,11 +171,12 @@ if (aplicar) {
     skusNuevos.add(sku);
     const imagen = !sinFotos && p.imagen && p.imagen.length <= 400000 ? p.imagen : null;
     if (!sinFotos && p.imagen && !imagen) problemas.push(["producto", p.origenId, p.nombre, "Foto demasiado pesada: se importa sin foto"]);
+    if (p.precio > 0 && p.precio % 5 !== 0) problemas.push(["producto", p.origenId, p.nombre, `Precio ${p.precio} no es múltiplo de 5: se importa como ${Math.round(p.precio / 5) * 5}`]);
     const cuerpo = {
       sku, nombre: p.nombre.slice(0, 120), categoriaId: p.categoria ? catId.get(p.categoria.toLowerCase()) ?? null : null,
       tipo: p.servicio ? "SERVICIO" : "INVENTARIABLE", impuestoId: (p.itbis === 0 && exento ? exento : itbis18).id, precioIncluyeItbis: true,
       esPesable: p.pesable, costoReferencia: p.costo.toFixed(4), imagen,
-      presentaciones: [{ nombre: p.pesable ? "Libra" : "Unidad", factor: "1", codigos: p.barras ? [p.barras] : [], precios: { 1: p.precio.toFixed(2) } }],
+      presentaciones: [{ nombre: p.pesable ? "Libra" : "Unidad", factor: "1", codigos: p.barras ? [p.barras] : [], precios: { 1: (Math.round(p.precio / 5) * 5).toFixed(2) } }],
       sucursales: [{ sucursalId: idSuc(suc), stockMinimo: Math.max(0, p.minimo).toFixed(3) }],
       proveedores: p.proveedores.map((x) => ({ proveedorId: provId.get(x.proveedor.toLowerCase()), codigoProveedor: x.codigo || null, ultimoCosto: x.costo != null ? Number(x.costo).toFixed(4) : null, principal: false })).filter((x) => x.proveedorId).slice(0, 5),
     };

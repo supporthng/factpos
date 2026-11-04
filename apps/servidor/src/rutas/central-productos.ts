@@ -140,9 +140,11 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
       // Descuento sobre el precio 1: el precio lo calcula el servidor (así también se respeta si cambia el precio 1 por otra vía)
       const sobrePrecio1 = k !== "1" && pr.bases[k as "2" | "3"] === "PRECIO1" && pr.porcentajes[k] != null && pr.porcentajes[k]! <= 100;
       const precio1 = pr.precios["1"];
+      // Los precios de venta siempre son múltiplos de 5 (se redondea al más cercano)
+      const a5 = (v: number) => (Math.round(v / 5) * 5).toFixed(2);
       const nuevoPrecio = sobrePrecio1
-        ? (precio1 ? (Math.round(Number(precio1) * (1 - pr.porcentajes[k]! / 100) * 100) / 100).toFixed(2) : null)
-        : pr.precios[k];
+        ? (precio1 ? a5(Number(precio1) * (1 - pr.porcentajes[k]! / 100)) : null)
+        : (pr.precios[k] != null && Number(pr.precios[k]) > 0 ? a5(Number(pr.precios[k])) : pr.precios[k]);
       const pct = nuevoPrecio ? pr.porcentajes[k] ?? null : null;
       const base = sobrePrecio1 && nuevoPrecio ? "PRECIO1" : "COSTO";
       const actual = (await c.query<{ precio: string; activo: boolean; porcentaje: string | null; base: string }>(
