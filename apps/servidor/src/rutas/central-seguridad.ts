@@ -43,13 +43,13 @@ export const FUNCIONES = [
   {
     clave: "acceso_web",
     titulo: "Acceso web desde internet",
-    descripcion: "Permite entrar a la administración desde internet con el enlace de «Conexión web». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",
+    descripcion: "Permite entrar a la administración desde internet con el enlace de «Acceso remoto». Desactivado: el sistema solo se usa desde la red local y el enlace deja de funcionar hasta que un administrador lo vuelva a activar desde un equipo de la red.",
     porDefecto: true,
   },
   {
     clave: "exigir_dispositivo",
     titulo: "Exigir dispositivo autorizado para entrar desde internet",
-    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Configuración › Dispositivos remotos. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Viene activada. Desactivada: basta el usuario y la clave.",
+    descripcion: "Quien entra por internet (la app FactPOS Admin o el navegador) necesita que un administrador autorice ese equipo en Configuración › Acceso remoto. Cada equipo nuevo pide acceso una vez y queda pendiente hasta que lo autorizas o lo niegas. En la red local no se pide. Viene activada. Desactivada: basta el usuario y la clave.",
     porDefecto: true,
   },
 ] as const;

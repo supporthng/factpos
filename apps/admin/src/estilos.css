@@ -1240,3 +1240,12 @@ textarea { line-height: 1.35; }
 .precios-compactos { grid-template-columns: repeat(2, minmax(0, 180px)); justify-content: start; }
 .precios-compactos .campo input { height: 34px; font-size: 14px; padding: 4px 10px; }
 @media (max-width: 700px) { .precios-compactos { grid-template-columns: 1fr; } }
+
+/* Acceso remoto: campana de avisos y solicitudes */
+.boton-icono { position: relative; }
+.contador-aviso { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.boton-icono.con-aviso { color: var(--texto); }
+.aviso-acceso-lista { min-width: 320px; max-width: min(92vw, 380px); }
+.aviso-acceso-fila, .solicitud-fila { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; border-top: 1px solid var(--borde); flex-wrap: wrap; }
+.panel.solicitudes-acceso { border-left: 4px solid #d97706; }
+.panel.solicitudes-acceso .solicitud-fila:first-of-type { border-top: 0; }

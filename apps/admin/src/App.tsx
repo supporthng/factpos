@@ -1,5 +1,6 @@
 import { Seguridad } from "./paginas/Seguridad";
-import { DispositivosRemotos } from "./paginas/DispositivosRemotos";
+import { AccesoRemoto } from "./paginas/AccesoRemoto";
+import { AvisoAcceso } from "./AvisoAcceso";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
 import { Instaladores } from "./paginas/Instaladores";
@@ -10,7 +11,6 @@ import { CertificacionDgii } from "./paginas/CertificacionDgii";
 import { FacturacionElectronica } from "./paginas/FacturacionElectronica";
 import { DosPasos } from "./paginas/DosPasos";
 import { ConfigMovil } from "./paginas/ConfigMovil";
-import { ConexionWeb } from "./paginas/ConexionWeb";
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { Correo } from "./paginas/Correo";
 import { SelectorEmpresa } from "./paginas/Empresas";
@@ -87,10 +87,9 @@ const SECCIONES = [
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Configuración", C: PantallaCliente, i: "ticket", p: ["admin.config"] },
   { id: "equipos", titulo: "Equipos de la caja", grupo: "Configuración", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Configuración", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
-  { id: "conexionweb", titulo: "Conexión web", grupo: "Configuración", C: ConexionWeb, i: "web", p: ["admin.config"] },
+  { id: "accesoremoto", titulo: "Acceso remoto", grupo: "Configuración", C: AccesoRemoto, i: "web", p: ["*"] },
   { id: "versiones", titulo: "Versiones de los equipos", grupo: "Configuración", C: VersionesEquipos, i: "actualizaciones", p: ["admin.config"] },
   { id: "instaladores", titulo: "Instaladores", grupo: "Configuración", C: Instaladores, i: "actualizaciones", p: ["admin.config"] },
-  { id: "dispositivos", titulo: "Dispositivos remotos", grupo: "Configuración", C: DispositivosRemotos, i: "llave", p: ["*"] },
   { id: "movil", titulo: "Configuración móvil", grupo: "Configuración", C: ConfigMovil, i: "menu-lateral", p: ["admin.config"] },
   { id: "seguridad", titulo: "Seguridad", grupo: "Configuración", C: Seguridad, i: "llave", p: ["*"] },
   { id: "respaldos", titulo: "Respaldos", grupo: "Configuración", C: Respaldos, i: "actualizaciones", p: ["admin.config"] },
@@ -136,12 +135,11 @@ const DESCRIPCION: Record<string, string> = {
   pedidos: "Pedidos al por mayor: se envían a una caja, se alistan y se facturan",
   resumen: "Ventas del día, alertas y existencias por reponer",
   productos: "Ficha, códigos de barra, precios y combos",
-  conexionweb: "Enlace de acceso desde internet y su activación",
+  accesoremoto: "Quién entra desde internet: reglas, equipos autorizados, enlaces y la app",
   movil: "Qué se ve y quién entra desde el celular",
   seguridad: "Habilitar o deshabilitar funciones sensibles",
   versiones: "Qué versión tiene cada servidor y verificador, y cuáles están desactualizados",
   instaladores: "Descargar el servidor, las cajas, el verificador y las apps de administración",
-  dispositivos: "Celulares y PC que entran desde internet: autorizar o negar",
   compras: "Entrada de mercancía de los proveedores",
   inventario: "Existencia de cada producto por sucursal",
   ajustes: "Corregir existencias: mermas, daños, sobrantes",
@@ -194,7 +192,9 @@ const CATALOGO_VACIO: CatalogoAdmin = { sucursales: [], productos: [], categoria
 function AppInterna() {
   const [sesion, setSesion] = useState<Sesion | null>(leerSesion());
   const [catalogo, setCatalogo] = useState<CatalogoAdmin | null>(null);
-  const [seccion, setSeccion] = useState<string>(() => location.hash.slice(1) || "inicio");
+  const ALIAS_ANTIGUOS: Record<string, string> = { conexionweb: "accesoremoto", dispositivos: "accesoremoto" };
+  const [seccion, setSeccionCruda] = useState<string>(() => ALIAS_ANTIGUOS[location.hash.slice(1)] ?? (location.hash.slice(1) || "inicio"));
+  const setSeccion = (v: string) => setSeccionCruda(ALIAS_ANTIGUOS[v] ?? v);
   const [menu, setMenu] = useState(false);
   const [forma, setForma] = useState<Forma>(leerForma);
   const cambiarForma = (f: Forma) => { setForma(f); guardarForma(f); };
@@ -335,6 +335,7 @@ function AppInterna() {
             </div>
             <span className="empresa-superior">{sesion.empresa}</span>
             {!enPortal && !esLocal() && <SelectorEmpresa />}
+            {!enPortal && puede("*") && <AvisoAcceso irAAcceso={() => setSeccion("accesoremoto")} />}
             <div className="menu-usuario">
               <button className="chip-usuario" title="Mi cuenta" aria-haspopup="menu" aria-expanded={menuUsuario} onClick={() => setMenuUsuario((v) => !v)}>
                 <span className="avatar" aria-hidden="true">{iniciales}</span><span className="solo-escritorio">{sesion.nombre.split(" ")[0]}</span>

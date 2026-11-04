@@ -8,6 +8,8 @@ import { useDatos, SelectorSucursal, useCatalogo } from "../ui";
  * Seguridad: funciones sensibles que se pueden habilitar o deshabilitar.
  * Solo un administrador cambia los interruptores; el servidor comprueba cada una al ejecutarla.
  */
+/** Se administran en «Acceso remoto», junto a los equipos y los enlaces. */
+const FUNCIONES_ACCESO_REMOTO = ["acceso_web", "exigir_dispositivo"];
 export function Seguridad() {
   const { datos, error, recargar } = useDatos<{ funciones: FuncionSeguridad[] }>("/central/seguridad");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
@@ -28,8 +30,9 @@ export function Seguridad() {
       <Aviso texto={error} />
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       {!admin && <Aviso tipo="info" texto="Solo un administrador puede cambiar estas opciones." />}
+      <p className="suave pequeno">El acceso desde internet (acceso web y dispositivos autorizados) se maneja en <b>Configuración › Acceso remoto</b>.</p>
       <div className="panel">
-        {(datos?.funciones ?? []).map((f) => (
+        {(datos?.funciones ?? []).filter((f) => !FUNCIONES_ACCESO_REMOTO.includes(f.clave)).map((f) => (
           <div key={f.clave} className="seg-fila">
             <div>
               <b>{f.titulo}</b>

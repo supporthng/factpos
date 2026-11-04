@@ -3,7 +3,7 @@ import { CONFIG, fijarDispositivo, leerDispositivo } from "./api";
 
 /**
  * Pantalla que sale cuando el servidor exige un dispositivo autorizado (acceso desde internet).
- * El equipo pide acceso una vez y espera a que un administrador lo autorice en Configuración › Dispositivos remotos.
+ * El equipo pide acceso una vez y espera a que un administrador lo autorice en Configuración › Acceso remoto.
  */
 const plataforma = () => /Android/i.test(navigator.userAgent) ? "Android" : /iPhone|iPad/i.test(navigator.userAgent) ? "iPhone/iPad" : /Windows/i.test(navigator.userAgent) ? "Windows" : /Mac/i.test(navigator.userAgent) ? "Mac" : "Otro";
 const GUARDADO = "factpos.dispositivo.nombre";
@@ -51,7 +51,7 @@ export function SolicitarDispositivo({ servidor, estado }: { servidor: string; e
         <h2 style={{ marginTop: 0 }}>{CONFIG.cliente ?? "FactPOS"}</h2>
         {espera === "PENDIENTE" ? (<>
           <p><b>Solicitando acceso…</b></p>
-          <p>Un administrador debe autorizar este equipo en <i>Configuración › Dispositivos remotos</i>. Esta pantalla se abre sola cuando lo haga.</p>
+          <p>Un administrador debe autorizar este equipo en <i>Configuración › Acceso remoto</i>. Esta pantalla se abre sola cuando lo haga.</p>
         </>) : espera === "DENEGADO" || espera === "REVOCADO" ? (<>
           <p><b>Este equipo no tiene acceso.</b></p>
           <p>Un administrador {espera === "DENEGADO" ? "negó" : "quitó"} el permiso. Si es un error, pídele que lo autorice.</p>
