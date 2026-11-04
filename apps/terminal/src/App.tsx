@@ -355,6 +355,14 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajuste
       await Promise.race([recordarPin(ajustes, r.usuario, valor).catch(() => {}), new Promise((ok) => setTimeout(ok, 1500))]);
       onElegir(r.usuario);
     } catch (e) {
+      // Caja bloqueada: un administrador o supervisor también puede desbloquearla con su PIN (la sesión y la venta del cajero siguen igual)
+      if (bloqueo && !sinServidor) {
+        try {
+          await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/autorizar`, { cuerpo: { pin: valor, permiso: "caja.salir" } });
+          onElegir(bloqueo);
+          return;
+        } catch { /* tampoco es un supervisor: se muestra el error del PIN */ }
+      }
       setMsg((e as Error).message);
       setPin("");
     } finally { setEnviando(false); }
@@ -387,7 +395,7 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajuste
     <Pantalla>
       <p className="suave">{config.sucursal} · {config.nombre}</p>
       <h2>{bloqueo ? "Caja bloqueada" : elegido.nombre}</h2>
-      {bloqueo && <p className="suave">Por inactividad. {elegido.nombre}, escriba su PIN para continuar; la venta en curso se conserva.</p>}
+      {bloqueo && <p className="suave">Por inactividad. {elegido.nombre}, escriba su PIN para continuar (o el PIN de un supervisor o administrador); la venta en curso se conserva.</p>}
       <label className="campo">
         <span>Su PIN</span>
         <input autoFocus type="password" inputMode="numeric" autoComplete="off" className="entrada-grande pin" aria-label="PIN"
