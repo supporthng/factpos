@@ -28,6 +28,7 @@ a{color:var(--p)}details{margin-top:10px}summary{cursor:pointer;color:var(--s)}
    <div class="fila"><div><label>RNC de la empresa (si el usuario está en varias)</label><input type="text" id="rnc"></div><div><label>Código de verificación (dos pasos)</label><input type="text" id="codigo"></div></div>
    <label>Sucursal que recibe la existencia (vacío = la primera)</label><input type="text" id="sucursal">
    <label style="display:flex;gap:8px;align-items:center;color:var(--t)"><input type="checkbox" id="sinfotos"> No importar las fotos</label>
+   <label style="display:flex;gap:8px;align-items:center;color:var(--t)"><input type="checkbox" id="reemplazar" checked> Reemplazar lo importado antes (deja FactPOS igual a este backup)</label>
   </details>
   <button id="procesar">Procesar y cargar a FactPOS</button>
  </div>
@@ -36,7 +37,7 @@ a{color:var(--p)}details{margin-top:10px}summary{cursor:pointer;color:var(--s)}
 <script>
 const $=i=>document.getElementById(i);let ocupado=false;
 async function correr(aplicar){ocupado=true;$("procesar").disabled=true;$("log").hidden=false;$("log").textContent="Procesando…\n";$("enlaces").textContent="";
- const o={aplicar,servidor:$("servidor").value,usuario:$("usuario").value,clave:$("clave").value,rnc:$("rnc").value,codigo:$("codigo").value,sucursal:$("sucursal").value,sinFotos:$("sinfotos").checked};
+ const o={aplicar,servidor:$("servidor").value,usuario:$("usuario").value,clave:$("clave").value,rnc:$("rnc").value,codigo:$("codigo").value,sucursal:$("sucursal").value,sinFotos:$("sinfotos").checked,reemplazar:$("reemplazar").checked};
  let texto="";
  try{const r=await fetch("/ejecutar",{method:"POST",body:JSON.stringify(o)});
   if(!r.ok){texto=(await r.json()).error}else{const d=r.body.getReader(),t=new TextDecoder();$("log").textContent="";

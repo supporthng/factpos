@@ -119,22 +119,56 @@ if (aplicar) {
     try { const r = await api("/central/proveedores", "POST", { nombre: p.nombre.slice(0, 80), rnc, telefono: p.telefono?.slice(0, 20) ?? null }); provId.set(p.nombre.toLowerCase(), r.id); resultado.creados.proveedores++; }
     catch (e) { problemas.push(["proveedor", p.origenId, p.nombre, e.message]); }
   }
-  // clientes
+  // clientes (con "reemplazar": los ya importados se actualizan con los datos del backup nuevo)
+  const prefijo = `${fuente.nombre.slice(0, 3).toUpperCase()}-`;
+  let previos = { productos: [], clientes: [] };
+  if (o.reemplazar) {
+    previos = await api(`/central/importacion/existentes?prefijo=${encodeURIComponent(prefijo)}&sucursalId=${idSuc(suc)}`);
+    log(`Reemplazo: en FactPOS hay ${previos.productos.length} productos y ${previos.clientes.length} clientes de importaciones anteriores.`);
+  }
+  const clientePrevio = new Map(previos.clientes.map((c) => [String(c.documento), c]));
+  const clientesVistos = new Set();
+  resultado.actualizados = { productos: 0, clientes: 0 };
+  resultado.desactivados = { productos: 0, clientes: 0 };
   for (const c of clientes) {
+    const cuerpoC = { nombre: c.nombre.slice(0, 120), tipoDocumento: c.tipo, documento: c.doc, telefono: c.telefono?.slice(0, 20) ?? null, correo: c.correo, direccion: c.direccion?.slice(0, 250) ?? null, confirmarDocumento: true };
+    const previo = c.doc ? clientePrevio.get(String(c.doc).replace(/\D/g, "")) ?? clientePrevio.get(String(c.doc)) : null;
+    if (previo) {
+      clientesVistos.add(previo.id);
+      try { await api(`/central/clientes/${previo.id}`, "PUT", { ...cuerpoC, nivel: previo.nivel, limiteCredito: previo.limiteCredito, activo: true }); resultado.actualizados.clientes++; }
+      catch (e) { problemas.push(["cliente", c.origenId, c.nombre, e.message]); }
+      continue;
+    }
     try {
-      await api("/central/clientes", "POST", { nombre: c.nombre.slice(0, 120), tipoDocumento: c.tipo, documento: c.doc, telefono: c.telefono?.slice(0, 20) ?? null, correo: c.correo, direccion: c.direccion?.slice(0, 250) ?? null, nivel: 1, confirmarDocumento: true });
+      await api("/central/clientes", "POST", { ...cuerpoC, nivel: 1 });
       resultado.creados.clientes++;
     } catch (e) {
       if (e.estado === 409) resultado.existentes.clientes++; else problemas.push(["cliente", c.origenId, c.nombre, e.message]);
     }
   }
+  // clientes que ya no vienen en el backup: se desactivan (solo los importados antes, con documento)
+  if (o.reemplazar) {
+    for (const c of previos.clientes) {
+      if (clientesVistos.has(c.id) || !c.activo) continue;
+      try {
+        const fila = (await api(`/central/clientes?q=${encodeURIComponent(c.documento)}&inactivos=1`)).find((x) => x.id === c.id);
+        if (!fila) continue;
+        await api(`/central/clientes/${c.id}`, "PUT", { nombre: fila.nombre, tipoDocumento: fila.tipoDocumento, documento: fila.documento, telefono: fila.telefono, correo: fila.correo, direccion: fila.direccion, nivel: fila.nivel ?? 1, limiteCredito: fila.limiteCredito, confirmarDocumento: true, activo: false });
+        resultado.desactivados.clientes++;
+      } catch (e) { problemas.push(["cliente", "", c.documento, `No se pudo desactivar: ${e.message}`]); }
+    }
+  }
   // productos (el SKU es el número que tenía en el sistema anterior, con prefijo, para poder volver a correr sin duplicar)
   const creados = [];
+  const ajustes = [];
+  const productoPrevio = new Map(previos.productos.map((x) => [x.sku, x]));
+  const skusNuevos = new Set();
   log(`Cargando ${productos.length} productos (puede tardar varios minutos)…`);
   let hechos = 0;
   for (const p of productos) {
     if (++hechos % 25 === 0) log(`  productos: ${hechos} de ${productos.length}…`);
     const sku = `${fuente.nombre.slice(0, 3).toUpperCase()}-${p.origenId}`;
+    skusNuevos.add(sku);
     const imagen = !sinFotos && p.imagen && p.imagen.length <= 400000 ? p.imagen : null;
     if (!sinFotos && p.imagen && !imagen) problemas.push(["producto", p.origenId, p.nombre, "Foto demasiado pesada: se importa sin foto"]);
     const cuerpo = {
@@ -146,6 +180,29 @@ if (aplicar) {
       proveedores: p.proveedores.map((x) => ({ proveedorId: provId.get(x.proveedor.toLowerCase()), codigoProveedor: x.codigo || null, ultimoCosto: x.costo != null ? Number(x.costo).toFixed(4) : null, principal: false })).filter((x) => x.proveedorId).slice(0, 5),
     };
     if (cuerpo.proveedores[0]) cuerpo.proveedores[0].principal = true;
+    const previo = productoPrevio.get(sku);
+    if (previo) {
+      try {
+        const f = await api(`/central/productos/${previo.id}`);
+        const n = {
+          ...f, nombre: cuerpo.nombre, categoriaId: cuerpo.categoriaId, imagen: imagen ?? f.imagen ?? null, activo: true,
+          precioVariableMin: f.precioVariable ? f.precioVariableMin : null, precioVariableMax: f.precioVariable ? f.precioVariableMax : null,
+          costoReferencia: cuerpo.costoReferencia,
+          presentaciones: f.presentaciones.map((pr, i) => i === 0 ? { ...pr, codigos: cuerpo.presentaciones[0].codigos, precios: { ...pr.precios, 1: cuerpo.presentaciones[0].precios[1] } } : pr),
+          sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: sucursalId === idSuc(suc) ? cuerpo.sucursales[0].stockMinimo : stockMinimo || "0", stockMaximo: stockMaximo || null, ubicacion: ubicacion || null, activo })),
+          proveedores: (f.proveedores ?? []).map(({ proveedorId, codigoProveedor, ultimoCosto, principal }) => ({ proveedorId, codigoProveedor: codigoProveedor || null, ultimoCosto: ultimoCosto || null, principal })),
+          componentes: (f.componentes ?? []).map(({ productoId, cantidad }) => ({ productoId, cantidad })),
+        };
+        delete n.historialPrecios;
+        await api(`/central/productos/${previo.id}`, "PUT", n);
+        resultado.actualizados.productos++;
+        if (!p.servicio) {
+          const dif = Math.round((Math.max(0, p.existencia) - Number(previo.existencia)) * 1000) / 1000;
+          if (dif !== 0) ajustes.push({ productoId: previo.id, tipo: dif > 0 ? "AJUSTE_ENTRADA" : "AJUSTE_SALIDA", cantidad: Math.abs(dif).toFixed(3), costoUnitario: p.costo.toFixed(4), nota: `Existencia según backup nuevo de ${fuente.nombre}` });
+        }
+      } catch (e) { problemas.push(["producto", p.origenId, p.nombre, `No se pudo actualizar: ${e.message}`]); }
+      continue;
+    }
     try { const r = await api("/central/productos", "POST", cuerpo); resultado.creados.productos++; if (!p.servicio && p.existencia > 0) creados.push({ productoId: r.id, cantidad: p.existencia.toFixed(3), costoUnitario: p.costo.toFixed(4), nombre: p.nombre }); }
     catch (e) {
       if (/ya existe|existe un producto|duplicad/i.test(e.message) || e.estado === 409) resultado.existentes.productos++;
@@ -159,10 +216,37 @@ if (aplicar) {
     try { await api("/central/productos-existencia", "POST", { sucursalId: idSuc(suc), motivo, items: lote.map(({ nombre, ...x }) => x) }); resultado.existencia += lote.length; }
     catch (e) { problemas.push(["existencia", "", `lote ${i / 500 + 1}`, e.message]); }
   }
+  if (o.reemplazar) {
+    // existencia: diferencia contra el kardex actual (ajustes de entrada/salida; el kardex nunca se borra)
+    for (let i = 0; i < ajustes.length; i += 500) {
+      const lote = ajustes.slice(i, i + 500);
+      try { await api("/central/ajustes", "POST", { sucursalId: idSuc(suc), usuarioId: ses.usuario.id, motivo: `Reemplazo de existencia por nuevo backup de ${fuente.nombre}`, items: lote }); resultado.existencia += lote.length; }
+      catch (e) { problemas.push(["existencia", "", `ajuste lote ${i / 500 + 1}`, e.message]); }
+    }
+    // productos importados antes que ya no están en el backup: se desactivan y se dejan en cero
+    for (const pr of previos.productos) {
+      if (skusNuevos.has(pr.sku) || !pr.activo) continue;
+      try {
+        const f = await api(`/central/productos/${pr.id}`);
+        const n = { ...f, activo: false,
+          precioVariableMin: f.precioVariable ? f.precioVariableMin : null, precioVariableMax: f.precioVariable ? f.precioVariableMax : null,
+          costoReferencia: String(Number(f.costoReferencia) || 0),
+          sucursales: f.sucursales.map(({ sucursalId, stockMinimo, stockMaximo, ubicacion, activo }) => ({ sucursalId, stockMinimo: stockMinimo || "0", stockMaximo: stockMaximo || null, ubicacion: ubicacion || null, activo })),
+          proveedores: (f.proveedores ?? []).map(({ proveedorId, codigoProveedor, ultimoCosto, principal }) => ({ proveedorId, codigoProveedor: codigoProveedor || null, ultimoCosto: ultimoCosto || null, principal })),
+          componentes: (f.componentes ?? []).map(({ productoId, cantidad }) => ({ productoId, cantidad })) };
+        delete n.historialPrecios;
+        await api(`/central/productos/${pr.id}`, "PUT", n);
+        const ex = Number(pr.existencia);
+        if (ex > 0) await api("/central/ajustes", "POST", { sucursalId: idSuc(suc), usuarioId: ses.usuario.id, motivo: `Producto ya no está en el backup de ${fuente.nombre}`, items: [{ productoId: pr.id, tipo: "AJUSTE_SALIDA", cantidad: ex.toFixed(3) }] });
+        resultado.desactivados.productos++;
+      } catch (e) { problemas.push(["producto", "", pr.sku, `No se pudo desactivar: ${e.message}`]); }
+    }
+  }
   // historial de ventas: solo consulta y reportes (no son facturas de FactPOS: sin e-NCF, sin tocar existencias, caja ni CxC)
   if (!o.sinHistorial && datos.historialVentas.length) {
     log(`Cargando ${datos.historialVentas.length} ventas del historial (solo consulta y reportes)…`);
     resultado.historial = { nuevas: 0, existentes: 0 };
+    if (o.reemplazar) { try { const r = await api("/central/historial-ventas/vaciar", "POST", { origen: fuente.nombre }); log(`Historial anterior borrado (${r.borradas}) para cargarlo completo otra vez.`); } catch (e) { problemas.push(["historial", "", "", `No se pudo vaciar el anterior: ${e.message}`]); } }
     const validas = datos.historialVentas.filter((v) => v.fecha && !Number.isNaN(Date.parse(String(v.fecha).replace(" ", "T"))));
     for (const v of datos.historialVentas) if (!validas.includes(v)) problemas.push(["venta", v.id, "", "Fecha inválida: no se carga al historial"]);
     for (let i = 0; i < validas.length; i += 300) {
@@ -178,7 +262,7 @@ if (aplicar) {
     }
     log(`Historial de ventas: ${resultado.historial.nuevas} cargadas, ${resultado.historial.existentes} ya estaban.`);
   }
-  log(`Creados: ${JSON.stringify(resultado.creados)}  ·  Ya existían: ${JSON.stringify(resultado.existentes)}  ·  Existencia cargada en ${resultado.existencia} productos.`);
+  log(`Creados: ${JSON.stringify(resultado.creados)}  ·  Ya existían: ${JSON.stringify(resultado.existentes)}  ·  Existencia cargada en ${resultado.existencia} productos.` + (o.reemplazar ? `  ·  Actualizados: ${JSON.stringify(resultado.actualizados)}  ·  Desactivados: ${JSON.stringify(resultado.desactivados)}` : ""));
 }
 
 // ---------- informe ----------
