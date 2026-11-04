@@ -259,7 +259,6 @@ function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAb
     { id: "principal", t: "Principal" }, { id: "general", t: "Más datos" }, { id: "precios", t: "Precios" },
     ...(f.tipo === "INVENTARIABLE" ? [{ id: "inventario" as const, t: "Inventario" }] : []),
     { id: "proveedores", t: "Proveedores" },
-    ...(f.tipo === "COMBO" ? [{ id: "combo" as const, t: "Componentes" }] : []),
   ];
 
   return (
@@ -277,11 +276,11 @@ function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAb
             {pestanas.map((p) => <button key={p.id} className={pestana === p.id ? "activa" : ""} onClick={() => setPestana(p.id)}>{p.t}</button>)}
           </div>
           {pestana === "principal" && <Principal f={f} cambiar={cambiar} nuevo={!id} setMsg={setMsg} tasa={tasa} />}
+          {pestana === "principal" && f.tipo === "COMBO" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} />}
           {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} setMsg={setMsg} />}
           {pestana === "precios" && <PreciosFicha f={f} cambiar={cambiar} tasa={tasa} costo={costoUnidad} aux={aux} />}
           {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} id={id} tipo={f.tipo} alAgregar={refrescarExistencia} />}
           {pestana === "proveedores" && <ProveedoresFicha f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
-          {pestana === "combo" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} />}
         </div>
       </div>
     </>
@@ -854,7 +853,11 @@ function ComboFicha({ f, cambiar, productos, id }: { f: Ficha; cambiar: (p: Part
   const agregar = (pid: string) => {
     const p = productos.find((x) => x.id === pid);
     if (!p || pid === id || f.componentes.some((c) => c.productoId === pid)) return;
-    cambiar({ componentes: [...f.componentes, { productoId: pid, nombre: p.nombre, sku: p.sku, cantidad: "1" }] });
+    const componentes = [...f.componentes, { productoId: pid, nombre: p.nombre, sku: p.sku, cantidad: "1" }];
+    // El nombre del combo se arma solo con sus componentes mientras no se haya escrito uno propio
+    const auto = (l: typeof componentes) => l.map((c) => c.nombre).join(" + ").slice(0, 120);
+    const sugerido = !f.nombre.trim() || f.nombre === auto(f.componentes);
+    cambiar(sugerido ? { componentes, nombre: auto(componentes) } : { componentes });
     setElegido("");
   };
   return (
