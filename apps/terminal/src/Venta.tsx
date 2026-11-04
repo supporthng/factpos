@@ -686,6 +686,14 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <button className={cupon ? "activo" : ""} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}>{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"}<small>F6</small></button>
             <button className={notas ? "activo" : ""} onClick={() => setModal("nota")}>{notas ? "Nota ✓" : "Nota"}<small>Alt+N</small></button>
           </div>
+          <span className="pv-titulo-pago">Caja</span>
+          <div className="pv-caja-panel">
+            <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
+            <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturasPin")} />
+            <BotonFuncion tono="rojo" icono="billete" texto="Salida de efectivo" tecla="Alt+S" onClick={() => setModal("salida")} />
+            <BotonFuncion tono="tinta" icono="cierre" texto="Turno y cierre" tecla="F10" onClick={() => setModal("turno")} />
+            {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
+          </div>
           {ultima && (
             <div className="pv-ultima">
               <span>Última: #{ultima.numero} · {rd(ultima.total)}{Number(ultima.cambio) > 0 && <> · <b className="cambio">cambio {rd(ultima.cambio)}</b></>}</span>
@@ -698,15 +706,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       <footer className="pv-funciones" aria-label="Funciones">
         <BotonFuncion tono="rojo" icono="x" texto="Cancelar venta" tecla="Esc" disabled={!lineas.length} onClick={() => setModal("cancelar")} />
         <BotonFuncion tono="azul" icono="etiqueta" texto="Consultar precio" tecla="Alt+C" disabled={!catalogo} onClick={() => setModal("consulta")} />
-        <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
-        <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturasPin")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
-        <BotonFuncion tono="rojo" icono="billete" texto="Salida de efectivo" tecla="Alt+S" onClick={() => setModal("salida")} />
         <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
-        {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
-        <BotonFuncion tono="tinta" icono="cierre" texto="Turno y cierre" tecla="F10" onClick={() => setModal("turno")} />
       </footer>
 
       {aviso && <div className={"aviso " + aviso.tipo}>{aviso.texto}</div>}

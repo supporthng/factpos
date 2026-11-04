@@ -831,3 +831,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-cliente-panel .pv-quitar-cliente { width: 28px; height: 28px; font-size: 18px; line-height: 1; padding: 0; border-radius: 50%; }
 .pv-cliente-panel .pv-cliente { padding: 8px 12px; }
 .pv-datos .pv-version dd { font-variant-numeric: tabular-nums; }
+
+.pv-caja-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pv-caja-panel .pv-funcion { min-height: 58px; padding: 8px 6px; font-size: 14px; text-align: center; }
