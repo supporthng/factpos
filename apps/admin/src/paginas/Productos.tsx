@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, rd, num } from "../api";
+import { api, rd, num, sesionActual } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
 import { useFuncionSeguridad } from "../seguridad";
 import { Aviso, Encabezado, SelectorProducto, Tabla, useCatalogo, useDatos } from "../ui";
@@ -947,11 +947,11 @@ function EditarRapido({ id, aux, recargarAux, onCerrar, onFichaCompleta, onGuard
   }, [id]);
   if (error) return <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}><div className="modal"><Aviso texto={error} tipo="error" /><button className="boton" onClick={onCerrar}>Cerrar</button></div></div>;
   if (!ficha) return null;
-  return <ProductoRapido aux={aux} recargarAux={recargarAux} onCerrar={onCerrar} onCreado={onGuardado} onCompleta={() => onFichaCompleta()} onAjustar={() => onFichaCompleta("inventario")} editar={ficha} />;
+  return <ProductoRapido aux={aux} recargarAux={recargarAux} onCerrar={onCerrar} onCreado={onGuardado} onCompleta={() => onFichaCompleta()} editar={ficha} />;
 }
 
-function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, onAjustar, editar }: {
-  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void; onAjustar?: () => void; editar?: Ficha;
+function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, editar }: {
+  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void; editar?: Ficha;
 }) {
   const { sucursales } = useCatalogo();
   const p0e = editar?.presentaciones[0];
@@ -969,6 +969,9 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, onAj
   const [minimo, setMinimo] = useState(minimoInicial);
   const [sinExistencia, setSinExistencia] = useState(editar?.permiteSinExistencia ?? false);
   const [existencia, setExistencia] = useState("");
+  // Al modificar: existencia por sucursal; la diferencia se registra como ajuste en el kardex al guardar
+  const existenciaInicial = (sid: string) => { const e = editar?.sucursales.find((x) => x.sucursalId === sid)?.existencia; return e == null ? "0" : String(n(e)); };
+  const [existNuevas, setExistNuevas] = useState<Record<string, string>>(() => Object.fromEntries((editar?.sucursales ?? []).map((x) => [x.sucursalId, x.existencia == null ? "0" : String(n(x.existencia))])));
   const [sucExist, setSucExist] = useState("");
   const [nv, setNv] = useState<Record<string, Niv>>(() => {
     const v = nivVacio();
@@ -1100,6 +1103,21 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, onAj
         sucursales: minimo !== minimoInicial ? editar.sucursales.map((s) => ({ ...s, stockMinimo: minimo || "0" })) : editar.sucursales,
       };
       await api(`/central/productos/${editar.id}`, { metodo: "PUT", cuerpo: cuerpoGuardar(f) });
+      // Cambio de existencia = ajuste de inventario (entrada o salida) con su línea en el kardex
+      if (tipo === "INVENTARIABLE") {
+        const cambios = editar.sucursales.map((x) => ({ sid: x.sucursalId, dif: n(existNuevas[x.sucursalId] ?? existenciaInicial(x.sucursalId)) - n(existenciaInicial(x.sucursalId)) })).filter((x) => Math.abs(x.dif) > 0.00001);
+        try {
+          for (const c of cambios) {
+            await api("/central/ajustes", { cuerpo: {
+              sucursalId: c.sid, usuarioId: sesionActual().usuarioId, motivo: "Ajuste de existencia desde Modificar producto",
+              items: [{ productoId: editar.id, tipo: c.dif > 0 ? "AJUSTE_ENTRADA" : "AJUSTE_SALIDA", cantidad: Math.abs(c.dif).toFixed(4).replace(/\.?0+$/, ""), costoUnitario: c.dif > 0 && n(costo) > 0 ? n(costo).toFixed(2) : undefined, nota: `Existencia ${existenciaInicial(c.sid)} → ${n(existNuevas[c.sid])}` }],
+            } });
+          }
+        } catch (e) {
+          onCreado(f.nombre);
+          return setMsg({ t: `“${f.nombre}” se guardó, pero no se pudo ajustar la existencia: ${(e as Error).message}`, tipo: "error" });
+        }
+      }
       onCreado(f.nombre);
       onCerrar();
     } catch (e) {
@@ -1187,11 +1205,16 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, onAj
             <label className="campo"><span>Existencia mínima <em className="suave">(alerta de reposición)</em></span>
               <input className="numero" inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => setMinimo(limpiar(e.target.value))} /></label>
             {editar && (
-              <div className="campo"><span>Existencia actual <em className="suave">(se cambia con un ajuste, para que quede en el kardex)</em></span>
-                <span className="en-linea">
-                  <b className="pr-existencia">{num(editar.sucursales.reduce((t, s) => t + n(s.existencia), 0), editar.sucursales.some((s) => n(s.existencia) % 1) ? 2 : 0)}</b>
-                  {editar.sucursales.length > 1 && <small className="suave">{editar.sucursales.map((s) => `${s.sucursal ?? "Sucursal"}: ${num(n(s.existencia), n(s.existencia) % 1 ? 2 : 0)}`).join(" · ")}</small>}
-                  <button type="button" className="boton" onClick={() => onAjustar?.()}>Ajustar existencia…</button>
+              <div className="campo"><span>Existencia actual <em className="suave">(si la cambia, se registra como ajuste en el kardex)</em></span>
+                <span className="en-linea" style={{ flexWrap: "wrap" }}>
+                  {editar.sucursales.map((x) => (
+                    <label key={x.sucursalId} className="en-linea" style={{ gap: 6 }}>
+                      {editar.sucursales.length > 1 && <small className="suave">{x.sucursal ?? "Sucursal"}</small>}
+                      <input className="numero" inputMode="decimal" style={{ maxWidth: 120 }} value={existNuevas[x.sucursalId] ?? ""} aria-label={`Existencia${x.sucursal ? " en " + x.sucursal : ""}`}
+                        onChange={(e) => setExistNuevas((c) => ({ ...c, [x.sucursalId]: limpiar(e.target.value) }))} />
+                      {n(existNuevas[x.sucursalId]) !== n(existenciaInicial(x.sucursalId)) && <small className="suave">antes {num(n(existenciaInicial(x.sucursalId)), n(existenciaInicial(x.sucursalId)) % 1 ? 2 : 0)} · {n(existNuevas[x.sucursalId]) > n(existenciaInicial(x.sucursalId)) ? "entra" : "sale"} {num(Math.abs(n(existNuevas[x.sucursalId]) - n(existenciaInicial(x.sucursalId))), 2)}</small>}
+                    </label>
+                  ))}
                 </span>
               </div>
             )}
