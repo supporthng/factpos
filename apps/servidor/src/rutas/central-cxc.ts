@@ -32,7 +32,7 @@ export async function rutasCentralCxc(app: FastifyInstance) {
       `SELECT cliente_id AS "clienteId", nombre, documento, telefono, limite_credito AS "limiteCredito", dias_credito AS "diasCredito",
               saldo, al_dia AS "alDia", vencido_30 AS "vencido30", vencido_60 AS "vencido60", vencido_mas AS "vencidoMas",
               deuda_desde AS "deudaDesde", ultimo_abono AS "ultimoAbono",
-              saldo > limite_credito AND limite_credito >= 0 AS "excedido"
+              saldo > limite_credito AND limite_credito > 0 AS "excedido"
          FROM rpt_cxc_antiguedad
         WHERE empresa_id = $1 AND saldo <> 0
           AND ($2::text IS NULL OR nombre ILIKE '%' || $2 || '%' OR documento LIKE $2 || '%')
