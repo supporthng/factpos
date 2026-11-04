@@ -16,7 +16,7 @@ a{color:var(--p)}details{margin-top:10px}summary{cursor:pointer;color:var(--s)}
 .zona{border:2px dashed var(--b);border-radius:12px;padding:22px;text-align:center;cursor:pointer}.zona.si{border-color:var(--p);background:#f0fbf9}
 .res{margin-top:10px;font-weight:600}
 </style></head><body><main>
-<h1>Importador <b>FactPOS</b></h1>
+<h1>Importador <b>FactPOS</b> <small id="ver" style="font-size:12px;font-weight:400;color:#7a8794"></small></h1>
 <div class="tarjeta">
  <div class="zona" id="zona"><b>Cargar el archivo .sql</b><br><span class="s" id="nombre">Haga clic o arrástrelo aquí</span></div>
  <input type="file" id="arch" accept=".sql,.txt" hidden>
@@ -31,18 +31,24 @@ a{color:var(--p)}details{margin-top:10px}summary{cursor:pointer;color:var(--s)}
   </details>
   <button id="procesar">Procesar y cargar a FactPOS</button>
  </div>
- <pre id="log" hidden></pre><p id="enlaces" class="s"></p>
+ <p id="estado" class="s" hidden></p><pre id="log" hidden></pre><p id="enlaces" class="s"></p>
 </div></main>
 <script>
 const $=i=>document.getElementById(i);let ocupado=false;
-async function correr(aplicar){ocupado=true;$("procesar").disabled=true;$("log").hidden=false;$("log").textContent="Procesando…\n";$("enlaces").textContent="";
+let inicio=0,ultimo=0,reloj=null;
+function pintarEstado(){const e=$("estado"),t=Math.floor((Date.now()-inicio)/1000),q=Math.floor((Date.now()-ultimo)/1000),m=n=>String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0");
+ e.hidden=false;e.style.color=q>120?"#c62828":"";e.textContent="⏱ "+m(t)+" transcurridos · último avance hace "+q+" s"+(q>120?" — lleva más de 2 minutos sin avanzar: puede estar trabado (la conexión con el servidor se corta sola a los 90 s y mostrará el error).":(q>30?" (hay pasos largos; si sigue sin cambiar, espere).":" · avanzando"))}
+function iniciarReloj(){inicio=ultimo=Date.now();clearInterval(reloj);reloj=setInterval(pintarEstado,1000);pintarEstado()}
+function pararReloj(){clearInterval(reloj);const e=$("estado");if(!e.hidden)e.textContent="Terminó en "+Math.floor((Date.now()-inicio)/1000)+" s.";e.style.color=""}
+fetch("/estado").then(r=>r.json()).then(s=>{if(s.version)$("ver").textContent="v"+s.version}).catch(()=>{});
+async function correr(aplicar){iniciarReloj();ocupado=true;$("procesar").disabled=true;$("log").hidden=false;$("log").textContent="Procesando…\n";$("enlaces").textContent="";
  const o={aplicar,servidor:$("servidor").value,usuario:$("usuario").value,clave:$("clave").value,rnc:$("rnc").value,codigo:$("codigo").value,sucursal:$("sucursal").value,sinFotos:$("sinfotos").checked};
  let texto="";
  try{const r=await fetch("/ejecutar",{method:"POST",body:JSON.stringify(o)});
   if(!r.ok){texto=(await r.json()).error}else{const d=r.body.getReader(),t=new TextDecoder();$("log").textContent="";
-   for(;;){const{done,value}=await d.read();if(done)break;const c=t.decode(value);texto+=c;$("log").textContent+=c;$("log").scrollTop=1e9}}
+   for(;;){const{done,value}=await d.read();if(done)break;const c=t.decode(value);ultimo=Date.now();texto+=c;$("log").textContent+=c;$("log").scrollTop=1e9}}
  }catch(e){texto="Error: "+e.message;$("log").textContent=texto}
- ocupado=false;$("procesar").disabled=false;
+ pararReloj();ocupado=false;$("procesar").disabled=false;
  const s=await(await fetch("/estado")).json();
  $("enlaces").innerHTML=s.archivos.length?"Informes en <b>"+s.salida+"</b>: "+s.archivos.map(a=>`<a href="/salida/${encodeURIComponent(a)}">${a}</a>`).join(" · "):"";
  return texto}

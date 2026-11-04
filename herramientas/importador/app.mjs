@@ -26,7 +26,7 @@ const srv = http.createServer((q, r) => {
   const u = new URL(q.url, "http://x");
   if (q.method === "GET" && u.pathname === "/") { r.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return r.end(PAGINA); }
   if (q.method === "GET" && u.pathname === "/estado") {
-    return json(r, 200, { conexion: conexion(), salida, archivos: existsSync(salida) ? readdirSync(salida).filter((f) => f.endsWith(".csv") || f.endsWith(".md")) : [] });
+    return json(r, 200, { version: "1.1", conexion: conexion(), salida, archivos: existsSync(salida) ? readdirSync(salida).filter((f) => f.endsWith(".csv") || f.endsWith(".md")) : [] });
   }
   if (q.method === "GET" && u.pathname.startsWith("/salida/")) {
     const n = basename(decodeURIComponent(u.pathname.slice(8)));
