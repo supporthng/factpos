@@ -43,7 +43,7 @@ export function TamanoPantalla() {
 import { ClientesCaja } from "./Clientes";
 import { TurnoCaja } from "./Turno";
 import { MovimientosCaja } from "./Caja";
-import { Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
+import { Facturas, Pausadas, PinSupervisor, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
 import { PanelPedidos, type PedidoDetalle } from "./Pedidos";
@@ -61,7 +61,7 @@ interface Linea {
   precioCambiado?: string;
 }
 
-type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "pausadas"
+type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "facturasPin" | "pausadas"
   | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida";
 
 /**
@@ -495,7 +495,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         F6: () => setModal("cupon"),
         F7: () => abrirDescuento("linea"),
         F8: () => config.modulos.delivery.activo && setModal("delivery"),
-        F9: () => setModal("facturas"),
+        F9: () => setModal("facturasPin"),
         F10: () => setModal("turno"),
         F12: () => cobrarCon("EFECTIVO"),
         Escape: () => lineas.length && setModal("cancelar"),
@@ -699,7 +699,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <BotonFuncion tono="rojo" icono="x" texto="Cancelar venta" tecla="Esc" disabled={!lineas.length} onClick={() => setModal("cancelar")} />
         <BotonFuncion tono="azul" icono="etiqueta" texto="Consultar precio" tecla="Alt+C" disabled={!catalogo} onClick={() => setModal("consulta")} />
         <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
-        <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturas")} />
+        <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturasPin")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
@@ -839,6 +839,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <ConfirmarCancelar articulos={lineas.length} total={total} onConfirmar={() => { nuevaVenta(); setModal(null); avisar("Venta cancelada", "ok"); }} onCerrar={() => setModal(null)} />
       )}
       {modal === "ajustes" && <AjustesTerminal config={config} onCerrar={() => setModal(null)} />}
+      {modal === "facturasPin" && (
+        <Modal titulo="Facturas y devolución" onCerrar={() => setModal(null)}>
+          <p>Para entrar a las facturas hace falta la clave de un supervisor.</p>
+          <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y entrar" onAprobado={() => setModal("facturas")} />
+          <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setModal(null)}>Volver a la caja</button>
+        </Modal>
+      )}
       {modal === "facturas" && (
         <Facturas
           ajustes={ajustes} usuario={usuario}
