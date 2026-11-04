@@ -358,12 +358,16 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 
 .resultado-cliente { display: flex; align-items: center; gap: 8px; }
 .resultado-cliente .resultado { flex: 1; }
 /* Lista de clientes (mismo estilo que «Buscar producto») */
-.buscar-clientes { width: min(980px, 100%); }
+.buscar-clientes { width: min(1080px, 100%); }
+.buscar-clientes .resultado-cliente .suave, .buscar-clientes .resultado-cliente .der { font-size: 13px; font-variant-numeric: tabular-nums; }
 .buscar-clientes .buscar-cliente { margin-bottom: 0; }
-.buscar-todos.buscar-clientes .res-cab, .buscar-clientes .resultado-cliente { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 110px 90px 230px; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 0; }
+.buscar-todos.buscar-clientes .res-cab, .buscar-clientes .resultado-cliente { display: grid; grid-template-columns: minmax(0, 2fr) 125px 115px 135px 76px 235px; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 0; }
 .buscar-clientes .resultado-cliente { border-bottom: 1px solid var(--borde); cursor: pointer; }
 .buscar-clientes .resultado-cliente.activo { background: var(--primario-suave, rgba(154, 100, 36, .12)); }
-.buscar-clientes .acciones-cliente { display: flex; gap: 6px; justify-content: flex-end; }
+.buscar-clientes .acciones-cliente { display: flex; gap: 6px; justify-content: flex-end; overflow: visible !important; }
+.buscar-clientes .resultado-cliente > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buscar-clientes .acciones-cliente .boton { white-space: nowrap; padding: 4px 8px; font-size: 12.5px; }
+.buscar-clientes .nivel-precio { white-space: nowrap; text-align: center; }
 @media (max-width: 760px) { .buscar-todos.buscar-clientes .res-cab { display: none; } .buscar-clientes .resultado-cliente { grid-template-columns: 1fr auto; } .buscar-clientes .resultado-cliente > :nth-child(n+2):not(.acciones-cliente) { display: none; } }
 .nivel-precio { font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); white-space: nowrap; }
 .nivel-precio.n2, .nivel-precio.n3 { background: color-mix(in srgb, var(--primario) 22%, transparent); color: var(--primario); }
