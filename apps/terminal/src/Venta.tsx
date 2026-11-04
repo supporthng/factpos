@@ -735,7 +735,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <Buscar catalogo={catalogo} inicial="" nivel={nivelPrecio} consulta onElegir={() => {}} onCerrar={() => setModal(null)} />
       )}
       {modal === "cliente" && (
-        <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} onElegir={(c) => { setCliente(c); if (c.nuevoParaFiscal && tipoComp === "E32") setTipoComp("E31"); setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} onCerrar={() => { setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} />
+        <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} fiscal={volverACobro.current && requiereDocumento(tipoComp)} onElegir={(c) => { setCliente(c); if (c.nuevoParaFiscal && tipoComp === "E32") setTipoComp("E31"); setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} onCerrar={() => { setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} />
       )}
       {modal === "cupon" && (
         <PedirCupon ajustes={ajustes} clienteId={cliente?.id}

@@ -1,5 +1,5 @@
 import { SelectorComprobante, ClienteFiscalRapido, requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from "./Comprobante";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Decimal } from "decimal.js";
 import type { Cupon } from "@factpos/compartido";
 import { api, rd, ErrorApi, type Ajustes } from "./api";
@@ -88,9 +88,14 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
     if (efectivo.gt(0) && recibido && cambio.lt(0)) return "El efectivo recibido no alcanza";
     if (n(credito).gt(0) && !cliente) return "Para vender a crédito seleccione un cliente (F4)";
     if (n(credito).gt(disponibleCredito)) return `Crédito disponible: ${rd(disponibleCredito.toFixed(2))}`;
-    if (["E31", "B01", "B14", "B15"].includes(tipoFactura) && !(cliente && ["RNC", "CEDULA"].includes(cliente.tipoDocumento))) return "Crédito fiscal requiere cliente con RNC o cédula";
+    if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) return "El e-CF y el NCF requieren cliente con RNC o cédula y nombre";
     return "";
   }, [otros, efectivo, recibido, cambio, credito, cliente, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
+  // e-CF y NCF exigen cliente: si falta, se abre sola la ventana de clientes (al elegirlos y al abrir el cobro)
+  const pedirCliente = () => { if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) onBuscarCliente(); };
+  const pidioCliente = useRef(false);
+  useEffect(() => { if (pidioCliente.current) return; pidioCliente.current = true; pedirCliente(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const elegirTipo = (t: TipoComprobante) => { onTipo(t); if (t !== "SIN" && !sinServidor && !tieneDocumentoFiscal(cliente)) onBuscarCliente(); };
 
   const cobrar = async () => {
     if (error || enviando) return;
@@ -205,7 +210,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
           <div className="cobro2-col">
             <div className="cobro-seccion">
               <span className="cobro-etiqueta">Comprobante</span>
-              <SelectorComprobante tipo={tipoFactura} onTipo={onTipo} soloConsumo={sinServidor} compacto permitirSin={permitirSin} />
+              <SelectorComprobante tipo={tipoFactura} onTipo={elegirTipo} soloConsumo={sinServidor} compacto permitirSin={permitirSin} />
               <label className="cobro-sin-imprimir" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, cursor: "pointer" }} title="El comprobante se emite y se envía igual; solo no sale el ticket">
                 <input type="checkbox" checked={sinImprimir} onChange={(e) => setSinImprimir(e.target.checked)} /> No imprimir
               </label>

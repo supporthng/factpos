@@ -891,3 +891,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pc-promo-oferta p { margin: 0; font-size: clamp(14px, 1.5vw, 20px); opacity: .8; }
 .pc-promo-precio { font-size: clamp(32px, 4vw, 56px); font-weight: 800; color: var(--acento-marca, #2dd4bf); line-height: 1; }
 @media (max-width: 800px) { .pc-promo { display: none; } }
+
+/* Aviso al abrir la ventana de clientes por un comprobante fiscal */
+.aviso-fiscal { margin: 4px 0 10px; padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--primario) 10%, var(--panel, #fff)); border: 1px solid color-mix(in srgb, var(--primario) 35%, transparent); font-size: 15px; }
