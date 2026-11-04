@@ -26,9 +26,9 @@ export interface CobroLocal {
   hayDescuentos: boolean;
 }
 
-export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "MIXTO";
+export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
@@ -48,12 +48,14 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   onCliente: (c: Cliente) => void;
   /** Abrir la búsqueda completa de clientes y volver al cobro */
   onBuscarCliente: () => void;
+  /** Recuerda la forma de pago elegida (se pierde al salir a buscar el cliente) */
+  onMetodo?: (m: MetodoPago) => void;
 }) {
   const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
   const [forma, setForma] = useState<MetodoPago>(metodo);
   const [refTarjeta, setRefTarjeta] = useState("");
   const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
-  const [credito, setCredito] = useState("");
+  const [credito, setCredito] = useState(metodo === "CREDITO" ? total : "");
   const [recibido, setRecibido] = useState("");
   const tipoFactura = tipo;
   /** La venta se emite y se transmite igual; solo se omite el ticket al terminar */
@@ -67,7 +69,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
 
   const n = (v: string) => new Decimal(v || 0);
   const elegirForma = (f: MetodoPago) => {
-    setForma(f); setRecibido("");
+    setForma(f); setRecibido(""); onMetodo?.(f);
+    if (f === "CREDITO") { setCredito(total); setTarjeta(""); setTransferencia(""); if (!cliente) onBuscarCliente(); return; }
     if (f === "EFECTIVO") { setTarjeta(""); setTransferencia(""); setCredito(""); }
     if (f === "TARJETA") { setTarjeta(total); setTransferencia(""); setCredito(""); }
     if (f === "TRANSFERENCIA") { setTransferencia(total); setTarjeta(""); setCredito(""); }
@@ -172,9 +175,9 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         <div className="cobro2-grid">
           <div className="cobro2-col">
             <div className="formas" role="radiogroup" aria-label="Forma de pago">
-              {(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "MIXTO"] as MetodoPago[]).map((f) => (
+              {(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "MIXTO"] as MetodoPago[]).map((f) => (
                 <button key={f} role="radio" aria-checked={forma === f} className={"forma" + (forma === f ? " activo" : "")} onClick={() => elegirForma(f)}>
-                  {f === "EFECTIVO" ? "Efectivo" : f === "TARJETA" ? "Tarjeta" : f === "TRANSFERENCIA" ? "Transferencia" : "Mixto"}
+                  {f === "EFECTIVO" ? "Efectivo" : f === "TARJETA" ? "Tarjeta" : f === "TRANSFERENCIA" ? "Transferencia" : f === "CREDITO" ? "Crédito" : "Mixto"}
                 </button>
               ))}
             </div>
@@ -192,6 +195,15 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
                   ))}
                 </div>
                 {recibido && cambio.gte(0) && <div className="cambio-grande">Cambio: {rd(cambio.toFixed(2))}</div>}
+              </div>
+            )}
+            {forma === "CREDITO" && (
+              <div className="cobro2-bloque">
+                {cliente
+                  ? <p style={{ margin: 0 }}><b>{cliente.nombre}</b><br /><span className="suave">{sinLimiteCredito ? "Crédito sin límite" : `Crédito disponible ${rd(disponibleCredito.toFixed(2))}`} · debe {rd(cliente.saldo)}</span><br /><span className="suave">Plazo: {cliente.diasCredito ?? 30} días · vence el {new Date(Date.now() + (cliente.diasCredito ?? 30) * 86400000).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" })}</span></p>
+                  : <p className="error" style={{ margin: 0 }}>Elija el cliente al que se le vende a crédito.</p>}
+                <div className="cobro-total" style={{ margin: "8px 0" }}><span>A crédito</span><b>{rd(total)}</b></div>
+                <button className="boton fantasma chico" onClick={onBuscarCliente}>{cliente ? "Cambiar cliente" : "Buscar cliente"}</button>
               </div>
             )}
             {(forma === "TARJETA" || forma === "MIXTO") && (

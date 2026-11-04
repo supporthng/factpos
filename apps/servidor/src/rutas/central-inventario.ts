@@ -169,7 +169,7 @@ export async function rutasCentralInventario(app: FastifyInstance) {
               COALESCE((SELECT SUM(x.cantidad) FROM existencias x JOIN almacenes a ON a.id = x.almacen_id WHERE x.producto_id = p.id AND a.sucursal_id = $3), 0)::text AS existencia
          FROM productos p WHERE p.empresa_id = $1 AND p.sku LIKE $2 || '%'`, [e, f.prefijo.replace(/[%_]/g, ""), f.sucursalId]);
     const clientes = await pool.query(
-      `SELECT c.id, c.documento, c.activo, COALESCE(lp.nivel, 1) AS nivel, c.limite_credito::text AS "limiteCredito"
+      `SELECT c.id, c.documento, c.activo, COALESCE(lp.nivel, 1) AS nivel, c.limite_credito::text AS "limiteCredito", c.dias_credito AS "diasCredito"
          FROM clientes c LEFT JOIN listas_precio lp ON lp.id = c.lista_precio_id WHERE c.empresa_id = $1 AND c.documento IS NOT NULL`, [e]);
     return { productos: productos.rows, clientes: clientes.rows };
   });

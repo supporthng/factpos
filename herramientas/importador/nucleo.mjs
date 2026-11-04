@@ -135,7 +135,7 @@ if (aplicar) {
     const previo = c.doc ? clientePrevio.get(String(c.doc).replace(/\D/g, "")) ?? clientePrevio.get(String(c.doc)) : null;
     if (previo) {
       clientesVistos.add(previo.id);
-      try { await api(`/central/clientes/${previo.id}`, "PUT", { ...cuerpoC, nivel: previo.nivel, limiteCredito: previo.limiteCredito, activo: true }); resultado.actualizados.clientes++; }
+      try { await api(`/central/clientes/${previo.id}`, "PUT", { ...cuerpoC, nivel: previo.nivel, limiteCredito: previo.limiteCredito, diasCredito: previo.diasCredito, activo: true }); resultado.actualizados.clientes++; }
       catch (e) { problemas.push(["cliente", c.origenId, c.nombre, e.message]); }
       continue;
     }
@@ -153,7 +153,7 @@ if (aplicar) {
       try {
         const fila = (await api(`/central/clientes?q=${encodeURIComponent(c.documento)}&inactivos=1`)).find((x) => x.id === c.id);
         if (!fila) continue;
-        await api(`/central/clientes/${c.id}`, "PUT", { nombre: fila.nombre, tipoDocumento: fila.tipoDocumento, documento: fila.documento, telefono: fila.telefono, correo: fila.correo, direccion: fila.direccion, nivel: fila.nivel ?? 1, limiteCredito: fila.limiteCredito, confirmarDocumento: true, activo: false });
+        await api(`/central/clientes/${c.id}`, "PUT", { nombre: fila.nombre, tipoDocumento: fila.tipoDocumento, documento: fila.documento, telefono: fila.telefono, correo: fila.correo, direccion: fila.direccion, nivel: fila.nivel ?? 1, limiteCredito: fila.limiteCredito, diasCredito: fila.diasCredito, confirmarDocumento: true, activo: false });
         resultado.desactivados.clientes++;
       } catch (e) { problemas.push(["cliente", "", c.documento, `No se pudo desactivar: ${e.message}`]); }
     }

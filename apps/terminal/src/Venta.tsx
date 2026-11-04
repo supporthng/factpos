@@ -51,7 +51,7 @@ import { requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from ".
 
 export interface Cliente {
   id: string; nombre: string; tipoDocumento: string; documento: string | null; telefono: string | null;
-  nivel: number | null; lista: string | null; limiteCredito: string; saldo: string;
+  nivel: number | null; lista: string | null; limiteCredito: string; diasCredito?: number; saldo: string;
   /** Recién creado en caja para pedir comprobante fiscal: el cobro sale marcado E31 */
   nuevoParaFiscal?: boolean;
 }
@@ -755,6 +755,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           tipo={tipoComp} onTipo={setTipoComp}
           onCliente={(c) => { setCliente(c); }}
           onBuscarCliente={() => { volverACobro.current = true; setModal("cliente"); }}
+          onMetodo={setMetodo}
           onCerrar={() => setModal(null)}
           alFallar={conTope ? () => { cargarCatalogo().catch(() => {}); } : undefined}
           local={{
