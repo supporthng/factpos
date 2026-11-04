@@ -952,6 +952,8 @@ const APPS_VERIFICADOR = {
   // Apps de administración remota (FactPOS Admin)
   "admin-android": { tag: "admin-android", nombre: /^FactPOS-Admin\.apk$/i },
   "admin-windows": { tag: "admin-windows", nombre: /^Instalador_Admin_FactPOS\.exe$/i },
+  // Importador de datos desde otro sistema (WilPOS): un solo .exe portable
+  importador: { tag: "importador", nombre: /^Importador-FactPOS\.exe$/i },
 } as const;
 export async function urlDescargaVerificador(so: string) {
   const app = APPS_VERIFICADOR[so as keyof typeof APPS_VERIFICADOR];
