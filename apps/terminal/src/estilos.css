@@ -839,3 +839,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-catalogo .info .nombre { font-size: 12px; line-height: 1.25; min-height: 2.5em; -webkit-line-clamp: 4; }
 .info .pie { flex-wrap: wrap; align-items: baseline; padding-top: 2px; border-top: 0; }
 .info .pie .stock b { font-size: 13px; color: var(--texto, inherit); }
+
+/* Código de barras bajo el nombre en la línea de venta */
+.pv-codigo { color: var(--suave); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.pv-codigo + .pv-precio-mini::before { content: "· "; }
