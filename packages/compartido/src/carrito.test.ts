@@ -15,7 +15,7 @@ describe("descuento por nivel de precio (precios 2 y 3 como % sobre el precio 1)
 
   it("el precio con descuento queda en múltiplo de 5", () => {
     // 13 % menos que 2,420 = 2,105.40 → 2,105
-    const r = cotizarCarrito([linea({ precio: "2420.00", descuentoNivelPct: "13" })]);
+    const r = cotizarCarrito([linea({ cantidad: "1", precio: "2420.00", descuentoNivelPct: "13" })]);
     expect(r.totales.total).toBe("2105.00");
     // por unidad: 105 − 13 % = 91.35 → 90, por 3 unidades = 270
     const r3 = cotizarCarrito([linea({ cantidad: "3", precio: "105.00", descuentoNivelPct: "13" })]);
