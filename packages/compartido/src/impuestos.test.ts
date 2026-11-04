@@ -65,6 +65,18 @@ describe("totalizar y pagos", () => {
     expect(p[1].cambio).toBe("32.00");
   });
 
+  it("en el pago mixto cada método guarda solo lo que cubrió (el cambio no entra en el cuadre)", () => {
+    const p = validarPagos("1000", [
+      { formaPago: "TARJETA", monto: "400", referencia: "482913" },
+      { formaPago: "TRANSFERENCIA", monto: "200" },
+      { formaPago: "EFECTIVO", monto: "400", recibido: "500" },
+    ]);
+    const porMetodo = Object.fromEntries(p.map((x) => [x.formaPago, x.monto]));
+    expect(porMetodo).toEqual({ TARJETA: "400.00", TRANSFERENCIA: "200.00", EFECTIVO: "400.00" });
+    expect(p[2].cambio).toBe("100.00");
+    expect(p.reduce((a, x) => a + Number(x.monto), 0)).toBe(1000);
+  });
+
   it("rechaza pagos que no cuadran", () => {
     expect(() => validarPagos(tot.total, [{ formaPago: "EFECTIVO", monto: "100" }])).toThrow();
   });
