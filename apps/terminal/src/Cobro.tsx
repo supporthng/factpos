@@ -62,7 +62,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const campos = { recibido: [recibido, setRecibido], tarjeta: [tarjeta, setTarjeta], transferencia: [transferencia, setTransferencia], credito: [credito, setCredito] } as const;
   const teclear = (t: string) => {
     const [v, set] = campos[forma === "EFECTIVO" ? "recibido" : activo];
-    set(t === "⌫" ? v.slice(0, -1) : t === "C" ? "" : t === "." ? (v.includes(".") ? v : (v || "0") + ".") : /\.\d\d$/.test(v) ? v : v + t);
+    set(t === "⌫" ? v.slice(0, -1) : t === "C" ? "" : t === "." ? (v.includes(".") ? v : (v || "0") + ".") : /\.\d\d$/.test(v) || (t === "00" && v.includes(".")) ? v : v + t);
   };
   const tipoFactura = tipo;
   /** La venta se emite y se transmite igual; solo se omite el ticket al terminar */
@@ -213,10 +213,9 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
             {(forma === "EFECTIVO" || forma === "MIXTO") && <div className="cobro-teclado-barra"><button type="button" className="enlace" onClick={alternarTeclado}>{verTeclado ? "Ocultar teclado" : "Mostrar teclado"}</button></div>}
             {verTeclado && (forma === "EFECTIVO" || forma === "MIXTO") && (
               <div className="teclado-pin compacto cobro-teclado">
-                {["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"].map((t) => (
-                  <button key={t} type="button" className="tecla" onClick={() => teclear(t)}>{t}</button>
+                {["7", "8", "9", "⌫", "4", "5", "6", "C", "1", "2", "3", ".", "0", "00"].map((t) => (
+                  <button key={t} type="button" className={"tecla" + (t === "0" || t === "00" ? " ancha" : "")} onClick={() => teclear(t)}>{t}</button>
                 ))}
-                <button type="button" className="tecla" style={{ gridColumn: "1 / -1", fontSize: 14 }} onClick={() => teclear("C")}>Borrar monto</button>
               </div>
             )}
           </div>
