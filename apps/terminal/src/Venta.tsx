@@ -877,7 +877,11 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         />
       )}
       {modal === "pausadas" && (
-        <Pausadas pausadas={pausadas} onRetomar={retomar} onDescartar={(id) => setPausadas((ps) => ps.filter((p) => p.id !== id))} onCerrar={() => setModal(null)} />
+        <Pausadas ajustes={ajustes} pausadas={pausadas} onRetomar={retomar} onCerrar={() => setModal(null)}
+          onDescartar={(p, a) => {
+            setPausadas((ps) => ps.filter((x) => x.id !== p.id));
+            avisar(`Venta en pausa descartada · autorizó ${a.supervisor}`, "ok");
+          }} />
       )}
       {modal === "turno" && (
         <TurnoCaja ajustes={ajustes} config={config} usuario={usuario} turno={turno} pausadas={pausadas.length}

@@ -171,12 +171,17 @@ function AppInterna() {
   return <><AvisoLicencia servidor={ajustes.servidor} /><Venta ajustes={ajustes} config={config} usuario={usuario} turno={turno} onSalir={salir} />{ventanaSalir}{ventanaMin}{pantallaBloqueo}{bienvenida && <BienvenidaTurno {...bienvenida} onCerrar={() => setBienvenida(null)} />}</>;
 }
 
+/** Ventas en pausa guardadas en esta caja (aunque sean de otro cajero): impiden cerrar el turno */
+function contarPausadas(cajaId: string): number {
+  try { const v = JSON.parse(localStorage.getItem(`factpos.pausadas.${cajaId}`) ?? "[]"); return Array.isArray(v) ? v.length : 0; } catch { return 0; }
+}
+
 function TurnoAjeno({ ajustes, config, usuario, turno, onSalir, onCerrado }: {
   ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; turno: Turno; onSalir: () => void; onCerrado: () => void;
 }) {
   const [cerrando, setCerrando] = useState(false);
   const [autorizado, setAutorizado] = useState(false);
-  if (cerrando && autorizado) return <TurnoCaja ajustes={ajustes} config={config} usuario={usuario} turno={turno} pausadas={0} onCerrado={onCerrado} onCerrar={() => { setCerrando(false); setAutorizado(false); }} />;
+  if (cerrando && autorizado) return <TurnoCaja ajustes={ajustes} config={config} usuario={usuario} turno={turno} pausadas={contarPausadas(ajustes.cajaId)} onCerrado={onCerrado} onCerrar={() => { setCerrando(false); setAutorizado(false); }} />;
   return (
     <Pantalla>
       <h2>Esta caja tiene un turno abierto</h2>
