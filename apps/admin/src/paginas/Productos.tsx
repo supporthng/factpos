@@ -162,7 +162,7 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
             { titulo: "Venta", der: true, valor: (f) => (f.precio ? rd(f.precio) : <span className="texto-alerta">Sin precio</span>) },
             { titulo: "Costo", der: true, valor: (f) => rd(f.costo) },
             { titulo: "Margen", der: true, valor: (f) => {
-              const m = f.margen(n(f.precio), n(f.costo), n(f.tasa), f.incluye ?? true);
+              const m = margen(n(f.precio), n(f.costo), n(f.tasa), f.incluye ?? true);
               return m === null ? <span className="suave">—</span> : <span className={m < 10 ? "texto-alerta" : m >= 25 ? "texto-ok" : ""} title="Ganancia sobre la venta sin ITBIS">{m.toFixed(1)}%</span>;
             } },
             { titulo: "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
