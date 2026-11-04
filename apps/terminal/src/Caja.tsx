@@ -226,7 +226,7 @@ export function AbonoCliente({ ajustes, config, cliente, ventaInicial, onVolver,
     );
   }
   return (
-    <Modal titulo={`Abono · ${cliente.nombre}`} onCerrar={onCerrar}>
+    <Modal titulo={`Pago · ${cliente.nombre}`} onCerrar={onCerrar}>
       {!cuenta ? <p className="suave">{msg || "Cargando la cuenta…"}</p> : (
         <>
           <div className="cuadre-resumen">
