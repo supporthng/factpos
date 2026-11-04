@@ -169,15 +169,20 @@ function useImprimirConEnter() {
 interface Cuenta {
   id: string; nombre: string; saldo: string; limiteCredito?: string; diasCredito?: number; alDia?: string; vencido?: string; deudaDesde?: string | null;
   movimientos: { tipo: string; monto: string; fecha: string; factura: string | null; sucursal: string; formaPago: string | null }[];
+  facturas: FacturaPendiente[];
 }
+interface FacturaPendiente { ventaId: string; factura: number; documento: string | null; sucursal: string; fecha: string; vence: string; cargo: string; pagado: string; pendiente: string }
 interface Recibo {
   recibo: string; cliente: { nombre: string; documento: string | null }; saldoAnterior: string; abono: string; saldoNuevo: string;
   formaPago: string; referencia: string | null; cambio: string; cajero: string; fecha: string;
+  aplicaciones?: { ventaId: string | null; factura: number | null; documento: string | null; aplicado: string; pendiente: string | null }[];
 }
 
-export function AbonoCliente({ ajustes, config, cliente, onVolver, onCerrar }: {
-  ajustes: Ajustes; config?: ConfigCaja; cliente: { id: string; nombre: string }; onVolver: () => void; onCerrar: () => void;
+export function AbonoCliente({ ajustes, config, cliente, ventaInicial, onVolver, onCerrar }: {
+  ajustes: Ajustes; config?: ConfigCaja; cliente: { id: string; nombre: string }; ventaInicial?: string | null; onVolver: () => void; onCerrar: () => void;
 }) {
+  const [aplicar, setAplicar] = useState<"CUENTA" | "FACTURA">(ventaInicial ? "FACTURA" : "CUENTA");
+  const [ventaId, setVentaId] = useState(ventaInicial ?? "");
   const [cuenta, setCuenta] = useState<Cuenta | null>(null);
   const [monto, setMonto] = useState("");
   const [forma, setForma] = useState<"EFECTIVO" | "TARJETA" | "TRANSFERENCIA">("EFECTIVO");
@@ -186,32 +191,42 @@ export function AbonoCliente({ ajustes, config, cliente, onVolver, onCerrar }: {
   const [recibo, setRecibo] = useState<Recibo | null>(null);
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
-  useEffect(() => { api<Cuenta>(ajustes.servidor, `/cajas/${ajustes.cajaId}/clientes/${cliente.id}/cuenta`).then(setCuenta).catch((e) => setMsg(e.message)); }, [cliente.id]);
+  useEffect(() => {
+    api<Cuenta>(ajustes.servidor, `/cajas/${ajustes.cajaId}/clientes/${cliente.id}/cuenta`).then((c) => {
+      setCuenta(c);
+      const f = c.facturas?.find((x) => x.ventaId === ventaInicial);
+      if (f) setMonto(Number(f.pendiente).toFixed(2));
+    }).catch((e) => setMsg(e.message));
+  }, [cliente.id]);
+  const facturas = cuenta?.facturas ?? [];
+  const elegida = facturas.find((f) => f.ventaId === ventaId);
+  const tope = aplicar === "FACTURA" ? Number(elegida?.pendiente ?? 0) : Number(cuenta?.saldo ?? 0);
 
   const valor = Number(monto) || 0;
   const cambio = forma === "EFECTIVO" && Number(recibido) > valor ? Number(recibido) - valor : 0;
-  const valido = valor > 0 && valor <= Number(cuenta?.saldo ?? 0) && (forma !== "TARJETA" || /^[A-Za-z0-9-]{4,}$/.test(referencia))
+  const valido = valor > 0 && valor <= tope && (aplicar === "CUENTA" || !!elegida) && (forma !== "TARJETA" || /^[A-Za-z0-9-]{4,}$/.test(referencia))
     && (forma !== "EFECTIVO" || !recibido || Number(recibido) >= valor);
 
   const cobrar = async () => {
     setEnviando(true); setMsg("");
     try {
       setRecibo(await api<Recibo>(ajustes.servidor, `/cajas/${ajustes.cajaId}/clientes/${cliente.id}/abonos`, {
-        cuerpo: { monto: valor.toFixed(2), formaPago: forma, referencia: referencia || undefined, recibido: forma === "EFECTIVO" && recibido ? Number(recibido).toFixed(2) : undefined },
+        cuerpo: { monto: valor.toFixed(2), formaPago: forma, referencia: referencia || undefined, recibido: forma === "EFECTIVO" && recibido ? Number(recibido).toFixed(2) : undefined,
+          modo: aplicar, ...(aplicar === "FACTURA" ? { ventaId } : {}) },
       }));
     } catch (e) { setMsg((e as Error).message); } finally { setEnviando(false); }
   };
 
   if (recibo) {
     return (
-      <Modal titulo="Recibo de abono" onCerrar={onCerrar}>
+      <Modal titulo="Recibo de pago" onCerrar={onCerrar}>
         {Number(recibo.cambio) > 0 && <div className="resultado-cierre cuadrado">Cambio: {rd(recibo.cambio)}</div>}
         <ReciboImpreso r={recibo} empresa={config?.empresa ?? ""} onCerrar={onCerrar} />
       </Modal>
     );
   }
   return (
-    <Modal titulo={`Abono · ${cliente.nombre}`} onCerrar={onCerrar}>
+    <Modal titulo={`Pago · ${cliente.nombre}`} onCerrar={onCerrar}>
       {!cuenta ? <p className="suave">{msg || "Cargando la cuenta…"}</p> : (
         <>
           <div className="cuadre-resumen">
@@ -233,11 +248,34 @@ export function AbonoCliente({ ajustes, config, cliente, onVolver, onCerrar }: {
           )}
           {Number(cuenta.saldo) <= 0 ? <p className="suave">Este cliente no debe nada.</p> : (
             <>
+              {facturas.length > 0 && (
+                <>
+                  <div className="chips-categoria">
+                    <button className={"chip" + (aplicar === "CUENTA" ? " activo" : "")} onClick={() => setAplicar("CUENTA")}>A la cuenta (más antigua primero)</button>
+                    <button className={"chip" + (aplicar === "FACTURA" ? " activo" : "")} onClick={() => setAplicar("FACTURA")}>A una factura</button>
+                  </div>
+                  <table className="tabla-cuadre compacta">
+                    <thead><tr><th /><th>Factura</th><th>Fecha</th><th>Vence</th><th className="der">Debe</th></tr></thead>
+                    <tbody>
+                      {facturas.map((f) => (
+                        <tr key={f.ventaId} className={aplicar === "FACTURA" && ventaId === f.ventaId ? "fila-activa" : ""}
+                            onClick={() => { if (aplicar === "FACTURA") { setVentaId(f.ventaId); setMonto(Number(f.pendiente).toFixed(2)); } }} style={{ cursor: aplicar === "FACTURA" ? "pointer" : "default" }}>
+                          <td>{aplicar === "FACTURA" && <input type="radio" readOnly checked={ventaId === f.ventaId} aria-label={`Elegir la factura ${f.documento ?? f.factura}`} />}</td>
+                          <td>{f.documento ?? `#${f.factura}`}</td>
+                          <td>{fechaHora(f.fecha).split(" ")[0].replace(",", "")}</td>
+                          <td className={new Date(f.vence) < new Date() ? "negativo" : ""}>{fechaHora(f.vence).split(" ")[0].replace(",", "")}</td>
+                          <td className="der">{rd(f.pendiente)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
               <div className="dos-columnas">
-                <label className="campo"><span>Monto del abono</span>
+                <label className="campo"><span>Monto del pago</span>
                   <input autoFocus className="entrada-media" inputMode="decimal" value={monto} onChange={(e) => setMonto(soloMonto(e.target.value))} placeholder="0.00" aria-label="Monto del abono" />
                 </label>
-                <div className="campo"><span>&nbsp;</span><button className="boton" onClick={() => setMonto(Number(cuenta.saldo).toFixed(2))}>Paga todo ({rd(cuenta.saldo)})</button></div>
+                <div className="campo"><span>&nbsp;</span><button className="boton" onClick={() => setMonto(tope.toFixed(2))}>{aplicar === "FACTURA" ? `Paga la factura (${rd(tope)})` : `Paga todo (${rd(cuenta.saldo)})`}</button></div>
               </div>
               <div className="chips-categoria">
                 {(["EFECTIVO", "TARJETA", "TRANSFERENCIA"] as const).map((f) => (
@@ -247,9 +285,9 @@ export function AbonoCliente({ ajustes, config, cliente, onVolver, onCerrar }: {
               {forma === "EFECTIVO" && <label className="campo"><span>Recibido (para el cambio)</span><input className="entrada-media" inputMode="decimal" value={recibido} onChange={(e) => setRecibido(soloMonto(e.target.value))} placeholder={monto || "0.00"} /></label>}
               {forma !== "EFECTIVO" && <label className="campo"><span>{forma === "TARJETA" ? "Número de aprobación" : "Referencia de la transferencia"}</span><input value={referencia} onChange={(e) => setReferencia(e.target.value)} /></label>}
               {cambio > 0 && <p>Cambio: <b>{rd(cambio)}</b></p>}
-              {valor > Number(cuenta.saldo) && <p className="error">El abono no puede ser mayor que lo que debe.</p>}
+              {valor > tope && <p className="error">{aplicar === "FACTURA" && !elegida ? "Elija la factura." : "El pago no puede ser mayor que lo que debe."}</p>}
               {msg && <p className="error">{msg}</p>}
-              <button className="boton cobrar" disabled={!valido || enviando} onClick={cobrar}>{enviando ? "Cobrando…" : `Cobrar abono ${rd(valor)}`}</button>
+              <button className="boton cobrar" disabled={!valido || enviando} onClick={cobrar}>{enviando ? "Cobrando…" : `Cobrar ${rd(valor)}`}</button>
             </>
           )}
           <button className="enlace" onClick={onVolver}>← Volver a clientes</button>
@@ -266,13 +304,22 @@ function ReciboImpreso({ r, empresa, onCerrar }: { r: Recibo; empresa: string; o
       <div className="ticket" id="ticket">
         <div className="t-centro"><b className="t-grande">{empresa}</b></div>
         <div className="t-linea" />
-        <div className="t-centro"><b>RECIBO DE ABONO</b><div>No. {r.recibo}</div></div>
+        <div className="t-centro"><b>RECIBO DE PAGO</b><div>No. {r.recibo}</div></div>
         <div className="t-fila"><span>Fecha</span><span>{fechaHora(r.fecha)}</span></div>
         <div className="t-fila"><span>Cliente</span><span>{r.cliente.nombre}</span></div>
         {r.cliente.documento && <div className="t-fila"><span>Documento</span><span>{r.cliente.documento}</span></div>}
         <div className="t-linea" />
+        {r.aplicaciones && r.aplicaciones.length > 0 && (
+          <>
+            <div className="t-centro"><b>FACTURAS AFECTADAS</b></div>
+            {r.aplicaciones.map((a, i) => (
+              <div key={i} className="t-fila"><span>{a.ventaId ? (a.documento ?? `Factura #${a.factura}`) : "A la cuenta"}{a.pendiente !== null && a.ventaId ? (Number(a.pendiente) > 0 ? ` (queda ${rd(a.pendiente)})` : " (saldada)") : ""}</span><span>{rd(a.aplicado)}</span></div>
+            ))}
+            <div className="t-linea" />
+          </>
+        )}
         <div className="t-fila"><span>Saldo anterior</span><span>{rd(r.saldoAnterior)}</span></div>
-        <div className="t-fila t-total"><span>ABONO</span><span>{rd(r.abono)}</span></div>
+        <div className="t-fila t-total"><span>PAGO</span><span>{rd(r.abono)}</span></div>
         <div className="t-fila"><span>Saldo pendiente</span><span>{rd(r.saldoNuevo)}</span></div>
         <div className="t-linea" />
         <div className="t-fila"><span>Forma de pago</span><span>{r.formaPago[0] + r.formaPago.slice(1).toLowerCase()}{r.referencia ? ` ${r.referencia}` : ""}</span></div>
@@ -285,5 +332,52 @@ function ReciboImpreso({ r, empresa, onCerrar }: { r: Recibo; empresa: string; o
         <button className="boton" onClick={onCerrar}>Listo</button>
       </div>
     </>
+  );
+}
+
+
+/* ---------- Pago de factura: buscar por cliente o por número de factura ---------- */
+interface ResultadoCxc { clienteId: string; nombre: string; documento: string | null; saldo: string; facturas: { ventaId: string; factura: number; documento: string | null; fecha: string; pendiente: string; coincide: boolean }[] }
+
+export function PagoFactura({ ajustes, config, onCerrar }: { ajustes: Ajustes; config?: ConfigCaja; onCerrar: () => void }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState<ResultadoCxc[] | null>(null);
+  const [msg, setMsg] = useState("");
+  const [elegido, setElegido] = useState<{ cliente: ResultadoCxc; ventaId: string | null } | null>(null);
+  useEffect(() => {
+    if (q.trim().length < 1) { setRes(null); return; }
+    const t = setTimeout(() => {
+      api<ResultadoCxc[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/cxc/buscar?q=${encodeURIComponent(q.trim())}`).then((r) => { setRes(r); setMsg(""); }).catch((e) => setMsg(e.message));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  if (elegido) {
+    return <AbonoCliente ajustes={ajustes} config={config} cliente={{ id: elegido.cliente.clienteId, nombre: elegido.cliente.nombre }} ventaInicial={elegido.ventaId}
+      onVolver={() => setElegido(null)} onCerrar={onCerrar} />;
+  }
+  return (
+    <Modal titulo="Pago de factura" onCerrar={onCerrar} ancho>
+      <label className="campo"><span>Cliente (nombre, RNC o cédula) o número de factura / comprobante</span>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ej. Juan Pérez, 131-12345-6, 1234 o E310000000001" /></label>
+      {msg && <p className="error">{msg}</p>}
+      {res && res.length === 0 && <p className="suave">No hay clientes con facturas a crédito pendientes que coincidan.</p>}
+      {res?.map((c) => (
+        <div key={c.clienteId} className="panel" style={{ marginTop: 8 }}>
+          <div className="fila-acciones" style={{ marginTop: 0 }}>
+            <div><b>{c.nombre}</b><div className="suave pequeno">{c.documento ?? "Sin documento"} · debe {rd(c.saldo)} · {c.facturas.length} factura(s) pendiente(s)</div></div>
+            <span className="flex" />
+            <button className="boton primario chico" onClick={() => setElegido({ cliente: c, ventaId: null })}>Cobrar a la cuenta</button>
+          </div>
+          {c.facturas.slice(0, 6).map((f) => (
+            <div key={f.ventaId} className="fila-acciones" style={{ marginTop: 4 }}>
+              <span className={f.coincide ? "texto-ok" : ""}>{f.documento ?? `#${f.factura}`} · {fechaHora(f.fecha).split(" ")[0].replace(",", "")} · debe <b>{rd(f.pendiente)}</b></span>
+              <span className="flex" />
+              <button className="boton chico" onClick={() => setElegido({ cliente: c, ventaId: f.ventaId })}>Pagar esta factura</button>
+            </div>
+          ))}
+          {c.facturas.length > 6 && <p className="suave pequeno">y {c.facturas.length - 6} más…</p>}
+        </div>
+      ))}
+    </Modal>
   );
 }

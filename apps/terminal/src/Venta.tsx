@@ -42,7 +42,7 @@ export function TamanoPantalla() {
 }
 import { ClientesCaja } from "./Clientes";
 import { TurnoCaja } from "./Turno";
-import { MovimientosCaja } from "./Caja";
+import { MovimientosCaja, PagoFactura } from "./Caja";
 import { Facturas, Pausadas, PinSupervisor, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
@@ -62,7 +62,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "facturasPin" | "pausadas"
-  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida";
+  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -486,6 +486,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         o: () => setModal("pedidos"),
         c: () => catalogo && setModal("consulta"),
         s: () => setModal("salida"),
+        f: () => setModal("pagoFactura"),
       };
       if (e.altKey && conAlt[e.key.toLowerCase()]) { e.preventDefault(); conAlt[e.key.toLowerCase()](); return; }
       const mapa: Record<string, () => void> = {
@@ -695,6 +696,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <div className="pv-caja-panel">
             <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
             <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturasPin")} />
+            <BotonFuncion tono="verde" icono="documento" texto="Pago de factura" tecla="Alt+F" onClick={() => setModal("pagoFactura")} />
             <BotonFuncion tono="rojo" icono="billete" texto="Salida de efectivo" tecla="Alt+S" onClick={() => setModal("salida")} />
             <BotonFuncion tono="tinta" icono="cierre" texto="Turno y cierre" tecla="F10" onClick={() => setModal("turno")} />
             {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
@@ -731,6 +733,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <MovimientosCaja ajustes={ajustes} config={config} soloSalidas />
         </Modal>
       )}
+      {modal === "pagoFactura" && <PagoFactura ajustes={ajustes} config={config} onCerrar={() => setModal(null)} />}
       {modal === "consulta" && catalogo && (
         <Buscar catalogo={catalogo} inicial="" nivel={nivelPrecio} consulta onElegir={() => {}} onCerrar={() => setModal(null)} />
       )}

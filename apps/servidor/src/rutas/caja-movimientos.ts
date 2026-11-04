@@ -134,7 +134,40 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
         WHERE m.cliente_id = $1 ORDER BY m.creado_en DESC LIMIT 10`,
       [clienteId],
     );
-    return { ...c.rows[0], movimientos: m.rows };
+    const f = await pool.query(
+      `SELECT f.venta_id AS "ventaId", v.numero_interno AS factura, COALESCE(d.encf, v.numero_documento) AS documento, s.nombre AS sucursal,
+              f.creado_en AS fecha, (f.creado_en + make_interval(days => a.dias_credito)) AS vence, f.cargo, f.cargo - f.pendiente AS pagado, f.pendiente
+         FROM rpt_cxc_facturas f
+         JOIN rpt_cxc_antiguedad a ON a.cliente_id = f.cliente_id
+         JOIN ventas v ON v.id = f.venta_id JOIN sucursales s ON s.id = f.sucursal_id
+         LEFT JOIN ecf_documentos d ON d.venta_id = f.venta_id
+        WHERE f.cliente_id = $1 AND f.pendiente > 0 ORDER BY f.creado_en, f.venta_id`, [clienteId]);
+    return { ...c.rows[0], movimientos: m.rows, facturas: f.rows };
+  });
+
+  /** Busca clientes con facturas a crédito pendientes: por nombre, documento o número de factura / comprobante. */
+  app.get("/cajas/:cajaId/cxc/buscar", async (req) => {
+    const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
+    const { q } = z.object({ q: z.string().trim().min(1).max(40) }).parse(req.query);
+    const ctx = await contextoCaja(cajaId);
+    const r = await pool.query(
+      `SELECT cl.id AS "clienteId", cl.nombre, cl.documento,
+              (SELECT COALESCE(SUM(x.monto), 0) FROM cxc_movimientos x WHERE x.cliente_id = cl.id) AS saldo,
+              jsonb_agg(jsonb_build_object('ventaId', f.venta_id, 'factura', v.numero_interno, 'documento', COALESCE(d.encf, v.numero_documento),
+                        'fecha', f.creado_en, 'pendiente', f.pendiente,
+                        'coincide', (v.numero_interno::text = $2 OR COALESCE(d.encf, v.numero_documento, '') ILIKE '%' || $2))
+                        ORDER BY f.creado_en) AS facturas
+         FROM clientes cl
+         JOIN rpt_cxc_facturas f ON f.cliente_id = cl.id AND f.pendiente > 0
+         JOIN ventas v ON v.id = f.venta_id
+         LEFT JOIN ecf_documentos d ON d.venta_id = f.venta_id
+        WHERE cl.empresa_id = $1
+          AND (cl.nombre ILIKE '%' || $2 || '%' OR cl.documento LIKE $2 || '%'
+               OR v.numero_interno::text = $2 OR COALESCE(d.encf, v.numero_documento, '') ILIKE '%' || $2)
+        GROUP BY cl.id ORDER BY cl.nombre LIMIT 15`,
+      [ctx.empresaId, q],
+    );
+    return r.rows;
   });
 
   /** Abono de un cliente a crédito. Entra al cuadre del turno según cómo pagó. */
@@ -172,6 +205,15 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
         clienteId, sucursalId: ctx.sucursalId, usuarioId: b.usuarioId, turnoId, monto: valor, formaPago: b.formaPago, referencia: b.referencia ?? null,
         modo: b.modo, ventaId: b.ventaId ?? null,
       });
+      const ids = partes.filter((x) => x.ventaId).map((x) => x.ventaId);
+      const det = ids.length ? (await c.query<{ id: string; factura: number; documento: string | null; pendiente: string }>(
+        `SELECT v.id, v.numero_interno AS factura, COALESCE(d.encf, v.numero_documento) AS documento, COALESCE(f.pendiente, 0) AS pendiente
+           FROM ventas v LEFT JOIN ecf_documentos d ON d.venta_id = v.id LEFT JOIN rpt_cxc_facturas f ON f.venta_id = v.id
+          WHERE v.id = ANY($1::uuid[])`, [ids])).rows : [];
+      const aplicaciones = partes.map((x) => {
+        const f = det.find((y) => y.id === x.ventaId);
+        return { ventaId: x.ventaId, factura: f?.factura ?? null, documento: f?.documento ?? null, aplicado: x.monto, pendiente: f ? new Decimal(f.pendiente).toFixed(2) : null };
+      });
       await c.query(
         `INSERT INTO movimientos_caja (id, sucursal_id, turno_id, tipo, monto, concepto, usuario_id, forma_pago, referencia, cliente_id)
          VALUES ($1,$2,$3,'ABONO_CLIENTE',$4,$5,$6,$7,$8,$9)`,
@@ -180,6 +222,7 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
       await encolarFilas(c, "cxc_movimientos", partes.map((x) => x.id));
       await encolarFilas(c, "movimientos_caja", [movId]);
       return {
+        aplicaciones,
         recibo: movId.slice(-8).toUpperCase(),
         cliente: { id: clienteId, nombre: cl.rows[0].nombre, documento: cl.rows[0].documento },
         saldoAnterior: saldo.toFixed(2),
