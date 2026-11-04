@@ -563,6 +563,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <Icono n="codigo" />
           <input
             ref={entrada}
+            data-teclado="tactil"
             value={codigo}
             aria-label="Código de barras, código o nombre del producto"
             placeholder={catalogo ? "Escanee o escriba código / nombre   ·   3*código = 3 unidades" : "Cargando catálogo…"}
