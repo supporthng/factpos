@@ -101,10 +101,10 @@ function Pedidos({ recarga, onListo, onError, verConduce }: { recarga: number; o
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Nuevo pedido</h3>
         <div className="cuatro-col">
-          <label className="campo"><span>Tienda que pide</span>
+          <label className="campo"><span>Recibe (tienda que pide)</span>
             <select value={tienda} onChange={(e) => setTienda(e.target.value)}>{sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}</select>
           </label>
-          <label className="campo"><span>Lo surte</span>
+          <label className="campo"><span>Envía (lo surte)</span>
             <select value={surte} onChange={(e) => setSurte(e.target.value)}>{sucursales.filter((s) => s.id !== tienda).map((s) => <option key={s.id} value={s.id}>{s.nombre}{s.tipo === "ALMACEN" ? " (almacén)" : ""}</option>)}</select>
           </label>
           <label className="interruptor" style={{ alignSelf: "center" }}>
