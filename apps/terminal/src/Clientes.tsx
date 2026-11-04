@@ -12,8 +12,10 @@ import type { ConfigCaja } from "./App";
  * - Un cliente creado en la caja siempre entra con Precio 1.
  * - Para pasarlo a Precio 2 o 3 hace falta el PIN de un supervisor.
  */
-export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
+export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar, fiscal = false }: {
   ajustes: Ajustes; usuario: Usuario; config?: ConfigCaja; onElegir: (c: Cliente) => void; onCerrar: () => void;
+  /** Se abrió porque el e-CF o NCF elegido exige cliente con RNC o cédula y nombre */
+  fiscal?: boolean;
 }) {
   const [vista, setVista] = useState<"buscar" | "nuevo" | { precio: Cliente } | { abono: Cliente }>("buscar");
   const [q, setQ] = useState("");
@@ -45,7 +47,8 @@ export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
   if (typeof vista === "object") return <CambiarPrecio ajustes={ajustes} usuario={usuario} cliente={vista.precio} onListo={onElegir} onVolver={() => setVista("buscar")} onCerrar={onCerrar} />;
 
   return (
-    <Modal titulo="Cliente" onCerrar={onCerrar} clase="buscar-todos buscar-clientes">
+    <Modal titulo={fiscal ? "Cliente para el comprobante fiscal" : "Cliente"} onCerrar={onCerrar} clase="buscar-todos buscar-clientes">
+      {fiscal && <p className="aviso-fiscal">El <b>e-CF</b> y el <b>NCF</b> necesitan el RNC o la cédula y el nombre del cliente. Escriba el RNC y se completa el nombre con la DGII, o elija un cliente de la lista.</p>}
       <div className="buscar-cliente">
         <input autoFocus className="entrada-grande" value={q} placeholder="Nombre, teléfono, cédula o RNC"
           onChange={(e) => setQ(e.target.value)}

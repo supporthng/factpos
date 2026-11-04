@@ -24,7 +24,8 @@ export const FAMILIAS: { id: FamiliaComprobante; titulo: string; prefijo: string
 ];
 
 export const familiaDe = (t: TipoComprobante): FamiliaComprobante => (t.startsWith("E") ? "ECF" : t.startsWith("B") ? "NCF" : "SIN");
-export const requiereDocumento = (t: TipoComprobante) => ["E31", "B01", "B14", "B15"].includes(t);
+/** Todo e-CF y NCF exige cliente con RNC o cédula y nombre (solo «Sin comprobante» vende a «Mostrador») */
+export const requiereDocumento = (t: TipoComprobante) => t !== "SIN";
 export const tieneDocumentoFiscal = (c: Cliente | null) => !!c && ["RNC", "CEDULA"].includes(c.tipoDocumento) && !!c.documento;
 
 /** Primero la familia (e-CF · NCF · Sin comprobante) y, debajo, el tipo dentro de ella. */
