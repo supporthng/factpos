@@ -8,10 +8,12 @@ export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "c
 export interface Aprobacion { token: string; supervisor: string }
 
 /** Campo de PIN del supervisor. Devuelve la aprobación firmada por el servidor. */
-export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automatico = false }: {
+export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automatico = false, deshabilitado = false }: {
   ajustes: Ajustes; permiso: Permiso; onAprobado: (a: Aprobacion) => void; textoBoton: string;
   /** Pantalla que solo existe para pedir la aprobación: si el cajero ya tiene el permiso, entra sin pedir nada */
   automatico?: boolean;
+  /** El PIN se puede escribir, pero todavía no se puede aprobar (p. ej. falta el motivo) */
+  deshabilitado?: boolean;
 }) {
   // Quien ya entró a la caja y tiene el permiso (administrador, supervisor) no necesita otro PIN
   const [propio, setPropio] = useState<Aprobacion | null>(null);
@@ -27,7 +29,7 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automa
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
   const aprobar = async () => {
-    if (pin.length < 4 || enviando) return;
+    if (pin.length < 4 || enviando || deshabilitado) return;
     setEnviando(true);
     setMsg("");
     try {
@@ -44,7 +46,7 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automa
     return (
       <div className="aprobacion">
         <p className="suave">Su usuario (<b>{propio.supervisor}</b>) tiene permiso para esto: no hace falta el PIN de otro supervisor.</p>
-        <button className="boton primario ancho" onClick={() => onAprobado(propio)}>{textoBoton}</button>
+        <button className="boton primario ancho" disabled={deshabilitado} onClick={() => onAprobado(propio)}>{textoBoton}</button>
       </div>
     );
   }
@@ -62,7 +64,7 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automa
         ))}
       </div>
       {msg && <p className="error">{msg}</p>}
-      <button className="boton primario ancho" disabled={pin.length < 4 || enviando} onClick={aprobar}>{textoBoton}</button>
+      <button className="boton primario ancho" disabled={pin.length < 4 || enviando || deshabilitado} onClick={aprobar}>{textoBoton}</button>
     </div>
   );
 }
