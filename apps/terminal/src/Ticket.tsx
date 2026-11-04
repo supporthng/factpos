@@ -1,5 +1,5 @@
 import { formatoTicket, medidasTicket } from "@factpos/compartido";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { rd } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
@@ -58,8 +58,9 @@ const fechaRD = (iso: string) => new Date(iso).toLocaleString("es-DO", { timeZon
  * timbre electrónico, el e-NCF y el código de seguridad.
  * Enter imprime · Esc vuelve a vender.
  */
-export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
-  venta: VentaRegistrada; copia?: boolean; config: ConfigCaja; usuario: Usuario; onCerrar: () => void;
+export function Ticket({ venta, copia = false, auto = false, config, usuario, onCerrar }: {
+  venta: VentaRegistrada; copia?: boolean; /** Imprime sola y se cierra: sin vista previa (la venta ya volvió a la pantalla de ventas) */ auto?: boolean;
+  config: ConfigCaja; usuario: Usuario; onCerrar: () => void;
 }) {
   const [qr, setQr] = useState("");
   const fmt = formatoTicket(config.marca.formato);
@@ -68,7 +69,21 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
     if (!venta.fiscal?.urlQr) return setQr("");
     QRCode.toDataURL(venta.fiscal.urlQr, { margin: 0, width: 220, errorCorrectionLevel: "M" }).then(setQr);
   }, [venta]);
+  // Impresión directa: espera el QR (si lo lleva), manda a imprimir y se quita sola.
+  const impreso = useRef(false);
   useEffect(() => {
+    if (!auto || (venta.fiscal?.urlQr && !qr)) return;
+    const t = window.setTimeout(() => {
+      if (impreso.current) return;
+      impreso.current = true;
+      window.print();
+      window.setTimeout(onCerrar, 500);
+    }, 150);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, qr, venta]);
+  useEffect(() => {
+    if (auto) return;
     const h = (e: KeyboardEvent) => {
       if (e.key === "Enter") { e.preventDefault(); window.print(); }
       if (e.key === "Escape") onCerrar();
@@ -78,7 +93,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
   }, [onCerrar]);
 
   return (
-    <div className="fondo-modal" onMouseDown={onCerrar}>
+    <div className={"fondo-modal" + (auto ? " ticket-auto" : "")} onMouseDown={onCerrar} aria-hidden={auto || undefined}>
       <div className="modal ticket-modal" onMouseDown={(e) => e.stopPropagation()}>
         {!copia && venta.tipoDocumento !== "E34" && venta.tipoDocumento !== "ANU" && Number(venta.cambio) > 0 && <div className="cambio-grande centro">Cambio: {rd(venta.cambio)}</div>}
         {(venta.tipoDocumento === "E34" || venta.tipoDocumento === "ANU") && <div className="centro aviso-devolucion">Devolver al cliente: <b>{rd(venta.total)}</b></div>}
