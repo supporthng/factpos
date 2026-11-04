@@ -22,6 +22,8 @@ const Cliente = z.object({
   /** 1 (normal) por defecto; 2 o 3 si se le asigna otro precio */
   nivel: z.number().int().min(1, "Nivel de precio inválido").max(3, "Nivel de precio inválido").default(1),
   limiteCredito: monto.default("0"),
+  /** Días que se le dan para pagar sus facturas a crédito */
+  diasCredito: z.number().int().min(0).max(365).default(30),
   confirmarDocumento: z.boolean().default(false),
 });
 
@@ -43,7 +45,7 @@ export async function rutasCentralClientes(app: FastifyInstance) {
   const usuarioDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-usuario-id"]);
 
   const SELECT = `SELECT c.id, c.nombre, c.tipo_documento AS "tipoDocumento", c.documento, c.telefono, c.correo, c.direccion,
-                         lp.nivel, c.limite_credito::text AS "limiteCredito", c.activo, c.creado_en AS "creadoEn"
+                         lp.nivel, c.limite_credito::text AS "limiteCredito", c.dias_credito AS "diasCredito", c.activo, c.creado_en AS "creadoEn"
                     FROM clientes c LEFT JOIN listas_precio lp ON lp.id = c.lista_precio_id`;
 
   app.get("/central/clientes", async (req) => {
@@ -70,9 +72,9 @@ export async function rutasCentralClientes(app: FastifyInstance) {
         const lista = (await c.query<{ id: string }>("SELECT id FROM listas_precio WHERE empresa_id = $1 AND nivel = $2", [empresaId, b.nivel])).rows[0];
         if (!lista) throw new ErrorNegocio(`No existe el precio ${b.nivel} en esta empresa`);
         await c.query(
-          `INSERT INTO clientes (id, empresa_id, tipo_documento, documento, nombre, telefono, correo, direccion, lista_precio_id, limite_credito, creado_por)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [id, empresaId, b.tipoDocumento, doc, b.nombre, b.telefono, b.correo, b.direccion, lista.id, b.limiteCredito, usuarioDe(req)],
+          `INSERT INTO clientes (id, empresa_id, tipo_documento, documento, nombre, telefono, correo, direccion, lista_precio_id, limite_credito, dias_credito, creado_por)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [id, empresaId, b.tipoDocumento, doc, b.nombre, b.telefono, b.correo, b.direccion, lista.id, b.limiteCredito, b.diasCredito, usuarioDe(req)],
         );
         await encolarFilas(c, "clientes", [id]);
       });
@@ -95,9 +97,9 @@ export async function rutasCentralClientes(app: FastifyInstance) {
         if (!lista) throw new ErrorNegocio(`No existe el precio ${b.nivel} en esta empresa`);
         const r = await c.query(
           `UPDATE clientes SET tipo_documento = $3, documento = $4, nombre = $5, telefono = $6, correo = $7, direccion = $8,
-                  lista_precio_id = $9, limite_credito = $10, activo = $11, version = version + 1, actualizado_en = now()
+                  lista_precio_id = $9, limite_credito = $10, activo = $11, dias_credito = $12, version = version + 1, actualizado_en = now()
             WHERE id = $1 AND empresa_id = $2`,
-          [id, empresaId, b.tipoDocumento, doc, b.nombre, b.telefono, b.correo, b.direccion, lista.id, b.limiteCredito, b.activo],
+          [id, empresaId, b.tipoDocumento, doc, b.nombre, b.telefono, b.correo, b.direccion, lista.id, b.limiteCredito, b.activo, b.diasCredito],
         );
         if (!r.rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
         await encolarFilas(c, "clientes", [id]);

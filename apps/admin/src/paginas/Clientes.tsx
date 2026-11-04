@@ -8,7 +8,7 @@ import { Aviso, Encabezado, Tabla, useDatos } from "../ui";
  */
 interface Cliente {
   id: string; nombre: string; tipoDocumento: "RNC" | "CEDULA" | "PASAPORTE" | "NINGUNO"; documento: string | null; telefono: string | null;
-  correo: string | null; direccion: string | null; nivel: number | null; limiteCredito: string; activo: boolean;
+  correo: string | null; direccion: string | null; nivel: number | null; limiteCredito: string; diasCredito?: number; activo: boolean;
 }
 const NIVELES = [
   { n: 1, t: "Precio 1 · normal" },
@@ -64,7 +64,7 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
     correo: cliente?.correo ?? "", direccion: cliente?.direccion ?? "", limiteCredito: cliente?.limiteCredito && Number(cliente.limiteCredito) ? cliente.limiteCredito : "",
     activo: cliente?.activo ?? true,
     // Por defecto Precio 1 (normal); si es otro, se le asigna aquí
-    nivel: String(cliente?.nivel ?? 1),
+    nivel: String(cliente?.nivel ?? 1), diasCredito: String(cliente?.diasCredito ?? 30),
   });
   const [msg, setMsg] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -77,7 +77,7 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
       const cuerpo = {
         nombre: f.nombre.trim(), tipoDocumento: f.tipoDocumento, documento: f.tipoDocumento === "NINGUNO" ? null : f.documento.trim() || null,
         telefono: f.telefono.trim() || null, correo: f.correo.trim() || null, direccion: f.direccion.trim() || null,
-        nivel: Number(f.nivel), limiteCredito: f.limiteCredito.trim() || "0", confirmarDocumento,
+        nivel: Number(f.nivel), limiteCredito: f.limiteCredito.trim() || "0", diasCredito: Math.min(365, Math.max(0, Math.round(Number(f.diasCredito) || 0))), confirmarDocumento,
         ...(cliente ? { activo: f.activo } : {}),
       };
       await api(cliente ? `/central/clientes/${cliente.id}` : "/central/clientes", { metodo: cliente ? "PUT" : "POST", cuerpo });
@@ -112,6 +112,9 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
               {NIVELES.map((x) => <option key={x.n} value={x.n}>{x.t}</option>)}
             </select></label>
           <label className="campo"><span>Límite de crédito (RD$) · 0 = sin límite</span><input className="numero" inputMode="decimal" value={f.limiteCredito} placeholder="Sin límite" onChange={(e) => setF({ ...f, limiteCredito: e.target.value.replace(/[^\d.]/g, "") })} /></label>
+        </div>
+        <div className="dos-col">
+          <label className="campo"><span>Días de crédito</span><input className="numero" inputMode="numeric" value={f.diasCredito} placeholder="30" onChange={(e) => setF({ ...f, diasCredito: e.target.value.replace(/\D/g, "").slice(0, 3) })} /><small className="suave">Plazo para pagar sus facturas a crédito; después quedan vencidas.</small></label>
         </div>
         {cliente && <label className="interruptor"><input type="checkbox" checked={f.activo} onChange={(e) => setF({ ...f, activo: e.target.checked })} /><span>Cliente activo</span></label>}
         {msg && <Aviso texto={msg} />}

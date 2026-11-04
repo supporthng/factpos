@@ -894,3 +894,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Aviso al abrir la ventana de clientes por un comprobante fiscal */
 .aviso-fiscal { margin: 4px 0 10px; padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--primario) 10%, var(--panel, #fff)); border: 1px solid color-mix(in srgb, var(--primario) 35%, transparent); font-size: 15px; }
+
+/* Cobro: con 5 formas de pago, la última ocupa todo el ancho */
+.cobro2 .formas .forma:last-child:nth-child(odd) { grid-column: 1 / -1; }

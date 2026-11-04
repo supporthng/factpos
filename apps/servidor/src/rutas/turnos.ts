@@ -112,7 +112,7 @@ export async function rutasTurnos(app: FastifyInstance) {
     const filtro = q.length >= 2 ? q : "";
     const r = await pool.query(
       `SELECT c.id, c.nombre, c.tipo_documento AS "tipoDocumento", c.documento, c.telefono,
-              lp.nivel, lp.nombre AS lista, c.limite_credito AS "limiteCredito",
+              lp.nivel, lp.nombre AS lista, c.limite_credito AS "limiteCredito", c.dias_credito AS "diasCredito",
               COALESCE((SELECT SUM(m.monto) FROM cxc_movimientos m WHERE m.cliente_id = c.id), 0) AS saldo
          FROM clientes c
          JOIN cajas ca ON ca.id = $1 JOIN sucursales s ON s.id = ca.sucursal_id AND s.empresa_id = c.empresa_id
@@ -248,7 +248,7 @@ export async function rutasTurnos(app: FastifyInstance) {
 async function clientePorId(cajaId: string, clienteId: string) {
   const r = await pool.query(
     `SELECT c.id, c.nombre, c.tipo_documento AS "tipoDocumento", c.documento, c.telefono,
-            COALESCE(lp.nivel, 1) AS nivel, lp.nombre AS lista, c.limite_credito AS "limiteCredito",
+            COALESCE(lp.nivel, 1) AS nivel, lp.nombre AS lista, c.limite_credito AS "limiteCredito", c.dias_credito AS "diasCredito",
             COALESCE((SELECT SUM(m.monto) FROM cxc_movimientos m WHERE m.cliente_id = c.id), 0) AS saldo
        FROM clientes c
        JOIN cajas ca ON ca.id = $1 JOIN sucursales s ON s.id = ca.sucursal_id AND s.empresa_id = c.empresa_id
