@@ -267,7 +267,7 @@ input.alerta { border-color: var(--alerta); color: var(--alerta); }
 .fila-producto small { font-size: 12px; }
 .pastilla.t-servicio { background: var(--primario-suave); color: var(--primario); }
 .pastilla.t-combo { background: #f3e8ff; color: #7e22ce; }
-.editor-producto { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.editor-producto { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .vista-producto { position: sticky; top: 12px; }
 .alta-rapida { display: flex; gap: 10px; align-items: flex-end; border-left: 4px solid var(--primario); }
 .alta-rapida .campo { margin-bottom: 0; }
@@ -1235,3 +1235,8 @@ textarea { line-height: 1.35; }
 .pn-3 { --n: #7c3aed; }
 .pn-guardar { align-self: end; }
 @media (max-width: 900px) { .pn { grid-template-columns: 1fr; } .pn-guardar { align-self: stretch; } }
+
+/* Precios de costo y venta de la ficha: campos compactos */
+.precios-compactos { grid-template-columns: repeat(2, minmax(0, 180px)); justify-content: start; }
+.precios-compactos .campo input { height: 34px; font-size: 14px; padding: 4px 10px; }
+@media (max-width: 700px) { .precios-compactos { grid-template-columns: 1fr; } }
