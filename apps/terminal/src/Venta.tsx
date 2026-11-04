@@ -398,6 +398,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   // Aprobación del supervisor para los descuentos de esta venta
   const [aprobacion, setAprobacion] = useState<Aprobacion | null>(null);
   const [ticketVista, setTicketVista] = useState<{ venta: VentaRegistrada; copia: boolean } | null>(null);
+  /** Comprobante que se imprime solo al cobrar (sin vista previa) */
+  const [ticketAuto, setTicketAuto] = useState<VentaRegistrada | null>(null);
 
   // Ventas en pausa (sobreviven a recargar la página)
   const clavePausa = `factpos.pausadas.${ajustes.cajaId}`;
@@ -771,7 +773,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               avisarFacturado(5);
             }
             setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta();
-            if (op?.sinImprimir) { setModal(null); avisar("Venta registrada · comprobante no impreso (puede usar Reimprimir última)", "ok"); } else setModal("ticket");
+            setModal(null);
+            if (op?.sinImprimir) avisar("Venta registrada · comprobante no impreso (puede usar Reimprimir última)", "ok");
+            else { setTicketAuto(r); avisar(`Venta registrada${Number(r.cambio) > 0 ? ` · Cambio ${rd(r.cambio)}` : ""}`, "ok"); }
             existenciasRef.current().catch(() => {}); }}
         />
       )}
@@ -785,6 +789,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           onCerrar={() => setModal(null)}
         />
       )}
+      {ticketAuto && <Ticket venta={ticketAuto} auto config={config} usuario={usuario} onCerrar={() => setTicketAuto(null)} />}
       {modal === "ticket" && ticketVista && <Ticket venta={ticketVista.venta} copia={ticketVista.copia} config={config} usuario={usuario} onCerrar={() => setModal(null)} />}
       {modal === "precio" && pendiente && (
         <PrecioVariable nombre={pendiente.prod.nombre} min={pendiente.prod.precioVariableMin} max={pendiente.prod.precioVariableMax}
