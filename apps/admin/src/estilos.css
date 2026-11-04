@@ -1120,3 +1120,17 @@ input:focus, select:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--prima
 
 /* La contraseña siempre se oculta, aunque el motor del navegador no lo haga por sí solo */
 input[type=password] { -webkit-text-security: disc; }
+
+.ajuste-modo { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 14px 0 10px; }
+.ajuste-modo button { border: 1px solid var(--borde-fuerte); background: var(--panel); border-radius: 10px; padding: 10px 16px; font-weight: 700; }
+.ajuste-modo button.activo.entrada { background: color-mix(in srgb, #16a34a 14%, var(--panel)); border-color: #16a34a; color: #15803d; }
+.ajuste-modo button.activo.salida { background: color-mix(in srgb, #dc2626 12%, var(--panel)); border-color: #dc2626; color: #b91c1c; }
+.ajuste-buscar { position: relative; margin-bottom: 12px; }
+.ajuste-buscar input { width: 100%; font-size: 16px; padding: 12px 14px; }
+.ajuste-buscar .desplegable button { display: flex; justify-content: space-between; gap: 12px; width: 100%; }
+.ajuste-buscar .desplegable button.sel { background: var(--panel-2, #eef2f6); }
+.ajuste-vacio { padding: 18px 4px; text-align: center; }
+.paso { display: inline-flex; align-items: center; gap: 4px; }
+.paso button { width: 30px; height: 34px; border: 1px solid var(--borde-fuerte); background: var(--panel); border-radius: 8px; font-size: 16px; }
+.paso input { width: 64px; text-align: center; }
+.paso input.invalido { border-color: #dc2626; }
