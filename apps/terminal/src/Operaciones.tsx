@@ -168,9 +168,25 @@ export function Facturas({ ajustes, usuario, onReimprimir, onAnulada, onCorregir
 export interface VentaPausada<L> { id: string; hora: string; lineas: L[]; cliente: any; cupon: any; total: string; descuentos: any; notas?: string }
 
 /** Ventas en pausa: se retoman con un clic. */
-export function Pausadas<L>({ pausadas, onRetomar, onDescartar, onCerrar }: {
-  pausadas: VentaPausada<L>[]; onRetomar: (p: VentaPausada<L>) => void; onDescartar: (id: string) => void; onCerrar: () => void;
+export function Pausadas<L>({ ajustes, pausadas, onRetomar, onDescartar, onCerrar }: {
+  ajustes: Ajustes; pausadas: VentaPausada<L>[]; onRetomar: (p: VentaPausada<L>) => void;
+  /** Descartar exige la aprobación de un supervisor; devuelve el error si no se pudo registrar */
+  onDescartar: (p: VentaPausada<L>, a: Aprobacion) => Promise<string | null>; onCerrar: () => void;
 }) {
+  const [descartando, setDescartando] = useState<VentaPausada<L> | null>(null);
+  const [msg, setMsg] = useState("");
+  if (descartando) {
+    return (
+      <Modal titulo="Descartar venta en pausa" onCerrar={() => setDescartando(null)}>
+        <p>Va a eliminar la venta de <b>{descartando.cliente?.nombre ?? "Consumidor final"}</b> por <b>{rd(descartando.total)}</b> ({descartando.lineas.length} producto(s)).</p>
+        <p className="suave">Para eliminar una venta en pausa hace falta la aprobación de un supervisor; queda registrada.</p>
+        <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y descartar"
+          onAprobado={async (a) => { const e = await onDescartar(descartando, a); if (e) setMsg(e); else { setMsg(""); setDescartando(null); } }} />
+        {msg && <p className="error">{msg}</p>}
+        <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setDescartando(null)}>No descartar</button>
+      </Modal>
+    );
+  }
   return (
     <Modal titulo="Ventas en pausa" onCerrar={onCerrar}>
       {pausadas.length === 0 && <p className="suave">No hay ventas en pausa.</p>}
@@ -181,7 +197,7 @@ export function Pausadas<L>({ pausadas, onRetomar, onDescartar, onCerrar }: {
             <span className="factura-acciones">
               <b>{rd(p.total)}</b>
               <button className="boton primario" autoFocus={i === 0} onClick={() => onRetomar(p)}>Retomar</button>
-              <button className="enlace" onClick={() => onDescartar(p.id)}>Descartar</button>
+              <button className="enlace" title="Requiere la aprobación de un supervisor" onClick={() => { setMsg(""); setDescartando(p); }}>Descartar</button>
             </span>
           </div>
         ))}
