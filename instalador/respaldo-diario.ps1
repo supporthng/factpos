@@ -17,6 +17,8 @@ $url = ($linea -replace '^DATABASE_URL=', '').Trim().Trim('"')
 $archivo = Join-Path $Carpeta ("respaldos\factpos-auto-{0:yyyyMMdd-HHmm}.fpbak" -f (Get-Date))
 $bd = Join-Path $Carpeta 'instalador\bd.cjs'
 
+# La carpeta de respaldos solo para administradores y el sistema (los archivos además van cifrados)
+icacls (Join-Path $Carpeta 'respaldos') /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" 2>$null | Out-Null
 $salida = & node $bd respaldar $url $archivo 2>&1 | ForEach-Object { "$_" }
 $codigo = $LASTEXITCODE
 Anotar (($salida -join ' ').Trim())

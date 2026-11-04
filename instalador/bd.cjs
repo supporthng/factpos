@@ -7,8 +7,10 @@
  *   node bd.cjs probar     <url>                         → código 0 si conecta
  *   node bd.cjs sql        <url> "<sentencia>"           → imprime la primera columna de la primera fila
  *   node bd.cjs preparar   <url-postgres> <clave-factpos> → crea/actualiza el usuario y la base factpos
- *   node bd.cjs respaldar  <url> <archivo.fpbak>          → copia de los datos (comprimida)
+ *   node bd.cjs respaldar  <url> <archivo.fpbak>          → copia de los datos (comprimida y CIFRADA)
  *   node bd.cjs restaurar  <url-postgres> <archivo.fpbak> → carga la copia en una base con las mismas migraciones
+ *   node bd.cjs descifrar  <archivo.fpbak> <destino>      → copia sin cifrar (solo gzip)
+ *   node bd.cjs clave                                     → muestra la clave de cifrado de esta instalación
  *   node bd.cjs limpiar    <carpeta> <dias>               → borra respaldos automáticos más viejos que N días
  *
  * Formato del respaldo: el esquema sale de las migraciones (db/migrations); el archivo guarda
@@ -20,8 +22,63 @@ const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
 const readline = require("node:readline");
+const crypto = require("node:crypto");
+const { execFileSync } = require("node:child_process");
 
 const FORMATO = "factpos-respaldo-1";
+
+/*
+ * Cifrado de los respaldos (AES-256-GCM). Archivo: MARCA (9 bytes) + IV (12) + datos cifrados (gzip) + etiqueta (16).
+ * La clave es propia de cada instalación: variable FACTPOS_CLAVE_RESPALDO (64 hex) o el archivo clave-respaldo.key
+ * junto a .env (solo administradores). Sin la clave el respaldo no se puede leer ni restaurar: guárdela aparte
+ * (node instalador\bd.cjs clave). Los respaldos anteriores, sin cifrar, se siguen pudiendo restaurar.
+ */
+const MARCA = Buffer.from("FPBAKENC1");
+const RAIZ = path.resolve(__dirname, "..");
+const ARCHIVO_CLAVE = path.join(RAIZ, "clave-respaldo.key");
+const HEX64 = /^[0-9a-fA-F]{64}$/;
+
+function claveRespaldo(crear) {
+  const env = (process.env.FACTPOS_CLAVE_RESPALDO || "").trim();
+  if (env) { if (!HEX64.test(env)) throw new Error("FACTPOS_CLAVE_RESPALDO no es una clave válida (64 caracteres hexadecimales)"); return Buffer.from(env, "hex"); }
+  if (fs.existsSync(ARCHIVO_CLAVE)) {
+    const t = fs.readFileSync(ARCHIVO_CLAVE, "utf8").trim();
+    if (!HEX64.test(t)) throw new Error(`El archivo ${ARCHIVO_CLAVE} no tiene una clave válida`);
+    return Buffer.from(t, "hex");
+  }
+  if (!crear) throw new Error(`Este respaldo está cifrado y no hay clave: falta ${ARCHIVO_CLAVE} (o la variable FACTPOS_CLAVE_RESPALDO con la clave de la instalación que lo hizo)`);
+  const k = crypto.randomBytes(32);
+  fs.writeFileSync(ARCHIVO_CLAVE, k.toString("hex") + "\r\n", { mode: 0o600 });
+  restringir(ARCHIVO_CLAVE);
+  return k;
+}
+/** Solo administradores y el sistema (igual que .env). En Windows con icacls; en otros sistemas basta el modo 600. */
+function restringir(ruta) {
+  if (process.platform !== "win32") return;
+  try { execFileSync("icacls", [ruta, "/inheritance:r", "/grant:r", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-18:(OI)(CI)F"], { stdio: "ignore" }); } catch { /* sin icacls */ }
+}
+function esCifrado(archivo) {
+  const fd = fs.openSync(archivo, "r");
+  try { const b = Buffer.alloc(MARCA.length); fs.readSync(fd, b, 0, b.length, 0); return b.equals(MARCA); } finally { fs.closeSync(fd); }
+}
+/** Flujo con el contenido ya descifrado (gzip), tanto de respaldos cifrados como de los antiguos. */
+function abrirGzip(archivo) {
+  if (!esCifrado(archivo)) return fs.createReadStream(archivo);
+  const k = claveRespaldo(false);
+  const tam = fs.statSync(archivo).size;
+  const fd = fs.openSync(archivo, "r");
+  const iv = Buffer.alloc(12), tag = Buffer.alloc(16);
+  fs.readSync(fd, iv, 0, 12, MARCA.length);
+  fs.readSync(fd, tag, 0, 16, tam - 16);
+  fs.closeSync(fd);
+  const dec = crypto.createDecipheriv("aes-256-gcm", k, iv);
+  dec.setAuthTag(tag);
+  const fuente = fs.createReadStream(archivo, { start: MARCA.length + 12, end: tam - 17 });
+  fuente.on("error", (e) => dec.destroy(e));
+  dec.on("error", (e) => { if (/auth/i.test(e.message)) e.message = "No se pudo descifrar el respaldo: la clave no es la de este respaldo o el archivo está dañado"; });
+  return fuente.pipe(dec);
+}
+
 const LOTE = 2000;
 
 async function conectar(url) {
@@ -74,7 +131,11 @@ async function respaldar(url, archivo) {
   const temporal = archivo + ".parcial";
   const salida = zlib.createGzip({ level: 6 });
   const destino = fs.createWriteStream(temporal);
-  salida.pipe(destino);
+  const iv = crypto.randomBytes(12);
+  const cif = crypto.createCipheriv("aes-256-gcm", claveRespaldo(true), iv);
+  destino.write(Buffer.concat([MARCA, iv]));
+  salida.pipe(cif).pipe(destino, { end: false });
+  cif.on("end", () => { destino.write(cif.getAuthTag()); destino.end(); });
   const escribirTexto = (t) => new Promise((ok) => { if (salida.write(t + "\n")) ok(); else salida.once("drain", ok); });
   const escribir = (o) => escribirTexto(JSON.stringify(o));
   let filas = 0;
@@ -117,7 +178,7 @@ async function restaurar(urlAdmin, archivo) {
   try {
     await c.query("BEGIN");
     // El lector se crea justo antes de recorrerlo (si no, las líneas se pierden mientras se conecta)
-    const lector = readline.createInterface({ input: fs.createReadStream(archivo).pipe(zlib.createGunzip()), crlfDelay: Infinity });
+    const lector = readline.createInterface({ input: abrirGzip(archivo).pipe(zlib.createGunzip()), crlfDelay: Infinity });
     for await (const linea of lector) {
       if (!linea) continue;
       if (linea.startsWith('{"filas":[')) {   // filas: se pasan como texto, sin convertir los números
@@ -157,6 +218,15 @@ async function restaurar(urlAdmin, archivo) {
   console.log(`Restaurado: ${filas} filas de ${cab.tablas.length} tablas (respaldo del ${cab.creado})`);
 }
 
+/** Deja el respaldo sin cifrar (solo gzip), p. ej. para cifrarlo con la clave de la copia en la nube. */
+async function descifrar(origen, destino) {
+  await require("node:stream/promises").pipeline(abrirGzip(origen), fs.createWriteStream(destino));
+  console.log(`Listo: ${destino}`);
+}
+
+/** Muestra la clave de cifrado de esta instalación (guárdela en un lugar seguro, aparte del equipo). */
+function clave() { console.log(claveRespaldo(true).toString("hex")); }
+
 function limpiar(carpeta, dias) {
   const limite = Date.now() - Number(dias) * 86400e3;
   let borrados = 0;
@@ -169,9 +239,9 @@ function limpiar(carpeta, dias) {
 }
 
 const [orden, ...args] = process.argv.slice(2);
-const acciones = { probar, sql, preparar, respaldar, restaurar, limpiar };
+const acciones = { probar, sql, preparar, respaldar, restaurar, descifrar, clave, limpiar };
 if (!acciones[orden]) {
-  console.error("Uso: node bd.cjs probar|sql|preparar|respaldar|restaurar|limpiar ...");
+  console.error("Uso: node bd.cjs probar|sql|preparar|respaldar|restaurar|descifrar|clave|limpiar ...");
   process.exit(2);
 }
 Promise.resolve(acciones[orden](...args)).catch((e) => { console.error("ERROR: " + (e && e.message ? e.message : e)); process.exit(1); });

@@ -7,3 +7,4 @@ apps/verificador-windows/build/
 apps/verificador-windows/dist/
 apps/verificador-windows/*.spec
 dist_instalador/
+clave-respaldo.key
