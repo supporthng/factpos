@@ -29,7 +29,7 @@ export function leerInserts(ruta, { tablas } = {}) {
         let j = i;
         while (j < t.length && t[j] !== "," && t[j] !== ")") j++;
         const w = t.slice(i, j).trim();
-        v = w === "NULL" ? null : w === "TRUE" ? true : w === "FALSE" ? false : Number.isNaN(Number(w)) ? w : Number(w);
+        v = w === "NULL" ? null : w === "TRUE" ? true : w === "FALSE" ? false : (Number.isNaN(Number(w)) || /^-?0\d/.test(w)) ? w : Number(w);
         i = j;
       }
       vals.push(v);
