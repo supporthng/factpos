@@ -107,7 +107,9 @@ export async function rutasTurnos(app: FastifyInstance) {
   /** Búsqueda de clientes desde la terminal: nombre, teléfono, cédula o RNC. */
   app.get("/cajas/:cajaId/clientes", async (req) => {
     const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
-    const { q } = z.object({ q: z.string().trim().min(2).max(60) }).parse(req.query);
+    // Sin texto (o con una sola letra) devuelve la lista de clientes para que la caja los muestre todos.
+    const { q } = z.object({ q: z.string().trim().max(60).default("") }).parse(req.query);
+    const filtro = q.length >= 2 ? q : "";
     const r = await pool.query(
       `SELECT c.id, c.nombre, c.tipo_documento AS "tipoDocumento", c.documento, c.telefono,
               lp.nivel, lp.nombre AS lista, c.limite_credito AS "limiteCredito",
@@ -115,10 +117,10 @@ export async function rutasTurnos(app: FastifyInstance) {
          FROM clientes c
          JOIN cajas ca ON ca.id = $1 JOIN sucursales s ON s.id = ca.sucursal_id AND s.empresa_id = c.empresa_id
          LEFT JOIN listas_precio lp ON lp.id = c.lista_precio_id
-        WHERE c.activo AND (c.nombre ILIKE '%' || $2 || '%' OR c.documento LIKE $2 || '%'
-                            OR regexp_replace(c.telefono, '\D', '', 'g') LIKE regexp_replace($2, '\D', '', 'g') || '%')
-        ORDER BY c.nombre LIMIT 20`,
-      [cajaId, q],
+        WHERE c.activo AND ($2::text = '' OR c.nombre ILIKE '%' || $2::text || '%' OR c.documento LIKE $2::text || '%'
+                            OR regexp_replace(c.telefono, '\D', '', 'g') LIKE regexp_replace($2::text, '\D', '', 'g') || '%')
+        ORDER BY c.nombre LIMIT 100`,
+      [cajaId, filtro],
     );
     return r.rows;
   });

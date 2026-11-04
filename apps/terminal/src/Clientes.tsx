@@ -30,11 +30,13 @@ export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
       .catch(() => {});
     return () => { vigente = false; };
   }, [q, ajustes]);
+  const [sel, setSel] = useState(0);
+  // Sin texto trae la lista de clientes (como «Buscar producto»); con 2 letras o más la filtra en el servidor.
   useEffect(() => {
-    if (q.trim().length < 2) return setRes([]);
+    const texto = q.trim().length >= 2 ? q.trim() : "";
     const t = setTimeout(() => {
-      api<Cliente[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/clientes?q=${encodeURIComponent(q.trim())}`).then(setRes).catch(() => setRes([]));
-    }, 150);
+      api<Cliente[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/clientes?q=${encodeURIComponent(texto)}`).then((r) => { setRes(r); setSel(0); }).catch(() => setRes([]));
+    }, texto ? 150 : 0);
     return () => clearTimeout(t);
   }, [q, ajustes]);
 
@@ -43,24 +45,33 @@ export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
   if (typeof vista === "object") return <CambiarPrecio ajustes={ajustes} usuario={usuario} cliente={vista.precio} onListo={onElegir} onVolver={() => setVista("buscar")} onCerrar={onCerrar} />;
 
   return (
-    <Modal titulo="Cliente" onCerrar={onCerrar}>
+    <Modal titulo="Cliente" onCerrar={onCerrar} clase="buscar-todos buscar-clientes">
       <div className="buscar-cliente">
         <input autoFocus className="entrada-grande" value={q} placeholder="Nombre, teléfono, cédula o RNC"
-          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && res[0] && onElegir(res[0])} />
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setSel((x) => Math.min(res.length - 1, x + 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setSel((x) => Math.max(0, x - 1)); }
+            else if (e.key === "Enter" && res[sel]) onElegir(res[sel]);
+          }} />
         <button className="boton" onClick={() => setVista("nuevo")}>+ Nuevo cliente</button>
       </div>
       <div className="resultados">
-        {res.map((c) => (
-          <div key={c.id} className="resultado-cliente">
-            <button className="resultado" onClick={() => onElegir(c)}>
-              <span><b>{c.nombre}</b> <span className="suave">{c.documento ?? ""} {c.telefono ?? ""}</span></span>
-              <span className="suave">{Number(c.saldo) > 0 ? `debe ${rd(c.saldo)}` : ""}</span>
-            </button>
-            {Number(c.saldo) > 0 && <button className="boton chico" onClick={() => setVista({ abono: c })}>Cobrar abono</button>}
+        <div className="res-cab"><span>Cliente</span><span>RNC / Cédula</span><span>Teléfono</span><span className="der">Saldo</span><span>Precio</span><span /></div>
+        {res.map((c, j) => (
+          <div key={c.id} className={"resultado-cliente" + (j === sel ? " activo" : "")} role="button" tabIndex={-1} onClick={() => onElegir(c)} onMouseMove={() => j !== sel && setSel(j)}>
+            <span><b>{c.nombre}</b></span>
+            <span className="suave">{c.documento ?? ""}</span>
+            <span className="suave">{c.telefono ?? ""}</span>
+            <span className={"der" + (Number(c.saldo) > 0 ? " texto-alerta" : " suave")}>{Number(c.saldo) > 0 ? `debe ${rd(c.saldo)}` : "—"}</span>
             <span className={"nivel-precio n" + (c.nivel ?? 1)}>Precio {c.nivel ?? 1}</span>
-            <button className="boton fantasma chico" onClick={() => setVista({ precio: c })} title="Requiere PIN de supervisor">Cambiar precio</button>
+            <span className="acciones-cliente">
+              {Number(c.saldo) > 0 && <button className="boton chico" onClick={(e) => { e.stopPropagation(); setVista({ abono: c }); }}>Cobrar abono</button>}
+              <button className="boton fantasma chico" onClick={(e) => { e.stopPropagation(); setVista({ precio: c }); }} title="Requiere PIN de supervisor">Cambiar precio</button>
+            </span>
           </div>
         ))}
+        {!res.length && q.trim().length < 2 && <p className="suave" style={{ padding: 12 }}>Todavía no hay clientes. Cree el primero con “+ Nuevo cliente”.</p>}
         {q.trim().length >= 2 && !res.length && (
           <div className="sin-resultados">
             <span className="suave">No hay clientes con “{q}”.{dgii?.nombre && <> <b>En la DGII: {dgii.nombre}</b>{dgii.estado && dgii.estado !== "ACTIVO" ? ` (${dgii.estado})` : ""}.</>}{dgii && !dgii.nombre && (dgii.sinPadron ? " El padrón de la DGII no está cargado en este servidor: pida a un administrador cargarlo (Administración › Padrón DGII)." : " No aparece en el padrón de la DGII: escriba el nombre al crearlo.")}</span>
@@ -68,6 +79,7 @@ export function ClientesCaja({ ajustes, usuario, config, onElegir, onCerrar }: {
           </div>
         )}
       </div>
+      <p className="suave buscar-pie">{res.length} cliente(s){res.length >= 100 ? " (primeros 100: escriba para filtrar)" : ""} · ↑↓ para moverse · Enter para elegir · Esc para cerrar</p>
     </Modal>
   );
 }
