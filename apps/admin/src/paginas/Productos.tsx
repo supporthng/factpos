@@ -33,7 +33,7 @@ interface Auxiliares {
   listas: { nivel: number; nombre: string; descuentoPct?: number }[];
   preciosPorSucursal: boolean;
 }
-interface FilaLista { id: string; sku: string; nombre: string; marca: string | null; tipo: Tipo; activo: boolean; categoria: string | null; categoriaColor: string | null; precio: string | null; tasa?: string | number; incluye?: boolean; existencia: string; costo: string; presentaciones: string }
+interface FilaLista { id: string; sku: string; barras?: string | null; nombre: string; marca: string | null; tipo: Tipo; activo: boolean; categoria: string | null; categoriaColor: string | null; precio: string | null; tasa?: string | number; incluye?: boolean; existencia: string; costo: string; presentaciones: string }
 
 const NIVELES = ["1", "2", "3"] as const;
 const NOMBRE_NIVEL: Record<string, string> = { "1": "Detalle", "2": "Mayorista", "3": "Distribuidor" };
@@ -184,7 +184,7 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
             { titulo: "Producto", valor: (f) => (
               <button className="fila-producto" onClick={() => onAbrir(f.id)}>
                 <i style={{ background: f.categoriaColor ?? "var(--borde-fuerte)" }} />
-                <span><b>{f.nombre}</b><small className="suave">{[f.sku, f.marca, f.categoria].filter(Boolean).join("  ·  ")}</small></span>
+                <span><b>{f.nombre}</b><small className="suave">{[f.barras || f.sku, f.marca, f.categoria].filter(Boolean).join("  ·  ")}</small></span>
               </button>
             ) },
             { titulo: "Tipo", ocultoMovil: true, valor: (f) => <span className={"pastilla t-" + f.tipo.toLowerCase()}>{TIPOS.find((t) => t.v === f.tipo)?.t}</span> },
