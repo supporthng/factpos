@@ -94,6 +94,7 @@ export function Productos() {
   const [editando, setEditando] = useState<string | "nuevo" | null>(null);
   const [rapido, setRapido] = useState(false);
   const [editarRapido, setEditarRapido] = useState<string | null>(null);
+  const [pestanaIni, setPestanaIni] = useState<Pestana | undefined>(undefined);
   const [importar, setImportar] = useState(false);
   const [borrador, setBorrador] = useState<Ficha | null>(null);
   const [version, setVersion] = useState(0);
@@ -101,8 +102,8 @@ export function Productos() {
   const aux = useDatos<Auxiliares>("/central/productos-auxiliares");
   if (!aux.datos) return <div className="cargando">Cargando…</div>;
   return editando
-    ? <Editor id={editando === "nuevo" ? null : editando} borrador={editando === "nuevo" ? borrador : null} aux={aux.datos} recargarAux={aux.recargar}
-        onCerrar={() => { setEditando(null); setBorrador(null); }} onAbrir={(id) => { setBorrador(null); setEditando(id); }} />
+    ? <Editor id={editando === "nuevo" ? null : editando} pestanaInicial={pestanaIni} borrador={editando === "nuevo" ? borrador : null} aux={aux.datos} recargarAux={aux.recargar}
+        onCerrar={() => { setEditando(null); setBorrador(null); setPestanaIni(undefined); }} onAbrir={(id) => { setBorrador(null); setEditando(id); }} />
     : (
       <>
         <Listado onAbrir={setEditarRapido} onNuevo={() => setRapido(true)} onImportar={() => setImportar(true)} aux={aux.datos} version={version} creado={creado} />
@@ -114,7 +115,7 @@ export function Productos() {
         )}
         {editarRapido && (
           <EditarRapido id={editarRapido} aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setEditarRapido(null)}
-            onFichaCompleta={() => { const i = editarRapido; setEditarRapido(null); setEditando(i); }}
+            onFichaCompleta={(pt) => { const i = editarRapido; setPestanaIni(pt); setEditarRapido(null); setEditando(i); }}
             onGuardado={(nombre) => { setVersion((v) => v + 1); setCreado(`Producto “${nombre}” guardado. Las terminales lo reciben en la próxima sincronización.`); setTimeout(() => setCreado(""), 5000); }} />
         )}
       </>
@@ -205,10 +206,10 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
 /* ---------- Editor ---------- */
 type Pestana = "principal" | "general" | "precios" | "inventario" | "proveedores" | "combo";
 
-function Editor({ id, borrador, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; borrador?: Ficha | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
+function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAbrir }: { id: string | null; pestanaInicial?: Pestana; borrador?: Ficha | null; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onAbrir: (id: string) => void }) {
   const { sucursales, productos } = useCatalogo();
   const [f, setF] = useState<Ficha | null>(id ? null : borrador ?? fichaNueva(aux, sucursales));
-  const [pestana, setPestana] = useState<Pestana>("principal");
+  const [pestana, setPestana] = useState<Pestana>(pestanaInicial ?? "principal");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [sucio, setSucio] = useState(!id && !!borrador);
@@ -933,7 +934,7 @@ function recalcular(nv: Record<string, Niv>, costo: number, tasa: number, incluy
 
 /** Abre la misma ventana compacta de «Nuevo producto» para modificar uno existente. Combos y precio libre van directo a la ficha completa. */
 function EditarRapido({ id, aux, recargarAux, onCerrar, onFichaCompleta, onGuardado }: {
-  id: string; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onFichaCompleta: () => void; onGuardado: (nombre: string) => void;
+  id: string; aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onFichaCompleta: (pestana?: Pestana) => void; onGuardado: (nombre: string) => void;
 }) {
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [error, setError] = useState("");
@@ -946,11 +947,11 @@ function EditarRapido({ id, aux, recargarAux, onCerrar, onFichaCompleta, onGuard
   }, [id]);
   if (error) return <div className="fondo-modal" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}><div className="modal"><Aviso texto={error} tipo="error" /><button className="boton" onClick={onCerrar}>Cerrar</button></div></div>;
   if (!ficha) return null;
-  return <ProductoRapido aux={aux} recargarAux={recargarAux} onCerrar={onCerrar} onCreado={onGuardado} onCompleta={onFichaCompleta} editar={ficha} />;
+  return <ProductoRapido aux={aux} recargarAux={recargarAux} onCerrar={onCerrar} onCreado={onGuardado} onCompleta={() => onFichaCompleta()} onAjustar={() => onFichaCompleta("inventario")} editar={ficha} />;
 }
 
-function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, editar }: {
-  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void; editar?: Ficha;
+function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, onAjustar, editar }: {
+  aux: Auxiliares; recargarAux: () => void; onCerrar: () => void; onCreado: (nombre: string) => void; onCompleta: (borrador: Ficha) => void; onAjustar?: () => void; editar?: Ficha;
 }) {
   const { sucursales } = useCatalogo();
   const p0e = editar?.presentaciones[0];
@@ -1185,6 +1186,15 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
           <div className="pr-fila pr-fila-2">
             <label className="campo"><span>Existencia mínima <em className="suave">(alerta de reposición)</em></span>
               <input className="numero" inputMode="decimal" value={minimo} placeholder="0" onChange={(e) => setMinimo(limpiar(e.target.value))} /></label>
+            {editar && (
+              <div className="campo"><span>Existencia actual <em className="suave">(se cambia con un ajuste, para que quede en el kardex)</em></span>
+                <span className="en-linea">
+                  <b className="pr-existencia">{num(editar.sucursales.reduce((t, s) => t + n(s.existencia), 0), editar.sucursales.some((s) => n(s.existencia) % 1) ? 2 : 0)}</b>
+                  {editar.sucursales.length > 1 && <small className="suave">{editar.sucursales.map((s) => `${s.sucursal ?? "Sucursal"}: ${num(n(s.existencia), n(s.existencia) % 1 ? 2 : 0)}`).join(" · ")}</small>}
+                  <button type="button" className="boton" onClick={() => onAjustar?.()}>Ajustar existencia…</button>
+                </span>
+              </div>
+            )}
             {!editar && (
               <label className="campo"><span>Existencia actual <em className="suave">(queda en el kardex como existencia inicial)</em></span>
                 <span className="en-linea">

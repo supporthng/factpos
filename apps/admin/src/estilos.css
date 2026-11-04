@@ -1173,3 +1173,5 @@ textarea { line-height: 1.35; }
   .pr-nivel { grid-template-columns: 1fr 1fr; }
   .pr-nombre { grid-column: 1 / -1; flex-direction: row; gap: 8px; align-items: baseline; }
 }
+
+.pr-existencia { font-size: 18px; font-variant-numeric: tabular-nums; min-width: 40px; }
