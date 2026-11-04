@@ -77,6 +77,12 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [sel, setSel] = useState(-1);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   /** Pedido de cliente cargado en la venta: al cobrar, queda facturado */
+  // Versión instalada (la del servidor), visible en la barra superior
+  const [versionApp, setVersionApp] = useState("");
+  useEffect(() => {
+    fetch(`${ajustes.servidor.replace(/\/$/, "")}/actualizacion/estado`, { cache: "no-store" }).then((r) => r.json())
+      .then((d) => setVersionApp(String(d.version ?? "").replace(/\.0$/, ""))).catch(() => {});
+  }, [ajustes.servidor]);
   /** Tipo de comprobante de esta venta (Consumo por defecto) */
   const [tipoComp, setTipoComp] = useState<TipoComprobante>(config.funciones?.sinComprobante ? "SIN" : "E32");
   const volverACobro = useRef(false);
@@ -537,6 +543,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <div><dt>Caja</dt><dd>{config.nombre}</dd></div>
           <div><dt>Cajero</dt><dd>{usuario.nombre}</dd></div>
           <div className="pv-fecha"><dt>{reloj.fecha}</dt><dd>{reloj.hora}</dd></div>
+          {versionApp && <div className="pv-version"><dt>Versión</dt><dd>v{versionApp}</dd></div>}
         </dl>
         <EstadoServidor />
         <nav className="pv-barra-acciones" aria-label="Opciones de la caja">

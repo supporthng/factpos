@@ -830,3 +830,4 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-entrada, .pv-entrada:not(:has(.pv-quitar-cliente)) { grid-template-columns: minmax(0, 1fr); }
 .pv-cliente-panel .pv-quitar-cliente { width: 28px; height: 28px; font-size: 18px; line-height: 1; padding: 0; border-radius: 50%; }
 .pv-cliente-panel .pv-cliente { padding: 8px 12px; }
+.pv-datos .pv-version dd { font-variant-numeric: tabular-nums; }
