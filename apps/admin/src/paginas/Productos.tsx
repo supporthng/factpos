@@ -374,7 +374,7 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
             <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
             <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
           </div>
-          <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} placeholder="Ron Brugal Extra Viejo 700 ml" /></label>
+          <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} /></label>
           <div className="dos-col precios-compactos">
             <label className="campo"><span>Precio de costo (sin ITBIS)</span>
               <input className="numero" inputMode="decimal" value={f.costoReferencia} disabled={f.tipo === "COMBO"} onChange={(e) => cambiar({ costoReferencia: e.target.value.replace(/[^\d.]/g, "") })} />
@@ -1121,7 +1121,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
               onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} onBlur={buscarCodigo} onKeyDown={(e) => e.key === "Enter" && buscarCodigo()} />
           </label>
           <label className="campo"><span>Nombre</span>
-            <input id="pr-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ron Brugal Extra Viejo 700 ml" />
+            <input id="pr-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
           </label>
         </div>
         <div className="pr-fila pr-fila-2">
