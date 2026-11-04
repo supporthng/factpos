@@ -852,7 +852,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "facturasPin" && (
         <Modal titulo="Facturas y devolución" onCerrar={() => setModal(null)}>
           <p>Para entrar a las facturas hace falta la clave de un supervisor.</p>
-          <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y entrar" onAprobado={() => setModal("facturas")} />
+          <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y entrar" automatico onAprobado={() => setModal("facturas")} />
           <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setModal(null)}>Volver a la caja</button>
         </Modal>
       )}

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
-import { autorizarConPin, verificarAutorizacion } from "../autorizacion.js";
+import { autorizarConPin, autorizacionDirecta, verificarAutorizacion } from "../autorizacion.js";
 import { emitirEcfVenta } from "../fiscal/emitir.js";
 
 const uuid = z.string().uuid();
@@ -153,6 +153,22 @@ export async function rutasFacturas(app: FastifyInstance) {
     const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir"]) }).parse(req.body);
     const ctx = await contextoCaja(cajaId);
     return autorizarConPin(pool, ctx.empresaId, cajaId, b.pin, b.permiso);
+  });
+
+  /**
+   * Aprobación para quien YA entró a la caja y tiene el permiso (el administrador, un supervisor): no necesita teclear otro PIN.
+   * La sesión de la caja (PIN del cajero) es la prueba; sin el permiso responde 403 y la pantalla pide el PIN de un supervisor.
+   */
+  app.post("/cajas/:cajaId/autorizar-propio", async (req) => {
+    const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
+    const b = z.object({ permiso: z.enum(["venta.descuento", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir"]) }).parse(req.body);
+    const s = (req as typeof req & { sesionCaja?: { u: string; p: string[] } }).sesionCaja;
+    if (!s) throw new ErrorNegocio("Su sesión en la caja terminó: vuelva a entrar con su PIN", 401);
+    const tiene = s.p.includes("*") || s.p.includes(b.permiso) || (b.permiso === "caja.salir" && s.p.includes("venta.anular"));
+    if (!tiene) throw new ErrorNegocio("Su usuario no tiene este permiso: pida el PIN de un supervisor", 403);
+    const u = await pool.query<{ nombre: string }>("SELECT nombre FROM usuarios WHERE id = $1", [s.u]);
+    const nombre = u.rows[0]?.nombre ?? "Administrador";
+    return { token: autorizacionDirecta(s.u, nombre, b.permiso, cajaId), supervisor: nombre };
   });
 
   /** Reimprimir la última factura de esta terminal. */

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, rd, type Ajustes } from "./api";
 import type { Usuario } from "./App";
 import { Modal } from "./Venta";
@@ -8,9 +8,21 @@ export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "c
 export interface Aprobacion { token: string; supervisor: string }
 
 /** Campo de PIN del supervisor. Devuelve la aprobación firmada por el servidor. */
-export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton }: {
+export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automatico = false }: {
   ajustes: Ajustes; permiso: Permiso; onAprobado: (a: Aprobacion) => void; textoBoton: string;
+  /** Pantalla que solo existe para pedir la aprobación: si el cajero ya tiene el permiso, entra sin pedir nada */
+  automatico?: boolean;
 }) {
+  // Quien ya entró a la caja y tiene el permiso (administrador, supervisor) no necesita otro PIN
+  const [propio, setPropio] = useState<Aprobacion | null>(null);
+  const aprobadoRef = useRef(onAprobado); aprobadoRef.current = onAprobado;
+  useEffect(() => {
+    let vivo = true;
+    api<Aprobacion>(ajustes.servidor, `/cajas/${ajustes.cajaId}/autorizar-propio`, { cuerpo: { permiso } })
+      .then((r) => { if (!vivo) return; setPropio(r); if (automatico) aprobadoRef.current(r); })
+      .catch(() => { /* sin el permiso (o sin conexión): se pide el PIN de un supervisor */ });
+    return () => { vivo = false; };
+  }, [ajustes.servidor, ajustes.cajaId, permiso, automatico]);
   const [pin, setPin] = useState("");
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -28,6 +40,14 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton }: {
       setEnviando(false);
     }
   };
+  if (propio) {
+    return (
+      <div className="aprobacion">
+        <p className="suave">Su usuario (<b>{propio.supervisor}</b>) tiene permiso para esto: no hace falta el PIN de otro supervisor.</p>
+        <button className="boton primario ancho" onClick={() => onAprobado(propio)}>{textoBoton}</button>
+      </div>
+    );
+  }
   return (
     <div className="aprobacion">
       <label className="campo">
