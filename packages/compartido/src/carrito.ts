@@ -42,6 +42,9 @@ export interface Cotizacion {
 
 export class ErrorCarrito extends Error {}
 
+/** Múltiplo de 5 más cercano (los precios de venta se manejan en múltiplos de 5, sin centavos). */
+export const redondear5 = (d: Decimal) => d.div(5).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).mul(5);
+
 export function cotizarCarrito(lineas: LineaCarrito[], cupon: Cupon | null = null, ahora = new Date()): Cotizacion {
   // Tope de unidades: lo que va consumiendo cada línea se descuenta para las siguientes
   const quedan = new Map<string, Decimal>();
@@ -67,7 +70,15 @@ export function cotizarCarrito(lineas: LineaCarrito[], cupon: Cupon | null = nul
       for (const o of ofertas) if (o.restantes !== null && o.restantes !== undefined && new Decimal(o.restantes).lte(0) && ofertaVigente(o, ahora)) agotadas.set(o.id, o.nombre);
     }
     const pctNivel = new Decimal(l.descuentoNivelPct ?? 0);
-    const nivelDesc = !oferta && !manual.gt(0) && pctNivel.gt(0) ? bruto.mul(pctNivel).div(100).toDecimalPlaces(2) : new Decimal(0);
+    // Precios 2 y 3: el precio con descuento se redondea al múltiplo de 5 más cercano (por unidad si la cantidad es entera)
+    let nivelDesc = new Decimal(0);
+    if (!oferta && !manual.gt(0) && pctNivel.gt(0)) {
+      const f = new Decimal(1).minus(pctNivel.div(100));
+      const neto5 = Number.isInteger(Number(l.cantidad))
+        ? redondear5(new Decimal(l.precio).mul(f)).mul(l.cantidad)
+        : redondear5(bruto.mul(f));
+      nivelDesc = Decimal.max(bruto.minus(neto5), 0).toDecimalPlaces(2);
+    }
     const neto = bruto.minus(manual).minus(oferta?.descuento ?? 0).minus(nivelDesc);
     if (neto.lt(0)) throw new ErrorCarrito(`El descuento de ${l.nombre} supera el importe`);
     return { l, oferta, manual, neto, nivelDesc };
