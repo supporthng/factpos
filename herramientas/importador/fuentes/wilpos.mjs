@@ -32,7 +32,7 @@ export function leer(ruta) {
     return {
       origenId: p.id,
       nombre: solo(p.nombre),
-      barras: digitos(p.codigo_barra) || null,
+      barras: solo(p.codigo_barra) || null,
       categoria: solo(p.categoria) || null,
       servicio: p.tipo === "servicio",
       precio: Number(p.precio_venta) || 0,
