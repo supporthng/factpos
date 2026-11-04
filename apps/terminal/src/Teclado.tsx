@@ -70,10 +70,7 @@ const FILAS_NUM = [["7", "8", "9", "⌫"], ["4", "5", "6", "C"], ["1", "2", "3",
 export function TecladoPantalla() {
   const [campo, setCampo] = useState<Campo | null>(null);
   const [mayus, setMayus] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
-    try { const p = JSON.parse(localStorage.getItem("factpos.teclado.pos") ?? "null"); if (p && typeof p.x === "number") return p; } catch { /* nada */ }
-    return null;
-  });
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const manual = useRef(false);
   const caja = useRef<HTMLDivElement>(null);
   const ultimoToque = useRef<{ t: number; tipo: string }>({ t: 0, tipo: "" });
@@ -129,7 +126,7 @@ export function TecladoPantalla() {
     const margen = 10;
     if (manual.current && pos) { setPos({ x: Math.min(Math.max(0, pos.x), innerWidth - w), y: Math.min(Math.max(0, pos.y), innerHeight - h) }); return; }
     const abajo = r.top + r.height / 2 < innerHeight / 2;
-    const x = Math.min(Math.max(margen, r.left + r.width / 2 - w / 2), innerWidth - w - margen);
+    const x = Math.max(0, Math.round((innerWidth - w) / 2));   // siempre centrado horizontalmente
     const y = abajo ? innerHeight - h - margen : margen;
     setPos({ x, y });
   }, [campo, pos]);
@@ -153,10 +150,8 @@ export function TecladoPantalla() {
     const c = caja.current; if (!c) return;
     const r = c.getBoundingClientRect(); const dx = e.clientX - r.left, dy = e.clientY - r.top;
     const mover = (ev: PointerEvent) => { manual.current = true; setPos({ x: Math.min(Math.max(0, ev.clientX - dx), innerWidth - r.width), y: Math.min(Math.max(0, ev.clientY - dy), innerHeight - r.height) }); };
-    const fin = () => {
-      document.removeEventListener("pointermove", mover); document.removeEventListener("pointerup", fin);
-      try { const b = caja.current?.getBoundingClientRect(); if (b) localStorage.setItem("factpos.teclado.pos", JSON.stringify({ x: b.left, y: b.top })); } catch { /* nada */ }
-    };
+    // Se puede mover mientras está abierto, pero cada vez que se abre vuelve al centro
+    const fin = () => { document.removeEventListener("pointermove", mover); document.removeEventListener("pointerup", fin); };
     document.addEventListener("pointermove", mover); document.addEventListener("pointerup", fin);
   };
   // Las teclas no deben robar el foco al campo
@@ -167,7 +162,7 @@ export function TecladoPantalla() {
       style={pos ? { left: pos.x, top: pos.y } : { left: "50%", bottom: 10, transform: "translateX(-50%)" }}
       onMouseDown={sinFoco} role="group" aria-label="Teclado en pantalla">
       <div className="tp-barra" onPointerDown={arrastrar}>
-        <span>⠿ Teclado · arrastre para mover</span>
+        <span>⠿ Teclado</span>
         <button type="button" className="tp-cerrar" onClick={cerrar}>Cerrar</button>
       </div>
       {modo === "abc" ? (
