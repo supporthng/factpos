@@ -1147,3 +1147,9 @@ input[type=password] { -webkit-text-security: disc; }
 .principal-cuerpo .zona-imagen img { padding: 4px; box-sizing: border-box; }
 .principal-cuerpo .zona-imagen > span { font-size: 12px; padding: 6px; }
 @media (max-width: 700px) { .principal-cuerpo { grid-template-columns: 1fr; } .principal-cuerpo .zona-imagen { margin: 0 auto; } }
+
+/* Compactar TODOS los campos del admin (textos, selects, áreas) y los botones que los acompañan */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea { padding: 6px 10px; font-size: 14px; border-radius: 8px; }
+textarea { line-height: 1.35; }
+.boton { padding: 6px 14px; font-size: 14px; border-radius: 8px; }
+.campo { margin-bottom: 10px; gap: 3px; }
