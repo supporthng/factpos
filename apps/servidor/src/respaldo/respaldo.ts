@@ -120,14 +120,17 @@ async function subirNube(c: Config, f: Fila) {
     if (!c.clave_nube) throw new Error("Falta la clave de cifrado");
     if (!existsSync(origen)) throw new Error("El archivo local ya no existe");
     const cred = await credencialesPortal();
-    const cif = await cifrarArchivo(origen, tmp, c.clave_nube);
+    // El respaldo local va cifrado con la clave de ESTA instalación; a la nube sube con la clave de recuperación de la copia,
+    // así se puede recuperar en un equipo nuevo con solo esa clave.
+    await exec(process.execPath, [bdCjs(), "descifrar", origen, tmp + ".claro"], { timeout: 30 * 60_000 });
+    const cif = await cifrarArchivo(tmp + ".claro", tmp, c.clave_nube);
     const r = await llamarPortal<{ url: string; objeto: string }>("/licencias/respaldo/url", { ...cred, tamano: cif.tamano, nombre: f.archivo });
     await subirArchivo(r.url, tmp, cif.tamano);
     await llamarPortal("/licencias/respaldo/confirmar", { ...cred, objeto: r.objeto, tamano: cif.tamano });
     await pool.query("UPDATE respaldos SET nube_estado = 'SUBIDO', nube_objeto = $2, nube_error = NULL WHERE id = $1", [f.id, r.objeto]);
   } catch (e) {
     await pool.query("UPDATE respaldos SET nube_estado = 'ERROR', nube_error = $2 WHERE id = $1", [f.id, (e as Error).message.slice(0, 300)]);
-  } finally { rmSync(tmp, { force: true }); }
+  } finally { rmSync(tmp, { force: true }); rmSync(tmp + ".claro", { force: true }); }
 }
 
 // ------------------------------------------------------------------ ciclo automático

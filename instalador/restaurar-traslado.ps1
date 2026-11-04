@@ -56,6 +56,9 @@ do {
 
 Paso "Cargando la base de datos del equipo anterior"
 $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+# El respaldo viene cifrado: la clave del equipo anterior viaja en el paquete (solo para esta restauración)
+$archivoClaveRespaldo = Join-Path $Paquete 'clave-respaldo.key'
+if (Test-Path $archivoClaveRespaldo) { $env:FACTPOS_CLAVE_RESPALDO = (Get-Content -LiteralPath $archivoClaveRespaldo -Raw).Trim() }
 $salida = @(& node $bd restaurar $urlSu $respaldo 2>&1 | ForEach-Object { "$_" })
 $codigo = $LASTEXITCODE
 $ErrorActionPreference = $eap

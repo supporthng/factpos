@@ -195,6 +195,9 @@ export async function iniciarTraslado() {
     const env = path.join(raiz, ".env");
     if (!existsSync(env)) throw new Error("No se encontró el archivo de configuración (.env)");
     copyFileSync(env, path.join(carpeta, "entorno.env"));
+    // El respaldo va cifrado: su clave viaja en el paquete (igual de sensible que entorno.env)
+    const claveRespaldo = path.join(raiz, "clave-respaldo.key");
+    if (existsSync(claveRespaldo)) copyFileSync(claveRespaldo, path.join(carpeta, "clave-respaldo.key"));
   } catch (e) {
     throw new ErrorNegocio(`No se pudo crear el paquete de traslado: ${(e as Error).message}. No se cambió nada.`, 500);
   }
