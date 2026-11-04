@@ -3,7 +3,7 @@ import { api, puede, rd } from "../api";
 import { Aviso, Encabezado, Tabla, useDatos } from "../ui";
 
 /**
- * Clientes de la tienda. Al crear uno hay que elegir su nivel de precio (1, 2 o 3).
+ * Clientes de la tienda. Por defecto pagan el Precio 1; si corresponde, se les asigna el Precio 2 o 3.
  * Desde la caja los clientes nacen con el precio 1 (el cajero no decide el precio).
  */
 interface Cliente {
@@ -63,8 +63,8 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
     nombre: cliente?.nombre ?? "", tipoDocumento: cliente?.tipoDocumento ?? "NINGUNO", documento: cliente?.documento ?? "", telefono: cliente?.telefono ?? "",
     correo: cliente?.correo ?? "", direccion: cliente?.direccion ?? "", limiteCredito: cliente?.limiteCredito && Number(cliente.limiteCredito) ? cliente.limiteCredito : "",
     activo: cliente?.activo ?? true,
-    // Cliente nuevo: sin nivel elegido; hay que escogerlo
-    nivel: cliente ? String(cliente.nivel ?? 1) : "",
+    // Por defecto Precio 1 (normal); si es otro, se le asigna aquí
+    nivel: String(cliente?.nivel ?? 1),
   });
   const [msg, setMsg] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -72,7 +72,6 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
 
   const guardar = async () => {
     if (f.nombre.trim().length < 3) return setMsg("Escriba el nombre o la razón social.");
-    if (!f.nivel) return setMsg("Elija el nivel de precio del cliente: es obligatorio.");
     setGuardando(true); setMsg(null);
     try {
       const cuerpo = {
@@ -108,9 +107,8 @@ function FormCliente({ cliente, onCerrar, onListo }: { cliente: Cliente | null; 
         </div>
         <label className="campo"><span>Dirección</span><input value={f.direccion} onChange={(e) => setF({ ...f, direccion: e.target.value })} /></label>
         <div className="dos-col">
-          <label className="campo"><span>Nivel de precio <b className="texto-alerta">*</b></span>
-            <select value={f.nivel} onChange={(e) => setF({ ...f, nivel: e.target.value })} aria-required="true">
-              {!cliente && <option value="">Elija el nivel…</option>}
+          <label className="campo"><span>Nivel de precio</span>
+            <select value={f.nivel} onChange={(e) => setF({ ...f, nivel: e.target.value })}>
               {NIVELES.map((x) => <option key={x.n} value={x.n}>{x.t}</option>)}
             </select></label>
           <label className="campo"><span>Límite de crédito (RD$)</span><input className="numero" inputMode="decimal" value={f.limiteCredito} placeholder="0.00" onChange={(e) => setF({ ...f, limiteCredito: e.target.value.replace(/[^\d.]/g, "") })} /></label>

@@ -19,8 +19,8 @@ const Cliente = z.object({
   telefono: z.string().trim().max(20).nullable().default(null),
   correo: z.string().trim().toLowerCase().email("Correo inválido").max(120).nullable().or(z.literal("").transform(() => null)).default(null),
   direccion: z.string().trim().max(250).nullable().default(null),
-  /** Obligatorio: 1, 2 o 3 */
-  nivel: z.number({ required_error: "Elija el nivel de precio del cliente" }).int().min(1, "Elija el nivel de precio del cliente").max(3),
+  /** 1 (normal) por defecto; 2 o 3 si se le asigna otro precio */
+  nivel: z.number().int().min(1, "Nivel de precio inválido").max(3, "Nivel de precio inválido").default(1),
   limiteCredito: monto.default("0"),
   confirmarDocumento: z.boolean().default(false),
 });
