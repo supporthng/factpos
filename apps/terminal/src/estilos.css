@@ -725,15 +725,16 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pc-venta { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); grid-template-rows: auto 1fr; }
 .pc-cab { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 14px 28px; background: var(--barra-marca, #123); font-size: 24px; }
 .pc-cab .pc-logo { max-height: 48px; }
-.pc-lineas { overflow-y: auto; padding: 18px 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; }
-.pc-linea { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #ffffff1f; font-size: clamp(20px, 2.6vw, 34px); }
-.pc-linea div { display: flex; flex-direction: column; min-width: 0; }
-.pc-linea b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-lineas { overflow-y: auto; padding: 18px 28px; display: flex; flex-direction: column; justify-content: flex-start; gap: 4px; }
+.pc-linea { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 12px 0; border-bottom: 1px solid #ffffff1f; font-size: clamp(20px, 2.6vw, 34px); }
+.pc-linea .pc-det { display: flex; flex-direction: row; justify-content: space-between; align-items: baseline; gap: 16px; }
+.pc-linea b { font-weight: 600; overflow-wrap: anywhere; line-height: 1.15; }
+.pc-linea strong { white-space: nowrap; }
 .pc-linea span { opacity: .7; font-size: .65em; }
 .pc-linea em { font-style: normal; color: var(--acento-marca, #2dd4bf); }
 .pc-linea.nueva { background: #ffffff10; border-radius: 10px; padding-left: 12px; padding-right: 12px; }
 .pc-total { container-type: inline-size; background: #10202c; padding: 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; text-align: right; }
-.pc-fila { display: flex; justify-content: space-between; font-size: clamp(18px, 2.2vw, 28px); opacity: .8; }
+.pc-fila { display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; font-size: clamp(18px, 2.2vw, 28px); opacity: .8; }
 .pc-pagar { font-size: clamp(22px, 3vw, 40px); margin-top: 12px; opacity: .85; }
 .pc-oferta { flex-direction: row; align-items: stretch; }
 .pc-oferta-img { width: 55%; object-fit: cover; }
@@ -880,3 +881,13 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 /* Comprobante de impresión directa: fuera de la vista en pantalla, presente al imprimir */
 @media screen { .fondo-modal.ticket-auto { position: fixed; left: -99999px; top: 0; pointer-events: none; } }
 @media print { .fondo-modal.ticket-auto { position: static !important; width: auto; height: auto; padding: 0; background: none; } .ticket-auto .modal { overflow: visible; max-height: none; box-shadow: none; } }
+
+/* Pantalla del cliente: espacio sobre los totales para el logo o las ofertas activas (al azar) */
+.pc-promo { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+.pc-promo .pc-logo { max-height: 70%; max-width: 85%; }
+.pc-promo-oferta { display: flex; flex-direction: column; align-items: center; gap: 8px; max-height: 100%; animation: pc-entra .6s ease; }
+.pc-promo-oferta img { max-height: 38%; max-width: 100%; object-fit: contain; border-radius: 10px; }
+.pc-promo-oferta b { font-size: clamp(20px, 2.4vw, 32px); line-height: 1.15; }
+.pc-promo-oferta p { margin: 0; font-size: clamp(14px, 1.5vw, 20px); opacity: .8; }
+.pc-promo-precio { font-size: clamp(32px, 4vw, 56px); font-weight: 800; color: var(--acento-marca, #2dd4bf); line-height: 1; }
+@media (max-width: 800px) { .pc-promo { display: none; } }
