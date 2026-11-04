@@ -860,3 +860,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .tp-ancha { flex: 2 1 0; }
 .tp-espacio { flex: 5 1 0; font-size: 15px; font-weight: 500; }
 .tp-listo { flex: 1.6 1 0; background: var(--primario); border-color: var(--primario); color: var(--texto-sobre-primario, #fff); font-size: 17px; }
+
+/* Cancelar venta junto a las acciones de la línea, a la derecha */
+.pv-acciones-linea .pv-cancelar { margin-left: auto; color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--borde)); }
+.pv-acciones-linea .pv-cancelar:disabled { color: inherit; border-color: var(--borde); }

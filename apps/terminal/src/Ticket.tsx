@@ -28,8 +28,8 @@ export function EncabezadoTicket({ config, fiscal = false }: { config: ConfigCaj
     <div className="t-centro">
       {config.marca.logo && config.marca.logoEnTicket && <img className="t-logo" src={config.marca.logo} alt="" style={{ maxWidth: med.logoAncho, maxHeight: med.logoAlto }} />}
       <b className="t-grande">{config.empresa}</b>
-      {(fmt.mostrarRnc || fiscal) && <div>RNC {config.rnc}</div>}
       {fmt.mostrarSucursal && <div>{config.sucursal}</div>}
+      {(fmt.mostrarRnc || fiscal) && <div>RNC {config.rnc}</div>}
       {(fmt.mostrarDireccion || fiscal) && config.direccion && <div>{config.direccion}</div>}
       {fmt.mostrarTelefono && config.telefono && <div>Tel. {config.telefono}</div>}
       {fmt.encabezadoExtra.split("\n").filter((l) => l.trim()).map((l, i) => <div key={i}>{l}</div>)}
@@ -47,7 +47,7 @@ const NOMBRE_TIPO: Record<string, string> = {
   B14: "Factura con NCF de Régimen Especial",
   B15: "Factura con NCF Gubernamental",
   B16: "Factura con NCF de Exportación",
-  SIN: "Factura interna sin comprobante fiscal",
+  SIN: "",
 };
 const PAGO: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", TRANSFERENCIA: "Transferencia", CREDITO: "Crédito", DELIVERY: "Delivery" };
 
@@ -87,7 +87,7 @@ export function Ticket({ venta, copia = false, config, usuario, onCerrar }: {
           <EncabezadoTicket config={config} fiscal={!!venta.fiscal} />
           <div className="t-linea" />
           {copia && <div className="t-centro t-copia">*** COPIA ***</div>}
-          <div className="t-centro"><b>{NOMBRE_TIPO[venta.tipoDocumento] ?? venta.tipoDocumento}</b></div>
+          {venta.tipoDocumento !== "SIN" && <div className="t-centro"><b>{NOMBRE_TIPO[venta.tipoDocumento] ?? venta.tipoDocumento}</b></div>}
           <div className="t-fila"><span>{venta.fiscal ? "e-NCF" : venta.tipoDocumento === "SIN" ? "Número interno" : "NCF"}</span><b>{venta.fiscal?.encf ?? venta.numeroDocumento ?? "Pendiente"}</b></div>
           {venta.tipoDocumento === "E31" && venta.fiscal && <div className="t-fila"><span>Válida hasta</span><span>{venta.fiscal.venceSecuencia.split("-").reverse().join("-")}</span></div>}
           {venta.encfModificado && <div className="t-fila"><span>Modifica e-NCF</span><span>{venta.encfModificado}</span></div>}
