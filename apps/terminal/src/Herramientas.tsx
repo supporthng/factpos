@@ -259,7 +259,9 @@ export function AbrirGaveta({ ajustes, usuario, onListo, onCerrar }: { ajustes: 
         <input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. cambiar un billete, revisar el fondo" />
       </label>
       {msg && <p className="error">{msg}</p>}
-      {motivo.trim().length >= 3 && <PinSupervisor ajustes={ajustes} permiso="caja.retiro" textoBoton="Abrir gaveta" onAprobado={aprobado} />}
+      <p className="suave"><b>Se necesita la autorización de un supervisor</b> (su PIN). Escriba el motivo y luego el PIN.</p>
+      <PinSupervisor ajustes={ajustes} permiso="caja.retiro" textoBoton="Autorizar y abrir gaveta" deshabilitado={motivo.trim().length < 3} onAprobado={aprobado} />
+      {motivo.trim().length < 3 && <p className="suave pequeno">Falta el motivo (mínimo 3 letras).</p>}
       <p className="nota">La gaveta se abre al imprimir. Si no abre, active «Abrir gaveta al imprimir» en el driver de la impresora térmica.</p>
       <div className="ticket solo-impresion" id="ticket"><div className="t-centro">{new Date().toLocaleString("es-DO")}</div></div>
     </Modal>
