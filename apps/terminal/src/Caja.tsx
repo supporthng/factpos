@@ -21,7 +21,7 @@ interface Movimiento {
 }
 
 /* ---------- Pestaña "Entradas y salidas" del turno ---------- */
-export function MovimientosCaja({ ajustes, config }: { ajustes: Ajustes; config: ConfigCaja }) {
+export function MovimientosCaja({ ajustes, config, soloSalidas = false }: { ajustes: Ajustes; config: ConfigCaja; /** Pantalla «Salida de efectivo»: solo retiros y gastos */ soloSalidas?: boolean }) {
   const [datos, setDatos] = useState<{ categorias: string[]; movimientos: Movimiento[] } | null>(null);
   const [nuevo, setNuevo] = useState<"RETIRO" | "GASTO" | "DEPOSITO" | null>(null);
   const [impreso, setImpreso] = useState<Movimiento | null>(null);
@@ -38,19 +38,19 @@ export function MovimientosCaja({ ajustes, config }: { ajustes: Ajustes; config:
       <div className="botones-movimiento">
         <button className="boton grande-mov" onClick={() => setNuevo("RETIRO")}><b>Retiro</b><small>Sacar efectivo · con PIN</small></button>
         <button className="boton grande-mov" onClick={() => setNuevo("GASTO")}><b>Gasto</b><small>Pagar algo con la gaveta · con PIN</small></button>
-        <button className="boton grande-mov" onClick={() => setNuevo("DEPOSITO")}><b>Sencillo</b><small>Meter cambio a la gaveta</small></button>
+        {!soloSalidas && <button className="boton grande-mov" onClick={() => setNuevo("DEPOSITO")}><b>Sencillo</b><small>Meter cambio a la gaveta</small></button>}
       </div>
       {msg && <p className="error">{msg}</p>}
       <div className="cuadre-resumen">
         <div><span>Retiros</span><b>{rd(total("RETIRO"))}</b></div>
         <div><span>Gastos</span><b>{rd(total("GASTO"))}</b></div>
-        <div><span>Sencillo</span><b>{rd(total("DEPOSITO"))}</b></div>
-        <div><span>Abonos</span><b>{rd(total("ABONO_CLIENTE"))}</b></div>
+        {!soloSalidas && <div><span>Sencillo</span><b>{rd(total("DEPOSITO"))}</b></div>}
+        {!soloSalidas && <div><span>Abonos</span><b>{rd(total("ABONO_CLIENTE"))}</b></div>}
       </div>
       <table className="tabla-cuadre">
         <thead><tr><th>Hora</th><th>Tipo</th><th>Detalle</th><th>Aprobó</th><th className="der">Monto</th><th></th></tr></thead>
         <tbody>
-          {(datos?.movimientos ?? []).map((m) => (
+          {(datos?.movimientos ?? []).filter((m) => !soloSalidas || m.tipo === "RETIRO" || m.tipo === "GASTO").map((m) => (
             <tr key={m.id}>
               <td>{fechaHora(m.creadoEn).split(" ").pop()}</td>
               <td>{NOMBRE[m.tipo] ?? m.tipo}</td>
@@ -60,7 +60,7 @@ export function MovimientosCaja({ ajustes, config }: { ajustes: Ajustes; config:
               <td><button className="enlace" onClick={() => setImpreso(m)}>Reimprimir</button></td>
             </tr>
           ))}
-          {datos && !datos.movimientos.length && <tr><td colSpan={6} className="suave">Todavía no hay entradas ni salidas en este turno.</td></tr>}
+          {datos && !datos.movimientos.length && <tr><td colSpan={6} className="suave">{soloSalidas ? "Todavía no hay salidas de efectivo en este turno." : "Todavía no hay entradas ni salidas en este turno."}</td></tr>}
         </tbody>
       </table>
     </>

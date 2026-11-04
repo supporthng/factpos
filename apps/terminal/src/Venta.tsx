@@ -42,6 +42,7 @@ export function TamanoPantalla() {
 }
 import { ClientesCaja } from "./Clientes";
 import { TurnoCaja } from "./Turno";
+import { MovimientosCaja } from "./Caja";
 import { Facturas, Pausadas, PrecioVariable, type Aprobacion, type VentaPausada } from "./Operaciones";
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
@@ -61,7 +62,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "pausadas"
-  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta";
+  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -476,6 +477,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         g: () => setModal("gaveta"),
         o: () => setModal("pedidos"),
         c: () => catalogo && setModal("consulta"),
+        s: () => setModal("salida"),
       };
       if (e.altKey && conAlt[e.key.toLowerCase()]) { e.preventDefault(); conAlt[e.key.toLowerCase()](); return; }
       const mapa: Record<string, () => void> = {
@@ -701,6 +703,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
+        <BotonFuncion tono="rojo" icono="billete" texto="Salida de efectivo" tecla="Alt+S" onClick={() => setModal("salida")} />
         <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
         {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
         <BotonFuncion tono="tinta" icono="cierre" texto="Turno y cierre" tecla="F10" onClick={() => setModal("turno")} />
@@ -714,6 +717,12 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "buscar" && catalogo && (
         <Buscar catalogo={catalogo} inicial={busqueda} nivel={nivelPrecio}
           onElegir={(p) => { agregar(p, "1"); setModal(null); }} onCerrar={() => setModal(null)} />
+      )}
+      {modal === "salida" && (
+        <Modal titulo="Salida de efectivo" ancho onCerrar={() => setModal(null)}>
+          <p className="suave">Retiro (al banco o a la oficina) o gasto pagado con la gaveta. Necesita el PIN de un supervisor y sale impreso con firmas; queda descontado en el cuadre del turno.</p>
+          <MovimientosCaja ajustes={ajustes} config={config} soloSalidas />
+        </Modal>
       )}
       {modal === "consulta" && catalogo && (
         <Buscar catalogo={catalogo} inicial="" nivel={nivelPrecio} consulta onElegir={() => {}} onCerrar={() => setModal(null)} />
