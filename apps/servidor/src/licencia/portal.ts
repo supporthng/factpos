@@ -38,8 +38,10 @@ const normalizarClave = (t: string) => {
 };
 /** Rutas que no pueden ser el nombre corto de un cliente */
 const RESERVADAS = new Set(["central", "licencias", "salud", "assets", "iconos", "admin", "terminal", "alta", "sync", "cajas", "api", "portal",
-  "descubrir", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt", "clientes", "www"]);
-export const slugValido = (s: string) => /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(s) && !RESERVADAS.has(s);
+  "descubrir", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt", "clientes", "www", "c"]);
+/** Código de conexión corto (FP-K7M4QX): el nombre corto no puede parecerse a uno para que las apps no los confundan */
+export const CODIGO_CONEXION = /^FP-[2-9A-HJKMNP-Z]{6}$/;
+export const slugValido = (s: string) => /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(s) && !RESERVADAS.has(s) && !/^fp-?[a-z0-9]{6}$/.test(s);
 
 function llavePrivada() {
   const k = process.env.LICENCIAS_CLAVE_PRIVADA;
@@ -439,7 +441,7 @@ export async function rutasPortal(app: FastifyInstance) {
 
   app.get("/licencias/cliente/:slug", async (req) => {
     const { slug } = z.object({ slug: z.string().max(40) }).parse(req.params);
-    const c = (await pool.query("SELECT nombre, slug, api_url AS \"apiUrl\" FROM portal_clientes WHERE slug = $1 AND activo", [slug.toLowerCase()])).rows[0];
+    const c = (await pool.query("SELECT nombre, slug, codigo, api_url AS \"apiUrl\" FROM portal_clientes WHERE slug = $1 AND activo", [slug.toLowerCase()])).rows[0];
     if (!c) throw new ErrorNegocio("Cliente no encontrado", 404);
     return c;
   });
@@ -449,7 +451,7 @@ export async function rutasPortal(app: FastifyInstance) {
 
   app.get("/central/portal/clientes", async () => {
     const r = await pool.query(
-      `SELECT c.id, c.slug, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
+      `SELECT c.id, c.slug, c.codigo, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
               l.id AS "licenciaId", l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado AS "estadoLicencia",
               l.clave_pista AS "clavePista", l.instalacion_id IS NOT NULL AS activada, l.activada_en AS "activadaEn",
               l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso",
@@ -1027,7 +1029,14 @@ async function rutasPaginas(app: FastifyInstance) {
 
   // Clientes
   const cliente = async (slug: string) =>
-    slugValido(slug) ? (await pool.query("SELECT nombre, slug, api_url FROM portal_clientes WHERE slug = $1 AND activo", [slug])).rows[0] : null;
+    slugValido(slug) ? (await pool.query("SELECT nombre, slug, codigo, api_url FROM portal_clientes WHERE slug = $1 AND activo", [slug])).rows[0] : null;
+  /** factpos.app/c/FP-K7M4QX → la administración de esa empresa (lo que usan las apps FactPOS Admin con el código corto) */
+  app.get("/c/:codigo", async (req, rep) => {
+    const codigo = String((req.params as { codigo: string }).codigo).toUpperCase();
+    const c = CODIGO_CONEXION.test(codigo) ? (await pool.query("SELECT slug FROM portal_clientes WHERE codigo = $1 AND activo", [codigo])).rows[0] : null;
+    if (!c) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
+    return rep.redirect(`/${c.slug}/`);
+  });
   app.get("/:slug", async (req, rep) => {
     const { slug } = req.params as { slug: string };
     if (!(await cliente(slug.toLowerCase()))) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
@@ -1040,7 +1049,7 @@ async function rutasPaginas(app: FastifyInstance) {
     if (!c) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
     if (resto && resto !== "index.html") return archivo(rep, resto) ?? rep.code(404).send({ error: "No encontrado" });
     if (!c.api_url) return rep.type("text/html; charset=utf-8").send(sinNube(c.nombre));
-    return pagina(rep, { modo: "cliente", slug: c.slug, cliente: c.nombre, api: c.api_url });
+    return pagina(rep, { modo: "cliente", slug: c.slug, codigo: c.codigo, cliente: c.nombre, api: c.api_url });
   });
 }
 

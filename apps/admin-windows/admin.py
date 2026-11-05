@@ -28,8 +28,8 @@ button{margin-top:18px;width:100%;font-size:20px;font-weight:700;padding:13px;bo
 #e{color:#c0362c;font-weight:700;min-height:1.2em;margin-top:10px}
 </style></head><body><form id="f">
 <h1>FactPOS Admin</h1>
-<p>Escribe el nombre corto de tu empresa en FactPOS (el de factpos.app/<b>nombre</b>) o la dirección completa de tu administración.</p>
-<input id="v" placeholder="nombre-de-la-empresa" autofocus value="__VALOR__">
+<p>Escribe el <b>código de conexión</b> de tu empresa (por ejemplo <b>FP-K7M4QX</b>). Lo encuentras en Sistema › Acceso remoto. También sirve el nombre corto (factpos.app/<b>nombre</b>) o la dirección completa.</p>
+<input id="v" placeholder="FP-XXXXXX" autofocus value="__VALOR__">
 <div id="e"></div><button type="submit">Conectar</button></form>
 <script>
 document.getElementById("f").addEventListener("submit", async (ev) => {
@@ -49,9 +49,18 @@ def leer_empresa():
         return ""
 
 
+def codigo_de(texto):
+    """Código de conexión corto (FP-K7M4QX), con o sin guion y en mayúsculas o minúsculas; None si no lo es."""
+    m = re.fullmatch(r"FP-?([2-9A-HJKMNP-Z]{6})", re.sub(r"\s", "", str(texto)).upper())
+    return "FP-" + m.group(1) if m else None
+
+
 def direccion(empresa):
     if not empresa:
         return None
+    codigo = codigo_de(empresa)
+    if codigo:
+        return PORTAL + "c/" + codigo
     if empresa.startswith(("http://", "https://")):
         return empresa
     if "." in empresa:
@@ -90,7 +99,7 @@ def empresa_del_enlace():
     for a in sys.argv[1:]:
         if a.lower().startswith("factpos-admin:"):
             e = a.rstrip("/").split("/")[-1].strip().lower()
-            if re.fullmatch(r"[a-z0-9.-]{2,60}", e):
+            if re.fullmatch(r"[a-z0-9.-]{2,60}", e) or codigo_de(e):
                 return e
     return ""
 

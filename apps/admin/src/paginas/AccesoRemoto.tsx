@@ -34,6 +34,10 @@ function EnlaceInstalacion() {
   return (
     <div className="panel">
       <h3 style={{ marginTop: 0 }}>Instalar la app en un celular o PC</h3>
+      {CONFIG.codigo && (
+        <p style={{ margin: "0 0 12px" }}>Código de conexión de tu empresa: <b className="mono" style={{ fontSize: 22, letterSpacing: 2 }}>{CONFIG.codigo}</b>
+          <span className="suave pequeno"> · escríbelo en FactPOS Admin (Windows o Android) en lugar del nombre de la página.</span></p>
+      )}
       <p className="suave pequeno">Envía este enlace (o muestra el QR) a quien vaya a usar la app. Descarga la app y la deja conectada a tu empresa, sin escribir nada.</p>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         {img && <img src={img} alt="QR de instalación" width={150} height={150} />}

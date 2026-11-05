@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
         Uri u = i == null ? null : i.getData();
         if (u == null || !"factpos-admin".equals(u.getScheme())) return;
         String e = u.getLastPathSegment();
-        if (e != null && e.matches("[a-z0-9.-]{2,60}")) prefs.edit().putString("empresa", e).apply();
+        if (e != null && (e.matches("[a-z0-9.-]{2,60}") || e.toUpperCase().matches("FP-?[2-9A-HJKMNP-Z]{6}"))) prefs.edit().putString("empresa", e).apply();
     }
 
     @Override protected void onNewIntent(Intent i) {
@@ -120,6 +120,9 @@ public class MainActivity extends Activity {
     private String direccion() {
         String e = prefs.getString("empresa", "").trim();
         if (e.isEmpty()) return null;
+        // Código de conexión corto (FP-K7M4QX), con o sin guion y en mayúsculas o minúsculas
+        String codigo = e.toUpperCase().replaceAll("\\s", "");
+        if (codigo.matches("FP-?[2-9A-HJKMNP-Z]{6}")) return PORTAL + "c/FP-" + codigo.substring(codigo.length() - 6);
         if (e.startsWith("http://") || e.startsWith("https://")) return e;
         if (e.contains(".")) return "https://" + e;
         return PORTAL + e + "/";
@@ -135,11 +138,11 @@ public class MainActivity extends Activity {
     private void pedirEmpresa(boolean cancelable) {
         EditText t = new EditText(this);
         t.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        t.setHint("nombre-de-la-empresa");
+        t.setHint("FP-XXXXXX");
         t.setText(prefs.getString("empresa", ""));
         AlertDialog.Builder a = new AlertDialog.Builder(this)
             .setTitle("¿A qué empresa te conectas?")
-            .setMessage("Escribe el nombre corto de tu empresa en FactPOS (el de factpos.app/nombre) o la dirección completa de tu administración.")
+            .setMessage("Escribe el código de conexión de tu empresa (por ejemplo FP-K7M4QX); lo encuentras en Sistema › Acceso remoto. También sirve el nombre corto (factpos.app/nombre) o la dirección completa.")
             .setView(t).setCancelable(cancelable)
             .setPositiveButton("Conectar", (x, y) -> {
                 String v = t.getText().toString().trim().toLowerCase().replace(" ", "");
