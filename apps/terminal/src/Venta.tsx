@@ -87,6 +87,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   /** Tipo de comprobante de esta venta (Consumo por defecto) */
   const [tipoComp, setTipoComp] = useState<TipoComprobante>(config.funciones?.sinComprobante ? "SIN" : "E32");
   const volverACobro = useRef(false);
+  /** El cajero cerró la búsqueda de cliente sin elegir: al volver al cobro no se abre otra vez sola (sería imposible cerrarla) */
+  const clienteOmitido = useRef(false);
   const [pedidoActivo, setPedidoActivo] = useState<{ id: string; numero: string } | null>(null);
   const [cupon, setCupon] = useState<Cupon | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -739,7 +741,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <Buscar catalogo={catalogo} inicial="" nivel={nivelPrecio} consulta onElegir={() => {}} onCerrar={() => setModal(null)} />
       )}
       {modal === "cliente" && (
-        <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} fiscal={volverACobro.current && requiereDocumento(tipoComp)} onElegir={(c) => { setCliente(c); if (c.nuevoParaFiscal && tipoComp === "E32") setTipoComp("E31"); setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} onCerrar={() => { setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} />
+        <ClientesCaja ajustes={ajustes} usuario={usuario} config={config} fiscal={volverACobro.current && requiereDocumento(tipoComp)} onElegir={(c) => { clienteOmitido.current = false; setCliente(c); if (c.nuevoParaFiscal && tipoComp === "E32") setTipoComp("E31"); setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} onCerrar={() => { clienteOmitido.current = volverACobro.current; setModal(volverACobro.current ? "cobro" : null); volverACobro.current = false; }} />
       )}
       {modal === "cupon" && (
         <PedirCupon ajustes={ajustes} clienteId={cliente?.id}
@@ -757,7 +759,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           onCliente={(c) => { setCliente(c); }}
           onBuscarCliente={() => { volverACobro.current = true; setModal("cliente"); }}
           onMetodo={setMetodo}
-          onCerrar={() => setModal(null)}
+          pedirClienteAlAbrir={!clienteOmitido.current}
+          onCerrar={() => { clienteOmitido.current = false; setModal(null); }}
           alFallar={conTope ? () => { cargarCatalogo().catch(() => {}); } : undefined}
           local={{
             lineas: cot.r.lineas.map((c, i) => ({
@@ -772,6 +775,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           }}
           permitirSin={!!config.funciones?.sinComprobante}
           onVendido={(r, op) => {
+            clienteOmitido.current = false;
             const ped = pedidoActivo;
             if (ped) { // el pedido queda facturado; si falla el aviso se reintenta unas veces
               const avisarFacturado = (n: number) => api(ajustes.servidor, `/cajas/${ajustes.cajaId}/pedidos/${ped.id}/facturado`, { cuerpo: { ventaId: r.id } })

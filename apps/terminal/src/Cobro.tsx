@@ -29,7 +29,7 @@ export interface CobroLocal {
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
@@ -51,6 +51,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   onBuscarCliente: () => void;
   /** Recuerda la forma de pago elegida (se pierde al salir a buscar el cliente) */
   onMetodo?: (m: MetodoPago) => void;
+  /** Abrir sola la búsqueda de clientes al entrar al cobro si el e-CF/NCF lo exige. Falso si el cajero ya la cerró sin elegir (si no, no se podría cerrar). */
+  pedirClienteAlAbrir?: boolean;
 }) {
   const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
   const [forma, setForma] = useState<MetodoPago>(metodo);
@@ -103,7 +105,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   // e-CF y NCF exigen cliente: si falta, se abre sola la ventana de clientes (al elegirlos y al abrir el cobro)
   const pedirCliente = () => { if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) onBuscarCliente(); };
   const pidioCliente = useRef(false);
-  useEffect(() => { if (pidioCliente.current) return; pidioCliente.current = true; pedirCliente(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (pidioCliente.current) return; pidioCliente.current = true; if (pedirClienteAlAbrir) pedirCliente(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const elegirTipo = (t: TipoComprobante) => { onTipo(t); if (t !== "SIN" && !sinServidor && !tieneDocumentoFiscal(cliente)) onBuscarCliente(); };
 
   const cobrar = async () => {
