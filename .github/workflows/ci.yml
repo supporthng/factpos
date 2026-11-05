@@ -33,3 +33,5 @@ jobs:
       - run: npm test
       - name: Aplicar migraciones a una base limpia
         run: npm run db:migrar
+      - name: Prueba de restauración de respaldos
+        run: node scripts/prueba-restauracion.cjs
