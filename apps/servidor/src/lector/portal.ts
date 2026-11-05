@@ -129,12 +129,16 @@ export async function rutasPortalLector(app: FastifyInstance) {
         gratis: async () => {
           // Si el modelo principal está saturado (503) o sin cupo (429), se prueba el de respaldo antes de rendirse
           let ultimo = "Gemini no respondió";
-          for (const modelo of modelosGratis()) {
+          const hasta = Date.now() + 52_000;
+          const turnos = modelosGratis().flatMap((m) => [m, m, m]); // cada modelo hasta 3 veces (con pausa) si responde saturado
+          for (const [n, modelo] of turnos.entries()) {
+            if (Date.now() > hasta) break;
+            if (n > 0 && turnos[n - 1] === modelo) await new Promise((r) => setTimeout(r, 2500));
             const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
               method: "POST",
               headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
               body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema })),
-              signal: AbortSignal.timeout(28_000),
+              signal: AbortSignal.timeout(25_000),
             }).catch((e) => { ultimo = `${modelo}: ${(e as Error).message}`; return null; });
             if (!r) continue;
             const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };

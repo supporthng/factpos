@@ -56,8 +56,8 @@ describe("respuesta de Gemini", () => {
 
 describe("modelos gratuitos", () => {
   it("principal y respaldo, sin repetir", () => {
-    expect(modelosGratis({})).toEqual(["gemini-3.8-flash", "gemini-2.5-flash"]);
+    expect(modelosGratis({})).toEqual(["gemini-3.8-flash"]);
+    expect(modelosGratis({ LECTOR_MODELO_GRATIS_RESPALDO: "otro" })).toEqual(["gemini-3.8-flash", "otro"]);
     expect(modelosGratis({ LECTOR_MODELO_GRATIS: "x", LECTOR_MODELO_GRATIS_RESPALDO: "x" })).toEqual(["x"]);
-    expect(modelosGratis({ LECTOR_MODELO_GRATIS_RESPALDO: "" })).toEqual(["gemini-3.8-flash"]);
   });
 });
