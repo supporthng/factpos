@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CONFIG, fijarDispositivo, leerDispositivo } from "./api";
 
 /**
@@ -10,9 +10,12 @@ const GUARDADO = "factpos.dispositivo.nombre";
 
 export function SolicitarDispositivo({ servidor, estado }: { servidor: string; estado: string }) {
   const base = servidor.replace(/\/$/, "");
-  const [nombre, setNombre] = useState(() => { try { return localStorage.getItem(GUARDADO) || ""; } catch { return ""; } });
+  const [nombreEstado, setNombre] = useState(() => { try { return localStorage.getItem(GUARDADO) || ""; } catch { return ""; } });
   const [espera, setEspera] = useState<string>(estado === "PENDIENTE" ? "PENDIENTE" : estado === "DENEGADO" || estado === "REVOCADO" ? estado : "");
   const [error, setError] = useState("");
+  // El navegador del celular a veces rellena el campo (autocompletado, dictado, sugerencias) sin avisar a React:
+  // por eso el nombre se lee del propio campo al tocar «Pedir acceso», no solo del estado.
+  const campo = useRef<HTMLInputElement>(null);
 
   const consultar = async () => {
     try {
@@ -30,10 +33,11 @@ export function SolicitarDispositivo({ servidor, estado }: { servidor: string; e
 
   const solicitar = async () => {
     setError("");
-    if (!nombre.trim()) { setError("Escribe un nombre para reconocer este equipo (por ejemplo: Celular de Juan)."); return; }
+    const nombre = (campo.current?.value ?? nombreEstado).trim();
+    if (!nombre) { setError("Escribe un nombre para reconocer este equipo (por ejemplo: Celular de Juan)."); return; }
     try {
-      try { localStorage.setItem(GUARDADO, nombre.trim()); } catch { /* sin almacenamiento */ }
-      const r = await fetch(base + "/central/dispositivo/solicitar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nombre: nombre.trim(), plataforma: plataforma() }) });
+      try { localStorage.setItem(GUARDADO, nombre); } catch { /* sin almacenamiento */ }
+      const r = await fetch(base + "/central/dispositivo/solicitar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nombre, plataforma: plataforma() }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "No se pudo pedir el acceso");
       fijarDispositivo(d.dispositivo);
@@ -59,7 +63,7 @@ export function SolicitarDispositivo({ servidor, estado }: { servidor: string; e
         </>) : (<>
           <p><b>Este equipo necesita autorización.</b></p>
           <p>Ponle un nombre y pide acceso. Un administrador lo autoriza una sola vez.</p>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Celular de Juan" maxLength={60}
+          <input ref={campo} value={nombreEstado} onChange={(e) => setNombre(e.target.value)} onInput={(e) => setNombre((e.target as HTMLInputElement).value)} onBlur={(e) => setNombre(e.target.value)} autoComplete="off" autoCapitalize="words" placeholder="Celular de Juan" maxLength={60}
             style={{ width: "100%", fontSize: 18, padding: 12, border: "2px solid #cfd8e0", borderRadius: 10, boxSizing: "border-box" }} />
           {error && <p style={{ color: "#c0362c", fontWeight: 700 }}>{error}</p>}
           <button className="boton primario" style={{ marginTop: 14, width: "100%" }} onClick={solicitar}>Pedir acceso</button>
