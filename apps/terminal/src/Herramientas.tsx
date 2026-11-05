@@ -9,6 +9,7 @@ import { PinSupervisor, type Aprobacion } from "./Operaciones";
 import { EncabezadoTicket } from "./Ticket";
 import { estadoPrincipal, fijarPrincipal } from "./contingencia";
 import { leerAjustes } from "./api";
+import { imprimir } from "./imprimir";
 
 /**
  * Herramientas de la pantalla de venta: cambiar precio, descuento a toda la
@@ -146,7 +147,7 @@ export function Cotizacion({ config, usuario, cliente, lineas, totales, notas, o
   const vence = new Date(hoy.getTime() + dias * 86400e3);
   const f = (d: Date) => d.toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo", day: "2-digit", month: "2-digit", year: "numeric" });
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); window.print(); } };
+    const h = (e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); imprimir(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
@@ -188,7 +189,7 @@ export function Cotizacion({ config, usuario, cliente, lineas, totales, notas, o
         </div>
         <div className="acciones-ticket">
           <button className="boton fantasma" onClick={onCerrar}>Seguir vendiendo</button>
-          <button className="boton primario" onClick={() => window.print()}>Imprimir (Enter)</button>
+          <button className="boton primario" onClick={() => imprimir()}>Imprimir (Enter)</button>
         </div>
       </div>
     </div>
@@ -250,7 +251,7 @@ export function AbrirGaveta({ ajustes, usuario, onListo, onCerrar }: { ajustes: 
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/gaveta`, { cuerpo: { usuarioId: usuario.id, motivo: motivo.trim(), autorizacion: a.token } });
       onListo(a.supervisor);
       // El ticket mínimo hace que la impresora abra la gaveta
-      setTimeout(() => window.print(), 50);
+      setTimeout(() => imprimir(), 50);
     } catch (e) { setMsg((e as Error).message); }
   };
   return (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Ajustes } from "./api";
 import { Modal } from "./Venta";
+import { imprimir } from "./imprimir";
 
 /**
  * Pedidos de clientes (venta al por mayor) que la oficina envió a esta caja como comanda.
@@ -26,7 +27,7 @@ export function PanelPedidos({ ajustes, onFacturar, onCerrar }: { ajustes: Ajust
     if (!paraImprimir) return;
     const fin = () => setParaImprimir(null);
     window.addEventListener("afterprint", fin, { once: true });
-    const t = setTimeout(() => window.print(), 60);   // espera a que la hoja esté en la página
+    const t = setTimeout(() => imprimir(), 60);   // espera a que la hoja esté en la página
     const tope = setTimeout(fin, 120000);
     return () => { clearTimeout(t); clearTimeout(tope); window.removeEventListener("afterprint", fin); };
   }, [paraImprimir]);

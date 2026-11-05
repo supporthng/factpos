@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { rd } from "./api";
 import type { ConfigCaja, Usuario } from "./App";
+import { imprimir } from "./imprimir";
 
 export interface VentaRegistrada {
   id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "ANU" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN"; numeroDocumento?: string | null; fecha: string;
@@ -76,7 +77,7 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
     const t = window.setTimeout(() => {
       if (impreso.current) return;
       impreso.current = true;
-      window.print();
+      imprimir();
       window.setTimeout(onCerrar, 500);
     }, 150);
     return () => window.clearTimeout(t);
@@ -85,7 +86,7 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
   useEffect(() => {
     if (auto) return;
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Enter") { e.preventDefault(); window.print(); }
+      if (e.key === "Enter") { e.preventDefault(); imprimir(); }
       if (e.key === "Escape") onCerrar();
     };
     window.addEventListener("keydown", h);
@@ -155,7 +156,7 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
         </div>
         <div className="acciones-ticket">
           <button className="boton fantasma" onClick={onCerrar}>Nueva venta (Esc)</button>
-          <button className="boton primario" onClick={() => window.print()}>Imprimir (Enter)</button>
+          <button className="boton primario" onClick={() => imprimir()}>Imprimir (Enter)</button>
         </div>
       </div>
     </div>

@@ -195,6 +195,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     }
   }, [catalogo, lineas, cupon, nivelCliente, nivelPrecio, descNivelPct]);
 
+  // Confirmación de venta: grande y al centro; se quita sola a los 10 s o al tocar la pantalla
+  const [confirmacion, setConfirmacion] = useState<{ titulo: string; cambio: string | null; nota: string | null } | null>(null);
+  useEffect(() => {
+    if (!confirmacion) return;
+    const t = setTimeout(() => setConfirmacion(null), 10_000);
+    return () => clearTimeout(t);
+  }, [confirmacion]);
   const avisar = (texto: string, tipo: "error" | "ok" = "error") => {
     setAviso({ texto, tipo });
     setTimeout(() => setAviso((a) => (a?.texto === texto ? null : a)), 5000);
@@ -722,6 +729,16 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       </footer>
 
       {aviso && <div className={"aviso " + aviso.tipo}>{aviso.texto}</div>}
+      {confirmacion && (
+        <div className="confirmacion-venta" role="status" aria-live="polite" onPointerDown={() => setConfirmacion(null)}>
+          <div>
+            <span className="titulo">✓ {confirmacion.titulo}</span>
+            {confirmacion.cambio && <><span className="etiqueta">Cambio</span><span className="cambio">{confirmacion.cambio}</span></>}
+            {confirmacion.nota && <span className="nota">{confirmacion.nota}</span>}
+            <small>Toque la pantalla para cerrar</small>
+          </div>
+        </div>
+      )}
       {ofertasAcabadas.length > 0 && (
         <AvisoOfertaAgotada ofertas={ofertasAcabadas} onCerrar={() => setOfertasAcabadas([])} />
       )}
@@ -784,8 +801,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             }
             setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta();
             setModal(null);
-            if (op?.sinImprimir) avisar("Venta registrada · comprobante no impreso (puede usar Reimprimir última)", "ok");
-            else { setTicketAuto(r); avisar(`Venta registrada${Number(r.cambio) > 0 ? ` · Cambio ${rd(r.cambio)}` : ""}`, "ok"); }
+            if (op?.sinImprimir) setConfirmacion({ titulo: "Venta registrada", cambio: null, nota: "Comprobante no impreso (puede usar Reimprimir última)" });
+            else { setTicketAuto(r); setConfirmacion({ titulo: "Venta registrada", cambio: Number(r.cambio) > 0 ? rd(r.cambio) : null, nota: null }); }
             existenciasRef.current().catch(() => {}); }}
         />
       )}
