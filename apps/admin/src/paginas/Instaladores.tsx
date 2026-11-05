@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, CONFIG } from "../api";
-import { Aviso, Encabezado } from "../ui";
+import { Aviso, Encabezado, versionCliente } from "../ui";
 
 /** Todos los instaladores de FactPOS en un solo lugar. */
 interface Item { titulo: string; para: string; plataforma: string; descarga: { tipo: "portal" | "principal"; so?: string; variante?: "caja" } }
@@ -42,7 +42,7 @@ export function Instaladores() {
       ancla.href = r.url; ancla.rel = "noopener"; ancla.download = r.nombre ?? ""; ancla.style.display = "none";
       document.body.appendChild(ancla); ancla.click(); ancla.remove();
       setEnlace(r.url);
-      setMsg({ t: `Descargando el instalador${r.version ? ` de la versión ${r.version}` : ""}…`, tipo: "ok" });
+      setMsg({ t: `Descargando el instalador${r.version ? ` de la versión ${versionCliente(r.version)}` : ""}…`, tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     finally { setTrabajando(null); }
   };

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
 import { ultimaVersion, urlDescarga } from "./portal.js";
+import { versionCliente } from "./version.js";
 
 /**
  * Invitaciones del portal: el proveedor manda por WhatsApp un mensaje para conocer FactPOS.
@@ -171,7 +172,7 @@ main{max-width:1040px;margin:0 auto;padding:10px 20px 40px}
     <button class="btn sec" onclick="irTour()">▶ Ver recorrido</button>
     ${wa ? `<a class="btn sec" href="${wa}">💬 Escribirnos por WhatsApp</a>` : ""}
   </div>
-  <p class="peq">${o.version ? `Versión ${o.version} · ` : ""}Windows 10 u 11 · Sin tarjeta · Sus datos se quedan en su equipo</p>
+  <p class="peq">${o.version ? `Versión ${versionCliente(o.version)} · ` : ""}Windows 10 u 11 · Sin tarjeta · Sus datos se quedan en su equipo</p>
 </section>
 <main>
 <div class="tour" id="tour">
