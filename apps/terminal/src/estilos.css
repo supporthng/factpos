@@ -954,3 +954,4 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-mas button:last-child { border-bottom: 0; }
 .pv-mas button:hover:not(:disabled) { background: #f6f4ee; }
 .pv-mas button:disabled { opacity: .45; }
+.pv-quitar{font-size:22px;line-height:1;width:36px;height:36px}

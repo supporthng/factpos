@@ -650,14 +650,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                   <span className="der">{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
                   <span className={"der" + (desc > 0 ? " pv-ahorro" : " suave")}>{desc > 0 ? `−${rd(desc.toFixed(2))}` : "—"}</span>
                   <span className="der fuerte">{c ? rd(c.calc.total) : "—"}</span>
-                  <button className="pv-quitar" aria-label={`Quitar ${l.prod.nombre}`} title="Quitar (Supr)" onClick={(e) => { e.stopPropagation(); quitar(i); }}><Icono n="basura" /></button>
+                  <button className="pv-quitar" aria-label={`Quitar ${l.prod.nombre}`} title="Quitar (Supr)" onClick={(e) => { e.stopPropagation(); quitar(i); }}>×</button>
                 </div>
               );
             })}
           </div>
 
           <div className="pv-acciones-linea" aria-label="Acciones de la línea seleccionada">
-            <button className="boton fantasma" disabled={!hayLinea} onClick={() => sel >= 0 && quitar(sel)}><Icono n="basura" />Quitar <kbd>Supr</kbd></button>
             <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.esPesable} onClick={() => { const q = document.querySelector(".pv-fila.seleccionada .celda-cantidad input") as HTMLInputElement | null; q?.focus(); q?.select(); if (q) window.dispatchEvent(new CustomEvent("factpos-teclado", { detail: q })); }}>
               <Icono n="editar" />Cantidad <kbd>+</kbd><kbd>−</kbd>
             </button>
