@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { Decimal } from "decimal.js";
 import { uuidv7 } from "@factpos/compartido";
 import { ErrorNegocio } from "../db.js";
+import { errorPagoAFactura, repartirACuenta, type ParteAbono } from "./cxc-reparto.js";
 
 export interface AbonoParams {
   clienteId: string; sucursalId: string; usuarioId: string; turnoId?: string | null;
@@ -17,26 +18,18 @@ export interface Aplicacion { id: string; ventaId: string | null; monto: string 
  * (p. ej. deuda por ajustes) queda como abono «a la cuenta» (venta_id NULL). Devuelve las partes creadas.
  */
 export async function aplicarAbono(c: PoolClient, p: AbonoParams): Promise<Aplicacion[]> {
-  const partes: { ventaId: string | null; monto: Decimal }[] = [];
+  let partes: ParteAbono[];
   if (p.modo === "FACTURA") {
     if (!p.ventaId) throw new ErrorNegocio("Elija la factura a la que se aplica el pago");
     const f = await c.query<{ pendiente: string }>("SELECT pendiente FROM rpt_cxc_facturas WHERE cliente_id = $1 AND venta_id = $2", [p.clienteId, p.ventaId]);
     if (!f.rowCount) throw new ErrorNegocio("Esa factura no es una factura a crédito de este cliente");
-    const pendiente = new Decimal(f.rows[0].pendiente);
-    if (pendiente.lte(0)) throw new ErrorNegocio("Esa factura ya está pagada");
-    if (p.monto.gt(pendiente)) throw new ErrorNegocio(`La factura debe ${pendiente.toFixed(2)}: el pago no puede ser mayor`);
-    partes.push({ ventaId: p.ventaId, monto: p.monto });
+    const error = errorPagoAFactura(f.rows[0].pendiente, p.monto);
+    if (error) throw new ErrorNegocio(error);
+    partes = [{ ventaId: p.ventaId, monto: p.monto }];
   } else {
     const fs = await c.query<{ venta_id: string; pendiente: string }>(
       "SELECT venta_id, pendiente FROM rpt_cxc_facturas WHERE cliente_id = $1 AND pendiente > 0 ORDER BY creado_en, venta_id", [p.clienteId]);
-    let resto = p.monto;
-    for (const f of fs.rows) {
-      if (resto.lte(0)) break;
-      const parte = Decimal.min(resto, new Decimal(f.pendiente));
-      partes.push({ ventaId: f.venta_id, monto: parte });
-      resto = resto.minus(parte);
-    }
-    if (resto.gt(0)) partes.push({ ventaId: null, monto: resto });
+    partes = repartirACuenta(fs.rows.map((f) => ({ ventaId: f.venta_id, pendiente: f.pendiente })), p.monto);
   }
   const hechas: Aplicacion[] = [];
   for (const parte of partes) {

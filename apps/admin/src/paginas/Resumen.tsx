@@ -16,6 +16,7 @@ interface Atencion {
   secuencias: { sucursal: string; tipo: string; disponibles: string; alerta: number }[];
   correosConError: number;
   vencimientos?: { vencidos: number; valorVencido: string; proximos: number };
+  creditoVencido?: { facturas: number; clientes: number; valor: string };
   respaldos?: { ultimo: string | null; copiasConError: number };
 }
 type Tono = "grave" | "aviso";
@@ -60,6 +61,7 @@ export function Resumen() {
     }
     if (a.vencimientos?.vencidos) puntos.push({ tono: "grave", texto: `${a.vencimientos.vencidos} lote(s) VENCIDO(S) siguen en existencia (${rd(a.vencimientos.valorVencido)} al costo): retírelos con un ajuste por vencimiento`, ir: "reportes", accion: "Ver vencidos" });
     if (a.vencimientos?.proximos) puntos.push({ tono: "aviso", texto: `${a.vencimientos.proximos} lote(s) vencen en los próximos 15 días`, ir: "reportes", accion: "Ver lotes" });
+    if (a.creditoVencido?.facturas) puntos.push({ tono: "aviso", texto: `${a.creditoVencido.facturas} factura(s) a crédito vencida(s) de ${a.creditoVencido.clientes} cliente(s): ${rd(a.creditoVencido.valor)} por cobrar`, ir: "cxc", accion: "Ver cuentas por cobrar" });
     if (a.respaldos) {
       const horas = a.respaldos.ultimo ? (Date.now() - new Date(a.respaldos.ultimo).getTime()) / 3600e3 : null;
       if (horas === null) puntos.push({ tono: "grave", texto: "Todavía no hay ningún respaldo de la base de datos", ir: "respaldos", accion: "Hacer respaldo" });
