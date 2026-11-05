@@ -25,33 +25,44 @@ const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
  * supervisor. Se registra como un descuento aprobado, con su motivo, para que
  * la factura, el ITBIS y la auditoría cuadren.
  */
-export function CambiarPrecio({ ajustes, nombre, cantidad, precioActual, onAplicar, onCerrar }: {
+export function CambiarPrecio({ ajustes, nombre, cantidad, precioActual, niveles, onAplicar, onCerrar }: {
   ajustes: Ajustes; nombre: string; cantidad: string; precioActual: string;
+  /** Los precios que el producto tiene en el sistema (1, 2 y 3): son los únicos que se pueden aplicar */
+  niveles: { nivel: string; precio: string }[];
   onAplicar: (nuevo: string, descuento: string, motivo: string, a: Aprobacion) => void; onCerrar: () => void;
 }) {
-  const [nuevo, setNuevo] = useState("");
+  const [elegido, setElegido] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
-  const n = Number(nuevo || 0), actual = Number(precioActual);
+  const actual = Number(precioActual);
+  const sel = niveles.find((x) => x.nivel === elegido) ?? null;
+  const n = Number(sel?.precio ?? 0);
   const descuento = Math.max(0, (actual - n) * Number(cantidad));
-  const problema = !nuevo ? "" : n <= 0 ? "El precio debe ser mayor que cero"
-    : n >= actual ? "Desde la caja solo se puede bajar el precio. Para subirlo, cámbielo en la Administración." : "";
-  const valido = !!nuevo && !problema;
   return (
     <Modal titulo="Cambiar precio" onCerrar={onCerrar}>
       <p className="suave">{nombre} · {cantidad} × {rd(precioActual)}</p>
-      <div className="dos-columnas">
-        <label className="campo"><span>Precio nuevo (por unidad)</span>
-          <input autoFocus className="entrada-grande" inputMode="decimal" value={nuevo} placeholder={precioActual}
-            onChange={(e) => setNuevo(e.target.value.replace(/[^\d.]/g, ""))} />
-        </label>
+      <p className="suave">Solo se puede aplicar uno de los precios del sistema, y con autorización. Desde la caja solo se puede bajar el precio.</p>
+      <div className="selector-nivel" role="radiogroup" aria-label="Precio del sistema">
+        {niveles.map((x) => {
+          const menor = Number(x.precio) < actual;
+          return (
+            <button key={x.nivel} role="radio" aria-checked={elegido === x.nivel} className={elegido === x.nivel ? "activo" : ""} disabled={!menor}
+              title={menor ? "" : x.precio === precioActual ? "Es el precio actual" : "Desde la caja solo se puede bajar el precio"}
+              onClick={() => setElegido(x.nivel)}>
+              Precio {x.nivel}<br /><b>{rd(x.precio)}</b>
+            </button>
+          );
+        })}
+      </div>
+      {!niveles.some((x) => Number(x.precio) < actual) && <p className="error">Este producto no tiene un precio menor al actual.</p>}
+      {sel && (
         <label className="campo"><span>Motivo (opcional)</span>
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej. precio de la góndola" />
         </label>
-      </div>
-      {problema ? <p className="error">{problema}</p> : nuevo && <p>Rebaja en la línea: <b>{rd(descuento.toFixed(2))}</b></p>}
-      {valido && (
+      )}
+      {sel && <p>Rebaja en la línea: <b>{rd(descuento.toFixed(2))}</b></p>}
+      {sel && (
         <PinSupervisor ajustes={ajustes} permiso="venta.descuento" textoBoton="Aprobar precio"
-          onAprobado={(a) => onAplicar(n.toFixed(2), descuento.toFixed(2), `Precio cambiado de ${rd(precioActual)} a ${rd(n.toFixed(2))}${motivo.trim() ? `: ${motivo.trim()}` : ""}`, a)} />
+          onAprobado={(a) => onAplicar(n.toFixed(2), descuento.toFixed(2), `Precio ${sel.nivel}: de ${rd(precioActual)} a ${rd(n.toFixed(2))}${motivo.trim() ? `: ${motivo.trim()}` : ""}`, a)} />
       )}
     </Modal>
   );

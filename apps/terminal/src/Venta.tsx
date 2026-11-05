@@ -891,6 +891,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       )}
       {modal === "cambiarPrecio" && hayLinea && (
         <CambiarPrecio ajustes={ajustes} nombre={lineas[sel].prod.nombre} cantidad={lineas[sel].cantidad} precioActual={precioDe(lineas[sel])}
+          niveles={Object.entries(lineas[sel].prod.precios).sort(([x], [y]) => Number(x) - Number(y)).slice(0, 3).map(([nivel, precio]) => ({ nivel, precio }))}
           onAplicar={(nuevo, descuento, motivo, a) => {
             setLineas((ls) => ls.map((x, j) => (j === sel ? { ...x, precioCambiado: nuevo, descuentoManual: descuento, motivoDescuento: motivo } : x)));
             setAprobacion(a);
