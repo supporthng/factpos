@@ -8,6 +8,9 @@ import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import webview
 
@@ -30,13 +33,25 @@ button{margin-top:18px;width:100%;font-size:20px;font-weight:700;padding:13px;bo
 <h1>FactPOS Admin</h1>
 <p>Escribe el <b>código de conexión</b> de tu empresa (por ejemplo <b>FP-K7M4QX</b>). Lo encuentras en Sistema › Acceso remoto. También sirve el nombre corto (factpos.app/<b>nombre</b>) o la dirección completa.</p>
 <input id="v" placeholder="FP-XXXXXX" autofocus value="__VALOR__">
-<div id="e"></div><button type="submit">Conectar</button></form>
+<div id="e"></div><button type="submit" id="b">Conectar</button></form>
 <script>
 document.getElementById("f").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const v = document.getElementById("v").value.trim().toLowerCase().replace(/\\s+/g, "");
   if (!v) { document.getElementById("e").textContent = "Escribe el nombre de la empresa."; return; }
-  await window.pywebview.api.guardar(v);
+  const b = document.getElementById("b"), e = document.getElementById("e");
+  b.disabled = true; b.textContent = "Conectando…"; e.textContent = "";
+  const volver = (t) => { e.textContent = t; b.disabled = false; b.textContent = "Conectar"; };
+  // Si el puente con la app no responde, se abre la dirección directamente (no se guarda para la próxima vez)
+  const directo = () => {
+    const c = v.toUpperCase().replace(/-/g, "").match(/^FP([2-9A-HJKMNP-Z]{6})$/);
+    location.href = c ? "https://factpos.app/c/FP-" + c[1] : /^https?:/.test(v) ? v : v.includes(".") ? "https://" + v : "https://factpos.app/" + v + "/";
+  };
+  try {
+    if (!(window.pywebview && window.pywebview.api && window.pywebview.api.guardar)) { directo(); return; }
+    const r = await window.pywebview.api.guardar(v);
+    if (r && r.error) volver(r.error);
+  } catch (x) { volver("No se pudo conectar: " + x); }
 });
 </script></body></html>"""
 
@@ -68,14 +83,45 @@ def direccion(empresa):
     return PORTAL + empresa + "/"
 
 
+class _SinRedireccion(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def resolver_codigo(codigo, portal=None):
+    """Pregunta al portal a qué administración corresponde el código: devuelve su dirección, o None si no existe.
+    Si el portal no responde lanza la excepción (para decirle al usuario qué pasó en vez de quedarse callado)."""
+    base = portal or PORTAL
+    abrir = urllib.request.build_opener(_SinRedireccion).open
+    try:
+        abrir(urllib.request.Request(base + "c/" + codigo, headers={"User-Agent": "FactPOSAdmin/" + VERSION}), timeout=15)
+    except urllib.error.HTTPError as e:
+        if e.code in (301, 302, 303, 307, 308) and e.headers.get("Location"):
+            return urllib.parse.urljoin(base, e.headers["Location"])
+        if e.code == 404:
+            return None
+        raise
+    return None
+
+
 class Api:
     ventana = None
 
     def guardar(self, empresa):
-        os.makedirs(CARPETA, exist_ok=True)
-        with open(CONFIG, "w", encoding="utf-8") as f:
-            json.dump({"empresa": empresa}, f)
-        self.ventana.load_url(direccion(empresa))
+        try:
+            destino = direccion(empresa)
+            codigo = codigo_de(empresa)
+            if codigo:
+                destino = resolver_codigo(codigo)
+                if not destino:
+                    return {"error": "No encontramos una empresa con el código " + codigo + ". Revisa que esté bien escrito."}
+            os.makedirs(CARPETA, exist_ok=True)
+            with open(CONFIG, "w", encoding="utf-8") as f:
+                json.dump({"empresa": empresa}, f)
+            self.ventana.load_url(destino)
+            return {"ok": True}
+        except Exception as e:  # sin internet, portal caído, etc.
+            return {"error": "No se pudo conectar (" + str(e) + "). Revisa tu internet e inténtalo de nuevo."}
 
 
 api = Api()
