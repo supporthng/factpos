@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, dialog, shell, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, dialog, shell, ipcMain, screen, session } = require('electron');
 const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -387,6 +387,18 @@ async function start() {
     if (!resolveTarget()) { app.quit(); return; }
     ok = await available(endpoint);
     if (!ok && localServer() && !config.empresa) { if (await startInstalledServer()) ok = await checkWithRetry(endpoint); }
+  }
+  // Igual que la caja: antes de abrir, la administración se asegura de mostrar lo más nuevo. Se vacía la caché del navegador
+  // (así la página se pide de nuevo al servidor) y, si el servidor trae código nuevo de esta ventana de escritorio, se reinicia una sola vez.
+  if (selected === 'admin') {
+    try { await session.defaultSession.clearCache(); } catch { /* sigue con lo que haya */ }
+    if (!config.empresa) {
+      const codigo = await Promise.race([syncCodigo(), new Promise(r => setTimeout(() => r(null), 4000))]);
+      if (codigo === true && !args.includes('--codigo-nuevo')) {
+        try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); app.exit(0); return; } catch { /* sigue con el actual */ }
+      }
+    }
+    setInterval(syncCodigo, 30 * 60 * 1000).unref();
   }
   openMain();
   watchUpdates();
