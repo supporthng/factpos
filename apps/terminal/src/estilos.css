@@ -897,3 +897,32 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Cobro: con 5 formas de pago, la última ocupa todo el ancho */
 .cobro2 .formas .forma:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* Panel derecho de la venta sin scroll en pantallas bajas (portátiles y convertibles de ~720 px de alto): total, desglose en una fila,
+   atajos en una fila y los botones de caja en 3 columnas, para que se vean todos a la vez. */
+@media (max-height: 860px) {
+  .pv-cobro { gap: 6px; }
+  .pv-cobro .pv-titulo-pago { display: none; }
+  .pv-cobro .pv-total { padding: 8px 12px 8px; border-top-width: 4px; }
+  .pv-cobro .pv-total > b, .con-catalogo .pv-cobro .pv-total > b { font-size: 32px; }
+  .pv-cobro .pv-total > span, .pv-cobro .pv-total > small { font-size: 12px; }
+  .pv-cobro .pv-desglose { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px 8px; }
+  .pv-cobro .pv-desglose > div { flex-direction: column; align-items: center; padding: 0; font-size: 14px; gap: 0; }
+  .pv-cobro .pv-desglose dt { font-size: 11px; }
+  .pv-cobro .boton.cobrar { height: 52px; font-size: 21px; }
+  .pv-cobro .pv-cliente-panel .pv-cliente { padding: 5px 10px; }
+  .pv-cobro .pv-atajos { grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .pv-cobro .pv-atajos button { padding: 6px 2px; font-size: 12px; border-radius: 10px; }
+  .pv-cobro .pv-atajos button small { font-size: 10px; }
+  .pv-cobro .pv-caja-panel { grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .pv-cobro .pv-caja-panel .pv-funcion { min-height: 48px; padding: 4px 3px; font-size: 12px; line-height: 1.15; }
+  .pv-cobro .pv-ultima { padding: 4px 8px; font-size: 12px; }
+}
+@media (max-height: 720px) {
+  .pv-cobro { gap: 4px; }
+  .pv-cobro .pv-total > b, .con-catalogo .pv-cobro .pv-total > b { font-size: 28px; }
+  .pv-cobro .pv-total > span { display: none; }
+  .pv-cobro .boton.cobrar { height: 46px; font-size: 19px; }
+  .pv-cobro .pv-caja-panel .pv-funcion { min-height: 42px; }
+  .pv-cobro .pv-atajos button small { display: none; }
+}
