@@ -12,9 +12,9 @@ interface Fila {
 export function Inventario() {
   const { sucursales } = useCatalogo();
   const [q, setQ] = useState("");
-  const [bajo, setBajo] = useState(false);
+  const [mostrar, setMostrar] = useState<"todos" | "bajo" | "sin">("todos");
   const [buscar, setBuscar] = useState("");
-  const ruta = `/central/inventario?${new URLSearchParams({ ...(buscar ? { q: buscar } : {}), ...(bajo ? { soloBajoMinimo: "1" } : {}) })}`;
+  const ruta = `/central/inventario?${new URLSearchParams({ ...(buscar ? { q: buscar } : {}), ...(mostrar === "bajo" ? { soloBajoMinimo: "1" } : {}), ...(mostrar === "sin" ? { soloSinStock: "1" } : {}) })}`;
   const { datos, error, recargar } = useDatos<Fila[]>(ruta);
   const [excel, setExcel] = useState(false);
   const [editar, setEditar] = useState<{ productoId: string; sucursalId: string; nombre: string; sucursal: string } | null>(null);
@@ -30,7 +30,11 @@ export function Inventario() {
       <div className="filtros">
         <input placeholder="Buscar por nombre o SKU" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setBuscar(q)} />
         <button className="boton" onClick={() => setBuscar(q)}>Buscar</button>
-        <label className="check"><input type="checkbox" checked={bajo} onChange={(e) => setBajo(e.target.checked)} /> Solo bajo mínimo</label>
+        <select aria-label="Mostrar" value={mostrar} onChange={(e) => setMostrar(e.target.value as "todos" | "bajo" | "sin")}>
+          <option value="todos">Todos los productos</option>
+          <option value="bajo">Bajo el mínimo</option>
+          <option value="sin">Sin stock (en 0)</option>
+        </select>
       </div>
       <Aviso texto={error} />
       <Tabla

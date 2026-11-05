@@ -128,7 +128,7 @@ export async function rutasCentral(app: FastifyInstance) {
   /** Inventario consolidado: una fila por producto con la existencia de cada sucursal. */
   app.get("/central/inventario", async (req) => {
     const f = z
-      .object({ q: z.string().trim().max(60).optional(), categoriaId: uuid.optional(), soloBajoMinimo: z.enum(["1"]).optional() })
+      .object({ q: z.string().trim().max(60).optional(), categoriaId: uuid.optional(), soloBajoMinimo: z.enum(["1"]).optional(), soloSinStock: z.enum(["1"]).optional() })
       .parse(req.query);
     // Todos los productos que llevan inventario, aunque todavía no tengan existencia (aparecen en 0)
     const r = await pool.query(
@@ -149,9 +149,10 @@ export async function rutasCentral(app: FastifyInstance) {
           AND ($3::uuid IS NULL OR p.categoria_id = $3)
           AND ($5::uuid[] IS NULL OR s.id = ANY($5))
         GROUP BY p.id, p.sku, p.nombre
-       HAVING $4::boolean IS NOT TRUE OR BOOL_OR(x.cantidad <= COALESCE(ps.stock_minimo, 0))
+       HAVING ($4::boolean IS NOT TRUE OR BOOL_OR(x.cantidad <= COALESCE(ps.stock_minimo, 0)))
+          AND ($6::boolean IS NOT TRUE OR SUM(x.cantidad) <= 0)
         ORDER BY p.nombre LIMIT 500`,
-      [empresaDe(req), f.q ?? null, f.categoriaId ?? null, f.soloBajoMinimo === "1", sucursalesDe(req)],
+      [empresaDe(req), f.q ?? null, f.categoriaId ?? null, f.soloBajoMinimo === "1", sucursalesDe(req), f.soloSinStock === "1"],
     );
     return r.rows;
   });
