@@ -382,6 +382,22 @@ export async function rutasCentralProductos(app: FastifyInstance) {
    * consulta Open Food Facts (base pública de productos) para sugerir nombre,
    * marca e imagen. Requiere internet en la central; si no hay, no pasa nada.
    */
+  /** ¿Ya existe otro producto con este código de barras o este SKU? (para avisar al escribirlos, antes de guardar) */
+  app.get("/central/productos/duplicado", async (req) => {
+    const q = z.object({ codigo: z.string().trim().max(30).optional(), sku: z.string().trim().max(80).optional(), excluir: uuid.optional() }).parse(req.query);
+    const e = empresaDe(req);
+    const codigo = q.codigo
+      ? (await pool.query<{ id: string; nombre: string }>(
+        `SELECT p.id, p.nombre FROM codigos_barra cb JOIN presentaciones pr ON pr.id = cb.presentacion_id JOIN productos p ON p.id = pr.producto_id
+          WHERE cb.empresa_id = $1 AND cb.codigo = $2 AND cb.activo AND ($3::uuid IS NULL OR p.id <> $3) LIMIT 1`, [e, q.codigo, q.excluir ?? null])).rows[0] ?? null
+      : null;
+    const sku = q.sku
+      ? (await pool.query<{ id: string; nombre: string }>(
+        `SELECT id, nombre FROM productos WHERE empresa_id = $1 AND sku = $2 AND ($3::uuid IS NULL OR id <> $3) LIMIT 1`, [e, q.sku, q.excluir ?? null])).rows[0] ?? null
+      : null;
+    return { codigo, sku };
+  });
+
   app.get("/central/productos/codigo/:codigo", async (req) => {
     const { codigo } = z.object({ codigo: z.string().regex(/^\d{6,14}$/, "Código inválido") }).parse(req.params);
     const propio = await pool.query(
