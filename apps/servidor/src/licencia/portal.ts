@@ -906,7 +906,7 @@ export async function rutasPortal(app: FastifyInstance) {
 // -------------------------------------------------------------------------------------------
 // Versiones publicadas (GitHub Releases). Repositorio privado: GITHUB_TOKEN con permiso de lectura.
 // -------------------------------------------------------------------------------------------
-interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null }
+interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null; caja?: { url: string; descarga: string; nombre: string } | null }
 let cacheVersion: { v: Publicada | null; t: number } | null = null;
 const encabezadosGitHub = (extra: Record<string, string> = {}) => ({
   "user-agent": "factpos-portal", accept: "application/vnd.github+json",
