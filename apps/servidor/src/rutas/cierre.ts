@@ -5,6 +5,7 @@ import { Decimal } from "decimal.js";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { leerToken } from "../sesion.js";
 import { usuarioVigente } from "./sesion.js";
+import { FORMAS_CONTADAS, diferenciaCierre, efectivoContado, efectivoEsperado, esperadoPorForma } from "./cuadre.js";
 
 /**
  * Cuadre y cierre de la caja registradora.
@@ -21,7 +22,7 @@ type Q = Pick<PoolClient, "query">;
 /** Billetes y monedas de RD$ que se cuentan en la gaveta. */
 export const DENOMINACIONES = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1] as const;
 /** Formas de pago que se cuentan al cerrar (el crédito no entra a la gaveta). */
-const CONTADAS = ["EFECTIVO", "TARJETA", "TRANSFERENCIA"] as const;
+const CONTADAS = FORMAS_CONTADAS;
 
 /** Todo lo que se necesita para el reporte X o Z de un turno. */
 export async function reporteTurno(c: Q, turnoId: string) {
@@ -82,19 +83,19 @@ export async function reporteTurno(c: Q, turnoId: string) {
   const resumenMov = (tipo: string) => movs.rows.filter((m) => m.tipo === tipo).reduce((a, m) => a.plus(m.monto), new Decimal(0)).toFixed(2);
 
   const porForma = new Map(pagos.rows.map((p) => [p.formaPago, p]));
-  const efectivoEsperado = new Decimal(t.fondoInicial).plus(t.ventasEfectivo).plus(t.entradas).minus(t.salidas);
-  const esperado: Record<string, string> = {
-    EFECTIVO: efectivoEsperado.toFixed(2),
-    TARJETA: new Decimal(porForma.get("TARJETA")?.monto ?? 0).plus(abonosPor("TARJETA")).toFixed(2),
-    TRANSFERENCIA: new Decimal(porForma.get("TRANSFERENCIA")?.monto ?? 0).plus(abonosPor("TRANSFERENCIA")).toFixed(2),
-  };
+  const efectivoEsp = efectivoEsperado({ fondoInicial: t.fondoInicial, ventasEfectivo: t.ventasEfectivo, entradas: t.entradas, salidas: t.salidas });
+  const esperado: Record<string, string> = esperadoPorForma({
+    fondoInicial: t.fondoInicial, ventasEfectivo: t.ventasEfectivo, entradas: t.entradas, salidas: t.salidas,
+    ventasTarjeta: porForma.get("TARJETA")?.monto ?? 0, ventasTransferencia: porForma.get("TRANSFERENCIA")?.monto ?? 0,
+    abonosTarjeta: abonosPor("TARJETA"), abonosTransferencia: abonosPor("TRANSFERENCIA"),
+  });
   return {
     turno: t,
     ventas: ventas.rows[0],
     formasPago: pagos.rows,
     anulaciones: anuladas.rows[0],
     anuladas: anuDetalle.rows,
-    efectivo: { fondo: t.fondoInicial, ventas: t.ventasEfectivo, entradas: t.entradas, salidas: t.salidas, esperado: efectivoEsperado.toFixed(2) },
+    efectivo: { fondo: t.fondoInicial, ventas: t.ventasEfectivo, entradas: t.entradas, salidas: t.salidas, esperado: efectivoEsp.toFixed(2) },
     movimientos: movs.rows,
     resumenMovimientos: {
       retiros: resumenMov("RETIRO"), gastos: resumenMov("GASTO"), sencillo: resumenMov("DEPOSITO"),
@@ -148,11 +149,11 @@ export async function rutasCierre(app: FastifyInstance) {
       const t = (await c.query("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO' FOR UPDATE", [cajaId])).rows[0];
       if (!t) throw new ErrorNegocio("La caja no tiene un turno abierto");
       const rep = await reporteTurno(c, t.id);
-      const efectivo = Object.entries(b.conteo).reduce((a, [den, n]) => a.plus(new Decimal(den).mul(n)), new Decimal(0));
+      const efectivo = efectivoContado(b.conteo);
       const declarado: Record<string, string> = {
         EFECTIVO: efectivo.toFixed(2), TARJETA: new Decimal(b.tarjeta).toFixed(2), TRANSFERENCIA: new Decimal(b.transferencia).toFixed(2),
       };
-      const diferencia = CONTADAS.reduce((a, f) => a.plus(declarado[f]).minus(rep.esperado[f]), new Decimal(0));
+      const diferencia = diferenciaCierre(declarado as Record<(typeof CONTADAS)[number], string>, rep.esperado as Record<(typeof CONTADAS)[number], string>);
       await c.query(
         `UPDATE turnos SET estado = 'CERRADO', cerrado_en = now(), cerrado_por = $2, declarado = $3, esperado = $4,
                 diferencia = $5, conteo = $6, notas = $7
