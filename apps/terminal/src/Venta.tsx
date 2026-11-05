@@ -536,7 +536,22 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   useEffect(() => {
     if (modal) return;
     enfocarEntrada();
-  }, [modal, lineas, modo]);
+    const t = setTimeout(enfocarEntrada, 400); // la búsqueda del catálogo aparece cuando termina de cargar
+    return () => clearTimeout(t);
+  }, [modal, lineas, modo, catalogo]);
+
+  // Respaldo del lector: si el foco quedó en el fondo, el primer carácter lo devuelve a la barra de código
+  useEffect(() => {
+    if (modal) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable)) return;
+      enfocarEntrada();
+    };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, [modal]);
 
   const total = cot.r?.totales.total ?? "0.00";
 
