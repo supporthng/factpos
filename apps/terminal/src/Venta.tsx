@@ -651,7 +651,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <div className="pv-vacio">
                 <Icono n="codigo" />
                 <b>Escanee el primer producto</b>
-                <span>o escriba su nombre arriba{verCatalogo ? ", o tóquelo en el catálogo" : " · F1 cambia a Caja táctil"}</span>
+                <span>{verCatalogo ? "o tóquelo en el catálogo, o escriba su nombre en la búsqueda" : "o escriba su nombre arriba · F1 cambia a Caja táctil"}</span>
               </div>
             )}
             {lineas.map((l, i) => {
