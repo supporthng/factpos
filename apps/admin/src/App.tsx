@@ -650,15 +650,15 @@ export function App() {
   useTablasApiladas();
   const servidor = () => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin);
   const listo = usePreparado(servidor, () => fijarSesion(null));
-  const [dispositivo, setDispositivo] = useState<{ estado: string; servidor: string } | null>(null);
+  const [dispositivo, setDispositivo] = useState<{ estado: string; servidor: string; ruta?: string; credencial?: boolean } | null>(null);
   useEffect(() => {
     // La solicitud va al MISMO servidor que respondió «no autorizado» (puede diferir de uno guardado en una sesión vieja)
-    const f = (e: Event) => { const d = (e as CustomEvent).detail ?? {}; setDispositivo({ estado: String(d.estado ?? "DESCONOCIDO"), servidor: String(d.servidor || servidor()) }); };
+    const f = (e: Event) => { const d = (e as CustomEvent).detail ?? {}; setDispositivo({ estado: String(d.estado ?? "DESCONOCIDO"), servidor: String(d.servidor || servidor()), ruta: d.ruta ? String(d.ruta) : undefined, credencial: typeof d.credencial === "boolean" ? d.credencial : undefined }); };
     window.addEventListener("factpos:dispositivo", f);
     return () => window.removeEventListener("factpos:dispositivo", f);
   }, []);
   if (CONFIG.modo === "cliente" && location.hash === "#instalar") return <PaginaInstalar />;
-  if (dispositivo) return <SolicitarDispositivo servidor={dispositivo.servidor} estado={dispositivo.estado} />;
+  if (dispositivo) return <SolicitarDispositivo servidor={dispositivo.servidor} estado={dispositivo.estado} ruta={dispositivo.ruta} credencial={dispositivo.credencial} />;
   return (
     <>
       {listo ? <AppInterna /> : <div className="cargando">Iniciando…</div>}

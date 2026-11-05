@@ -8,7 +8,7 @@ import { CONFIG, fijarDispositivo, leerDispositivo } from "./api";
 const plataforma = () => /Android/i.test(navigator.userAgent) ? "Android" : /iPhone|iPad/i.test(navigator.userAgent) ? "iPhone/iPad" : /Windows/i.test(navigator.userAgent) ? "Windows" : /Mac/i.test(navigator.userAgent) ? "Mac" : "Otro";
 const GUARDADO = "factpos.dispositivo.nombre";
 
-export function SolicitarDispositivo({ servidor, estado }: { servidor: string; estado: string }) {
+export function SolicitarDispositivo({ servidor, estado, ruta, credencial }: { servidor: string; estado: string; ruta?: string; credencial?: boolean }) {
   const base = servidor.replace(/\/$/, "");
   const [nombreEstado, setNombre] = useState(() => { try { return localStorage.getItem(GUARDADO) || ""; } catch { return ""; } });
   const [espera, setEspera] = useState<string>(estado === "PENDIENTE" ? "PENDIENTE" : estado === "DENEGADO" || estado === "REVOCADO" ? estado : "");
@@ -68,6 +68,7 @@ export function SolicitarDispositivo({ servidor, estado }: { servidor: string; e
           {error && <p style={{ color: "#c0362c", fontWeight: 700 }}>{error}</p>}
           <button className="boton primario" style={{ marginTop: 14, width: "100%" }} onClick={solicitar}>Pedir acceso</button>
         </>)}
+        <p style={{ marginBottom: 0, fontSize: 11, color: "#8a98a5" }}>Detalle técnico: {estado}{ruta ? ` · ${ruta}` : ""}{credencial !== undefined ? ` · credencial en este equipo: ${credencial ? "sí" : "no"}` : ""} · {base.replace(/^https?:\/\//, "")}</p>
       </div>
     </div>
   );
