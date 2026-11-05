@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cuerpoGemini, leerRespuestaGemini, ordenProveedores } from "./proveedores.js";
+import { cuerpoGemini, leerRespuestaGemini, modelosGratis, ordenProveedores } from "./proveedores.js";
 
 describe("orden de proveedores del lector", () => {
   const g = { GEMINI_API_KEY: "g" }, a = { ANTHROPIC_API_KEY: "a" };
@@ -51,5 +51,13 @@ describe("respuesta de Gemini", () => {
     expect(() => leerRespuestaGemini(resp(JSON.stringify({ items: [] })))).toThrow(/no encontró productos/);
     expect(() => leerRespuestaGemini(resp(JSON.stringify({ items: [{ cantidad: 1 }] })))).toThrow(/sin descripción/);
     expect(() => leerRespuestaGemini(resp("{\"items\":[", { finishReason: "MAX_TOKENS" }))).toThrow(/muy larga/);
+  });
+});
+
+describe("modelos gratuitos", () => {
+  it("principal y respaldo, sin repetir", () => {
+    expect(modelosGratis({})).toEqual(["gemini-3.8-flash"]);
+    expect(modelosGratis({ LECTOR_MODELO_GRATIS_RESPALDO: "otro" })).toEqual(["gemini-3.8-flash", "otro"]);
+    expect(modelosGratis({ LECTOR_MODELO_GRATIS: "x", LECTOR_MODELO_GRATIS_RESPALDO: "x" })).toEqual(["x"]);
   });
 });

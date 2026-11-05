@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 import { autorizarLicencia } from "../respaldo/portal.js";
-import { cuerpoGemini, leerRespuestaGemini, MODELO_GRATIS, ordenProveedores, type Proveedor } from "./proveedores.js";
+import { cuerpoGemini, leerRespuestaGemini, modelosGratis, ordenProveedores, type Proveedor } from "./proveedores.js";
 
 /**
  * Portal: LECTOR DE FACTURAS con IA (Claude).
@@ -127,15 +127,26 @@ export async function rutasPortalLector(app: FastifyInstance) {
           return uso;
         },
         gratis: async () => {
-          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODELO_GRATIS())}:generateContent`, {
-            method: "POST",
-            headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
-            body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema })),
-            signal: AbortSignal.timeout(55_000),
-          });
-          const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
-          if (!r.ok) throw new Error(r.status === 429 ? "Se agotó el límite de lecturas gratuitas por ahora" : d.error?.message ?? `HTTP ${r.status}`);
-          return leerRespuestaGemini(d);
+          // Si el modelo principal está saturado (503) o sin cupo (429), se prueba el de respaldo antes de rendirse
+          let ultimo = "Gemini no respondió";
+          const hasta = Date.now() + 52_000;
+          const turnos = modelosGratis().flatMap((m) => [m, m, m]); // cada modelo hasta 3 veces (con pausa) si responde saturado
+          for (const [n, modelo] of turnos.entries()) {
+            if (Date.now() > hasta) break;
+            if (n > 0 && turnos[n - 1] === modelo) await new Promise((r) => setTimeout(r, 2500));
+            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
+              method: "POST",
+              headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
+              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema })),
+              signal: AbortSignal.timeout(25_000),
+            }).catch((e) => { ultimo = `${modelo}: ${(e as Error).message}`; return null; });
+            if (!r) continue;
+            const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
+            if (r.status === 429 || r.status === 503 || r.status === 500) { ultimo = r.status === 429 ? "Se agotó el límite de lecturas gratuitas por ahora" : (d.error?.message ?? `HTTP ${r.status}`); app.log.warn(`Gemini ${modelo}: ${ultimo}`); continue; }
+            if (!r.ok) throw new Error(d.error?.message ?? `HTTP ${r.status}`);
+            return leerRespuestaGemini(d);
+          }
+          throw new Error(ultimo);
         },
       };
       // Se intenta en orden; si el gratuito falla o se agota y hay opción de pago, se usa esa
