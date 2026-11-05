@@ -499,12 +499,59 @@ let escritorioOculto = false;
 let vigilanteEscritorio = null;
 // Windows reinicia el Explorador solo cuando se cierra a la fuerza (por eso reaparecían la barra de tareas y el menú Inicio):
 // mientras la caja esté bloqueada se vuelve a cerrar cada segundo.
-const cerrarExplorador = () => { try { execFile('taskkill', ['/f', '/im', 'explorer.exe'], { windowsHide: true }, () => {}); } catch {} };
+const cerrarExplorador = () => {
+  try { execFile('taskkill', ['/f', '/im', 'explorer.exe'], { windowsHide: true }, () => {}); } catch {}
+  if (bloquearTecladoWindows()) cerrarTecladoWindows();
+};
+// ---- Teclado táctil de Windows: la caja trae el suyo (Teclado.tsx), así que el de Windows no debe salir encima ----
+// Mientras la caja está bloqueada se desactiva su aparición automática (valor de usuario, sin permisos de administrador) y se
+// cierran TabTip.exe / osk.exe si aparecen. Al salir se devuelve el valor anterior. Se apaga con bloquearTecladoWindows:false.
+const bloquearTecladoWindows = () => config.bloquearTecladoWindows !== false;
+const CLAVE_TECLADO = 'HKCU\\Software\\Microsoft\\TabletTip\\1.7';
+const VALORES_TECLADO = ['EnableDesktopModeAutoInvoke', 'DisableNewKeyboardExperience'];
+const RESPALDO_TECLADO = path.join(app.getPath('userData'), 'teclado-windows-previo.json');
+const cerrarTecladoWindows = () => { for (const exe of ['TabTip.exe', 'osk.exe']) { try { execFile('taskkill', ['/f', '/im', exe], { windowsHide: true }, () => {}); } catch {} } };
+function bloquearTeclado() {
+  if (process.platform !== 'win32' || !bloquearTecladoWindows()) return;
+  try {
+    // Solo se guarda el valor original la primera vez (si ya hay respaldo, un cierre anterior quedó sin restaurar)
+    if (!fs.existsSync(RESPALDO_TECLADO)) {
+      const previo = {};
+      let pendientes = VALORES_TECLADO.length;
+      const guardar = () => { if (--pendientes === 0) { try { fs.writeFileSync(RESPALDO_TECLADO, JSON.stringify(previo)); } catch {} aplicar(); } };
+      for (const v of VALORES_TECLADO) {
+        execFile('reg', ['query', CLAVE_TECLADO, '/v', v], { windowsHide: true }, (err, out) => {
+          const m = !err && /REG_DWORD\s+0x([0-9a-f]+)/i.exec(String(out));
+          previo[v] = m ? parseInt(m[1], 16) : null;
+          guardar();
+        });
+      }
+    } else aplicar();
+  } catch {}
+  function aplicar() {
+    try { execFile('reg', ['add', CLAVE_TECLADO, '/v', 'EnableDesktopModeAutoInvoke', '/t', 'REG_DWORD', '/d', '0', '/f'], { windowsHide: true }, () => {}); } catch {}
+    try { execFile('reg', ['add', CLAVE_TECLADO, '/v', 'DisableNewKeyboardExperience', '/t', 'REG_DWORD', '/d', '1', '/f'], { windowsHide: true }, () => {}); } catch {}
+    cerrarTecladoWindows();
+  }
+}
+function restaurarTeclado() {
+  if (process.platform !== 'win32' || !fs.existsSync(RESPALDO_TECLADO)) return;
+  let previo = {};
+  try { previo = JSON.parse(fs.readFileSync(RESPALDO_TECLADO, 'utf8')); } catch {}
+  for (const v of VALORES_TECLADO) {
+    try {
+      if (typeof previo[v] === 'number') execFile('reg', ['add', CLAVE_TECLADO, '/v', v, '/t', 'REG_DWORD', '/d', String(previo[v]), '/f'], { windowsHide: true }, () => {});
+      else execFile('reg', ['delete', CLAVE_TECLADO, '/v', v, '/f'], { windowsHide: true }, () => {});
+    } catch {}
+  }
+  try { fs.rmSync(RESPALDO_TECLADO, { force: true }); } catch {}
+}
 function ocultarEscritorio() {
   if (process.platform !== 'win32' || escritorioOculto) return;
   escritorioOculto = true;
   try { fs.writeFileSync(MARCA_ESCRITORIO, String(Date.now())); } catch {}
   try { execFile('reg', ['add', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/t', 'REG_DWORD', '/d', '1', '/f'], { windowsHide: true }, () => {}); } catch {}
+  bloquearTeclado();
   cerrarExplorador();
   if (!vigilanteEscritorio) vigilanteEscritorio = setInterval(cerrarExplorador, 1000);
 }
@@ -513,6 +560,7 @@ function mostrarEscritorio() {
   escritorioOculto = false;
   if (vigilanteEscritorio) { clearInterval(vigilanteEscritorio); vigilanteEscritorio = null; }
   try { fs.rmSync(MARCA_ESCRITORIO, { force: true }); } catch {}
+  restaurarTeclado();
   try { execFile('reg', ['delete', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/f'], { windowsHide: true }, () => {}); } catch {}
   try { spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(); } catch {}
 }
