@@ -193,7 +193,7 @@ export async function rutasCentral(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT pr.id AS "presentacionId", pr.nombre AS presentacion, pr.factor,
               lp.nivel, lp.nombre AS lista, x.sucursal_id AS "sucursalId", s.nombre AS sucursal,
-              x.precio, ROUND(e.costo * pr.factor, 2) AS costo,
+              x.precio, ROUND(e.costo * pr.factor, 2) AS costo, i.tasa::float AS tasa,
               CASE WHEN x.precio > 0 THEN ROUND(100 * (x.precio / (1 + i.tasa) - e.costo * pr.factor) / (x.precio / (1 + i.tasa)), 1) END AS "margenPct"
          FROM presentaciones pr
          JOIN productos p ON p.id = pr.producto_id

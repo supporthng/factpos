@@ -4,7 +4,7 @@ import { Aviso, Encabezado, SelectorProducto, useCatalogo, useDatos } from "../u
 
 interface FilaPrecio {
   presentacionId: string; presentacion: string; factor: string; nivel: number; lista: string;
-  sucursalId: string | null; sucursal: string | null; precio: string; costo: string; margenPct: string | null;
+  sucursalId: string | null; sucursal: string | null; precio: string; costo: string; margenPct: string | null; tasa?: number;
 }
 const NIVELES = [1, 2, 3];
 const clave = (p: string, n: number, s: string | null) => `${p}|${n}|${s ?? ""}`;
@@ -54,6 +54,18 @@ export function Precios() {
     for (const f of datos ?? []) m.set(clave(f.presentacionId, f.nivel, f.sucursalId), f);
     return m;
   }, [datos]);
+  /** Precios 2 y 3 sin precio propio: salen solos del precio 1 menos el descuento del nivel, en múltiplo de 5 (igual que en la caja). */
+  const automatico = (presId: string, nivel: number) => {
+    if (nivel < 2) return 0;
+    const pct = Number(niveles.datos?.listas.find((l) => l.nivel === nivel)?.descuentoPct ?? 0);
+    const p1 = Number(actual.get(clave(presId, 1, null))?.precio ?? 0);
+    return pct > 0 && p1 > 0 ? Math.max(Math.round((p1 * (1 - pct / 100)) / 5) * 5, 0) : 0;
+  };
+  const margenAuto = (presId: string, precio: number) => {
+    const tasa = actual.get(clave(presId, 1, null))?.tasa ?? 0, costo = Number(costoDe(presId) ?? 0);
+    const base = precio / (1 + tasa);
+    return precio > 0 && costo > 0 && base > 0 ? (100 * (base - costo)) / base : null;
+  };
   const costoDe = (presId: string) => (datos ?? []).find((f) => f.presentacionId === presId)?.costo;
 
   const guardar = async () => {
@@ -75,18 +87,21 @@ export function Precios() {
     const k = clave(presId, nivel, sucId);
     const f = actual.get(k);
     const valor = cambios[k] ?? f?.precio ?? "";
-    const general = actual.get(clave(presId, nivel, null))?.precio;
+    const auto = automatico(presId, nivel);
+    const propioGeneral = actual.get(clave(presId, nivel, null))?.precio;
+    const general = propioGeneral ?? (auto ? auto.toFixed(2) : undefined);
+    const esAuto = !sucId && !propioGeneral && !!auto && !(k in cambios);
     const costo = Number(costoDe(presId) ?? 0);
     const p = Number(valor || general || 0);
     const bajoCosto = p > 0 && costo > 0 && p < costo;
     return (
       <td key={k} className="der">
         <input
-          className={"numero" + (k in cambios ? " cambiado" : "") + (bajoCosto ? " alerta" : "")}
+          className={"numero" + (k in cambios ? " cambiado" : "") + (bajoCosto ? " alerta" : "") + (esAuto ? " auto" : "")}
           inputMode="decimal"
           value={valor}
-          placeholder={sucId ? (general ? `${Number(general).toFixed(2)}` : "—") : "—"}
-          title={bajoCosto ? "Por debajo del costo" : undefined}
+          placeholder={general ? `${Number(general).toFixed(2)}` : "—"}
+          title={bajoCosto ? "Por debajo del costo" : esAuto ? "Automático: precio 1 menos el descuento del nivel. Escriba un precio solo si este producto es una excepción." : undefined}
           onChange={(e) => setCambios({ ...cambios, [k]: e.target.value.replace(/[^\d.]/g, "") })}
         />
       </td>
@@ -142,12 +157,14 @@ export function Precios() {
               <tbody>
                 {NIVELES.map((n) => {
                   const g = actual.get(clave(pr.id, n, null));
+                  const auto = !g ? automatico(pr.id, n) : 0;
+                  const mAuto = auto ? margenAuto(pr.id, auto) : null;
                   return (
                     <tr key={n}>
-                      <td><b>Precio {n}</b> <span className="suave">{n === 1 ? "Detalle" : n === 2 ? "Mayorista" : "Distribuidor"}</span></td>
+                      <td><b>Precio {n}</b> <span className="suave">{n === 1 ? "Detalle" : n === 2 ? "Mayorista" : "Distribuidor"}</span>{auto > 0 && <span className="etiqueta-auto">Automático</span>}</td>
                       {celda(pr.id, n, null)}
                       {columnasSucursal.map((s) => celda(pr.id, n, s.id))}
-                      <td className="der">{g?.margenPct ? `${g.margenPct}%` : "—"}</td>
+                      <td className="der">{g?.margenPct ? `${g.margenPct}%` : mAuto != null ? `${mAuto.toFixed(1)}%` : "—"}</td>
                     </tr>
                   );
                 })}
