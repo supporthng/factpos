@@ -132,6 +132,32 @@ def pedir_empresa():
     api.ventana.load_html(html)
 
 
+RESERVADAS = {"api", "licencias", "central", "admin", "terminal", "c", "assets", "favicon.ico"}
+
+
+def recordar_destino():
+    """Si la empresa se abrió sin pasar por «guardar» (el plan B de la pantalla de código, cuando el puente con la app no responde),
+    se recuerda la dirección abierta: así no pide el código otra vez al abrir o después de actualizar."""
+    try:
+        if leer_empresa():
+            return
+        u = urllib.parse.urlparse(api.ventana.get_current_url() or "")
+        if u.scheme != "https" or u.netloc != urllib.parse.urlparse(PORTAL).netloc:
+            return
+        partes = [x for x in u.path.split("/") if x]
+        if len(partes) >= 2 and partes[0] == "c" and codigo_de(partes[1]):
+            destino = codigo_de(partes[1])
+        elif partes and partes[0].lower() not in RESERVADAS and re.fullmatch(r"[a-z0-9.-]{2,60}", partes[0].lower()):
+            destino = partes[0].lower()
+        else:
+            return
+        os.makedirs(CARPETA, exist_ok=True)
+        with open(CONFIG, "w", encoding="utf-8") as f:
+            json.dump({"empresa": destino}, f)
+    except Exception:
+        pass
+
+
 def recargar():
     api.ventana.load_url(direccion(leer_empresa()) or PORTAL)
 
@@ -163,6 +189,7 @@ def main():
         "FactPOS Admin", url=url, html=None if url else PAGINA_EMPRESA.replace("__VALOR__", ""),
         js_api=api, width=1280, height=820, min_size=(900, 600), background_color="#0E1B26", confirm_close=False)
     api.ventana = ventana
+    ventana.events.loaded += recordar_destino
     webview.settings["ALLOW_DOWNLOADS"] = True
     menu = [webview.menu.Menu("Archivo", [
         webview.menu.MenuAction("Recargar", recargar),
