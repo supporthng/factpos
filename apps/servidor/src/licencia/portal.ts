@@ -449,6 +449,10 @@ export async function rutasPortal(app: FastifyInstance) {
   // ================================================================ ADMINISTRACIÓN DEL PROVEEDOR
   const usuarioDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-usuario-id"]);
 
+  /** Instaladores vigentes (versión, fecha) y su enlace de descarga: todo lo que el proveedor entrega a sus clientes */
+  app.get("/central/portal/instaladores", async () => listarInstaladores());
+  app.get("/central/portal/instaladores/:id/enlace", async (req) => enlaceInstalador(z.object({ id: z.string().max(40) }).parse(req.params).id));
+
   app.get("/central/portal/clientes", async () => {
     const r = await pool.query(
       `SELECT c.id, c.slug, c.codigo, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
@@ -973,6 +977,56 @@ export async function urlDescargaVerificador(so: string) {
   const a = rel.assets.find((x) => app.nombre.test(x.name));
   if (!a) throw new ErrorNegocio("Todavía no hay una versión publicada", 404);
   return urlDescarga({ url: a.url, descarga: a.browser_download_url });
+}
+
+/** Catálogo de instaladores que el portal ofrece al proveedor, con lo último publicado de cada uno. */
+const CATALOGO_INSTALADORES = [
+  { id: "setup", titulo: "Instalador completo de FactPOS", para: "Servidor, cajas y administración de escritorio", plataforma: "Windows" },
+  { id: "caja", titulo: "Instalador de Caja", para: "Solo la caja de venta (sin servidor ni base de datos)", plataforma: "Windows" },
+  { id: "admin-windows", titulo: "FactPOS Admin para Windows", para: "Administración remota en computadora", plataforma: "Windows" },
+  { id: "admin-android", titulo: "FactPOS Admin para Android", para: "Administración remota en celular o tableta", plataforma: "Android (APK)" },
+  { id: "verificador-windows", titulo: "Verificador de precios para Windows", para: "PC con pantalla táctil", plataforma: "Windows" },
+  { id: "verificador-android", titulo: "Verificador de precios para Android", para: "Tabletas y pantallas Android", plataforma: "Android (APK)" },
+  { id: "importador", titulo: "Importador de datos (WilPOS)", para: "Pasa productos, clientes e historial desde el sistema anterior", plataforma: "Windows (portable)" },
+] as const;
+
+async function releasePorEtiqueta(tag: string) {
+  const repo = process.env.FACTPOS_REPO || "supporthng/factpos";
+  const r = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, { headers: encabezadosGitHub(), signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) return null;
+  return (await r.json()) as { body?: string | null; published_at?: string | null; assets: { name: string; url: string; browser_download_url: string; updated_at?: string; size?: number }[] };
+}
+
+/** Lo último publicado de cada instalador (versión o compilación, fecha, tamaño); los que aún no existen salen como no publicados. */
+export async function listarInstaladores() {
+  const v = await ultimaVersion().catch(() => null);
+  return Promise.all(CATALOGO_INSTALADORES.map(async (c) => {
+    try {
+      if (c.id === "setup" || c.id === "caja") {
+        const a = v?.[c.id];
+        return { ...c, publicado: !!a, nombre: a?.nombre ?? null, version: a ? v!.version : null, compilacion: null as number | null, fecha: v?.publicada ?? null, tamano: null as number | null };
+      }
+      const app = APPS_VERIFICADOR[c.id];
+      const rel = await releasePorEtiqueta(app.tag);
+      const a = rel?.assets.find((x) => app.nombre.test(x.name));
+      const build = Number(/build=(\d+)/.exec(rel?.body ?? "")?.[1]);
+      return { ...c, publicado: !!a, nombre: a?.name ?? null, version: null as string | null, compilacion: Number.isFinite(build) ? build : null, fecha: a?.updated_at ?? rel?.published_at ?? null, tamano: a?.size ?? null };
+    } catch {
+      return { ...c, publicado: false, nombre: null, version: null as string | null, compilacion: null as number | null, fecha: null, tamano: null as number | null };
+    }
+  }));
+}
+
+/** Dirección temporal de descarga de uno de los instaladores del catálogo */
+export async function enlaceInstalador(id: string) {
+  if (id === "setup" || id === "caja") {
+    const v = await ultimaVersion();
+    const a = v?.[id];
+    if (!a) throw new ErrorNegocio("Ese instalador todavía no está publicado", 404);
+    return { url: await urlDescarga(a), nombre: a.nombre };
+  }
+  if (!(id in APPS_VERIFICADOR)) throw new ErrorNegocio("Instalador desconocido", 404);
+  return { url: await urlDescargaVerificador(id), nombre: null };
 }
 
 /** Número de compilación vigente de una app del verificador (el CI lo anota en las notas de la release como «build=N»). */
