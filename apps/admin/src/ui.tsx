@@ -144,16 +144,14 @@ export function Tabla<T>({ filas, columnas, clave, vacio = "Sin datos", tarjetas
 }
 
 /**
- * Etiqueta de versión para el cliente: la versión interna cuenta cada actualización publicada (25.5, 25.6…) y se
- * muestra como una cuenta propia que sube 0.1 por actualización: 25.5 → 2.5, 25.6 → 2.6 … 25.9 → 2.9, 26.0 → 3.0.
- * Es solo una etiqueta: la versión real no cambia.
+ * Etiqueta de versión para el cliente: la versión interna (25.5, 26.0, 26.1…) se muestra partiendo su parte entera
+ * en dos cifras: 25.5 → 2.5.5, 26.0 → 2.6, 26.1 → 2.6.1. Es solo una etiqueta: la versión real no cambia.
  */
-const BASE_ETIQUETA = 230; // compilación 25.5 (255) = etiqueta 2.5
 export function versionCliente(v: string | null | undefined): string {
-  const m = /^(\d+)\.(\d)(?:\.|$)/.exec(v ?? "");
-  if (!m) return v ?? "—";
-  const k = Number(m[1]) * 10 + Number(m[2]) - BASE_ETIQUETA;
-  return k < 1 ? (v as string) : (k / 10).toFixed(1);
+  const m = /^(\d+)(?:\.(\d))?(?:\.|$)/.exec(v ?? "");
+  if (!m || m[1]!.length < 2) return v ?? "—";
+  const entero = Number(m[1]);
+  return `${Math.floor(entero / 10)}.${entero % 10}${m[2] && m[2] !== "0" ? "." + m[2] : ""}`;
 }
 /** Como versionCliente, pero si la etiqueta de la nueva coincide con la actual aclara la compilación para distinguirlas. */
 export function versionNueva(nueva: string | null | undefined, actual: string | null | undefined): string {
