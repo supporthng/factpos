@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { Aviso, Encabezado, useDatos, versionCliente } from "../ui";
+import { Aviso, Encabezado, iniciarDescarga, useDatos, versionCliente } from "../ui";
 
 /** PORTAL DEL PROVEEDOR · todos los instaladores de FactPOS, con lo último publicado de cada uno. */
 interface Instalador {
@@ -21,10 +21,7 @@ export function InstaladoresPortal() {
     setMsg(null); setEnlace(null); setTrabajando(i.id);
     try {
       const r = await api<{ url: string }>(`/central/portal/instaladores/${i.id}/enlace`);
-      // Con clic de enlace (no cambiando de página): funciona igual en el navegador y en la app de escritorio
-      const a = document.createElement("a");
-      a.href = r.url; a.rel = "noopener"; a.style.display = "none";
-      document.body.appendChild(a); a.click(); a.remove();
+      iniciarDescarga(r.url, i.nombre);
       setEnlace(r.url);
       setMsg({ t: `Descargando ${i.nombre ?? i.titulo}…`, tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }

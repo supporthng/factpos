@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, CONFIG } from "../api";
-import { Aviso, Encabezado, versionCliente } from "../ui";
+import { Aviso, Encabezado, iniciarDescarga, versionCliente } from "../ui";
 
 /** Todos los instaladores de FactPOS en un solo lugar. */
 interface Item { titulo: string; para: string; plataforma: string; descarga: { tipo: "portal" | "principal"; so?: string; variante?: "caja" } }
@@ -37,10 +37,7 @@ export function Instaladores() {
     setMsg(null); setEnlace(null); setTrabajando(clave);
     try {
       const r = await api<{ url: string; version: string | null; nombre?: string | null }>("/central/instaladores/principal", { metodo: "POST", cuerpo: variante ? { tipo: variante } : {} });
-      // Un enlace con clic (no un cambio de página): el navegador y la app de escritorio lo tratan como descarga
-      const ancla = document.createElement("a");
-      ancla.href = r.url; ancla.rel = "noopener"; ancla.download = r.nombre ?? ""; ancla.style.display = "none";
-      document.body.appendChild(ancla); ancla.click(); ancla.remove();
+      iniciarDescarga(r.url, r.nombre);
       setEnlace(r.url);
       setMsg({ t: `Descargando el instalador${r.version ? ` de la versión ${versionCliente(r.version)}` : ""}…`, tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }

@@ -144,6 +144,18 @@ export function Tabla<T>({ filas, columnas, clave, vacio = "Sin datos", tarjetas
 }
 
 /**
+ * Inicia la descarga de un archivo desde un enlace (p. ej. el instalador firmado de GitHub).
+ *  - App de escritorio (Electron): window.open → la app lo entrega al navegador del sistema, que descarga sin pedir un clic nuevo
+ *    (un clic de enlace tras esperar al servidor se queda sin hacer nada en la ventana de la app).
+ *  - Navegador: clic de enlace oculto.
+ */
+export function iniciarDescarga(url: string, nombre?: string | null) {
+  if (/Electron\//.test(navigator.userAgent)) { window.open(url, "_blank", "noopener"); return; }
+  const ancla = document.createElement("a");
+  ancla.href = url; ancla.rel = "noopener"; ancla.download = nombre ?? ""; ancla.style.display = "none";
+  document.body.appendChild(ancla); ancla.click(); ancla.remove();
+}
+/**
  * Etiqueta de versión para el cliente: la versión interna (25.5, 26.0, 26.1…) se muestra partiendo su parte entera
  * en dos cifras: 25.5 → 2.5.5, 26.0 → 2.6, 26.1 → 2.6.1. Es solo una etiqueta: la versión real no cambia.
  */
