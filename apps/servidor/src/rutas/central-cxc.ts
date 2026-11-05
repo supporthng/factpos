@@ -77,6 +77,8 @@ export async function rutasCentralCxc(app: FastifyInstance) {
     if (!c.rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
     const m = await pool.query(
       `SELECT m.id, m.tipo, m.monto, m.creado_en AS fecha, m.forma_pago AS "formaPago", m.referencia, m.notas,
+              m.venta_id AS "ventaId", (m.turno_id IS NOT NULL) AS "enCaja",
+              EXISTS (SELECT 1 FROM cxc_movimientos a WHERE a.cliente_id = m.cliente_id AND a.tipo = 'AJUSTE' AND a.notas LIKE 'Anulación del abono ' || m.id::text || '%') AS anulado,
               v.numero_interno AS factura, d.encf, s.nombre AS sucursal, u.nombre AS usuario,
               SUM(m.monto) OVER (ORDER BY m.creado_en, m.id) AS saldo
          FROM cxc_movimientos m
@@ -131,6 +133,40 @@ export async function rutasCentralCxc(app: FastifyInstance) {
         notas: b.notas ?? "Abono en la oficina", modo: b.modo, ventaId: b.ventaId ?? null,
       });
       return { id: partes[0]!.id, partes, saldoNuevo: saldo.minus(valor).toFixed(2) };
+    });
+    rep.code(201);
+    return r;
+  });
+
+  /**
+   * Anular un abono registrado por error. Los movimientos no se borran ni se editan: se agrega un ajuste contrario ligado a la misma
+   * factura, con el motivo, y queda en el historial. Solo abonos de la oficina que apliquen a una factura (los cobrados en una caja
+   * están en el cuadre de su turno; los «a la cuenta» sin factura se corrigen con un ajuste).
+   */
+  app.post("/central/cxc/:clienteId/abonos/:id/anular", async (req, rep) => {
+    const { clienteId, id } = z.object({ clienteId: uuid, id: uuid }).parse(req.params);
+    const b = z.object({ motivo: z.string().trim().min(5, "Explique el motivo").max(160) }).parse(req.body);
+    const empresaId = empresaDe(req);
+    await clienteDe(empresaId, clienteId);
+    const r = await enTransaccion(async (c) => {
+      await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [clienteId, empresaId]);
+      const m = (await c.query<{ sucursal_id: string; tipo: string; monto: string; venta_id: string | null; turno_id: string | null }>(
+        "SELECT sucursal_id, tipo, monto, venta_id, turno_id FROM cxc_movimientos WHERE id = $1 AND cliente_id = $2", [id, clienteId])).rows[0];
+      if (!m || m.tipo !== "ABONO") throw new ErrorNegocio("Ese movimiento no es un abono de este cliente", 404);
+      if (m.turno_id) throw new ErrorNegocio("Este abono se cobró en una caja y forma parte del cuadre de su turno: no se puede anular desde aquí");
+      if (!m.venta_id) throw new ErrorNegocio("Este abono no está ligado a una factura: para corregirlo use Ajuste › Aumentar la deuda");
+      const marca = `Anulación del abono ${id}`;
+      const ya = await c.query("SELECT 1 FROM cxc_movimientos WHERE cliente_id = $1 AND tipo = 'AJUSTE' AND notas LIKE $2", [clienteId, marca + "%"]);
+      if (ya.rowCount) throw new ErrorNegocio("Este abono ya fue anulado");
+      const nuevo = uuidv7();
+      const valor = new Decimal(m.monto).neg();
+      await c.query(
+        `INSERT INTO cxc_movimientos (id, sucursal_id, cliente_id, tipo, monto, venta_id, usuario_id, notas, autorizado_por)
+         VALUES ($1,$2,$3,'AJUSTE',$4,$5,$6,$7,$6)`,
+        [nuevo, m.sucursal_id, clienteId, valor.toFixed(2), m.venta_id, usuarioDe(req), `${marca}: ${b.motivo}`],
+      );
+      const saldo = new Decimal((await c.query("SELECT COALESCE(SUM(monto), 0) AS s FROM cxc_movimientos WHERE cliente_id = $1", [clienteId])).rows[0].s);
+      return { id: nuevo, saldoNuevo: saldo.toFixed(2) };
     });
     rep.code(201);
     return r;

@@ -65,6 +65,17 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
   const [accion, setAccion] = useState<"abono" | "ajuste" | "credito" | null>(null);
   const [facturaElegida, setFacturaElegida] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [anulando, setAnulando] = useState<{ id: string; monto: string } | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState("");
+  const [errorAnular, setErrorAnular] = useState("");
+  const anular = async () => {
+    if (!anulando) return;
+    try {
+      const r = await api(`/central/cxc/${clienteId}/abonos/${anulando.id}/anular`, { cuerpo: { motivo: motivoAnular } });
+      setAnulando(null); setMotivoAnular(""); setErrorAnular("");
+      setMsg({ t: `Abono anulado. Ahora debe ${rd(r.saldoNuevo)}.`, tipo: "ok" }); recargar(); fac.recargar(); onCambio();
+    } catch (e) { setErrorAnular((e as Error).message); }
+  };
   const listo = (t: string) => { setAccion(null); setFacturaElegida(null); setMsg({ t, tipo: "ok" }); recargar(); fac.recargar(); onCambio(); };
   const TIPO: Record<string, string> = { CARGO: "Factura a crédito", ABONO: "Abono", AJUSTE: "Ajuste" };
   return (
@@ -82,6 +93,18 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
           <button className="boton chico" onClick={onCerrar}>Cerrar</button>
         </div>
         {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+        {anulando && (
+          <div className="panel no-imprimir" style={{ marginTop: 12 }}>
+            <b>Anular el abono de {anulando.monto}</b>
+            <p className="suave pequeno" style={{ margin: "4px 0 8px" }}>No se borra: se agrega un ajuste contrario y la factura vuelve a deber ese monto. Queda en el historial con el motivo.</p>
+            <label className="campo"><span>Motivo</span><input autoFocus value={motivoAnular} onChange={(e) => setMotivoAnular(e.target.value)} placeholder="Ej. se registró por error" maxLength={160} /></label>
+            {errorAnular && <Aviso texto={errorAnular} />}
+            <div className="fila-acciones">
+              <button className="boton primario" disabled={motivoAnular.trim().length < 5} onClick={anular}>Anular el abono</button>
+              <button className="boton" onClick={() => { setAnulando(null); setMotivoAnular(""); setErrorAnular(""); }}>No anular</button>
+            </div>
+          </div>
+        )}
         {accion && d && (
           <div className="panel no-imprimir" style={{ marginTop: 12 }}>
             {accion === "abono" && <FormAbono key={facturaElegida ?? "cuenta"} clienteId={clienteId} saldo={d.saldo} facturas={fac.datos ?? []} inicial={facturaElegida} onListo={listo} />}
@@ -129,7 +152,7 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
             )}
             <h3 style={{ margin: "16px 0 6px" }}>Movimientos</h3>
             <table className="tabla">
-              <thead><tr><th>Fecha</th><th>Concepto</th><th>Sucursal</th><th className="der">Cargo</th><th className="der">Abono</th><th className="der">Saldo</th></tr></thead>
+              <thead><tr><th>Fecha</th><th>Concepto</th><th>Sucursal</th><th className="der">Cargo</th><th className="der">Abono</th><th className="der">Saldo</th><th className="no-imprimir" /></tr></thead>
               <tbody>
                 {d.movimientos.map((m: any) => (
                   <tr key={m.id}>
@@ -139,9 +162,13 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
                     <td className="der">{Number(m.monto) > 0 ? rd(m.monto) : ""}</td>
                     <td className="der">{Number(m.monto) < 0 ? rd(-m.monto) : ""}</td>
                     <td className="der"><b>{rd(m.saldo)}</b></td>
+                    <td className="der no-imprimir">
+                      {m.anulado ? <span className="suave pequeno">Anulado</span>
+                        : m.tipo === "ABONO" && m.ventaId && !m.enCaja && puede("admin.cxc") ? <button className="boton chico" onClick={() => setAnulando({ id: m.id, monto: rd(-m.monto) })}>Anular</button> : null}
+                    </td>
                   </tr>
                 ))}
-                {!d.movimientos.length && <tr><td colSpan={6} className="suave">Sin movimientos todavía.</td></tr>}
+                {!d.movimientos.length && <tr><td colSpan={7} className="suave">Sin movimientos todavía.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -159,11 +186,17 @@ function FormAbono({ clienteId, saldo, facturas, inicial, onListo }: { clienteId
   const [forma, setForma] = useState("TRANSFERENCIA");
   const [referencia, setReferencia] = useState("");
   const [error, setError] = useState("");
+  // Un pago no se registra con un solo toque: primero se muestra el resumen y hay que confirmar
+  const [confirmar, setConfirmar] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const ok = async () => {
+    if (enviando) return;
+    setEnviando(true);
     try {
       const r = await api(`/central/cxc/${clienteId}/abonos`, { cuerpo: { monto: Number(monto).toFixed(2), formaPago: forma, referencia: referencia || undefined, modo: aplicar, ...(aplicar === "FACTURA" ? { ventaId } : {}) } });
       onListo(`Abono registrado. Ahora debe ${rd(r.saldoNuevo)}.`);
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { setError((e as Error).message); setConfirmar(false); }
+    finally { setEnviando(false); }
   };
   return (
     <>
@@ -191,7 +224,18 @@ function FormAbono({ clienteId, saldo, facturas, inicial, onListo }: { clienteId
         <label className="campo"><span>Referencia</span><input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="No. de transferencia o cheque" /></label>
       </div>
       {error && <Aviso texto={error} />}
-      <button className="boton primario" disabled={!(Number(monto) > 0) || (aplicar === "FACTURA" && !ventaId)} onClick={ok}>Registrar abono de {rd(monto || 0)}</button>
+      {!confirmar ? (
+        <button className="boton primario" disabled={!(Number(monto) > 0) || (aplicar === "FACTURA" && !ventaId)} onClick={() => setConfirmar(true)}>Continuar con el abono de {rd(monto || 0)}</button>
+      ) : (
+        <div className="aviso" role="alertdialog" style={{ marginTop: 8 }}>
+          <b>¿Confirmar el pago?</b>
+          <p style={{ margin: "6px 0" }}>Se registrará un abono de <b>{rd(monto || 0)}</b> {aplicar === "FACTURA" && elegida ? <>a la factura <b>{elegida.documento ?? `#${elegida.factura}`}</b></> : <>a la cuenta</>} por <b>{forma.toLowerCase()}</b>{referencia ? ` (${referencia})` : ""}. Queda en el historial; si fue un error, se anula desde Movimientos.</p>
+          <div className="fila-acciones">
+            <button className="boton primario" disabled={enviando} onClick={ok}>{enviando ? "Registrando…" : "Sí, registrar el pago"}</button>
+            <button className="boton" disabled={enviando} onClick={() => setConfirmar(false)}>No, volver</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
