@@ -57,7 +57,14 @@ export async function rutasCentral(app: FastifyInstance) {
        SELECT a.desde::text, a.hasta::text, a.pdesde::text, a.phasta::text,
               COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.desde AND a.hasta), 0)::text AS venta,
               COALESCE(SUM(v.transacciones) FILTER (WHERE v.fecha BETWEEN a.desde AND a.hasta), 0)::text AS transacciones,
-              COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.pdesde AND a.phasta), 0)::text AS "ventaAnterior"
+              COALESCE(SUM(v.venta_total) FILTER (WHERE v.fecha BETWEEN a.pdesde AND a.phasta), 0)::text AS "ventaAnterior",
+              -- Utilidad = venta sin ITBIS menos costo (misma vista del reporte «Utilidad por producto»), del periodo y del anterior
+              (SELECT COALESCE(SUM(u.utilidad), 0)::text FROM rpt_utilidad_producto u WHERE u.fecha BETWEEN a.desde AND a.hasta
+                 AND u.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))) AS utilidad,
+              (SELECT COALESCE(SUM(u.venta_neta), 0)::text FROM rpt_utilidad_producto u WHERE u.fecha BETWEEN a.desde AND a.hasta
+                 AND u.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))) AS "ventaNeta",
+              (SELECT COALESCE(SUM(u.utilidad), 0)::text FROM rpt_utilidad_producto u WHERE u.fecha BETWEEN a.pdesde AND a.phasta
+                 AND u.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))) AS "utilidadAnterior"
          FROM a LEFT JOIN rpt_ventas_sucursal v ON v.sucursal_id IN (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))
                                               AND v.fecha >= a.pdesde
         GROUP BY a.desde, a.hasta, a.pdesde, a.phasta`,

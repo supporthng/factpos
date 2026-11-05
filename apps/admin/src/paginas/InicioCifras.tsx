@@ -12,7 +12,7 @@ const PERIODOS: { id: Periodo; texto: string; titulo: string; anterior: string }
   { id: "mes", texto: "Este mes", titulo: "Venta de este mes", anterior: "Mes anterior (igual tramo)" },
 ];
 const leerPeriodo = (): Periodo => { try { const v = localStorage.getItem("factpos.inicio.periodo"); return PERIODOS.some((p) => p.id === v) ? (v as Periodo) : "hoy"; } catch { return "hoy"; } };
-interface DatosPeriodo { venta: string; transacciones: string; ventaAnterior: string }
+interface DatosPeriodo { venta: string; transacciones: string; ventaAnterior: string; utilidad?: string; ventaNeta?: string; utilidadAnterior?: string }
 interface Atencion { ayer: string; certificado: { vence: string | null } }
 interface EstadoActualizacion { actual: string; disponible: string | null; hayNueva: boolean }
 
@@ -58,6 +58,17 @@ export function InicioCifras({ irA, sinResumen = false }: { irA: (seccion: strin
         <b>{num(trans)}</b>
         <small className="suave">Ticket promedio {rd(trans ? venta / trans : 0)}</small>
       </div>
+      {per.datos?.utilidad != null && (() => {
+        const d = per.datos!, u = Number(d.utilidad), neta = Number(d.ventaNeta ?? 0), ua = Number(d.utilidadAnterior ?? 0);
+        const dif = ua ? ((u - ua) / Math.abs(ua)) * 100 : null;
+        return (
+          <div className="cifra">
+            <span className="suave">Utilidad</span>
+            <b className={u < 0 ? "texto-alerta" : ""}>{rd(u)}</b>
+            <small className="suave">{neta ? `Margen ${((u / neta) * 100).toFixed(1)} %` : "Sin ventas"} · {p.anterior}: {rd(ua)}{dif != null && <> · <span className={dif < 0 ? "texto-alerta" : "texto-ok"}>{dif >= 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(0)} %</span></>}</small>
+          </div>
+        );
+      })()}
       <div className="cifra">
         <span className="suave">Productos por reponer</span>
         <b>{num(bajo)}</b>
