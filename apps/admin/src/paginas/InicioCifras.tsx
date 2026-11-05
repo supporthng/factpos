@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { num, puede, rd } from "../api";
-import { SelectorSucursal, useCatalogo, useDatos } from "../ui";
+import { SelectorSucursal, useCatalogo, useDatos, versionCliente, versionNueva } from "../ui";
 
 interface FilaSucursal { sucursal_id?: string; venta_hoy: string; transacciones_hoy: string; productos_bajo_minimo: string }
 type Periodo = "hoy" | "ayer" | "semana" | "semanaPasada" | "mes";
@@ -83,7 +83,7 @@ export function EstadoSistema() {
       <h2>Estado del sistema</h2>
       <dl>
         <div><dt>Servidor</dt><dd><i className="punto-ok" aria-hidden="true" />En línea</dd></div>
-        {act.datos && <div><dt>Versión</dt><dd>{act.datos.actual}{act.datos.hayNueva && act.datos.disponible ? ` · nueva ${act.datos.disponible}` : ""}</dd></div>}
+        {act.datos && <div><dt>Versión</dt><dd>{versionCliente(act.datos.actual)}{act.datos.hayNueva && act.datos.disponible ? ` · nueva ${versionNueva(act.datos.disponible, act.datos.actual)}` : ""}</dd></div>}
         {at.datos && <div><dt>Certificado e-CF</dt><dd className={vence ? "" : "aviso-texto"}>{vence ? `Vence ${new Date(vence).toLocaleDateString("es-DO")}` : "De prueba"}</dd></div>}
       </dl>
     </section>
