@@ -41,10 +41,17 @@ document.getElementById("f").addEventListener("submit", async (ev) => {
   if (!v) { document.getElementById("e").textContent = "Escribe el nombre de la empresa."; return; }
   const b = document.getElementById("b"), e = document.getElementById("e");
   b.disabled = true; b.textContent = "Conectando…"; e.textContent = "";
+  const volver = (t) => { e.textContent = t; b.disabled = false; b.textContent = "Conectar"; };
+  // Si el puente con la app no responde, se abre la dirección directamente (no se guarda para la próxima vez)
+  const directo = () => {
+    const c = v.toUpperCase().replace(/-/g, "").match(/^FP([2-9A-HJKMNP-Z]{6})$/);
+    location.href = c ? "https://factpos.app/c/FP-" + c[1] : /^https?:/.test(v) ? v : v.includes(".") ? "https://" + v : "https://factpos.app/" + v + "/";
+  };
   try {
+    if (!(window.pywebview && window.pywebview.api && window.pywebview.api.guardar)) { directo(); return; }
     const r = await window.pywebview.api.guardar(v);
-    if (r && r.error) { e.textContent = r.error; b.disabled = false; b.textContent = "Conectar"; }
-  } catch (x) { e.textContent = "No se pudo conectar: " + x; b.disabled = false; b.textContent = "Conectar"; }
+    if (r && r.error) volver(r.error);
+  } catch (x) { volver("No se pudo conectar: " + x); }
 });
 </script></body></html>"""
 
