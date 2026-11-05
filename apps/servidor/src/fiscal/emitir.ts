@@ -46,7 +46,7 @@ export async function emitirEcfVenta(
   const v = (await c.query(
     `SELECT v.*, e.rnc AS emisor_rnc, e.razon_social, e.nombre_comercial,
             COALESCE(cf.direccion_emisor, '') AS direccion, COALESCE(cf.ambiente, 'SIMULADO') AS ambiente,
-            cl.documento AS cliente_doc, cl.tipo_documento AS cliente_tipo_doc, cl.nombre AS cliente_nombre
+            cl.documento AS cliente_doc, cl.tipo_documento AS cliente_tipo_doc, cl.nombre AS cliente_nombre, cl.dias_credito AS cliente_dias_credito
        FROM ventas v
        JOIN sucursales s ON s.id = v.sucursal_id
        JOIN empresas e ON e.id = s.empresa_id
@@ -82,6 +82,7 @@ export async function emitirEcfVenta(
     emisor: { rnc: v.emisor_rnc, razonSocial: v.razon_social, nombreComercial: v.nombre_comercial, direccion: v.direccion || "N/D" },
     comprador: v.cliente_id ? { rnc: rncComprador, nombre: v.cliente_nombre } : null,
     condicion: v.condicion,
+    diasCredito: v.condicion === "CREDITO" ? Number(v.cliente_dias_credito ?? 0) : undefined,
     pagos: pagos.map((p) => ({ formaPago: p.forma_pago, monto: p.monto })),
     lineas: items.map((i) => ({
       nombre: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precio_unitario, descuento: i.descuento,

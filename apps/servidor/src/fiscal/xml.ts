@@ -25,6 +25,8 @@ export interface DatosEcf {
   /** 01 por defecto (ingresos por operaciones) */
   tipoIngresos?: string;
   condicion: "CONTADO" | "CREDITO";
+  /** Venta a crédito: días que tiene el cliente para pagar (sale en el e-CF como fecha límite y término de pago) */
+  diasCredito?: number;
   pagos: { formaPago: string; monto: string }[];
   lineas: {
     nombre: string;
@@ -132,6 +134,14 @@ function bloqueTotales(d: DatosEcf, resumen = false) {
   return `<Totales>${claves.map((k) => t(k, x[k])).join("")}</Totales>`;
 }
 
+/** Venta a crédito: FechaLimitePago (emisión + días de crédito) y TerminoPago («30 dias»), justo después de TipoPago. */
+export function bloqueCredito(d: DatosEcf): string {
+  if (d.condicion !== "CREDITO") return "";
+  const dias = Math.max(0, Math.trunc(d.diasCredito ?? 0));
+  const limite = new Date(d.fechaEmision.getTime() + dias * 86400e3);
+  return t("FechaLimitePago", fechaDGII(limite)) + (dias > 0 ? t("TerminoPago", `${dias} dias`) : "");
+}
+
 function bloquePagos(d: DatosEcf) {
   // Agrupar por forma de pago DGII
   const m = new Map<string, Decimal>();
@@ -188,6 +198,7 @@ export function construirEcf(d: DatosEcf, fechaFirma: Date): string {
     e.montoGravado ? t("IndicadorMontoGravado", "1") : "", // los precios unitarios incluyen ITBIS
     e.ingresos ? t("TipoIngresos", d.tipoIngresos ?? "01") : "", // 01 = ingresos por operaciones (no financieros)
     e.pago ? t("TipoPago", d.condicion === "CREDITO" ? "2" : "1") : "",
+    e.pago ? bloqueCredito(d) : "",
     e.tablaPagos && d.condicion === "CONTADO" ? bloquePagos(d) : "",
   ].join("");
 

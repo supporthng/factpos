@@ -23,6 +23,22 @@ describe("XML según los esquemas de la DGII", () => {
   it("el e-CF completo sí conserva ITBIS1", () => {
     expect(construirEcf(base("E31"), new Date())).toContain("<ITBIS1>18</ITBIS1>");
   });
+  it("venta a crédito: FechaLimitePago y TerminoPago van justo después de TipoPago", () => {
+    const d = { ...base("E31"), condicion: "CREDITO" as const, pagos: [], diasCredito: 30, comprador: { rnc: "101000001", nombre: "Cliente SRL" } };
+    const x = construirEcf(d, new Date());
+    expect(x).toContain("<TipoPago>2</TipoPago><FechaLimitePago>02-12-2026</FechaLimitePago><TerminoPago>30 dias</TerminoPago>");
+    expect(x).not.toContain("TablaFormasPago");
+  });
+  it("crédito sin días: solo FechaLimitePago (la de emisión); contado no lleva ninguno", () => {
+    const sin = construirEcf({ ...base("E31"), condicion: "CREDITO", pagos: [] }, new Date());
+    expect(sin).toContain("<FechaLimitePago>02-11-2026</FechaLimitePago>");
+    expect(sin).not.toContain("TerminoPago");
+    expect(construirEcf(base("E31"), new Date())).not.toContain("FechaLimitePago");
+  });
+  it("la fecha límite usa hora de RD: una venta a las 11 pm no corre un día", () => {
+    const d = { ...base("E31"), condicion: "CREDITO" as const, pagos: [], diasCredito: 15, fechaEmision: new Date("2026-11-03T03:00:00Z") };
+    expect(construirEcf(d, new Date())).toContain("<FechaLimitePago>17-11-2026</FechaLimitePago>");
+  });
   it("soporta los 10 tipos", () => {
     expect([...TIPOS_ECF_SOPORTADOS]).toEqual(["E31", "E32", "E33", "E34", "E41", "E43", "E44", "E45", "E46", "E47"]);
   });
