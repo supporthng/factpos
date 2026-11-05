@@ -18,8 +18,27 @@ const CLAVE = CONFIG.slug ? `factpos.admin:${CONFIG.slug}` : enPortal ? "factpos
 
 // Credencial de este equipo para entrar por internet (la entrega el servidor al pedir acceso; ver SolicitarDispositivo)
 const CLAVE_DISP = CONFIG.slug ? `factpos.dispositivo:${CONFIG.slug}` : "factpos.dispositivo";
-export const leerDispositivo = (): string | null => { try { return localStorage.getItem(CLAVE_DISP); } catch { return null; } };
-export const fijarDispositivo = (d: string | null) => { try { if (d) localStorage.setItem(CLAVE_DISP, d); else localStorage.removeItem(CLAVE_DISP); } catch { /* sin almacenamiento */ } };
+// La credencial se guarda en varios sitios a la vez (memoria, localStorage, sessionStorage y cookie): si el navegador del celular
+// borra o bloquea uno (pestaña privada, límites de Safari), los otros la conservan y el equipo no vuelve a pedir acceso.
+let dispEnMemoria: string | null = null;
+const COOKIE_DISP = "factpos_disp" + (CONFIG.slug ? "_" + CONFIG.slug : "");
+const rutaCookie = CONFIG.slug ? "/" + CONFIG.slug : "/";
+const leerCookie = (): string | null => { try { const m = document.cookie.split("; ").find((c) => c.startsWith(COOKIE_DISP + "=")); return m ? decodeURIComponent(m.slice(COOKIE_DISP.length + 1)) : null; } catch { return null; } };
+export const leerDispositivo = (): string | null => {
+  if (dispEnMemoria) return dispEnMemoria;
+  let v: string | null = null;
+  try { v = localStorage.getItem(CLAVE_DISP); } catch { /* sin almacenamiento */ }
+  if (!v) { try { v = sessionStorage.getItem(CLAVE_DISP); } catch { /* sin almacenamiento */ } }
+  if (!v) v = leerCookie();
+  if (v) dispEnMemoria = v;
+  return v;
+};
+export const fijarDispositivo = (d: string | null) => {
+  dispEnMemoria = d;
+  try { if (d) localStorage.setItem(CLAVE_DISP, d); else localStorage.removeItem(CLAVE_DISP); } catch { /* sin almacenamiento */ }
+  try { if (d) sessionStorage.setItem(CLAVE_DISP, d); else sessionStorage.removeItem(CLAVE_DISP); } catch { /* sin almacenamiento */ }
+  try { document.cookie = d ? `${COOKIE_DISP}=${encodeURIComponent(d)}; max-age=31536000; path=${rutaCookie}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}` : `${COOKIE_DISP}=; max-age=0; path=${rutaCookie}`; } catch { /* sin cookies */ }
+};
 
 export interface Sesion {
   servidor: string;   // URL de la central
