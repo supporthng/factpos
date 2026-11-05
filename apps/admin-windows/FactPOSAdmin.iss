@@ -39,3 +39,5 @@ Root: HKCU; Subkey: "Software\Classes\factpos-admin"; ValueType: string; ValueNa
 Root: HKCU; Subkey: "Software\Classes\factpos-admin\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir FactPOS Admin ahora"; Flags: postinstall nowait skipifsilent
+; Actualización automática (instalación silenciosa): la app se vuelve a abrir sola
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent

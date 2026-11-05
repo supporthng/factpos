@@ -7,7 +7,10 @@ completa que se le indique. La empresa se guarda en %APPDATA%\\FactPOSAdmin\\con
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -132,6 +135,60 @@ def pedir_empresa():
     api.ventana.load_html(html)
 
 
+def compilacion_actual():
+    """Número de compilación de ESTA app: el CI escribe VERSION = «1.0.<compilación>»; en desarrollo es 0."""
+    try:
+        return int(str(VERSION).split(".")[-1])
+    except ValueError:
+        return 0
+
+
+def hay_version_nueva(actual, publicada):
+    return actual > 0 and publicada > actual
+
+
+def compilacion_publicada():
+    r = urllib.request.urlopen(urllib.request.Request(PORTAL + "licencias/version-verificador/admin-windows", headers={"User-Agent": "FactPOSAdmin/" + VERSION}), timeout=15)
+    return int(json.load(r)["version"])
+
+
+def descargar_instalador(destino):
+    """Baja el instalador vigente (el portal redirige a una dirección firmada de GitHub) y comprueba que parezca un .exe."""
+    pedido = urllib.request.Request(PORTAL + "licencias/descargar-verificador/admin-windows", headers={"User-Agent": "FactPOSAdmin/" + VERSION})
+    with urllib.request.urlopen(pedido, timeout=60) as r, open(destino, "wb") as f:
+        while True:
+            trozo = r.read(1 << 20)
+            if not trozo:
+                break
+            f.write(trozo)
+    if os.path.getsize(destino) < 1_000_000:
+        raise RuntimeError("El instalador descargado está incompleto")
+    with open(destino, "rb") as f:
+        if f.read(2) != b"MZ":
+            raise RuntimeError("El archivo descargado no es un instalador")
+
+
+def buscar_actualizacion():
+    """Al abrir: si el portal tiene una compilación más nueva de esta app, ofrece actualizar (descarga el instalador y lo
+    ejecuta en silencio; él cierra esta app, se instala y la vuelve a abrir). Nunca interrumpe si algo falla."""
+    try:
+        time.sleep(6)  # que la ventana ya esté lista
+        actual = compilacion_actual()
+        publicada = compilacion_publicada()
+        if not hay_version_nueva(actual, publicada):
+            return
+        if not api.ventana.create_confirmation_dialog(
+                "FactPOS Admin",
+                "Hay una versión nueva de FactPOS Admin (compilación %d; esta es la %d).\n\n¿Actualizar ahora? La app se cerrará y se abrirá sola en unos segundos." % (publicada, actual)):
+            return
+        ruta = os.path.join(tempfile.gettempdir(), "Instalador_Admin_FactPOS_nuevo.exe")
+        descargar_instalador(ruta)
+        subprocess.Popen([ruta, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], close_fds=True)
+        os._exit(0)
+    except Exception:
+        pass
+
+
 RESERVADAS = {"api", "licencias", "central", "admin", "terminal", "c", "assets", "favicon.ico"}
 
 
@@ -197,7 +254,7 @@ def main():
         webview.menu.MenuSeparator(),
         webview.menu.MenuAction("Salir", salir),
     ])]
-    webview.start(gui="edgechromium", menu=menu, private_mode=False, storage_path=WEBVIEW, debug=False)
+    webview.start(buscar_actualizacion, gui="edgechromium", menu=menu, private_mode=False, storage_path=WEBVIEW, debug=False)
 
 
 if __name__ == "__main__":
