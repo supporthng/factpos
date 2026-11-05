@@ -522,10 +522,11 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     return () => window.removeEventListener("keydown", h);
   }, [modal, lineas, sel, cot.error, codigo, config, cliente, cupon, aprobacion, pausadas, modo, notas, catalogo]);
 
-  // El campo de código siempre recupera el foco
+  // El campo de código siempre recupera el foco: en la Caja clásica es la barra de arriba; en la táctil, la búsqueda del catálogo (ahí escanea el lector)
+  const enfocarEntrada = () => { (entrada.current ?? document.querySelector<HTMLInputElement>("[data-entrada-principal]"))?.focus(); };
   useEffect(() => {
     if (modal) return;
-    entrada.current?.focus();
+    enfocarEntrada();
   }, [modal, lineas, modo]);
 
   const total = cot.r?.totales.total ?? "0.00";
@@ -560,7 +561,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         </nav>
       </header>
 
-      <div className="pv-entrada">
+      {!verCatalogo && <div className="pv-entrada">
         <div className="pv-escaner">
           <Icono n="codigo" />
           <input
@@ -578,7 +579,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <Icono n="lupa" /><kbd>F2</kbd>
           </button>
         </div>
-      </div>
+      </div>}
 
       <main className={"pv-cuerpo" + (verCatalogo && anchoCat ? " con-ancho" : "")} style={verCatalogo && anchoCat ? ({ "--ancho-cat": anchoCat } as React.CSSProperties) : undefined}>
         {verCatalogo && catalogo && (
@@ -634,7 +635,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                   </span>
                   <span className="centro">
                     <CeldaCantidad linea={l} onMenos={() => (Number(l.cantidad) > 1 ? cambiarCantidad(i, -1) : quitar(i))} onMas={() => cambiarCantidad(i, 1)}
-                      onFijar={(v) => fijarCantidad(i, v)} onListo={() => entrada.current?.focus()} />
+                      onFijar={(v) => fijarCantidad(i, v)} onListo={enfocarEntrada} />
                   </span>
                   <span className="der">{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
                   <span className={"der" + (desc > 0 ? " pv-ahorro" : " suave")}>{desc > 0 ? `−${rd(desc.toFixed(2))}` : "—"}</span>
