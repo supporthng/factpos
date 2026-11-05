@@ -8,12 +8,14 @@ export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "c
 export interface Aprobacion { token: string; supervisor: string }
 
 /** Campo de PIN del supervisor. Devuelve la aprobación firmada por el servidor. */
-export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automatico = false, deshabilitado = false }: {
+export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automatico = false, deshabilitado = false, enfocar = false }: {
   ajustes: Ajustes; permiso: Permiso; onAprobado: (a: Aprobacion) => void; textoBoton: string;
   /** Pantalla que solo existe para pedir la aprobación: si el cajero ya tiene el permiso, entra sin pedir nada */
   automatico?: boolean;
   /** El PIN se puede escribir, pero todavía no se puede aprobar (p. ej. falta el motivo) */
   deshabilitado?: boolean;
+  /** Ventana que solo pide el PIN: el cursor queda listo en el campo al abrirse (no usar si hay otros campos que se están llenando) */
+  enfocar?: boolean;
 }) {
   // Quien ya entró a la caja y tiene el permiso (administrador, supervisor) no necesita otro PIN
   const [propio, setPropio] = useState<Aprobacion | null>(null);
@@ -28,6 +30,7 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automa
   const [pin, setPin] = useState("");
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const campoPin = useRef<HTMLInputElement>(null); // el cursor queda en el campo al abrir y tras un PIN equivocado
   const aprobar = async () => {
     if (pin.length < 4 || enviando || deshabilitado) return;
     setEnviando(true);
@@ -38,6 +41,7 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automa
     } catch (e) {
       setMsg((e as Error).message);
       setPin("");
+      setTimeout(() => campoPin.current?.focus(), 0);
     } finally {
       setEnviando(false);
     }
@@ -54,12 +58,12 @@ export function PinSupervisor({ ajustes, permiso, onAprobado, textoBoton, automa
     <div className="aprobacion">
       <label className="campo">
         <span>PIN del supervisor</span>
-        <input type="password" inputMode="numeric" autoComplete="off" className="entrada-grande pin" value={pin}
+        <input ref={campoPin} autoFocus={enfocar} type="password" inputMode="numeric" autoComplete="off" className="entrada-grande pin" value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} onKeyDown={(e) => e.key === "Enter" && aprobar()} />
       </label>
       <div className="teclado-pin compacto">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "C"].map((t) => (
-          <button key={t} type="button" className="tecla" disabled={enviando}
+          <button key={t} type="button" className="tecla" disabled={enviando} onMouseDown={(e) => e.preventDefault()}
             onClick={() => setPin((p) => (t === "⌫" ? p.slice(0, -1) : t === "C" ? "" : p.length < 8 ? p + t : p))}>{t}</button>
         ))}
       </div>

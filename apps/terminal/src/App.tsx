@@ -135,7 +135,7 @@ function AppInterna() {
   const ventanaSalir = saliendo && ajustes ? (
     <Modal titulo="Hay un turno abierto" onCerrar={() => setSaliendo(false)}>
       <p>No se puede cerrar FactPOS con el turno abierto. Cierre el turno en <b>Turno y cierre</b>, o pida a un supervisor que autorice la salida.</p>
-      <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar FactPOS" onAprobado={aprobadoSalir} />
+      <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar FactPOS" enfocar onAprobado={aprobadoSalir} />
       <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
     </Modal>
   ) : null;
@@ -143,7 +143,7 @@ function AppInterna() {
     <Modal titulo="Minimizar la caja" onCerrar={() => setMinimizando(false)}>
       <p>Para minimizar la caja hace falta la aprobación de un supervisor.</p>
       {ajustes
-        ? <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y minimizar" onAprobado={() => { setMinimizando(false); electron?.minimizar?.(); }} />
+        ? <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y minimizar" enfocar onAprobado={() => { setMinimizando(false); electron?.minimizar?.(); }} />
         : <button className="boton ancho" onClick={() => { setMinimizando(false); electron?.minimizar?.(); }}>Minimizar</button>}
       <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setMinimizando(false)}>Volver a la caja</button>
     </Modal>
@@ -188,7 +188,7 @@ function TurnoAjeno({ ajustes, config, usuario, turno, onSalir, onCerrado }: {
       <p>El turno de <b>{turno.usuario}</b> sigue abierto. Cada cajero trabaja con su propio turno para que el cuadre sea de una sola persona.</p>
       <p className="suave">{turno.usuario} debe cerrar su turno, o un supervisor puede cerrarlo ahora. Después podrá abrir el suyo con su fondo inicial.</p>
       {cerrando ? (
-        <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar el turno" onAprobado={() => setAutorizado(true)} />
+        <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar el turno" enfocar onAprobado={() => setAutorizado(true)} />
       ) : (
         <button className="boton ancho" onClick={() => setCerrando(true)}>Cerrar el turno de {turno.usuario} (supervisor)</button>
       )}
