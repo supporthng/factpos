@@ -599,7 +599,17 @@ Section "FactPOS" SecPrincipal
         StrCpy $2 "$2 -Servidor '$Servidor'"
       ${EndIf}
       DetailPrint "Buscando el servidor de la tienda e instalando la caja…"
+      Delete "$LOCALAPPDATA\FactPOS\servidor-detectado.txt"
       !insertmacro Ejecutar "$PLUGINSDIR\instalador\instalar-caja.ps1" "$2"
+      ; Si lo encontró el script (no se escribió a mano), el acceso de la caja queda apuntando a ese servidor
+      ${If} $Servidor == ""
+        ClearErrors
+        FileOpen $0 "$LOCALAPPDATA\FactPOS\servidor-detectado.txt" r
+        ${IfNot} ${Errors}
+          FileRead $0 $Servidor
+          FileClose $0
+        ${EndIf}
+      ${EndIf}
     ${Else}
       DetailPrint "Instalando la aplicación de Administración…"
       !insertmacro Ejecutar "$PLUGINSDIR\instalador\instalar-administracion.ps1" "-Url '$Destino' -NoInteractivo"
