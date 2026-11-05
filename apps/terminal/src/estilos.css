@@ -969,3 +969,100 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-cobro .pv-atajos-min button { min-height: 60px; height: 100%; }
 .pv-cobro .pv-cliente { min-height: 68px; }
 .pv-cobro .cobrar.abajo { flex: none; min-height: 80px; margin-top: 0; }
+
+/* ============================================================
+   Caja táctil — rediseño: carrito a la izquierda, catálogo a la derecha
+   (3 por fila) y barra inferior con totales, acciones y Cobrar. Tema mixto:
+   barras y carrito oscuros, catálogo claro.
+   ============================================================ */
+.pos-hibrido.con-catalogo .pv-barra,
+.pos-hibrido.con-catalogo .pv-venta,
+.pos-hibrido.con-catalogo .pv-cobro {
+  --panel: #16212d; --panel-2: #1f2d3d; --borde: #2c3947; --texto: #e8eef5; --suave: #8fa3b8; --tinta: #0b1317;
+  color: var(--texto);
+}
+.pos-hibrido.con-catalogo .pv-barra { --barra-marca: #0f1a26; min-height: 44px; padding: 4px 12px; }
+.pos-hibrido.con-catalogo .pv-icono-turno { color: #f0b779; border-color: rgba(240,183,121,.45); }
+
+.pos-hibrido.con-catalogo .pv-cuerpo {
+  grid-template-columns: 440px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "venta cat" "cobro cobro"; gap: 8px 10px; padding: 8px 12px;
+}
+.pos-hibrido.con-catalogo .pv-cuerpo.con-ancho { grid-template-columns: calc(var(--ancho-cat) * 1px) minmax(0, 1fr); }
+.pos-hibrido.con-catalogo .pv-venta { grid-area: venta; }
+.pos-hibrido.con-catalogo .pv-catalogo { grid-area: cat; }
+.pos-hibrido.con-catalogo .pv-cobro { grid-area: cobro; }
+.pos-hibrido.con-catalogo .pv-divisor { right: auto; left: -12px; }
+.pos-hibrido.con-catalogo .pv-funciones { display: none; }
+
+/* Carrito */
+.pos-hibrido.con-catalogo .pv-venta { background: var(--panel); border-color: var(--borde); }
+.pos-hibrido.con-catalogo .pv-venta-cabeza { padding: 7px 10px; gap: 8px; background: var(--panel-2); }
+.pos-hibrido.con-catalogo .pv-venta-cabeza h2 { font-size: 15px; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente-panel { margin-left: auto; min-width: 0; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente { padding: 3px 8px; gap: 6px; min-height: 34px; border-radius: 10px; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente > .icono { width: 18px; height: 18px; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente-texto small:first-child { display: none; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente-texto b { font-size: 12px; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente-accion { font-size: 11px; padding: 3px 6px; }
+.pos-hibrido.con-catalogo .pv-venta-cabeza .pv-cliente-accion kbd { display: none; }
+.pos-hibrido.con-catalogo .pv-cabeza { display: none; }
+.pos-hibrido.con-catalogo .pv-acciones-linea { display: none; }
+.pos-hibrido.con-catalogo .pv-tabla { padding: 0 6px; }
+.pos-hibrido.con-catalogo .pv-fila { grid-template-columns: minmax(0, 1fr) auto 74px 30px; gap: 6px; min-height: 38px; padding: 2px 4px; font-size: 13px; }
+.pos-hibrido.con-catalogo .pv-fila.seleccionada { box-shadow: inset 3px 0 0 var(--info); }
+.pos-hibrido.con-catalogo .pv-desc { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 0; line-height: 1.25; }
+.pos-hibrido.con-catalogo .pv-desc > b { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 96px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pos-hibrido.con-catalogo .pv-desc > .suave { display: none; }
+.pos-hibrido.con-catalogo .pv-etiquetas { display: contents; }
+.pos-hibrido.con-catalogo .pv-codigo { display: none; }
+.pos-hibrido.con-catalogo .pv-precio-mini { display: inline; font-size: 11px; white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-etiquetas em { flex: none; font-size: 11px; }
+.pos-hibrido.con-catalogo .celda-cantidad { grid-template-columns: 34px 38px 34px; height: 32px; border-radius: 9px; }
+.pos-hibrido.con-catalogo .celda-cantidad input { font-size: 14px; padding: 0; }
+.pos-hibrido.con-catalogo .pv-fila > .der.fuerte { font-size: 13px; font-weight: 600; }
+.pos-hibrido.con-catalogo .pv-quitar { width: 30px; height: 30px; font-size: 20px; line-height: 1; color: var(--suave); }
+.pos-hibrido.con-catalogo .pv-vacio { padding: 36px 16px; }
+.pos-hibrido.con-catalogo .pv-vacio b { font-size: 16px; }
+
+/* Barra inferior */
+.pos-hibrido.con-catalogo .pv-cobro {
+  position: relative; display: flex; flex-direction: row; align-items: center; gap: 8px; overflow: visible;
+  background: var(--panel); border: 1px solid var(--borde); border-radius: 14px; padding: 6px 10px;
+}
+.pos-hibrido.con-catalogo .pv-desglose { order: 1; background: none; border: 0; padding: 0; min-width: 138px; }
+.pos-hibrido.con-catalogo .pv-desglose > div { padding: 1px 0; font-size: 11px; gap: 8px; }
+.pos-hibrido.con-catalogo .pv-atajos-min { order: 2; display: flex; gap: 6px; }
+.pos-hibrido.con-catalogo .pv-atajos-min button, .pos-hibrido.con-catalogo .pv-cancelar-barra {
+  height: 48px; padding: 0 12px; font-size: 13px; font-weight: 500; white-space: nowrap; border-radius: 12px;
+  border: 1px solid var(--borde); background: var(--panel-2); color: var(--texto);
+}
+.pos-hibrido.con-catalogo .pv-atajos-min button:disabled { opacity: .45; }
+.pos-hibrido.con-catalogo .pv-cancelar-barra { order: 3; color: #e08080; border: 2px solid #c9605f; background: transparent; }
+.pos-hibrido.con-catalogo .pv-cancelar-barra:disabled { color: var(--suave); border-color: var(--borde); }
+.pos-hibrido.con-catalogo .pv-total { order: 4; margin-left: auto; background: none; border: 0; padding: 0; align-items: flex-end; }
+.pos-hibrido.con-catalogo .pv-total > span { font-size: 11px; }
+.pos-hibrido.con-catalogo .pv-total > b, .pos-hibrido.con-catalogo .pv-cobro .pv-total > b { font-size: 26px; letter-spacing: -.5px; white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-total > small { display: none; }
+.pos-hibrido.con-catalogo .pv-cobro .boton.cobrar { order: 5; margin: 0; height: 52px; padding: 0 26px; font-size: 18px; font-weight: 600; background: #58b08a; color: #06210f; border-radius: 14px; }
+.pos-hibrido.con-catalogo .pv-cobro .boton.cobrar kbd { display: block; font-size: 10px; background: none; border: 0; padding: 0; opacity: .7; text-align: center; }
+.pos-hibrido.con-catalogo .pv-cobro .boton.cobrar:disabled { opacity: .5; }
+.pos-hibrido.con-catalogo .pv-cobro > .error { order: 6; position: absolute; bottom: calc(100% + 4px); left: 12px; margin: 0; }
+.pos-hibrido.con-catalogo .pv-ultima { display: none; }
+.pos-hibrido.con-catalogo .pv-mas {
+  position: absolute; left: 150px; bottom: calc(100% + 6px); z-index: 20; width: 360px; max-height: 60vh; overflow: auto;
+  display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+.pos-hibrido.con-catalogo .pv-mas button { min-height: 48px; font-size: 13px; color: var(--texto); background: none; border-bottom: 1px solid var(--borde); }
+
+/* Catálogo: 3 por fila, foto pequeña, texto compacto */
+.pos-hibrido.con-catalogo .pv-catalogo .catalogo { padding: 8px; gap: 8px; }
+.pos-hibrido.con-catalogo .pv-catalogo .rejilla { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pos-hibrido.con-catalogo .arte { aspect-ratio: auto; min-height: 0; height: 56px; }
+.pos-hibrido.con-catalogo .arte img { padding: 3px; }
+.pos-hibrido.con-catalogo .arte-svg { height: 90%; width: auto; }
+.pos-hibrido.con-catalogo .chip-cat { top: 5px; left: 6px; font-size: 9px; padding: 1px 6px; letter-spacing: .03em; }
+.pos-hibrido.con-catalogo .pv-catalogo .info { padding: 5px 9px 7px; gap: 2px; }
+.pos-hibrido.con-catalogo .pv-catalogo .info .nombre { font-size: 11px; line-height: 14px; min-height: 28px; -webkit-line-clamp: 2; font-weight: 500; }
+.pos-hibrido.con-catalogo .pv-catalogo .info .pie { white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-catalogo .info .precio { font-size: 14px; font-weight: 600; }
