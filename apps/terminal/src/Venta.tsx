@@ -532,6 +532,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   }, [modal, lineas, sel, cot.error, codigo, config, cliente, cupon, aprobacion, pausadas, modo, notas, catalogo]);
 
   // El campo de código siempre recupera el foco: en la Caja clásica es la barra de arriba; en la táctil, la búsqueda del catálogo (ahí escanea el lector)
+  const [masAbierto, setMasAbierto] = useState(false);
   const enfocarEntrada = () => { (entrada.current ?? document.querySelector<HTMLInputElement>("[data-entrada-principal]"))?.focus(); };
   useEffect(() => {
     if (modal) return;
@@ -664,14 +665,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                   <span className="der">{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
                   <span className={"der" + (desc > 0 ? " pv-ahorro" : " suave")}>{desc > 0 ? `−${rd(desc.toFixed(2))}` : "—"}</span>
                   <span className="der fuerte">{c ? rd(c.calc.total) : "—"}</span>
-                  <button className="pv-quitar" aria-label={`Quitar ${l.prod.nombre}`} title="Quitar (Supr)" onClick={(e) => { e.stopPropagation(); quitar(i); }}><Icono n="basura" /></button>
+                  <button className="pv-quitar" aria-label={`Quitar ${l.prod.nombre}`} title="Quitar (Supr)" onClick={(e) => { e.stopPropagation(); quitar(i); }}>×</button>
                 </div>
               );
             })}
           </div>
 
           <div className="pv-acciones-linea" aria-label="Acciones de la línea seleccionada">
-            <button className="boton fantasma" disabled={!hayLinea} onClick={() => sel >= 0 && quitar(sel)}><Icono n="basura" />Quitar <kbd>Supr</kbd></button>
             <button className="boton fantasma" disabled={!hayLinea || !!lineas[sel]?.prod.esPesable} onClick={() => { const q = document.querySelector(".pv-fila.seleccionada .celda-cantidad input") as HTMLInputElement | null; q?.focus(); q?.select(); if (q) window.dispatchEvent(new CustomEvent("factpos-teclado", { detail: q })); }}>
               <Icono n="editar" />Cantidad <kbd>+</kbd><kbd>−</kbd>
             </button>
@@ -708,22 +708,29 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             </button>
             {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a consumidor final" onClick={() => setCliente(null)}>×</button>}
           </div>
-          <span className="pv-titulo-pago">Atajos</span>
-          <div className="pv-atajos" aria-label="Atajos de la venta">
-            <button disabled={!lineas.length} onClick={pausar}>Suspender<small>F3</small></button>
-            <button disabled={!lineas.length || !cot.r} onClick={() => setModal("cotizacion")}>Cotización<small>Alt+Q</small></button>
-            <button className={cupon ? "activo" : ""} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}>{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"}<small>F6</small></button>
-            <button className={notas ? "activo" : ""} onClick={() => setModal("nota")}>{notas ? "Nota ✓" : "Nota"}<small>Alt+N</small></button>
+          <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
+            <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
+            <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
+            <button onClick={() => setModal("turno")}>Cerrar turno</button>
+            <button className={masAbierto ? "activo" : ""} onClick={() => setMasAbierto((v) => !v)} aria-expanded={masAbierto}>
+              Más {masAbierto ? "▴" : "▾"}
+            </button>
           </div>
-          <span className="pv-titulo-pago">Caja</span>
-          <div className="pv-caja-panel">
-            <BotonFuncion tono="ambar" icono="pausa" texto={`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`} tecla="F5" onClick={() => setModal("pausadas")} />
-            <BotonFuncion tono="violeta" icono="devolucion" texto="Facturas y devolución" tecla="F9" onClick={() => setModal("facturasPin")} />
-            <BotonFuncion tono="verde" icono="documento" texto="Pago de factura" tecla="Alt+F" onClick={() => setModal("pagoFactura")} />
-            <BotonFuncion tono="rojo" icono="billete" texto="Salida de efectivo" tecla="Alt+S" onClick={() => setModal("salida")} />
-            <BotonFuncion tono="tinta" icono="cierre" texto="Turno y cierre" tecla="F10" onClick={() => setModal("turno")} />
-            {config.modulos.delivery.activo && <BotonFuncion tono="gris" icono="moto" texto="Delivery" tecla="F8" onClick={() => setModal("delivery")} />}
-          </div>
+          {masAbierto && (
+            <div className="pv-mas" role="menu">
+              {([
+                ["Cotización", () => setModal("cotizacion"), !lineas.length || !cot.r],
+                [cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false],
+                [notas ? "Nota ✓" : "Nota", () => setModal("nota"), false],
+                ["Facturas y devolución", () => setModal("facturasPin"), false],
+                ["Pago de factura", () => setModal("pagoFactura"), false],
+                ["Salida de efectivo", () => setModal("salida"), false],
+                ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
+              ] as const).map(([t, f, d]) => (
+                <button key={t} role="menuitem" disabled={d} onClick={() => { setMasAbierto(false); f(); }}>{t}</button>
+              ))}
+            </div>
+          )}
           {ultima && (
             <div className="pv-ultima">
               <span>Última: #{ultima.numero} · {rd(ultima.total)}{Number(ultima.cambio) > 0 && <> · <b className="cambio">cambio {rd(ultima.cambio)}</b></>}</span>
