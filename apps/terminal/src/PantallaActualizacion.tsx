@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { versionCliente } from "./version";
 
 /**
  * Mientras el servidor se actualiza, tapa la pantalla con el avance. Cuando termina y la versión cambió,
@@ -9,13 +10,7 @@ interface Estado {
   version: string; actualizando: boolean; destino: string | null; paso: string | null; porcentaje: number | null;
   resultado: { estado: "OK" | "ERROR"; version: string; mensaje: string | null; en: string } | null;
 }
-/** Etiqueta de cara al cliente: 26.5.0 → 2.6.5, 26.0 → 2.6 (igual que en el panel de administración). */
-function vcorta(v: string | null | undefined): string {
-  const m = /^(\d+)(?:\.(\d))?(?:\.|$)/.exec(v ?? "");
-  if (!m || m[1]!.length < 2) return v ?? "";
-  const e = Number(m[1]);
-  return `${Math.floor(e / 10)}.${e % 10}${m[2] && m[2] !== "0" ? "." + m[2] : ""}`;
-}
+const vcorta = versionCliente;
 const CLAVE_VERSION = "factpos.version-vista";
 const leer = () => { try { return localStorage.getItem(CLAVE_VERSION); } catch { return null; } };
 const guardar = (v: string) => { try { localStorage.setItem(CLAVE_VERSION, v); } catch { /* sin almacenamiento */ } };
