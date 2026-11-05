@@ -40,6 +40,7 @@ import { rutasCentralSeguridad, accesoWebPermitido } from "./rutas/central-segur
 import { reportarError } from "./incidentes.js";
 import { rutasDispositivos, dispositivoExigido, estadoDispositivo, rutaDeAltaDispositivo } from "./rutas/dispositivos.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
+import { rutasEnsayoFiscal } from "./rutas/central-fiscal-ensayo.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
 import { rutasCentralProductos } from "./rutas/central-productos.js";
 import { rutasCentralCompras } from "./rutas/central-compras.js";
@@ -257,6 +258,7 @@ export async function crearApp() {
     await app.register(rutasDispositivos);
   await app.register(rutasCentralMovil);
     await app.register(rutasCentralFiscal);
+    await app.register(rutasEnsayoFiscal);
     await app.register(rutasCentralOrganizacion);
     await app.register(rutasCentralProductos);
     await app.register(rutasCentralCompras);
