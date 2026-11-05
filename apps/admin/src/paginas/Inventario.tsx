@@ -30,11 +30,11 @@ export function Inventario() {
       <div className="filtros">
         <input placeholder="Buscar por nombre o SKU" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setBuscar(q)} />
         <button className="boton" onClick={() => setBuscar(q)}>Buscar</button>
-        <select aria-label="Mostrar" value={mostrar} onChange={(e) => setMostrar(e.target.value as "todos" | "bajo" | "sin")}>
-          <option value="todos">Todos los productos</option>
-          <option value="bajo">Bajo el mínimo</option>
-          <option value="sin">Sin stock (en 0)</option>
-        </select>
+        <div className="rp-chips" role="radiogroup" aria-label="Mostrar">
+          {([["todos", "Todos los productos"], ["bajo", "Bajo el mínimo"], ["sin", "Sin stock (en 0)"]] as const).map(([v, t]) => (
+            <button key={v} type="button" role="radio" aria-checked={mostrar === v} className={mostrar === v ? "activo" : ""} onClick={() => setMostrar(v)}>{t}</button>
+          ))}
+        </div>
       </div>
       <Aviso texto={error} />
       <Tabla
