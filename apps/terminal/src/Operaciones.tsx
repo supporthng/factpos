@@ -171,7 +171,7 @@ export function Facturas({ ajustes, usuario, onReimprimir, onAnulada, onCorregir
           <div key={f.id} className={"factura" + (f.anulada ? " anulada" : "")}>
             <span>
               <b>#{f.numero}</b> <span className="mono">{f.encf ?? ""}</span>
-              <span className="suave"> · {new Date(f.fecha).toLocaleTimeString("es-DO")} · {f.cliente ?? "Cliente Royal"}</span>
+              <span className="suave"> · {new Date(f.fecha).toLocaleTimeString("es-DO")} · {f.cliente ?? "CLIENTE GENERICO"}</span>
               {(f.tipo === "E34" || f.tipo === "ANU") && <span className="pastilla">{f.tipo === "ANU" ? "Anulación" : "Nota de crédito"}</span>}
               {f.anulada && <span className="pastilla roja">Anulada</span>}
             </span>
@@ -203,7 +203,7 @@ export function Pausadas<L>({ ajustes, pausadas, onRetomar, onDescartar, onCerra
   if (descartando) {
     return (
       <Modal titulo="Descartar venta en pausa" onCerrar={() => setDescartando(null)}>
-        <p>Va a eliminar la venta de <b>{descartando.cliente?.nombre ?? "Cliente Royal"}</b> por <b>{rd(descartando.total)}</b> ({descartando.lineas.length} producto(s)).</p>
+        <p>Va a eliminar la venta de <b>{descartando.cliente?.nombre ?? "CLIENTE GENERICO"}</b> por <b>{rd(descartando.total)}</b> ({descartando.lineas.length} producto(s)).</p>
         <p className="suave">Para eliminar una venta en pausa hace falta la aprobación de un supervisor.</p>
         <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y descartar"
           onAprobado={(a) => { onDescartar(descartando, a); setDescartando(null); }} />
@@ -217,7 +217,7 @@ export function Pausadas<L>({ ajustes, pausadas, onRetomar, onDescartar, onCerra
       <div className="resultados">
         {pausadas.map((p, i) => (
           <div key={p.id} className="factura">
-            <span><b>{i + 1}. {p.cliente?.nombre ?? "Cliente Royal"}</b> <span className="suave">· {p.lineas.length} producto(s) · {p.hora}</span></span>
+            <span><b>{i + 1}. {p.cliente?.nombre ?? "CLIENTE GENERICO"}</b> <span className="suave">· {p.lineas.length} producto(s) · {p.hora}</span></span>
             <span className="factura-acciones">
               <b>{rd(p.total)}</b>
               <button className="boton primario" autoFocus={i === 0} onClick={() => onRetomar(p)}>Retomar</button>
