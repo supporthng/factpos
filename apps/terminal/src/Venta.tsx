@@ -345,22 +345,23 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   useEffect(() => { setModo(modoInicial(ajustes.cajaId)); }, [ajustes.cajaId]);
   useEffect(() => { try { localStorage.setItem(claveModo, modo); } catch { /* sin almacenamiento */ } }, [claveModo, modo]);
   const verCatalogo = modo === "catalogo";
-  // Ancho del catálogo en la Caja táctil: se arrastra el borde con el mouse o el dedo (o con las flechas) y queda guardado en esta caja
+  // Ancho del carrito en la Caja táctil: se arrastra el borde con el mouse o el dedo (o con las flechas) y queda guardado en esta caja
   const catRef = useRef<HTMLElement>(null);
-  const claveAncho = `factpos.caja.${ajustes.cajaId}.anchoCatalogo`;
-  const [anchoCat, setAnchoCat] = useState<number | null>(() => { try { const n = Number(localStorage.getItem(claveAncho)); return n >= 200 ? n : null; } catch { return null; } });
+  const ventaRef = useRef<HTMLElement>(null);
+  const claveAncho = `factpos.caja.${ajustes.cajaId}.anchoCarrito`;
+  const [anchoCat, setAnchoCat] = useState<number | null>(() => { try { const n = Number(localStorage.getItem(claveAncho)); return n >= 300 ? n : null; } catch { return null; } });
   const escalaActual = () => Number(getComputedStyle(document.documentElement).getPropertyValue("--escala")) || 1;
-  const limitarAncho = (w: number) => Math.max(220, Math.min(w, window.innerWidth / escalaActual() - 28 - 312 - 24 - 260));
+  const limitarAncho = (w: number) => Math.max(340, Math.min(w, window.innerWidth / escalaActual() - 28 - 12 - 380));
   const guardarAncho = (w: number | null) => { try { if (w == null) localStorage.removeItem(claveAncho); else localStorage.setItem(claveAncho, String(Math.round(w))); } catch { /* sin almacenamiento */ } };
   const arrastrarDivisor = (e: React.PointerEvent) => {
     e.preventDefault();
-    const x0 = e.clientX, w0 = catRef.current?.offsetWidth ?? 400, esc = escalaActual();
+    const x0 = e.clientX, w0 = ventaRef.current?.offsetWidth ?? 440, esc = escalaActual();
     let ultimo = w0;
     const mover = (ev: PointerEvent) => { ultimo = limitarAncho(w0 + (ev.clientX - x0) / esc); setAnchoCat(ultimo); };
     const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); guardarAncho(ultimo); };
     window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
   };
-  const ajustarAncho = (delta: number) => { const w = limitarAncho((anchoCat ?? catRef.current?.offsetWidth ?? 400) + delta); setAnchoCat(w); guardarAncho(w); };
+  const ajustarAncho = (delta: number) => { const w = limitarAncho((anchoCat ?? ventaRef.current?.offsetWidth ?? 440) + delta); setAnchoCat(w); guardarAncho(w); };
   const restablecerAncho = () => { setAnchoCat(null); guardarAncho(null); };
   const enCarrito = useMemo(() => {
     const m = new Map<string, number>();
@@ -559,6 +560,21 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const articulos = lineas.reduce((a, l) => a + (l.prod.esPesable ? 1 : Number(l.cantidad)), 0);
   const descuentoTotal = Number(cot.r?.totales.descuento ?? 0);
 
+  const clienteBloque = (
+      <div className="pv-cliente-panel">
+        <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
+          <Icono n="persona" />
+          <span className="pv-cliente-texto">
+            <small>Precio {nivelCliente}</small>
+            <b>{cliente ? cliente.nombre : "CLIENTE GENERICO"}</b>
+            {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
+          </span>
+          <span className="pv-cliente-accion">{cliente ? "Cambiar" : "RNC / Cédula"} <kbd>F4</kbd></span>
+        </button>
+        {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a CLIENTE GENERICO" onClick={() => setCliente(null)}>×</button>}
+      </div>
+  );
+
   return (
     <div className={"pos pos-hibrido" + (verCatalogo ? " con-catalogo" : "")}>
       <AvisoConexion />
@@ -582,6 +598,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </button>
           <button className="pv-icono" onClick={() => setModal("ajustes")} title="Tamaño de letra, colores y atajos"><Icono n="ajustes" /><span>Ajustes</span></button>
           <button className="pv-icono" onClick={bloquear} title="La venta queda en pausa y se pide el PIN"><Icono n="candado" /><span>Bloquear</span></button>
+          {verCatalogo && <button className="pv-icono pv-icono-turno" onClick={() => setModal("turno")} title="Cerrar turno (F10)"><Icono n="cierre" /><span>Cerrar turno</span></button>}
           <button className="pv-icono" onClick={salirDelSistema}><Icono n="salir" /><span>Salir</span></button>
         </nav>
       </header>
@@ -611,17 +628,18 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <section className="pv-catalogo" aria-label="Catálogo" ref={catRef}>
             <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivelPrecio} enCarrito={enCarrito}
               onAgregar={(p) => agregar(p, "1")} onCodigo={procesarCodigo} />
-            <div className="pv-divisor" role="separator" aria-orientation="vertical" tabIndex={0} title="Arrastre para ampliar o reducir el catálogo (doble toque: tamaño original)"
+            <div className="pv-divisor" role="separator" aria-orientation="vertical" tabIndex={0} title="Arrastre para ampliar o reducir el carrito (doble toque: tamaño original)"
               onPointerDown={arrastrarDivisor} onDoubleClick={restablecerAncho}
               onKeyDown={(e) => { if (e.key === "ArrowLeft") { e.preventDefault(); ajustarAncho(-24); } else if (e.key === "ArrowRight") { e.preventDefault(); ajustarAncho(24); } }} />
           </section>
         )}
 
-        <section className="pv-venta" aria-label="Productos de la venta">
+        <section className="pv-venta" aria-label="Productos de la venta" ref={ventaRef}>
           <header className="pv-venta-cabeza">
-            <h2>Venta en curso</h2>
+            <h2>{verCatalogo ? "Carrito" : "Venta en curso"}</h2>
             <span className="suave">{lineas.length ? `${lineas.length} línea(s) · ${articulos % 1 ? articulos.toFixed(2) : articulos} artículo(s)` : "Sin productos"}</span>
             <span className="flex" />
+            {verCatalogo && clienteBloque}
           </header>
 
           <div className="pv-tabla" role="table" aria-label="Detalle de la venta">
@@ -695,23 +713,14 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </dl>
           {cot.error && <p className="error">{cot.error}</p>}
 
-          <span className="pv-titulo-pago">Cliente</span>
-          <div className="pv-cliente-panel">
-            <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
-              <Icono n="persona" />
-              <span className="pv-cliente-texto">
-                <small>Precio {nivelCliente}</small>
-                <b>{cliente ? cliente.nombre : "CLIENTE GENERICO"}</b>
-                {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
-              </span>
-              <span className="pv-cliente-accion">{cliente ? "Cambiar" : "RNC / Cédula"} <kbd>F4</kbd></span>
-            </button>
-            {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a CLIENTE GENERICO" onClick={() => setCliente(null)}>×</button>}
-          </div>
+          {!verCatalogo && <span className="pv-titulo-pago">Cliente</span>}
+          {!verCatalogo && clienteBloque}
           <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
             <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
             <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
-            <button onClick={() => setModal("turno")}>Cerrar turno</button>
+            {verCatalogo
+              ? <button disabled={!lineas.length} onClick={() => abrirDescuento("linea")}>Descuento</button>
+              : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
             <button className={masAbierto ? "activo" : ""} onClick={() => setMasAbierto((v) => !v)} aria-expanded={masAbierto}>
               Más {masAbierto ? "▴" : "▾"}
             </button>
@@ -719,6 +728,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           {masAbierto && (
             <div className="pv-mas" role="menu">
               {([
+                ...(verCatalogo ? [
+                  ["Cambiar precio", () => setModal("cambiarPrecio"), !hayLinea || !!lineas[sel]?.prod.precioVariable] as const,
+                ] : []),
                 ["Cotización", () => setModal("cotizacion"), !lineas.length || !cot.r],
                 [cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false],
                 [notas ? "Nota ✓" : "Nota", () => setModal("nota"), false],
@@ -726,6 +738,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
+                ...(verCatalogo ? [
+                  ["Consultar precio", () => setModal("consulta"), !catalogo] as const,
+                  ["Pedidos", () => setModal("pedidos"), false] as const,
+                  ["Existencias", () => setModal("existencias"), !catalogo] as const,
+                  ["Reimprimir última", () => reimprimirUltima(), !ultima] as const,
+                  ["Abrir gaveta", () => setModal("gaveta"), false] as const,
+                ] : []),
               ] as const).map(([t, f, d]) => (
                 <button key={t} role="menuitem" disabled={d} onClick={() => { setMasAbierto(false); f(); }}>{t}</button>
               ))}
@@ -737,6 +756,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <button className="enlace" onClick={reimprimirUltima}>Reimprimir</button>
             </div>
           )}
+          {verCatalogo && <button className="boton fantasma pv-cancelar pv-cancelar-barra" disabled={!lineas.length} onClick={() => setModal("cancelar")}>Cancelar</button>}
           <button className="boton cobrar abajo" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>
           </button>
