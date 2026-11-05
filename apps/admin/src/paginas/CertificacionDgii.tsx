@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { Aviso, Encabezado, useDatos } from "../ui";
+import { Aviso, Encabezado, SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
 /**
  * Portal de FactPOS: avance de la certificación del software ante la DGII (una sola para todos los clientes).
@@ -127,6 +127,49 @@ function VerificacionEcf() {
   );
 }
 
+interface FilaEnsayo { tipo: string; encf: string; modo: string; enviado: boolean; estado: string; trackId?: string; mensaje?: string }
+/** Ensayo: un comprobante de cada tipo (31, 32, 41, 43, 44, 45, 46, 47, 33, 34), armado, firmado y —en pruebas/certificación— enviado. */
+function EnsayoTipos() {
+  const { sucursales } = useCatalogo();
+  const [sucursal, setSucursal] = useState("");
+  const elegida = sucursal || sucursales[0]?.id || "";
+  const [corriendo, setCorriendo] = useState(false);
+  const [res, setRes] = useState<{ ambiente: string; real: boolean; resultados: FilaEnsayo[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const correr = async () => {
+    setCorriendo(true); setError(null); setRes(null);
+    try { setRes(await api("/central/fiscal/ensayo", { cuerpo: { sucursalId: elegida } })); }
+    catch (e) { setError((e as Error).message); }
+    setCorriendo(false);
+  };
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Ensayo con un comprobante de cada tipo</h3>
+      <p className="suave pequeno">Arma, firma y, si el ambiente es TesteCF o CerteCF con el envío directo a la DGII, envía un comprobante de cada tipo y muestra la respuesta. No crea ventas, no mueve inventario ni caja y no corre en producción. <b>Con envío real consume un e-NCF de cada tipo</b> de los rangos de la sucursal (use rangos de prueba). En modo simulado no envía ni consume números.</p>
+      <div className="fila-acciones">
+        <SelectorSucursal todas={false} valor={elegida} onCambio={setSucursal} />
+        <button className="boton primario" disabled={corriendo || !elegida} onClick={correr}>{corriendo ? "Ensayando…" : "Correr ensayo"}</button>
+      </div>
+      {error && <Aviso texto={error} />}
+      {res && (
+        <>
+          <p className="suave pequeno">Ambiente {res.ambiente}{res.real ? "" : " (simulado: no se envió nada a la DGII)"}.</p>
+          <table className="tabla">
+            <thead><tr><th>Tipo</th><th>e-NCF</th><th>Resultado</th><th>Detalle</th></tr></thead>
+            <tbody>{res.resultados.map((r) => (
+              <tr key={r.tipo}>
+                <td>{r.tipo}{r.modo === "RFCE" ? " (resumen)" : ""}</td><td>{r.encf || "—"}</td>
+                <td><span className={"pastilla " + (r.estado === "ACEPTADO" || r.estado === "ARMADO" ? "ok" : r.estado === "ERROR" || r.estado === "RECHAZADO" ? "alerta" : "")}>{r.estado}</span></td>
+                <td className="pequeno">{r.trackId ? `TrackId ${r.trackId}. ` : ""}{r.mensaje ?? ""}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function CertificacionDgii() {
   const { datos, error, recargar } = useDatos<Datos>("/central/portal/certificacion-dgii");
   const [f, setF] = useState<Datos | null>(null);
@@ -152,6 +195,7 @@ export function CertificacionDgii() {
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <VerificacionEcf />
+      <EnsayoTipos />
       <ChecklistSolicitud />
       <Aviso tipo={f.autorizado ? "ok" : "info"} texto={f.autorizado ? `FactPOS está autorizado por la DGII${f.autorizadoFecha ? ` desde el ${new Date(f.autorizadoFecha + "T12:00:00").toLocaleDateString("es-DO")}` : ""}.` : `FactPOS aún no está autorizado por la DGII para emitir e-CF · ${hechos} de ${PASOS.length} pasos hechos.`} />
 
