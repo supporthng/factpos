@@ -990,6 +990,12 @@ const CATALOGO_INSTALADORES = [
   { id: "importador", titulo: "Importador de datos (WilPOS)", para: "Pasa productos, clientes e historial desde el sistema anterior", plataforma: "Windows (portable)" },
 ] as const;
 
+/** Id del catálogo → clave en APPS_VERIFICADOR (el verificador se llama «android»/«windows» allá) */
+const CLAVE_APP: Record<string, keyof typeof APPS_VERIFICADOR> = {
+  "admin-windows": "admin-windows", "admin-android": "admin-android", importador: "importador",
+  "verificador-windows": "windows", "verificador-android": "android",
+};
+
 async function releasePorEtiqueta(tag: string) {
   const repo = process.env.FACTPOS_REPO || "supporthng/factpos";
   const r = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, { headers: encabezadosGitHub(), signal: AbortSignal.timeout(15_000) });
@@ -1006,7 +1012,7 @@ export async function listarInstaladores() {
         const a = v?.[c.id];
         return { ...c, publicado: !!a, nombre: a?.nombre ?? null, version: a ? v!.version : null, compilacion: null as number | null, fecha: v?.publicada ?? null, tamano: null as number | null };
       }
-      const app = APPS_VERIFICADOR[c.id];
+      const app = APPS_VERIFICADOR[CLAVE_APP[c.id]];
       const rel = await releasePorEtiqueta(app.tag);
       const a = rel?.assets.find((x) => app.nombre.test(x.name));
       const build = Number(/build=(\d+)/.exec(rel?.body ?? "")?.[1]);
@@ -1025,8 +1031,9 @@ export async function enlaceInstalador(id: string) {
     if (!a) throw new ErrorNegocio("Ese instalador todavía no está publicado", 404);
     return { url: await urlDescarga(a), nombre: a.nombre };
   }
-  if (!(id in APPS_VERIFICADOR)) throw new ErrorNegocio("Instalador desconocido", 404);
-  return { url: await urlDescargaVerificador(id), nombre: null };
+  const clave = CLAVE_APP[id];
+  if (!clave) throw new ErrorNegocio("Instalador desconocido", 404);
+  return { url: await urlDescargaVerificador(clave), nombre: null };
 }
 
 /** Número de compilación vigente de una app del verificador (el CI lo anota en las notas de la release como «build=N»). */
