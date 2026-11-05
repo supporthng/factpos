@@ -74,13 +74,13 @@ export async function rutasPortalLector(app: FastifyInstance) {
   app.post("/licencias/lector/estado", async (req) => {
     const l = await autorizarLicencia(req.body);
     const u = (await pool.query<{ usadas: number }>("SELECT usadas FROM portal_lector_uso WHERE licencia_id = $1 AND mes = $2", [l.id, mesActual()])).rows[0]?.usadas ?? 0;
-    return { cupo: l.lector_cupo, usadas: u, mes: mesActual(), disponible: ordenProveedores(process.env).length > 0 };
+    return { cupo: l.lector_cupo, usadas: u, mes: mesActual(), disponible: ordenProveedores(process.env, l.lector_pago).length > 0 };
   });
 
   app.post("/licencias/lector/leer", { bodyLimit: 6 * 1024 * 1024 }, async (req) => {
     const l = await autorizarLicencia(req.body);
     const b = z.object({ tipo: z.enum(["image/jpeg", "image/png", "image/webp", "application/pdf"]), datos: z.string().min(100) }).parse(req.body);
-    const orden = ordenProveedores(process.env);
+    const orden = ordenProveedores(process.env, l.lector_pago);
     if (!orden.length) throw new ErrorNegocio("El lector de facturas todavía no está disponible. Su proveedor lo activará pronto.", 503);
     if (Buffer.byteLength(b.datos, "base64") > MAX_BYTES) throw new ErrorNegocio("El archivo es muy pesado (máx. 3 MB). Tome la foto con menos resolución o envíe un PDF más liviano.", 413);
     if (l.lector_cupo <= 0) throw new ErrorNegocio("El lector de facturas no está incluido en su licencia. Pídale a su proveedor que lo active.", 402);
@@ -145,8 +145,8 @@ export async function rutasPortalLector(app: FastifyInstance) {
   /** Panel del proveedor: cupo mensual de facturas de un cliente */
   app.put("/central/portal/clientes/:id/lector", async (req) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const b = z.object({ cupo: z.number().int().min(0).max(100000) }).parse(req.body);
-    const r = await pool.query("UPDATE portal_licencias SET lector_cupo = $2, actualizado_en = now() WHERE cliente_id = $1 RETURNING id", [id, b.cupo]);
+    const b = z.object({ cupo: z.number().int().min(0).max(100000), pago: z.boolean().optional() }).parse(req.body);
+    const r = await pool.query("UPDATE portal_licencias SET lector_cupo = $2, lector_pago = COALESCE($3, lector_pago), actualizado_en = now() WHERE cliente_id = $1 RETURNING id", [id, b.cupo, b.pago ?? null]);
     if (!r.rowCount) throw new ErrorNegocio("Ese cliente no tiene licencia", 404);
     return { ok: true };
   });

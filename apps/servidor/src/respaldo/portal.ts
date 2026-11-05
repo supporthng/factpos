@@ -16,8 +16,8 @@ const credenciales = z.object({ licenciaId: z.string().uuid(), instalacionId: z.
 /** Valida que la petición venga de la instalación activada de una licencia vigente. */
 export async function autorizarLicencia(cuerpo: unknown) {
   const b = credenciales.parse(cuerpo);
-  const l = (await pool.query<{ id: string; instalacion_id: string | null; secreto_hash: string | null; estado: string; cliente_activo: boolean; slug: string; extra_gb: number; lector_cupo: number }>(
-    `SELECT l.id, l.instalacion_id, l.secreto_hash, l.estado, l.respaldo_extra_gb AS extra_gb, l.lector_cupo, c.activo AS cliente_activo, c.slug
+  const l = (await pool.query<{ id: string; instalacion_id: string | null; secreto_hash: string | null; estado: string; cliente_activo: boolean; slug: string; extra_gb: number; lector_cupo: number; lector_pago: boolean }>(
+    `SELECT l.id, l.instalacion_id, l.secreto_hash, l.estado, l.respaldo_extra_gb AS extra_gb, l.lector_cupo, l.lector_pago, c.activo AS cliente_activo, c.slug
        FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id WHERE l.id = $1`, [b.licenciaId])).rows[0];
   if (!l || l.instalacion_id !== b.instalacionId || !igual(l.secreto_hash, huella(b.secreto)))
     throw new ErrorNegocio("Esta instalación no está autorizada para esa licencia.", 401);

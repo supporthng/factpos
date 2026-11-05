@@ -3,14 +3,16 @@
  *  - «gratis»: Google Gemini (GEMINI_API_KEY, modelo LECTOR_MODELO_GRATIS). Su capa gratuita tiene límites de uso y
  *    Google puede usar lo que se envía para mejorar sus productos.
  *  - «pago»: Claude de Anthropic (ANTHROPIC_API_KEY, modelo LECTOR_MODELO). Es el que ya estaba.
- * LECTOR_PROVEEDOR = «auto» (por omisión: gratis primero y, si falla o se agota, el de pago), «gratis» o «pago».
+ * El de pago solo se usa si el proveedor autorizó a esa licencia (portal_licencias.lector_pago); sin esa autorización
+ * nunca se llama a Claude, ni siquiera como respaldo. LECTOR_PROVEEDOR = «auto» (por omisión: gratis primero y, si falla
+ * o se agota y la licencia está autorizada, el de pago), «gratis» (solo gratis) o «pago» (solo pago, si está autorizada).
  */
 export type Proveedor = "gratis" | "pago";
 export interface Entorno { LECTOR_PROVEEDOR?: string; GEMINI_API_KEY?: string; ANTHROPIC_API_KEY?: string }
 
 /** En qué orden se intentan los proveedores según lo configurado y las llaves que existan */
-export function ordenProveedores(env: Entorno): Proveedor[] {
-  const gratis = !!env.GEMINI_API_KEY, pago = !!env.ANTHROPIC_API_KEY;
+export function ordenProveedores(env: Entorno, pagoAutorizado = false): Proveedor[] {
+  const gratis = !!env.GEMINI_API_KEY, pago = !!env.ANTHROPIC_API_KEY && pagoAutorizado;
   const modo = (env.LECTOR_PROVEEDOR ?? "auto").toLowerCase();
   if (modo === "gratis") return gratis ? ["gratis"] : [];
   if (modo === "pago") return pago ? ["pago"] : [];

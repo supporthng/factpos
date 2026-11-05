@@ -3,17 +3,21 @@ import { cuerpoGemini, leerRespuestaGemini, ordenProveedores } from "./proveedor
 
 describe("orden de proveedores del lector", () => {
   const g = { GEMINI_API_KEY: "g" }, a = { ANTHROPIC_API_KEY: "a" };
-  it("auto: gratis primero y el de pago como respaldo", () => {
-    expect(ordenProveedores({ ...g, ...a })).toEqual(["gratis", "pago"]);
-    expect(ordenProveedores({ ...g })).toEqual(["gratis"]);
-    expect(ordenProveedores({ ...a })).toEqual(["pago"]);
+  it("auto: gratis primero y el de pago como respaldo solo si la licencia lo autoriza", () => {
+    expect(ordenProveedores({ ...g, ...a }, true)).toEqual(["gratis", "pago"]);
+    expect(ordenProveedores({ ...g, ...a }, false)).toEqual(["gratis"]);
+    expect(ordenProveedores({ ...g, ...a })).toEqual(["gratis"]); // sin autorización por omisión
+    expect(ordenProveedores({ ...g }, true)).toEqual(["gratis"]);
+    expect(ordenProveedores({ ...a }, true)).toEqual(["pago"]);
+    expect(ordenProveedores({ ...a }, false)).toEqual([]); // sin llave gratis y sin permiso: no se llama a Claude
     expect(ordenProveedores({})).toEqual([]);
   });
   it("se puede forzar uno solo", () => {
-    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "pago" })).toEqual(["pago"]);
-    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "gratis" })).toEqual(["gratis"]);
-    expect(ordenProveedores({ ...a, LECTOR_PROVEEDOR: "gratis" })).toEqual([]); // sin la llave que pide
-    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "GRATIS" })).toEqual(["gratis"]);
+    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "pago" }, true)).toEqual(["pago"]);
+    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "pago" }, false)).toEqual([]);
+    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "gratis" }, true)).toEqual(["gratis"]);
+    expect(ordenProveedores({ ...a, LECTOR_PROVEEDOR: "gratis" }, true)).toEqual([]); // sin la llave que pide
+    expect(ordenProveedores({ ...g, ...a, LECTOR_PROVEEDOR: "GRATIS" }, true)).toEqual(["gratis"]);
   });
 });
 
