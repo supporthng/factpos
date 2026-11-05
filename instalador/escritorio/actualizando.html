@@ -22,8 +22,10 @@
   <small>No apague el equipo. Al terminar, el sistema se abre solo y le pedirá su usuario y contraseña.</small>
 <script>
   const $ = id => document.getElementById(id);
+  // Etiqueta de cara al cliente: 26.5.0 se muestra como 2.6.5 (igual que en el panel)
+  function versionCliente(v) { var m = /^(\d+)(?:\.(\d))?(?:\.|$)/.exec(v == null ? '' : String(v)); if (!m || m[1].length < 2) return v == null ? '' : String(v); var e = Number(m[1]); return Math.floor(e / 10) + '.' + (e % 10) + (m[2] && m[2] !== '0' ? '.' + m[2] : ''); }
   window.factpos.alActualizar(m => {
-    if (m.destino) $('titulo').textContent = 'Actualizando FactPOS a la versión ' + m.destino;
+    if (m.destino) $('titulo').textContent = 'Actualizando FactPOS a la versión ' + versionCliente(m.destino);
     if (m.paso) $('paso').textContent = m.reiniciando ? 'Reiniciando el servidor…' : m.paso;
     const indef = m.porcentaje == null || m.reiniciando;
     $('barra').classList.toggle('indef', indef);
