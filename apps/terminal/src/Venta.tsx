@@ -589,6 +589,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <div><dt>Caja</dt><dd>{config.nombre}</dd></div>
           <div><dt>Cajero</dt><dd>{usuario.nombre}</dd></div>
           <div className="pv-fecha"><dt>{reloj.fecha}</dt><dd>{reloj.hora}</dd></div>
+          <div className="pv-turno-estado"><dt>Turno</dt><dd><i />Caja abierta</dd></div>
           {versionApp && <div className="pv-version"><dt>Versión</dt><dd>v{versionApp}</dd></div>}
         </dl>
         <EstadoServidor />
@@ -636,7 +637,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
         <section className="pv-venta" aria-label="Productos de la venta" ref={ventaRef}>
           <header className="pv-venta-cabeza">
-            <h2>{verCatalogo ? "Carrito" : "Venta en curso"}</h2>
+            <h2>{verCatalogo ? <><Icono n="carrito" />Carrito</> : "Venta en curso"}</h2>
             <span className="suave">{lineas.length ? `${lineas.length} línea(s) · ${articulos % 1 ? articulos.toFixed(2) : articulos} artículo(s)` : "Sin productos"}</span>
             <span className="flex" />
             {verCatalogo && clienteBloque}
@@ -651,7 +652,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <div className="pv-vacio">
                 <Icono n="codigo" />
                 <b>Escanee el primer producto</b>
-                <span>o escriba su nombre arriba{verCatalogo ? ", o tóquelo en el catálogo" : " · F1 cambia a Caja táctil"}</span>
+                <span>{verCatalogo ? "o tóquelo en el catálogo, o escriba su nombre en la búsqueda" : "o escriba su nombre arriba · F1 cambia a Caja táctil"}</span>
               </div>
             )}
             {lineas.map((l, i) => {
@@ -1184,6 +1185,7 @@ function BotonFuncion({ tono, icono, texto, tecla, onClick, disabled }: {
 /** Íconos de trazo, del mismo grosor, para la pantalla de venta. */
 function Icono({ n }: { n: string }) {
   const d: Record<string, React.ReactNode> = {
+    carrito: <><circle cx="9" cy="20" r="1.6" /><circle cx="18" cy="20" r="1.6" /><path d="M2 3h3l2.4 11.2a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.5L21 7H6" /></>,
     catalogo: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
     ajustes: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
     candado: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
