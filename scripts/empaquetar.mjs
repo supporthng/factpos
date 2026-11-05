@@ -159,6 +159,14 @@ if (makensis) {
   const setup = join(salida, `FactPOS-Setup-${version}.exe`);
   execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${setup}" FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
   console.log(`Listo: ${relative(raiz, setup)} (${(statSync(setup).size / 1e6).toFixed(1)} MB)`);
+  // Instalador solo de Caja (sin servidor ni base de datos: pesa mucho menos). Si fallara, no impide publicar el completo.
+  try {
+    const caja = join(salida, `FactPOS-Caja-Setup-${version}.exe`);
+    execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${caja}" -DTIPO_FIJO=caja FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
+    console.log(`Listo: ${relative(raiz, caja)} (${(statSync(caja).size / 1e6).toFixed(1)} MB, solo Caja)`);
+  } catch (e) {
+    console.warn(`(No se armó el instalador de Caja: ${e instanceof Error ? e.message : e})`);
+  }
 } else {
   console.log("(No se armó FactPOS-Setup.exe: instale NSIS → apt install nsis / choco install nsis)");
 }

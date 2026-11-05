@@ -105,12 +105,12 @@ async function tokenLicencia() {
 }
 
 /** Dirección temporal del instalador completo de FactPOS (para la pestaña Instaladores). Pide lo mismo que una actualización: licencia o prueba permitida. */
-export async function urlInstaladorPrincipal() {
+export async function urlInstaladorPrincipal(tipo: "setup" | "caja" = "setup") {
   const token = await tokenLicencia();
   const pruebaOk = !token && !!(await politicaPortal())?.pruebaActualiza;
   if (!token && !pruebaOk) throw new ErrorNegocio("Active la licencia para descargar el instalador", 402);
   const cabecera: Record<string, string> = token ? { "x-licencia": token } : { "x-instalacion": (await filaLicencia()).instalacion_id };
-  const r = await fetch(`${PORTAL_URL()}/licencias/descargar?tipo=setup`, { headers: cabecera, signal: AbortSignal.timeout(20_000) });
+  const r = await fetch(`${PORTAL_URL()}/licencias/descargar?tipo=${tipo}`, { headers: cabecera, signal: AbortSignal.timeout(20_000) });
   const d = (await r.json().catch(() => ({}))) as { url?: string; version?: string; nombre?: string; error?: string };
   if (!r.ok || !d.url) throw new ErrorNegocio(d.error ?? `El portal respondió ${r.status}`, r.status === 404 ? 404 : 502);
   return { url: d.url, version: d.version ?? null, nombre: d.nombre ?? null };
@@ -265,7 +265,7 @@ export async function rutasActualizacion(app: FastifyInstance) {
       modo: config.modo,
     };
   });
-  app.post("/central/instaladores/principal", async () => urlInstaladorPrincipal());
+  app.post("/central/instaladores/principal", async (req) => urlInstaladorPrincipal((req.body as { tipo?: string } | undefined)?.tipo === "caja" ? "caja" : "setup"));
   app.post("/central/actualizacion/instalar", async (req) => {
     const d = await revisarVersion(true);
     if (!d || compararVersion(d.version, versionActual()) <= 0) throw new ErrorNegocio("Ya tiene la versión más reciente", 409);

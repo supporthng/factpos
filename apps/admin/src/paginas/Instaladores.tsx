@@ -3,18 +3,21 @@ import { api, CONFIG } from "../api";
 import { Aviso, Encabezado } from "../ui";
 
 /** Todos los instaladores de FactPOS en un solo lugar. */
-interface Item { titulo: string; para: string; plataforma: string; descarga: { tipo: "portal" | "principal"; so?: string } }
+interface Item { titulo: string; para: string; plataforma: string; descarga: { tipo: "portal" | "principal"; so?: string; variante?: "caja" } }
 interface Grupo { titulo: string; nota?: string; items: Item[] }
 
 const GRUPOS: Grupo[] = [
-  { titulo: "FactPOS (servidor y cajas)", nota: "Se instala en la PC del servidor y en las cajas. Pregunta qué se instala en ese equipo. Requiere licencia activa.",
-    items: [{ titulo: "Instalador completo de FactPOS", para: "Servidor, cajas y administración de escritorio", plataforma: "Windows", descarga: { tipo: "principal" } }] },
+  { titulo: "FactPOS (servidor y cajas)", nota: "La caja se instala en cada terminal de venta; el instalador completo, en la PC del servidor (pregunta qué se instala). Requieren licencia activa.",
+    items: [
+      { titulo: "Instalador de Caja", para: "Solo la caja de venta: encuentra sola el servidor de la tienda. No instala servidor ni base de datos (pesa mucho menos)", plataforma: "Windows", descarga: { tipo: "principal", variante: "caja" } },
+      { titulo: "Instalador completo de FactPOS", para: "Servidor, cajas y administración de escritorio", plataforma: "Windows", descarga: { tipo: "principal" } },
+    ] },
   { titulo: "Verificador de precios", nota: "Pantalla de consulta de precios para los clientes. Se actualiza sola desde el servidor.",
     items: [
       { titulo: "Verificador para Android", para: "Tabletas y pantallas Android", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "android" } },
       { titulo: "Verificador para Windows", para: "PC con pantalla táctil", plataforma: "Windows", descarga: { tipo: "portal", so: "windows" } },
     ] },
-  { titulo: "FactPOS Admin (administración remota)", nota: "Para administrar el negocio desde fuera de la oficina. El enlace con QR que la deja configurada está en Sistema › Acceso remoto.",
+  { titulo: "Conexión remota · FactPOS Admin", nota: "Para administrar el negocio desde fuera de la oficina. El enlace con QR que la deja configurada está en Sistema › Acceso remoto.",
     items: [
       { titulo: "FactPOS Admin para Android", para: "Celular o tableta", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "admin-android" } },
       { titulo: "FactPOS Admin para Windows", para: "Computadora", plataforma: "Windows", descarga: { tipo: "portal", so: "admin-windows" } },
@@ -29,10 +32,10 @@ export function Instaladores() {
   // Desde el portal (web de la empresa) las apps se descargan del portal; desde el servidor, del propio servidor
   const enlace = (so: string) => CONFIG.modo === "cliente" ? `${location.origin}/licencias/descargar-verificador/${so}` : `${(CONFIG.api ?? "").replace(/\/$/, "")}/verificador/descarga/${so}`;
 
-  const principal = async (clave: string) => {
+  const principal = async (clave: string, variante?: "caja") => {
     setMsg(null); setTrabajando(clave);
     try {
-      const r = await api<{ url: string; version: string | null }>("/central/instaladores/principal", { metodo: "POST", cuerpo: {} });
+      const r = await api<{ url: string; version: string | null }>("/central/instaladores/principal", { metodo: "POST", cuerpo: variante ? { tipo: variante } : {} });
       window.location.href = r.url;
       setMsg({ t: `Descargando el instalador${r.version ? ` de la versión ${r.version}` : ""}…`, tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
@@ -51,7 +54,7 @@ export function Instaladores() {
             <div key={it.titulo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 0", borderTop: "1px solid var(--borde, #e3e8ee)" }}>
               <div><b>{it.titulo}</b><div className="suave pequeno">{it.para} · {it.plataforma}</div></div>
               {it.descarga.tipo === "principal"
-                ? <button className="boton primario" disabled={trabajando !== null} onClick={() => principal(it.titulo)}>{trabajando === it.titulo ? "Preparando…" : "Descargar"}</button>
+                ? <button className="boton primario" disabled={trabajando !== null} onClick={() => principal(it.titulo, it.descarga.variante)}>{trabajando === it.titulo ? "Preparando…" : "Descargar"}</button>
                 : <a className="boton primario" href={enlace(it.descarga.so!)}>Descargar</a>}
             </div>
           ))}

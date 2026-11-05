@@ -80,7 +80,7 @@ jobs:
         with:
           name: FactPOS-Instalador-Windows
           path: |
-            paquete/FactPOS-Setup-*.exe
+            paquete/FactPOS-*Setup-*.exe
             paquete/FactPOS-Instalador-*.zip
           if-no-files-found: error
       - name: Publicar versión última
@@ -96,7 +96,7 @@ jobs:
           else
             gh release create ultima --title "FactPOS · Última versión" --notes "Instalador Windows con Electron integrado ($GITHUB_SHA)"
           fi
-          gh release upload ultima paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
+          gh release upload ultima paquete/FactPOS-*Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
           # Quitar los archivos de versiones anteriores: el portal solo debe ver la última
           VERSION=$(node -p "require('./package.json').version")
           # grep devuelve 1 cuando no queda nada que borrar: no es un error
@@ -108,7 +108,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
+            gh release upload "$GITHUB_REF_NAME" paquete/FactPOS-*Setup-*.exe paquete/FactPOS-Instalador-*.zip --clobber
           else
-            gh release create "$GITHUB_REF_NAME" paquete/FactPOS-Setup-*.exe paquete/FactPOS-Instalador-*.zip --title "FactPOS $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" paquete/FactPOS-*Setup-*.exe paquete/FactPOS-Instalador-*.zip --title "FactPOS $GITHUB_REF_NAME" --generate-notes
           fi

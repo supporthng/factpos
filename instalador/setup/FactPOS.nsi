@@ -6,6 +6,7 @@
 ; preguntas: -NoInteractivo), así una sola lógica sirve para todo.
 ;
 ; Se arma con NSIS (también en Linux):
+;   (Solo Caja: agregar -DTIPO_FIJO=caja; el instalador no trae servidor ni base de datos)
 ;   makensis -DVERSION=0.1.0 -DPAQUETE=../../paquete/FactPOS -DSALIDA=../../paquete/FactPOS-Setup-0.1.0.exe FactPOS.nsi
 ; (scripts/empaquetar.mjs lo hace solo si encuentra makensis)
 ; =====================================================================
@@ -317,6 +318,11 @@ FunctionEnd
 
 ; ------------------------------------------------------------------ 1. tipo
 Function PaginaTipo
+!ifdef TIPO_FIJO
+  ; Instalador de un solo tipo (p. ej. solo Caja): no se pregunta qué se instala
+  StrCpy $Tipo "${TIPO_FIJO}"
+  Abort
+!endif
   ${If} $Accion == "actualizar"
   ${AndIf} $ServLoc != ""
     Abort
@@ -527,7 +533,9 @@ Section "FactPOS" SecPrincipal
     DetailPrint "Preparando los archivos de FactPOS…"
     SetDetailsPrint textonly
     SetOutPath "$PLUGINSDIR\paquete"
+!ifndef TIPO_FIJO
     File /r "${PAQUETE}\*.*"
+!endif
     SetDetailsPrint both
     DetailPrint "Archivos listos."
     StrCpy $1 "-Carpeta '$INSTDIR' -NoInteractivo -Empresa '$Empresa'"
