@@ -268,6 +268,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   }
   // Cuadro con el avance cuando el servidor se está actualizando (el mismo estado que muestran la administración y la caja)
   let vioActualizar = false;
+  function versionCliente(v) { var m = /^(\\d+)(?:[.](\\d))?(?:[.]|$)/.exec(String(v)); if (!m || m[1].length < 2) return String(v); var e = Number(m[1]); return Math.floor(e / 10) + "." + (e % 10) + (m[2] && m[2] !== "0" ? "." + m[2] : ""); }
   async function estadoActualizacion() {
     let d = null;
     try { const r = await fetch("/actualizacion/estado", { cache: "no-store" }); if (r.ok) d = await r.json(); } catch {}
@@ -277,7 +278,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     const el = document.getElementById("actualiza");
     el.style.display = activa ? "flex" : "none";
     if (activa) {
-      const destino = d && d.destino ? " a la versión " + String(d.destino).replace(/[.]0$/, "") : "";
+      const destino = d && d.destino ? " a la versión " + versionCliente(d.destino) : "";
       document.getElementById("act-t").textContent = "Actualizando FactPOS" + destino;
       document.getElementById("act-p").textContent = d ? (d.paso || "Preparando…") : "Reiniciando el servidor…";
       const pct = d && typeof d.porcentaje === "number" ? d.porcentaje : null;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { versionCliente } from "./ui";
 
 /**
  * Mientras el servidor se actualiza, tapa la pantalla con el avance. Cuando termina y la versión cambió,
@@ -9,7 +10,7 @@ interface Estado {
   version: string; actualizando: boolean; destino: string | null; paso: string | null; porcentaje: number | null;
   resultado: { estado: "OK" | "ERROR"; version: string; mensaje: string | null; en: string } | null;
 }
-const vcorta = (v: string | null | undefined) => (v ?? "").replace(/\.0$/, "");
+const vcorta = (v: string | null | undefined) => versionCliente(v);
 // La versión vista se guarda POR SERVIDOR: si la pantalla habla con dos (p. ej. antes y después de iniciar sesión en otro),
 // comparar entre ellos cerraba la sesión sin motivo en un ciclo.
 const CLAVE_VERSION = "factpos.version-vista";
