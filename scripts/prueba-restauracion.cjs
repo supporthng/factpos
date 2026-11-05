@@ -22,7 +22,7 @@ const aUrl = (base) => { const u = new URL(origen); u.pathname = "/" + base; ret
 const destino = aUrl(nombreDestino);
 const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), "restauracion-"));
 const env = { ...process.env, FACTPOS_CLAVE_RESPALDO: crypto.randomBytes(32).toString("hex") };
-const bd = (...a) => execFileSync(process.execPath, [path.join(raiz, "instalador", "bd.cjs"), ...a], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const bd = (...a) => execFileSync(process.execPath, [path.join(raiz, "instalador", "bd.cjs"), ...a], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
 const fallos = [];
 const verificar = (ok, texto) => { console.log(`${ok ? "OK   " : "FALLA"} ${texto}`); if (!ok) fallos.push(texto); };
 
@@ -51,15 +51,19 @@ async function huella(url) {
       [crypto.randomUUID(), crypto.randomUUID()]);
 
     const archivo = path.join(carpeta, "prueba.fpbak");
+    console.log("> respaldando");
     bd("respaldar", origen, archivo);
     verificar(fs.existsSync(archivo) && fs.statSync(archivo).size > 0, "el respaldo se crea");
     verificar(!fs.readFileSync(archivo).includes("prueba-1.fpbak"), "el respaldo va cifrado (no se lee el texto)");
 
+    console.log("> creando base nueva y migrando");
     await admin.query(`DROP DATABASE IF EXISTS ${nombreDestino}`);
     await admin.query(`CREATE DATABASE ${nombreDestino} TEMPLATE template0 ENCODING 'UTF8'`);
-    execFileSync("npm", ["run", "migrar", "-w", "@factpos/servidor"], { cwd: raiz, env: { ...process.env, DATABASE_URL: destino }, stdio: "ignore" });
+    execFileSync("npm", ["run", "migrar", "-w", "@factpos/servidor"], { cwd: raiz, env: { ...process.env, DATABASE_URL: destino }, stdio: "inherit", timeout: 180000 });
 
+    console.log("> restaurando");
     bd("restaurar", destino, archivo);
+    console.log("> comparando");
     const a = await huella(origen), b = await huella(destino);
     const tablas = Object.keys(a);
     const distintas = tablas.filter((t) => a[t] !== b[t]);
