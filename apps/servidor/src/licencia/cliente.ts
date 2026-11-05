@@ -379,6 +379,20 @@ export async function rutasLicenciaSucursal(app: FastifyInstance) {
   });
 }
 
+/** Código de conexión corto de la empresa (FP-XXXXXX), tal como lo guarda el portal. Se recuerda una hora; sin internet queda vacío. */
+let cacheCodigo: { slug: string; valor: string | null; hasta: number } | null = null;
+async function codigoConexion(slug: string): Promise<string | null> {
+  if (cacheCodigo && cacheCodigo.slug === slug && cacheCodigo.hasta > Date.now()) return cacheCodigo.valor;
+  let valor: string | null = null;
+  try {
+    const r = await fetch(`${PORTAL_URL()}/licencias/cliente/${encodeURIComponent(slug)}`, { signal: AbortSignal.timeout(4000) });
+    const c = r.ok ? ((await r.json()) as { codigo?: string }).codigo : null;
+    valor = c && /^FP-[2-9A-HJKMNP-Z]{6}$/.test(c) ? c : null;
+  } catch { /* sin internet o portal sin actualizar */ }
+  cacheCodigo = { slug, valor, hasta: Date.now() + (valor ? 3600_000 : 120_000) };
+  return valor;
+}
+
 /** Nube del cliente: página Administración › Licencia. */
 export async function rutasLicenciaCentral(app: FastifyInstance) {
   app.get("/central/licencia", async () => {
@@ -396,6 +410,7 @@ export async function rutasLicenciaCentral(app: FastifyInstance) {
       // Servidor master: dirección pública y acceso web por el portal
       tunel: tunelActivo() ? estadoTunel() : null,
       web: e.datos ? `${WEB_URL()}/${e.datos.cliente.slug}/` : null,
+      codigo: e.datos ? await codigoConexion(e.datos.cliente.slug) : null,
     };
   });
   app.post("/central/licencia/activar", async (req) => {

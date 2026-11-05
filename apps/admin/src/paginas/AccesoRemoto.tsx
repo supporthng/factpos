@@ -14,7 +14,7 @@ interface Dispositivo {
   ip: string | null; solicitadoEn: string; resueltoEn: string | null; ultimoUso: string | null; resueltoPor: string | null;
 }
 interface Estado {
-  activada: boolean; local?: boolean; web?: string | null;
+  activada: boolean; local?: boolean; web?: string | null; codigo?: string | null;
   tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null } | null;
 }
 const fecha = (v: string | null) => (v ? new Date(v).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" }) : "—");
@@ -178,6 +178,14 @@ export function AccesoRemoto() {
         <div className="panel">
           <h3 style={{ marginTop: 0 }}>Enlaces de acceso</h3>
           {!d.activada && <Aviso tipo="info" texto="La dirección web queda lista al activar la licencia." />}
+          {(d.codigo || CONFIG.codigo) && (
+            <div className="web-enlace">
+              <div><b>Código de conexión</b>
+                <p className="suave pequeno" style={{ margin: "2px 0 8px" }}>Escríbelo en FactPOS Admin (Windows o Android) en lugar del nombre de la página.</p>
+                <span className="mono" style={{ fontSize: 24, letterSpacing: 2 }}>{d.codigo || CONFIG.codigo}</span></div>
+              <span className="en-linea"><button className="boton" onClick={() => copiar((d.codigo || CONFIG.codigo)!, "codigo")}>{copiado === "codigo" ? "Copiado" : "Copiar"}</button></span>
+            </div>
+          )}
           {d.web && enlace("web", "Dirección web del sistema", d.web, "Compártala solo con su personal autorizado. Cada persona entra con su usuario y clave.")}
           {d.tunel?.url && enlace("tunel", "Dirección directa", d.tunel.url, d.tunel.url.includes("trycloudflare") ? "Dirección temporal: cambia si se reinicia el servidor. Use la de arriba." : "Conexión directa a su servidor.")}
           {!d.web && !d.tunel?.url && <p className="suave">Todavía no hay una dirección de acceso disponible.</p>}
