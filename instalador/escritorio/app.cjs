@@ -508,7 +508,8 @@ const cerrarExplorador = () => {
 // cierran TabTip.exe / osk.exe si aparecen. Al salir se devuelve el valor anterior. Se apaga con bloquearTecladoWindows:false.
 const bloquearTecladoWindows = () => config.bloquearTecladoWindows !== false;
 const CLAVE_TECLADO = 'HKCU\\Software\\Microsoft\\TabletTip\\1.7';
-const VALORES_TECLADO = ['EnableDesktopModeAutoInvoke', 'DisableNewKeyboardExperience'];
+// TouchKeyboardTapInvoke es el ajuste «Mostrar el teclado táctil» de Windows 10/11 (0 = nunca); los otros dos son de versiones anteriores
+const VALORES_TECLADO = ['EnableDesktopModeAutoInvoke', 'DisableNewKeyboardExperience', 'TouchKeyboardTapInvoke'];
 const RESPALDO_TECLADO = path.join(app.getPath('userData'), 'teclado-windows-previo.json');
 const cerrarTecladoWindows = () => { for (const exe of ['TabTip.exe', 'osk.exe']) { try { execFile('taskkill', ['/f', '/im', exe], { windowsHide: true }, () => {}); } catch {} } };
 function bloquearTeclado() {
@@ -531,6 +532,7 @@ function bloquearTeclado() {
   function aplicar() {
     try { execFile('reg', ['add', CLAVE_TECLADO, '/v', 'EnableDesktopModeAutoInvoke', '/t', 'REG_DWORD', '/d', '0', '/f'], { windowsHide: true }, () => {}); } catch {}
     try { execFile('reg', ['add', CLAVE_TECLADO, '/v', 'DisableNewKeyboardExperience', '/t', 'REG_DWORD', '/d', '1', '/f'], { windowsHide: true }, () => {}); } catch {}
+    try { execFile('reg', ['add', CLAVE_TECLADO, '/v', 'TouchKeyboardTapInvoke', '/t', 'REG_DWORD', '/d', '0', '/f'], { windowsHide: true }, () => {}); } catch {}
     cerrarTecladoWindows();
   }
 }

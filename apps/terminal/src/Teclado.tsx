@@ -28,8 +28,18 @@ function esCampoDeTexto(el: EventTarget | null): el is Campo {
   return !el.closest("[data-sin-teclado]");
 }
 
+/** En la Caja de Windows (Electron) el teclado de Windows sobra: la caja trae el suyo. inputmode="none" le dice al navegador que no abra
+ *  el teclado del sistema; el modo real del campo (numérico o texto) se guarda aparte para que nuestro teclado elija su distribución. */
+const enCajaWindows = /Electron/i.test(navigator.userAgent) && /Windows/i.test(navigator.userAgent);
+function sinTecladoDelSistema(el: Element | null) {
+  if (!enCajaWindows || !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+  try {
+    if (el.inputMode !== "none") { el.dataset.imOriginal = el.inputMode; el.inputMode = "none"; }
+  } catch { /* campo especial */ }
+}
+
 function modoDe(el: Campo): Modo {
-  const im = el.inputMode;
+  const im = el.dataset.imOriginal ?? el.inputMode;
   if (im === "decimal" || el.type === "number") return "dec";
   if (im === "numeric" || im === "tel") return "num";
   return "abc";
@@ -78,6 +88,7 @@ export function TecladoPantalla() {
   // Un toque (o clic, según el ajuste) sobre un campo abre el teclado; salir del campo lo cierra.
   useEffect(() => {
     const abajo = (e: PointerEvent) => {
+      sinTecladoDelSistema((e.target as HTMLElement | null)?.closest?.("input,textarea") ?? null);
       ultimoToque.current = { t: Date.now(), tipo: e.pointerType };
       const dentro = (e.target as HTMLElement | null)?.closest?.("[data-teclado-pantalla]");
       if (dentro) return;
@@ -90,6 +101,7 @@ export function TecladoPantalla() {
       else if (!el) setCampo(null);
     };
     const adentro = (e: FocusEvent) => {
+      sinTecladoDelSistema(e.target as Element);
       // Enfocar por código (autoFocus, lector) cierra el teclado si estaba abierto sobre otro campo
       if (esCampoDeTexto(e.target)) {
         const reciente = Date.now() - ultimoToque.current.t < 600;
