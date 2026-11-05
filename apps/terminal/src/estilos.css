@@ -955,3 +955,11 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-mas button:hover:not(:disabled) { background: #f6f4ee; }
 .pv-mas button:disabled { opacity: .45; }
 .pv-quitar{font-size:22px;line-height:1;width:36px;height:36px}
+
+/* Pantalla táctil: botones grandes */
+.pv-atajos-min { grid-template-columns: 1fr 1fr; }
+.pv-atajos-min button { min-height: 56px; font-size: 16px; }
+.pv-mas button { min-height: 56px; font-size: 16px; }
+.pv-acciones-linea { gap: 8px; padding: 10px; }
+.pv-acciones-linea .boton { min-height: 56px; padding: 10px 16px; font-size: 16px; flex: 1 1 auto; justify-content: center; }
+.pv-acciones-linea .boton kbd { display: none; }

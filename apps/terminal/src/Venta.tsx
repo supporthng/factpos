@@ -695,21 +695,21 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </div>
           <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
             <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
+            <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
+            <button onClick={() => setModal("turno")}>Cerrar turno</button>
             <button className={masAbierto ? "activo" : ""} onClick={() => setMasAbierto((v) => !v)} aria-expanded={masAbierto}>
-              Más{pausadas.length ? ` · ${pausadas.length} en pausa` : ""} {masAbierto ? "▴" : "▾"}
+              Más {masAbierto ? "▴" : "▾"}
             </button>
           </div>
           {masAbierto && (
             <div className="pv-mas" role="menu">
               {([
-                [`En pausa${pausadas.length ? ` (${pausadas.length})` : ""}`, () => setModal("pausadas"), false],
                 ["Cotización", () => setModal("cotizacion"), !lineas.length || !cot.r],
                 [cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false],
                 [notas ? "Nota ✓" : "Nota", () => setModal("nota"), false],
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
-                ["Turno y cierre", () => setModal("turno"), false],
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
               ] as const).map(([t, f, d]) => (
                 <button key={t} role="menuitem" disabled={d} onClick={() => { setMasAbierto(false); f(); }}>{t}</button>
