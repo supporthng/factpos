@@ -303,7 +303,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [provNuevo, setProvNuevo] = useState<string | null>(null);
-  const lector = useDatos<{ cupo: number; usadas: number; disponible: boolean; error?: string }>("/central/compras/lector/estado");
+  const lector = useDatos<{ cupo: number; usadas: number; disponible: boolean; pagoAutorizado?: boolean; pagoSolicitado?: boolean; error?: string }>("/central/compras/lector/estado");
   const [leyendo, setLeyendo] = useState(false);
   const [progreso, setProgreso] = useState("");
   const [pend, setPend] = useState<ItemLeido[]>(() => (borrador?.datos?.pend as ItemLeido[] | undefined) ?? []);
@@ -342,7 +342,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
     ? `Facturas leídas este mes: ${lector.datos.usadas} de ${lector.datos.cupo}`
     : (lector.datos as { error?: string } | undefined)?.error
       ? `no se pudo consultar al portal (${(lector.datos as { error?: string }).error}).`
-      : "el portal de FactPOS todavía no tiene activada la lectura con IA (falta la llave ANTHROPIC_API_KEY en el portal).";
+      : "el portal de FactPOS todavía no tiene activada la lectura con IA.";
   /** Lee un archivo con la IA: el servidor trabaja en segundo plano y aquí se consulta cada 3 s (hasta 3 min) */
   const leerUno = async (archivo: File): Promise<FacturaLeida> => {
     const { tipo, datos } = await prepararArchivo(archivo);
@@ -513,6 +513,11 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   const variasSuc = sucursales.length > 1;
   const almacenes = sucursales.find((x) => x.id === cab.sucursalId)?.almacenes ?? [];
   const lectorOk = !!lector.datos?.disponible && !leyendo;
+  const [pidioPago, setPidioPago] = useState("");
+  const pedirPago = async () => {
+    try { await api("/central/compras/lector/solicitar-pago", { metodo: "POST", cuerpo: {} }); setPidioPago("Solicitud enviada a su proveedor. Le avisará cuando esté activa."); lector.recargar(); }
+    catch (e) { setPidioPago((e as Error).message); }
+  };
   return (
     <>
       <div className="migas"><button className="enlace" onClick={onCerrar}>Compras</button><span>/</span><span>Registrar compra</span></div>
@@ -529,6 +534,13 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
         </label>
       </Encabezado>
       {lector.datos && !lector.datos.disponible && <Aviso tipo="info" texto={`El lector de facturas no está disponible: ${motivoLector}`} />}
+      {lector.datos?.cupo ? (lector.datos.pagoAutorizado ? null : (
+        <p className="suave pequeno">
+          Usa la lectura gratuita. Si no le lee bien las facturas, puede solicitar la lectura mejorada (de pago){" "}
+          {lector.datos.pagoSolicitado || pidioPago.startsWith("Solicitud") ? <b>— solicitud enviada, su proveedor la revisará.</b> : <button className="enlace" onClick={() => void pedirPago()}>Solicitarla a mi proveedor</button>}
+          {pidioPago && !pidioPago.startsWith("Solicitud") ? <span className="texto-error"> {pidioPago}</span> : null}
+        </p>
+      )) : null}
       {leyendo && <Aviso tipo="info" texto="Leyendo la factura con IA… tarda entre 15 y 40 segundos. Puede ir llenando los datos mientras tanto." />}
       <Aviso texto={msg} />
       {leidaInfo && <p className="texto-ok">{leidaInfo}</p>}
