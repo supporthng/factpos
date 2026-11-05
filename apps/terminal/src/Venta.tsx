@@ -733,7 +733,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                   ["Cambiar precio", () => setModal("cambiarPrecio"), !hayLinea || !!lineas[sel]?.prod.precioVariable] as const,
                 ] : []),
                 ["Cotización", () => setModal("cotizacion"), !lineas.length || !cot.r],
-                [cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false],
+                ...(!verCatalogo ? [[cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false] as const] : []),
                 [notas ? "Nota ✓" : "Nota", () => setModal("nota"), false],
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
                 ["Pago de factura", () => setModal("pagoFactura"), false],
@@ -757,6 +757,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <button className="enlace" onClick={reimprimirUltima}>Reimprimir</button>
             </div>
           )}
+          {verCatalogo && <button className={"boton fantasma pv-cupon-barra" + (cupon ? " activo" : "")} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}>{cupon ? "Quitar cupón" : "Cupón"}</button>}
           {verCatalogo && <button className="boton fantasma pv-cancelar pv-cancelar-barra" disabled={!lineas.length} onClick={() => setModal("cancelar")}>Cancelar</button>}
           <button className="boton cobrar abajo" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>
