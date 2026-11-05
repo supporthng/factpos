@@ -20,6 +20,11 @@ export function ordenProveedores(env: Entorno, pagoAutorizado = false): Proveedo
 }
 
 export const MODELO_GRATIS = (env: { LECTOR_MODELO_GRATIS?: string } = process.env) => env.LECTOR_MODELO_GRATIS || "gemini-3.8-flash";
+/** Modelo gratuito de respaldo cuando el principal está saturado (503) o sin cupo (429) */
+export const MODELO_GRATIS_RESPALDO = (env: { LECTOR_MODELO_GRATIS_RESPALDO?: string } = process.env) => env.LECTOR_MODELO_GRATIS_RESPALDO ?? "gemini-2.5-flash";
+/** Modelos gratuitos a intentar, en orden y sin repetir */
+export const modelosGratis = (env: { LECTOR_MODELO_GRATIS?: string; LECTOR_MODELO_GRATIS_RESPALDO?: string } = process.env) =>
+  [...new Set([MODELO_GRATIS(env), MODELO_GRATIS_RESPALDO(env)].filter(Boolean))];
 
 /** Cuerpo de la petición a Gemini: la misma factura y las mismas reglas, con el esquema escrito en las instrucciones */
 export function cuerpoGemini(args: { tipo: string; datos: string; instrucciones: string; esquema: unknown }) {
