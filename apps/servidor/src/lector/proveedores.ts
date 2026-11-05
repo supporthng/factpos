@@ -27,11 +27,11 @@ export const modelosGratis = (env: { LECTOR_MODELO_GRATIS?: string; LECTOR_MODEL
   [...new Set([MODELO_GRATIS(env), MODELO_GRATIS_RESPALDO(env)].filter(Boolean))];
 
 /** Cuerpo de la petición a Gemini: la misma factura y las mismas reglas, con el esquema escrito en las instrucciones */
-export function cuerpoGemini(args: { tipo: string; datos: string; instrucciones: string; esquema: unknown }) {
+export function cuerpoGemini(args: { tipo: string; datos: string; instrucciones: string; esquema: unknown; pensamiento?: string }) {
   return {
     systemInstruction: { parts: [{ text: `${args.instrucciones}\nResponde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` }] },
     contents: [{ role: "user", parts: [{ inlineData: { mimeType: args.tipo, data: args.datos } }, { text: "Lea esta factura de compra." }] }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0, maxOutputTokens: 8192 },
+    generationConfig: { responseMimeType: "application/json", temperature: 0, maxOutputTokens: 8192, ...(args.pensamiento ? { thinkingConfig: { thinkingLevel: args.pensamiento } } : {}) },
   };
 }
 
