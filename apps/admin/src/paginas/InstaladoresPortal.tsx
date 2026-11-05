@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { Aviso, Encabezado, useDatos } from "../ui";
+import { Aviso, Encabezado, useDatos, versionCliente } from "../ui";
 
 /** PORTAL DEL PROVEEDOR · todos los instaladores de FactPOS, con lo último publicado de cada uno. */
 interface Instalador {
@@ -47,7 +47,7 @@ export function InstaladoresPortal() {
               <div className="suave pequeno">{i.para} · {i.plataforma}</div>
               <div className="suave pequeno">
                 {i.publicado
-                  ? <>{i.version ? `Versión ${i.version}` : i.compilacion ? `Compilación ${i.compilacion}` : "Publicado"} · {fecha(i.fecha)}{i.tamano ? ` · ${mb(i.tamano)}` : ""}{i.nombre ? ` · ${i.nombre}` : ""}</>
+                  ? <>{i.version ? `Versión ${versionCliente(i.version)}` : i.compilacion ? `Compilación ${i.compilacion}` : "Publicado"} · {fecha(i.fecha)}{i.tamano ? ` · ${mb(i.tamano)}` : ""}{i.nombre ? ` · ${i.nombre}` : ""}</>
                   : <b className="texto-alerta">Todavía no está publicado</b>}
               </div>
             </div>
