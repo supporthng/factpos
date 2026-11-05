@@ -13,7 +13,7 @@ interface Cliente {
   licenciaId: string | null; sucursales: number | null; vence: string | null; estadoLicencia: "ACTIVA" | "SUSPENDIDA" | null;
   clavePista: string | null; activada: boolean; activadaEn: string | null; ultimoContacto: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | null;
-  respaldoExtraGb?: number; lectorCupo?: number; lectorPago?: boolean; lectorUsadas?: number; respaldoUsadoBytes?: number; respaldoCopias?: number; espacioSolicitadoGb?: number | null; lectorHistorial?: { mes: string; usadas: number }[]; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
+  respaldoExtraGb?: number; lectorCupo?: number; lectorPago?: boolean; lectorPagoSolicitado?: boolean; lectorUsadas?: number; respaldoUsadoBytes?: number; respaldoCopias?: number; espacioSolicitadoGb?: number | null; lectorHistorial?: { mes: string; usadas: number }[]; planId: string | null; plan: string | null; precioEspecial: string | null; periodo: "MENSUAL" | "ANUAL" | null; precioSucursal: number | null;
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
@@ -162,6 +162,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
                   <td className="pequeno">
                     <div className={cerca((c.respaldoUsadoBytes ?? 0) / 1024 ** 3, 2 + (c.respaldoExtraGb ?? 0)) ? "texto-alerta" : ""}>Respaldos: {((c.respaldoUsadoBytes ?? 0) / 1024 ** 3).toFixed(2)} / {2 + (c.respaldoExtraGb ?? 0)} GB</div>
                     <div className={(c.lectorCupo ?? 0) > 0 && cerca(c.lectorUsadas ?? 0, c.lectorCupo ?? 0) ? "texto-alerta" : ""}>Facturas IA: {c.lectorUsadas ?? 0} / {c.lectorCupo ?? 0}</div>
+                    {c.lectorPagoSolicitado ? <div className="texto-alerta"><b>Pide la IA de pago del lector</b></div> : null}
                     {c.espacioSolicitadoGb ? <div className="texto-alerta"><b>Pide +{c.espacioSolicitadoGb} GB de respaldos</b></div> : null}
                   </td>
                   <td className="der"><button className="enlace" onClick={() => setAbierto(abierto === c.id ? null : c.id)}>{abierto === c.id ? "Cerrar" : "Administrar"}</button></td>
@@ -305,7 +306,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
 
 const EVENTOS: Record<string, string> = {
   CREADA: "Licencia creada", RENOVADA: "Renovada", ACTIVADA: "Activada por el cliente", LIBERADA: "Instalación liberada", TRASLADO_INICIADO: "Traslado a otro equipo iniciado", TRASLADO_COMPLETADO: "Traslado completado", SUSPENDIDA: "Suspendida",
-  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas", RESPALDO_ESPACIO: "Espacio de respaldos cambiado", ESPACIO_SOLICITADO: "El cliente pidió más espacio de respaldos", LECTOR_CUPO: "Cupo del lector de facturas cambiado",
+  SOLICITUD: "Solicitud de activación recibida", SOLICITUD_RECHAZADA: "Solicitud rechazada", CLAVE_NUEVA: "Clave de activación nueva", CONTACTO_RECHAZADO: "Contacto rechazado", TUNEL_FIJO: "Dirección fija creada", PRUEBA_DESCARGA: "Descarga en prueba", REGLAS: "Reglas cambiadas", RESPALDO_ESPACIO: "Espacio de respaldos cambiado", ESPACIO_SOLICITADO: "El cliente pidió más espacio de respaldos", LECTOR_CUPO: "Cupo del lector de facturas cambiado", LECTOR_PAGO_SOLICITADO: "El cliente pidió la IA de pago del lector",
 };
 
 function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: Plan[]; onCambio: () => void; onClave: (k: string) => void }) {

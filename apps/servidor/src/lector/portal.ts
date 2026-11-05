@@ -74,7 +74,19 @@ export async function rutasPortalLector(app: FastifyInstance) {
   app.post("/licencias/lector/estado", async (req) => {
     const l = await autorizarLicencia(req.body);
     const u = (await pool.query<{ usadas: number }>("SELECT usadas FROM portal_lector_uso WHERE licencia_id = $1 AND mes = $2", [l.id, mesActual()])).rows[0]?.usadas ?? 0;
-    return { cupo: l.lector_cupo, usadas: u, mes: mesActual(), disponible: ordenProveedores(process.env, l.lector_pago).length > 0 };
+    const pedida = !l.lector_pago && !!(await pool.query("SELECT 1 FROM portal_eventos WHERE licencia_id = $1 AND tipo = 'LECTOR_PAGO_SOLICITADO' AND creado_en > now() - interval '30 days'", [l.id])).rowCount;
+    return { cupo: l.lector_cupo, usadas: u, mes: mesActual(), disponible: ordenProveedores(process.env, l.lector_pago).length > 0, pagoAutorizado: l.lector_pago, pagoSolicitado: pedida };
+  });
+
+  /** El cliente pide usar la IA de pago (la gratuita por omisión no le sirve): queda como aviso para el proveedor, una vez al día */
+  app.post("/licencias/lector/solicitar-pago", async (req) => {
+    const l = await autorizarLicencia(req.body);
+    if (l.lector_pago) return { ok: true, yaAutorizada: true };
+    const ya = await pool.query("SELECT 1 FROM portal_eventos WHERE licencia_id = $1 AND tipo = 'LECTOR_PAGO_SOLICITADO' AND creado_en > now() - interval '1 day'", [l.id]);
+    if (ya.rowCount) return { ok: true, yaEnviada: true };
+    const c = await pool.query<{ cliente_id: string }>("SELECT cliente_id FROM portal_licencias WHERE id = $1", [l.id]);
+    await pool.query("INSERT INTO portal_eventos (id, licencia_id, cliente_id, tipo, detalle) VALUES (gen_random_uuid(), $1, $2, 'LECTOR_PAGO_SOLICITADO', '{}')", [l.id, c.rows[0]?.cliente_id ?? null]);
+    return { ok: true, yaEnviada: false };
   });
 
   app.post("/licencias/lector/leer", { bodyLimit: 6 * 1024 * 1024 }, async (req) => {

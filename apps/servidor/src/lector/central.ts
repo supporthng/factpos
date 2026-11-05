@@ -59,11 +59,15 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
   /** Cuántas facturas le quedan este mes */
   app.get("/central/compras/lector/estado", async () => {
     try {
-      return await llamarPortal<{ cupo: number; usadas: number; mes: string; disponible: boolean }>("/licencias/lector/estado", await credencialesPortal());
+      return await llamarPortal<{ cupo: number; usadas: number; mes: string; disponible: boolean; pagoAutorizado: boolean; pagoSolicitado: boolean }>("/licencias/lector/estado", await credencialesPortal());
     } catch (e) {
       return { cupo: 0, usadas: 0, mes: "", disponible: false, error: (e as Error).message };
     }
   });
+
+  /** Pide al proveedor autorizar la IA de pago para esta empresa */
+  app.post("/central/compras/lector/solicitar-pago", async () =>
+    llamarPortal<{ ok: boolean; yaEnviada?: boolean; yaAutorizada?: boolean }>("/licencias/lector/solicitar-pago", await credencialesPortal()));
 
   /**
    * La lectura con IA tarda 15-60 s. Para que ninguna conexión (celular, túnel, proxy) tenga que esperar tanto,
