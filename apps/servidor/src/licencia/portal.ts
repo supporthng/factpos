@@ -355,6 +355,10 @@ export async function rutasPortal(app: FastifyInstance) {
       if (!v?.setup) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
       return { version: v.version, nombre: v.setup.nombre, url: await urlDescarga(v.setup) };
     }
+    if (tipo === "caja") {
+      if (!v?.caja) throw new ErrorNegocio("Todavía no hay un instalador de Caja publicado: se genera con la próxima versión", 404);
+      return { version: v.version, nombre: v.caja.nombre, url: await urlDescarga(v.caja) };
+    }
     if (!v?.asset) throw new ErrorNegocio("No hay un paquete publicado para descargar", 404);
     return { version: v.version, url: await urlDescarga(v.asset) };
   });
@@ -902,7 +906,7 @@ export async function rutasPortal(app: FastifyInstance) {
 // -------------------------------------------------------------------------------------------
 // Versiones publicadas (GitHub Releases). Repositorio privado: GITHUB_TOKEN con permiso de lectura.
 // -------------------------------------------------------------------------------------------
-interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null }
+interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null; caja?: { url: string; descarga: string; nombre: string } | null }
 let cacheVersion: { v: Publicada | null; t: number } | null = null;
 const encabezadosGitHub = (extra: Record<string, string> = {}) => ({
   "user-agent": "factpos-portal", accept: "application/vnd.github+json",
@@ -929,7 +933,9 @@ export async function ultimaVersion(): Promise<Publicada | null> {
     const encontrada = publicadas[0];
     const v = encontrada ? { version: encontrada.version, notas: encontrada.rel.body, publicada: encontrada.asset.updated_at ?? encontrada.rel.published_at, // la etiqueta «ultima» se reutiliza: su fecha propia no cambia, la del archivo sí
       asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url },
-      setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup-.*\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })() } : null;
+      setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup-.*\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
+      // Instalador solo de Caja (sin servidor ni base de datos)
+      caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup-.*\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })() } : null;
     cacheVersion = { v, t: Date.now() };
     return v;
   } catch {
