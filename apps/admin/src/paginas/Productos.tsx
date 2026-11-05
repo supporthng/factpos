@@ -52,7 +52,8 @@ const margen = (precio: number, costo: number, tasa: number, incluye: boolean) =
   const b = base(precio, tasa, incluye);
   return b > 0 && costo > 0 ? ((b - costo) / b) * 100 : null;
 };
-/** Precio desde el % de ganancia sobre la venta (margen): venta sin ITBIS = costo ÷ (1 − %), más ITBIS si el precio lo incluye.
+/** Los precios de venta siempre son múltiplos de 5 (sin centavos): el cálculo por % sube al múltiplo de 5 (o de 10) siguiente, así no se pierde margen.
+ *  Precio desde el % de ganancia sobre la venta (margen): venta sin ITBIS = costo ÷ (1 − %), más ITBIS si el precio lo incluye.
  *  Con 25 % de ganancia, el margen que se ve es 25 %. */
 const desdePorcentaje = (costo: number, pct: number, tasa: number, incluye: boolean, redondeo: number) => {
   const b = costo / (1 - Math.min(pct, 95) / 100);
@@ -600,7 +601,7 @@ function PreciosFicha({ f, cambiar, tasa, costo, aux }: { f: Ficha; cambiar: (p:
           <div className="fila-ajustes-precio">
             <label className="en-linea-campo"><span className="suave">Redondear a</span>
               <select value={redondeo} onChange={(e) => setRedondeo(Number(e.target.value))}>
-                <option value={0}>Centavos</option><option value={1}>RD$1</option><option value={5}>RD$5</option><option value={10}>RD$10</option>
+                <option value={5}>Múltiplo de 5</option><option value={10}>Múltiplo de 10</option>
               </select>
             </label>
             <label className="interruptor pequeno"><input type="checkbox" checked={f.precioIncluyeItbis} onChange={(e) => cambiar({ precioIncluyeItbis: e.target.checked })} />Incluye ITBIS ({Math.round(tasa * 100)} %)</label>
@@ -894,7 +895,7 @@ const nivVacio = (): Record<string, Niv> => ({ "1": { precio: "", pct: "", orige
 function recalcular(nv: Record<string, Niv>, costo: number, tasa: number, incluye: boolean) {
   return Object.fromEntries(NIVELES.map((k) => {
     const x = nv[k];
-    if (x.origen === "pct" && x.pct !== "") return [k, { ...x, precio: costo > 0 ? desdePorcentaje(costo, n(x.pct), tasa, incluye, 0).toFixed(2) : "" }];
+    if (x.origen === "pct" && x.pct !== "") return [k, { ...x, precio: costo > 0 ? desdePorcentaje(costo, n(x.pct), tasa, incluye, 5).toFixed(2) : "" }];
     if (x.origen === "monto" && x.precio) { const p = sobreCosto(n(x.precio), costo, tasa, incluye); return [k, { ...x, pct: p == null ? "" : p.toFixed(1) }]; }
     return [k, x];
   })) as Record<string, Niv>;
@@ -971,7 +972,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
   const cambiarIncluye = (v: boolean) => { setIncluye(v); reajustar(c, tasa, v); };
   const cambiarPct = (k: string, v: string) => {
     const s = limpiar(v);
-    setNv((x) => ({ ...x, [k]: { origen: s ? "pct" : null, pct: s, precio: s && c > 0 ? desdePorcentaje(c, n(s), tasa, incluye, 0).toFixed(2) : "" } }));
+    setNv((x) => ({ ...x, [k]: { origen: s ? "pct" : null, pct: s, precio: s && c > 0 ? desdePorcentaje(c, n(s), tasa, incluye, 5).toFixed(2) : "" } }));
   };
   const cambiarPrecio = (k: string, v: string) => {
     const s = limpiar(v);
