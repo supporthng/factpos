@@ -963,3 +963,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-acciones-linea { gap: 8px; padding: 10px; }
 .pv-acciones-linea .boton { min-height: 56px; padding: 10px 16px; font-size: 16px; flex: 1 1 auto; justify-content: center; }
 .pv-acciones-linea .boton kbd { display: none; }
+
+/* Panel de venta: sin huecos. Los botones se estiran para llenar, Cobrar queda de tamaño fijo */
+.pv-cobro .pv-atajos-min { flex: 1 1 auto; grid-auto-rows: minmax(60px, 1fr); max-height: 260px; }
+.pv-cobro .pv-atajos-min button { min-height: 60px; height: 100%; }
+.pv-cobro .pv-cliente { min-height: 68px; }
+.pv-cobro .cobrar.abajo { flex: none; min-height: 80px; margin-top: 0; }
