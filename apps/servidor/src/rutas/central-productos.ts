@@ -110,7 +110,7 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
       if (!r.rowCount) throw new ErrorNegocio("Producto no encontrado", 404);
     }
   } catch (e: any) {
-    if (e.code === "23505") throw new ErrorNegocio(`Ya existe un producto con el SKU ${p.sku}`, 409);
+    if (e.code === "23505" && /sku/i.test(String(e.constraint ?? e.detail ?? ""))) throw new ErrorNegocio(`Ya existe un producto con el SKU ${p.sku}`, 409);
     throw e;
   }
 
@@ -129,11 +129,16 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
     // Códigos: los quitados se desactivan (así la baja viaja a las sucursales)
     await c.query("UPDATE codigos_barra SET activo = false WHERE presentacion_id = $1 AND activo AND NOT (codigo = ANY($2))", [prId, pr.codigos]);
     for (const cod of pr.codigos) {
-      await c.query(
+      // Solo se reutiliza un código libre (dado de baja) o el que ya es de esta presentación: nunca se le quita a otro producto
+      // (la comprobación de arriba avisa con nombre; esta protege también si dos personas guardan a la vez)
+      const ok = await c.query(
         `INSERT INTO codigos_barra (codigo, empresa_id, presentacion_id) VALUES ($1,$2,$3)
-         ON CONFLICT (empresa_id, codigo) DO UPDATE SET presentacion_id = EXCLUDED.presentacion_id, activo = true`,
+         ON CONFLICT (empresa_id, codigo) DO UPDATE SET presentacion_id = EXCLUDED.presentacion_id, activo = true
+           WHERE codigos_barra.activo = false OR codigos_barra.presentacion_id = EXCLUDED.presentacion_id
+         RETURNING codigo`,
         [cod, empresaId, prId],
       );
+      if (!ok.rowCount) throw new ErrorNegocio(`El código ${cod} ya pertenece a otro producto`, 409);
     }
     for (const lp of listas) {
       const k = String(lp.nivel) as "1" | "2" | "3";
