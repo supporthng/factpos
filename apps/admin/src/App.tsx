@@ -4,6 +4,7 @@ import { AvisoAcceso } from "./AvisoAcceso";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
 const Instaladores = lazy(() => import("./paginas/Instaladores").then((m) => ({ default: m.Instaladores })));
+const InstaladoresPortal = lazy(() => import("./paginas/InstaladoresPortal").then((m) => ({ default: m.InstaladoresPortal })));
 const VersionesEquipos = lazy(() => import("./paginas/VersionesEquipos").then((m) => ({ default: m.VersionesEquipos })));
 const Pedidos = lazy(() => import("./paginas/Pedidos").then((m) => ({ default: m.Pedidos })));
 const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
@@ -122,6 +123,7 @@ const SECCIONES_PORTAL = [
   { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, i: "clientes", p: ["*"] },
   { id: "certificacion", titulo: "Certificación DGII", grupo: "Portal FactPOS", C: CertificacionDgii, i: "fiscal", p: ["*"] },
   { id: "ecfplanes", titulo: "Facturación electrónica", grupo: "Portal FactPOS", C: FacturacionElectronica, i: "fiscal", p: ["*"] },
+  { id: "instaladores", titulo: "Instaladores", grupo: "Portal FactPOS", C: InstaladoresPortal, i: "actualizaciones", p: ["*"] },
   { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];
