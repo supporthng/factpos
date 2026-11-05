@@ -245,7 +245,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
             <div className="cobro-seccion">
               <span className="cobro-etiqueta">Cliente</span>
               <div className="cobro-cliente">
-                <span>{cliente ? <><b>{cliente.nombre}</b>{cliente.documento && <> · {cliente.documento}</>}</> : <><b>Mostrador</b> <span className="suave">(consumidor final)</span></>}</span>
+                <span>{cliente ? <><b>{cliente.nombre}</b>{cliente.documento && <> · {cliente.documento}</>}</> : <b>Cliente Royal</b>}</span>
                 {!sinServidor && <button className="boton chico" onClick={onBuscarCliente}>{cliente ? "Cambiar" : "Buscar / crear"}</button>}
               </div>
               {!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente) && (

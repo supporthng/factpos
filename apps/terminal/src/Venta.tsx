@@ -701,12 +701,12 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <Icono n="persona" />
               <span className="pv-cliente-texto">
                 <small>Precio {nivelCliente}</small>
-                <b>{cliente ? cliente.nombre : "Consumidor final"}</b>
+                <b>{cliente ? cliente.nombre : "Cliente Royal"}</b>
                 {cliente?.documento && <small>{cliente.tipoDocumento === "RNC" ? "RNC" : "Céd."} {cliente.documento}</small>}
               </span>
               <span className="pv-cliente-accion">{cliente ? "Cambiar" : "RNC / Cédula"} <kbd>F4</kbd></span>
             </button>
-            {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a consumidor final" onClick={() => setCliente(null)}>×</button>}
+            {cliente && <button className="pv-quitar-cliente" aria-label="Quitar cliente" title="Volver a Cliente Royal" onClick={() => setCliente(null)}>×</button>}
           </div>
           <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
             <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
