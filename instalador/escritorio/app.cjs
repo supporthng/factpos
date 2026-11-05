@@ -502,6 +502,17 @@ function openMain(onShown) {
   win.webContents.on('ipc-message', (_e, canal, modo) => {
     if (canal === 'factpos:turno') { turnoAbierto = !!modo; return; }
     if (canal === 'factpos:cerrar') { app.quit(); return; }
+    if (canal === 'factpos:imprimir') {
+      // Impresión directa a la impresora predeterminada de Windows (sin el cuadro de imprimir). Si no se pudo (sin impresora, apagada),
+      // se abre el cuadro normal para que el cajero elija otra en vez de perder el comprobante.
+      try {
+        win.webContents.print({ silent: true, printBackground: true, margins: { marginType: 'none' } }, (ok, razon) => {
+          if (ok || win.isDestroyed()) return;
+          try { win.webContents.print({ silent: false, printBackground: true }); } catch {}
+        });
+      } catch { try { win.webContents.print({ silent: false, printBackground: true }); } catch {} }
+      return;
+    }
     if (canal === 'factpos:minimizar') { minimizarAutorizado = true; mostrarEscritorio(); try { win.setAlwaysOnTop(false); win.setKiosk(false); win.minimize(); } catch {} return; }
     if (canal !== 'factpos:ventana' || selected !== 'admin' || win.isDestroyed() || win.isKiosk()) return;
     if (modo === 'entrar') {

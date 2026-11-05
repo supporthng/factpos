@@ -3,6 +3,7 @@ import { api, rd, type Ajustes } from "./api";
 import type { ConfigCaja } from "./App";
 import { Modal } from "./Venta";
 import { PinSupervisor, type Aprobacion } from "./Operaciones";
+import { imprimir } from "./imprimir";
 
 /**
  * Dinero que entra o sale de la gaveta fuera de las ventas:
@@ -150,7 +151,7 @@ function Comprobante({ m, config, onCerrar }: { m: Movimiento; config: ConfigCaj
         {m.tipo !== "DEPOSITO" && <div className="t-firma">{m.tipo === "RETIRO" ? "Firma de quien recibe" : "Firma supervisor"}</div>}
       </div>
       <div className="dos-columnas acciones-ticket">
-        <button className="boton primario" onClick={() => window.print()}>Imprimir (Enter)</button>
+        <button className="boton primario" onClick={() => imprimir()}>Imprimir (Enter)</button>
         <button className="boton" onClick={onCerrar}>Listo</button>
       </div>
     </div>
@@ -159,7 +160,7 @@ function Comprobante({ m, config, onCerrar }: { m: Movimiento; config: ConfigCaj
 
 function useImprimirConEnter() {
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Enter" && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); window.print(); } };
+    const h = (e: KeyboardEvent) => { if (e.key === "Enter" && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); imprimir(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
@@ -328,7 +329,7 @@ function ReciboImpreso({ r, empresa, onCerrar }: { r: Recibo; empresa: string; o
         <div className="t-centro t-pie">Documento no fiscal · Gracias por su pago</div>
       </div>
       <div className="dos-columnas acciones-ticket">
-        <button className="boton primario" onClick={() => window.print()}>Imprimir (Enter)</button>
+        <button className="boton primario" onClick={() => imprimir()}>Imprimir (Enter)</button>
         <button className="boton" onClick={onCerrar}>Listo</button>
       </div>
     </>
