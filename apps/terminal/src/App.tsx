@@ -1,4 +1,5 @@
 import { TecladoPantalla } from "./Teclado";
+import { versionCliente } from "./version";
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
@@ -472,7 +473,7 @@ function VersionCaja() {
     const url = leerAjustes()?.servidor; if (!url) return;
     fetch(`${url.replace(/\/$/, "")}/actualizacion/estado`, { cache: "no-store" }).then((r) => r.json()).then((d) => setV(String(d.version ?? ""))).catch(() => {});
   }, []);
-  return <div className="version-caja" title="Versión del servidor · fecha de compilación de esta pantalla">FactPOS {v ? `v${v.replace(/\.0$/, "")}` : ""} · {__INTERFAZ__}</div>;
+  return <div className="version-caja" title="Versión del servidor · fecha de compilación de esta pantalla">FactPOS {v ? `v${versionCliente(v)}` : ""} · {__INTERFAZ__}</div>;
 }
 
 export function App() {

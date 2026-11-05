@@ -1,4 +1,5 @@
 import { publicarMarca, publicarCarrito, publicarGracias } from "./pantalla-cliente";
+import { versionCliente } from "./version";
 import { modoInicial } from "./vista";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -81,7 +82,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [versionApp, setVersionApp] = useState("");
   useEffect(() => {
     fetch(`${ajustes.servidor.replace(/\/$/, "")}/actualizacion/estado`, { cache: "no-store" }).then((r) => r.json())
-      .then((d) => setVersionApp(String(d.version ?? "").replace(/\.0$/, ""))).catch(() => {});
+      .then((d) => setVersionApp(versionCliente(String(d.version ?? "")))).catch(() => {});
   }, [ajustes.servidor]);
   /** Tipo de comprobante de esta venta (Consumo por defecto) */
   const [tipoComp, setTipoComp] = useState<TipoComprobante>(config.funciones?.sinComprobante ? "SIN" : "E32");
