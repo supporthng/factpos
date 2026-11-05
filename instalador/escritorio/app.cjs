@@ -260,18 +260,19 @@ async function syncCodigo() {
     if (fs.existsSync(carpeta)) fs.renameSync(carpeta, viejo);
     fs.renameSync(tmp, carpeta);
     fs.rmSync(viejo, { recursive: true, force: true });
-  } catch { /* sin servidor o a medias: se queda el código actual */ }
+    return true; // código nuevo guardado: se aplica al reiniciar
+  } catch { return false; /* sin servidor o a medias: se queda el código actual */ }
   finally { sincronizandoCodigo = false; }
 }
 // Descarga la pantalla de la caja que tiene el servidor si es distinta de la que se está usando. Todo o nada.
 async function syncUi() {
-  if (syncing || !server) return;
+  if (syncing || !server) return false;
   syncing = true;
   try {
     const base = new URL('/terminal/', server);
     const indexBuf = await fetchBuf(new URL('index.html', base));
     const actual = readOr(path.join(uiRoot(), 'index.html'));
-    if (actual && sha(actual) === sha(indexBuf)) return;
+    if (actual && sha(actual) === sha(indexBuf)) return false;
     const tmp = UI_CACHE + '.nuevo';
     fs.rmSync(tmp, { recursive: true, force: true });
     const hechos = new Set(['index.html']);
@@ -306,7 +307,8 @@ async function syncUi() {
     if (fs.existsSync(UI_CACHE)) fs.renameSync(UI_CACHE, viejo);
     fs.renameSync(tmp, UI_CACHE);
     fs.rmSync(viejo, { recursive: true, force: true });
-  } catch { /* sin servidor o a medias: se queda la pantalla actual */ }
+    return true; // había una pantalla nueva y ya está guardada
+  } catch { return false; /* sin servidor o a medias: se queda la pantalla actual */ }
   finally { syncing = false; }
 }
 async function startCaja() {
@@ -320,10 +322,16 @@ async function startCaja() {
   if (config.principal) startBuzon(); // la clave llega cuando la pantalla habla con el servidor
   // Si el servidor está en este mismo equipo y no corre, se intenta encender sin hacer esperar a la caja
   if (server && localServer()) { available(server).then(ok => { if (!ok) startInstalledServer(); }); }
+  // Antes de abrir la ventana se revisa si el servidor trae una pantalla o un código más nuevo (como mucho 4 s: sin servidor se abre igual).
+  // Así la caja abre YA con la versión nueva y no hace falta cerrarla y volverla a abrir.
+  const revision = await Promise.race([Promise.all([syncUi(), syncCodigo()]), new Promise(r => setTimeout(() => r(null), 4000))]);
+  if (revision && revision[1] === true && !args.includes('--codigo-nuevo')) {
+    // El código de esta ventana de escritorio solo se carga al arrancar: se reinicia una sola vez para usar el nuevo
+    try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); app.exit(0); return; } catch { /* sigue con el actual */ }
+  }
   openMain();
-  syncUi();
-  syncCodigo();
-  setInterval(syncUi, 5 * 60 * 1000).unref();
+  // Con la caja abierta: si llega una pantalla nueva y no hay un turno en curso, se recarga sola (con turno abierto espera al próximo arranque)
+  setInterval(async () => { if (await syncUi() && mainWindow && !mainWindow.isDestroyed() && !turnoAbierto) { try { mainWindow.webContents.reloadIgnoringCache(); } catch {} } }, 5 * 60 * 1000).unref();
   setInterval(syncCodigo, 30 * 60 * 1000).unref();
   watchUpdates();
 }
