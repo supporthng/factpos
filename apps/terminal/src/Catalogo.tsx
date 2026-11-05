@@ -59,7 +59,7 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
             data-entrada-principal
             data-teclado="tactil"
             value={q}
-            placeholder="Buscar o escanear producto…"
+            placeholder="Buscar o escanear producto  ·  3*código = 3 unidades"
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
