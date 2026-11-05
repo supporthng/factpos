@@ -498,7 +498,13 @@ function openMain(onShown) {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event, url) => {
-    try { if (new URL(url).origin !== endpoint.origin) event.preventDefault(); } catch { event.preventDefault(); }
+    try {
+      const u = new URL(url);
+      if (u.origin === endpoint.origin) return;
+      event.preventDefault();
+      // En la administración, un enlace de descarga (instaladores) se entrega al navegador del sistema; en la caja bloqueada no
+      if (!bloqueada() && u.protocol === 'https:') shell.openExternal(url);
+    } catch { event.preventDefault(); }
   });
   win.loadURL(endpoint.toString());
 }

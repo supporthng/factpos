@@ -29,14 +29,19 @@ const GRUPOS: Grupo[] = [
 export function Instaladores() {
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const [trabajando, setTrabajando] = useState<string | null>(null);
+  const [enlace_, setEnlace] = useState<string | null>(null);
   // Desde el portal (web de la empresa) las apps se descargan del portal; desde el servidor, del propio servidor
   const enlace = (so: string) => CONFIG.modo === "cliente" ? `${location.origin}/licencias/descargar-verificador/${so}` : `${(CONFIG.api ?? "").replace(/\/$/, "")}/verificador/descarga/${so}`;
 
   const principal = async (clave: string, variante?: "caja") => {
-    setMsg(null); setTrabajando(clave);
+    setMsg(null); setEnlace(null); setTrabajando(clave);
     try {
-      const r = await api<{ url: string; version: string | null }>("/central/instaladores/principal", { metodo: "POST", cuerpo: variante ? { tipo: variante } : {} });
-      window.location.href = r.url;
+      const r = await api<{ url: string; version: string | null; nombre?: string | null }>("/central/instaladores/principal", { metodo: "POST", cuerpo: variante ? { tipo: variante } : {} });
+      // Un enlace con clic (no un cambio de página): el navegador y la app de escritorio lo tratan como descarga
+      const ancla = document.createElement("a");
+      ancla.href = r.url; ancla.rel = "noopener"; ancla.download = r.nombre ?? ""; ancla.style.display = "none";
+      document.body.appendChild(ancla); ancla.click(); ancla.remove();
+      setEnlace(r.url);
       setMsg({ t: `Descargando el instalador${r.version ? ` de la versión ${r.version}` : ""}…`, tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     finally { setTrabajando(null); }
@@ -46,6 +51,7 @@ export function Instaladores() {
     <>
       <Encabezado titulo="Instaladores" descripcion="Todos los instaladores de FactPOS en un solo lugar: siempre la versión más reciente." />
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      {enlace_ && <p className="pequeno">¿No empezó la descarga? <a href={enlace_} target="_blank" rel="noreferrer">Haz clic aquí</a> (el enlace dura unos minutos).</p>}
       {GRUPOS.map((g) => (
         <div className="panel" key={g.titulo}>
           <h3 style={{ marginTop: 0 }}>{g.titulo}</h3>
