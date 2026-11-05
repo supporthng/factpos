@@ -2,12 +2,15 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 import { autorizarLicencia } from "../respaldo/portal.js";
+import { cuerpoGemini, leerRespuestaGemini, MODELO_GRATIS, ordenProveedores, type Proveedor } from "./proveedores.js";
 
 /**
  * Portal: LECTOR DE FACTURAS con IA (Claude).
  * La llave de la API vive solo aquí (ANTHROPIC_API_KEY); las instalaciones piden la lectura y el portal
  * valida la licencia y descuenta del cupo mensual que el proveedor asignó a esa licencia (lector_cupo, 0 = apagado).
- *   ANTHROPIC_API_KEY   LECTOR_MODELO (por omisión claude-sonnet-5-5)
+ *   ANTHROPIC_API_KEY   LECTOR_MODELO (por omisión claude-sonnet-5-5)            → opción de pago (Claude)
+ *   GEMINI_API_KEY      LECTOR_MODELO_GRATIS                                         → opción gratuita (Google Gemini, con límites)
+ *   LECTOR_PROVEEDOR    auto (gratis primero y, si falla, pago) | gratis | pago
  */
 const MODELO = () => process.env.LECTOR_MODELO || "claude-sonnet-5-5";
 const MAX_BYTES = 3 * 1024 * 1024;          // el portal (Vercel) acepta cuerpos de ~4.5 MB; base64 agrega un tercio
@@ -71,13 +74,14 @@ export async function rutasPortalLector(app: FastifyInstance) {
   app.post("/licencias/lector/estado", async (req) => {
     const l = await autorizarLicencia(req.body);
     const u = (await pool.query<{ usadas: number }>("SELECT usadas FROM portal_lector_uso WHERE licencia_id = $1 AND mes = $2", [l.id, mesActual()])).rows[0]?.usadas ?? 0;
-    return { cupo: l.lector_cupo, usadas: u, mes: mesActual(), disponible: !!process.env.ANTHROPIC_API_KEY };
+    return { cupo: l.lector_cupo, usadas: u, mes: mesActual(), disponible: ordenProveedores(process.env).length > 0 };
   });
 
   app.post("/licencias/lector/leer", { bodyLimit: 6 * 1024 * 1024 }, async (req) => {
     const l = await autorizarLicencia(req.body);
     const b = z.object({ tipo: z.enum(["image/jpeg", "image/png", "image/webp", "application/pdf"]), datos: z.string().min(100) }).parse(req.body);
-    if (!process.env.ANTHROPIC_API_KEY) throw new ErrorNegocio("El lector de facturas todavía no está disponible. Su proveedor lo activará pronto.", 503);
+    const orden = ordenProveedores(process.env);
+    if (!orden.length) throw new ErrorNegocio("El lector de facturas todavía no está disponible. Su proveedor lo activará pronto.", 503);
     if (Buffer.byteLength(b.datos, "base64") > MAX_BYTES) throw new ErrorNegocio("El archivo es muy pesado (máx. 3 MB). Tome la foto con menos resolución o envíe un PDF más liviano.", 413);
     if (l.lector_cupo <= 0) throw new ErrorNegocio("El lector de facturas no está incluido en su licencia. Pídale a su proveedor que lo active.", 402);
     const mes = mesActual();
@@ -89,24 +93,47 @@ export async function rutasPortalLector(app: FastifyInstance) {
     if (!reservado.rowCount) throw new ErrorNegocio(`Ya usó las ${l.lector_cupo} facturas de este mes. Pídale a su proveedor ampliar el cupo.`, 402);
     const devolver = () => pool.query("UPDATE portal_lector_uso SET usadas = GREATEST(usadas - 1, 0) WHERE licencia_id = $1 AND mes = $2", [l.id, mes]).catch(() => undefined);
     try {
-      const bloque = b.tipo === "application/pdf"
-        ? { type: "document", source: { type: "base64", media_type: b.tipo, data: b.datos } }
-        : { type: "image", source: { type: "base64", media_type: b.tipo, data: b.datos } };
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({
-          model: MODELO(), max_tokens: 4096, system: INSTRUCCIONES,
-          tools: [HERRAMIENTA], tool_choice: { type: "auto" }, // los modelos nuevos no aceptan forzar la herramienta: se le exige en las instrucciones
-          messages: [{ role: "user", content: [bloque, { type: "text", text: "Lea esta factura de compra." }] }],
-        }),
-        signal: AbortSignal.timeout(55_000),
-      });
-      const d = (await r.json().catch(() => ({}))) as { content?: { type: string; input?: unknown }[]; error?: { message?: string } };
-      if (!r.ok) throw new Error(d.error?.message ?? `HTTP ${r.status}`);
-      const uso = d.content?.find((x) => x.type === "tool_use")?.input;
-      if (!uso) throw new Error("La IA no devolvió datos");
-      return { factura: uso, cupo: l.lector_cupo, usadas: reservado.rows[0].usadas as number };
+      const leer: Record<Proveedor, () => Promise<unknown>> = {
+        pago: async () => {
+          const bloque = b.tipo === "application/pdf"
+            ? { type: "document", source: { type: "base64", media_type: b.tipo, data: b.datos } }
+            : { type: "image", source: { type: "base64", media_type: b.tipo, data: b.datos } };
+          const r = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({
+              model: MODELO(), max_tokens: 4096, system: INSTRUCCIONES,
+              tools: [HERRAMIENTA], tool_choice: { type: "auto" }, // los modelos nuevos no aceptan forzar la herramienta: se le exige en las instrucciones
+              messages: [{ role: "user", content: [bloque, { type: "text", text: "Lea esta factura de compra." }] }],
+            }),
+            signal: AbortSignal.timeout(55_000),
+          });
+          const d = (await r.json().catch(() => ({}))) as { content?: { type: string; input?: unknown }[]; error?: { message?: string } };
+          if (!r.ok) throw new Error(d.error?.message ?? `HTTP ${r.status}`);
+          const uso = d.content?.find((x) => x.type === "tool_use")?.input;
+          if (!uso) throw new Error("La IA no devolvió datos");
+          return uso;
+        },
+        gratis: async () => {
+          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODELO_GRATIS())}:generateContent`, {
+            method: "POST",
+            headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
+            body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema })),
+            signal: AbortSignal.timeout(55_000),
+          });
+          const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
+          if (!r.ok) throw new Error(r.status === 429 ? "Se agotó el límite de lecturas gratuitas por ahora" : d.error?.message ?? `HTTP ${r.status}`);
+          return leerRespuestaGemini(d);
+        },
+      };
+      // Se intenta en orden; si el gratuito falla o se agota y hay opción de pago, se usa esa
+      let factura: unknown, usado: Proveedor | null = null, ultimoError: Error | null = null;
+      for (const p of orden) {
+        try { factura = await leer[p](); usado = p; break; }
+        catch (e) { ultimoError = e as Error; app.log.warn(`Lector de facturas (${p}): ${(e as Error).message}`); }
+      }
+      if (!usado) throw ultimoError ?? new Error("Sin proveedor disponible");
+      return { factura, proveedor: usado, cupo: l.lector_cupo, usadas: reservado.rows[0].usadas as number };
     } catch (e) {
       await devolver();
       app.log.warn(`Lector de facturas: ${(e as Error).message}`);
