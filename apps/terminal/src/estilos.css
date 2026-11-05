@@ -926,3 +926,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
   .pv-cobro .pv-caja-panel .pv-funcion { min-height: 42px; }
   .pv-cobro .pv-atajos button small { display: none; }
 }
+
+/* Panel de cobro: los botones usan el alto disponible y «Cobrar» queda abajo, grande y a mano del pulgar */
+.pv-cobro .pv-atajos button { min-height: clamp(46px, 7.5vh, 76px); justify-content: center; font-size: clamp(13px, 1.9vh, 17px); }
+.pv-cobro .pv-caja-panel { flex: 1 1 0; min-height: 0; max-height: 360px; grid-auto-rows: minmax(46px, 1fr); }
+.pv-cobro .pv-caja-panel .pv-funcion { min-height: 0; height: 100%; font-size: clamp(13px, 1.9vh, 17px); }
+.pv-cobro .boton.cobrar.abajo { margin-top: auto; flex: none; height: clamp(52px, 10vh, 100px); font-size: clamp(22px, 3.4vh, 34px); }

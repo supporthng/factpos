@@ -670,9 +670,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           </dl>
           {cot.error && <p className="error">{cot.error}</p>}
 
-          <button className="boton cobrar" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
-            Cobrar <kbd>F12</kbd>
-          </button>
           <span className="pv-titulo-pago">Cliente</span>
           <div className="pv-cliente-panel">
             <button className={"pv-cliente" + (cliente ? " con-cliente" : "")} onClick={() => setModal("cliente")}>
@@ -708,6 +705,9 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <button className="enlace" onClick={reimprimirUltima}>Reimprimir</button>
             </div>
           )}
+          <button className="boton cobrar abajo" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
+            Cobrar <kbd>F12</kbd>
+          </button>
         </aside>
       </main>
 
