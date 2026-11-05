@@ -646,8 +646,24 @@ function useTablasApiladas() {
   }, []);
 }
 
+/** En la ventana de escritorio (Chromium) el calendario de un campo de fecha solo se abre con su iconito, que en pantallas táctiles
+ *  casi no se ve ni se acierta: al tocar el campo se abre el calendario (showPicker). Escribir la fecha con el teclado sigue funcionando. */
+function useCalendarioAlTocar() {
+  useEffect(() => {
+    const f = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.("input[type=date],input[type=datetime-local],input[type=month],input[type=time]") as HTMLInputElement | null;
+      if (!el || el.disabled || el.readOnly) return;
+      try { el.showPicker?.(); } catch { /* el navegador no lo permite aquí: queda el iconito de siempre */ }
+    };
+    // En la fase de captura: así también funciona dentro de ventanas y tarjetas que detienen el clic antes de que suba
+    document.addEventListener("click", f, true);
+    return () => document.removeEventListener("click", f, true);
+  }, []);
+}
+
 export function App() {
   useTablasApiladas();
+  useCalendarioAlTocar();
   const servidor = () => leerSesion()?.servidor || (CONFIG.api !== undefined ? CONFIG.api || location.origin : location.origin);
   const listo = usePreparado(servidor, () => fijarSesion(null));
   const [dispositivo, setDispositivo] = useState<{ estado: string; servidor: string; ruta?: string; credencial?: boolean } | null>(null);
