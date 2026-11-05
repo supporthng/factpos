@@ -26,8 +26,8 @@ export const CAPACIDADES = {
   codigoSeguridadQr: true,     // código de seguridad y URL del QR
   envioDgii: true,             // autenticación por semilla, recepción y consulta de resultado
   acuseRecibo: true,           // ARECF: responder a los e-CF que envía la DGII
-  aprobacionComercial: false,  // ACECF: generar y recibir aprobaciones/rechazos comerciales
-  anulacionSecuencias: false,  // ANECF: anular rangos de e-NCF no usados
+  aprobacionComercial: true,   // ACECF: generar y recibir aprobaciones/rechazos comerciales
+  anulacionSecuencias: true,   // ANECF: anular rangos de e-NCF no usados
   representacionPdf: false,    // PDF de la representación impresa por tipo (con QR)
   importadorSetPruebas: false, // leer el Excel de la DGII y generar/enviar los XML
 } as const;
