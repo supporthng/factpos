@@ -72,7 +72,7 @@ export async function rutasCentral(app: FastifyInstance) {
     const p = [e, suc];
     const enSuc = (col: string) => `($2::uuid[] IS NULL OR ${col} = ANY($2))`;
     const hoyRd = "(now() AT TIME ZONE 'America/Santo_Domingo')::date";
-    const [comparar, cierres, ecf, incidentes, cert, secuencias, correos, vencimientos, cxc] = await Promise.all([
+    const [comparar, cierres, ecf, incidentes, cert, secuencias, correos, vencimientos, cxc, resp] = await Promise.all([
       pool.query(
         `SELECT COALESCE(SUM(venta_total) FILTER (WHERE fecha = ${hoyRd} - 1), 0) AS ayer,
                 COALESCE(SUM(venta_total) FILTER (WHERE fecha = ${hoyRd} - 7), 0) AS "semanaPasada",
@@ -120,6 +120,10 @@ export async function rutasCentral(app: FastifyInstance) {
            JOIN sucursales s ON s.id = f.sucursal_id
           WHERE s.empresa_id = $1 AND ${enSuc("f.sucursal_id")} AND f.pendiente > 0
             AND f.creado_en + make_interval(days => cl.dias_credito) < now()`, p),
+      // Respaldos: el último que se hizo y si alguna copia (carpeta extra / nube) falló en los últimos días
+      pool.query(
+        `SELECT (SELECT MAX(creado_en) FROM respaldos WHERE tipo <> 'SEGURIDAD') AS ultimo,
+                (SELECT COUNT(*)::int FROM respaldos WHERE creado_en > now() - interval '3 days' AND (extra_estado = 'ERROR' OR nube_estado = 'ERROR')) AS "copiasConError"`),
     ]);
     return {
       ...comparar.rows[0],
@@ -131,6 +135,7 @@ export async function rutasCentral(app: FastifyInstance) {
       correosConError: correos.rows[0].n,
       vencimientos: vencimientos.rows[0],
       creditoVencido: cxc.rows[0],
+      respaldos: resp.rows[0],
     };
   });
 

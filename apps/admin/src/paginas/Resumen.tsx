@@ -17,6 +17,7 @@ interface Atencion {
   correosConError: number;
   vencimientos?: { vencidos: number; valorVencido: string; proximos: number };
   creditoVencido?: { facturas: number; clientes: number; valor: string };
+  respaldos?: { ultimo: string | null; copiasConError: number };
 }
 type Tono = "grave" | "aviso";
 interface Punto { tono: Tono; texto: string; ir: string; accion: string }
@@ -61,6 +62,12 @@ export function Resumen() {
     if (a.vencimientos?.vencidos) puntos.push({ tono: "grave", texto: `${a.vencimientos.vencidos} lote(s) VENCIDO(S) siguen en existencia (${rd(a.vencimientos.valorVencido)} al costo): retírelos con un ajuste por vencimiento`, ir: "reportes", accion: "Ver vencidos" });
     if (a.vencimientos?.proximos) puntos.push({ tono: "aviso", texto: `${a.vencimientos.proximos} lote(s) vencen en los próximos 15 días`, ir: "reportes", accion: "Ver lotes" });
     if (a.creditoVencido?.facturas) puntos.push({ tono: "aviso", texto: `${a.creditoVencido.facturas} factura(s) a crédito vencida(s) de ${a.creditoVencido.clientes} cliente(s): ${rd(a.creditoVencido.valor)} por cobrar`, ir: "cxc", accion: "Ver cuentas por cobrar" });
+    if (a.respaldos) {
+      const horas = a.respaldos.ultimo ? (Date.now() - new Date(a.respaldos.ultimo).getTime()) / 3600e3 : null;
+      if (horas === null) puntos.push({ tono: "grave", texto: "Todavía no hay ningún respaldo de la base de datos", ir: "respaldos", accion: "Hacer respaldo" });
+      else if (horas > 48) puntos.push({ tono: "grave", texto: `El último respaldo fue hace ${Math.floor(horas / 24)} días: los respaldos automáticos no se están haciendo`, ir: "respaldos", accion: "Ver respaldos" });
+      if (a.respaldos.copiasConError) puntos.push({ tono: "aviso", texto: `${a.respaldos.copiasConError} respaldo(s) no se pudieron copiar a la carpeta extra o a la nube`, ir: "respaldos", accion: "Ver respaldos" });
+    }
     if (a.correosConError) puntos.push({ tono: "aviso", texto: `${a.correosConError} correo(s) de reportes no se pudieron enviar`, ir: "correo", accion: "Ver correo" });
   }
   if (sum("productos_bajo_minimo")) puntos.push({ tono: "aviso", texto: `${num(sum("productos_bajo_minimo"))} producto(s) por debajo del mínimo`, ir: "inventario", accion: "Ver existencias" });
