@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 const crypto = require('node:crypto');
 const os = require('node:os');
+const dgram = require('node:dgram');
 
 const ICON = path.join(global.__factposBase || __dirname, 'factpos.ico');
 // La Caja guarda sus datos aparte de la Administración: así cada una puede tener una sola ventana abierta
@@ -86,6 +87,66 @@ function uiRoot() {
   } catch {}
   return UI_BUNDLED;
 }
+// ---- Búsqueda del servidor de la sucursal en la red (la hace este programa, que sí puede usar UDP; la pantalla no)
+function redesLocales() {
+  const out = [];
+  for (const lista of Object.values(os.networkInterfaces())) for (const i of lista || []) {
+    if (i.family === 'IPv4' && !i.internal && !i.address.startsWith('169.254.')) out.push(i);
+  }
+  return out;
+}
+function difusion(i) { // dirección de broadcast de la red de esa tarjeta
+  const ip = i.address.split('.').map(Number), m = i.netmask.split('.').map(Number);
+  return ip.map((b, k) => (b | (255 ^ m[k]))).join('.');
+}
+const hallado = (d, url) => ({ url, empresa: d.empresa ?? null, sucursales: Array.isArray(d.sucursales) ? d.sucursales : [], equipo: d.equipo ?? '' });
+// El servidor contesta «FACTPOS?» en el puerto UDP 41234 con sus datos (igual que el instalador de la caja)
+function buscarPorUdp(ms = 1500) {
+  return new Promise(resolve => {
+    const hallados = new Map();
+    let s;
+    try { s = dgram.createSocket('udp4'); } catch { return resolve([]); }
+    let listo = false;
+    const fin = () => { if (listo) return; listo = true; try { s.close(); } catch {} resolve([...hallados.values()]); };
+    s.on('error', fin);
+    s.on('message', (msg, r) => {
+      try {
+        const d = JSON.parse(msg.toString());
+        if (d && d.producto === 'FactPOS') { const url = `http://${r.address}:${d.puerto || 3000}`; hallados.set(url, hallado(d, url)); }
+      } catch {}
+    });
+    s.bind(0, () => {
+      try { s.setBroadcast(true); } catch {}
+      const pregunta = Buffer.from('FACTPOS?');
+      for (const dest of new Set(['255.255.255.255', ...redesLocales().map(difusion)])) { try { s.send(pregunta, 41234, dest); } catch {} }
+    });
+    setTimeout(fin, ms);
+  });
+}
+function probarHttp(url, ms) {
+  return new Promise(resolve => {
+    const req = http.get(`${url}/descubrir`, { timeout: ms }, r => {
+      if (r.statusCode !== 200) { r.resume(); return resolve(null); }
+      let t = '';
+      r.on('data', c => { t += c; if (t.length > 20000) req.destroy(); });
+      r.on('end', () => { try { const d = JSON.parse(t); resolve(d && d.producto === 'FactPOS' ? hallado(d, url) : null); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+// Si el router no deja pasar el broadcast: se prueba el puerto 3000 en toda la red de cada tarjeta de este equipo
+async function barrerRedes() {
+  const hallados = [];
+  for (const base of new Set(redesLocales().map(i => i.address.split('.').slice(0, 3).join('.')))) {
+    const urls = Array.from({ length: 254 }, (_, k) => `http://${base}.${k + 1}:3000`);
+    for (let k = 0; k < urls.length; k += 127) (await Promise.all(urls.slice(k, k + 127).map(u => probarHttp(u, 500)))).forEach(e => e && hallados.push(e));
+    if (hallados.length) break;
+  }
+  return hallados;
+}
+async function descubrirRed() { const u = await buscarPorUdp(); return u.length ? u : barrerRedes(); }
+
 function startUiServer() {
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
@@ -94,6 +155,12 @@ function startUiServer() {
         if (u.pathname === '/escritorio.json') {
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
           return res.end(JSON.stringify({ servidor: localUrl }));
+        }
+        if (u.pathname === '/descubrir-red') {
+          if (req.headers.host !== `127.0.0.1:${UI_PORT}`) { res.writeHead(403); return res.end(); }
+          const responder = lista => { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(lista)); };
+          descubrirRed().then(responder, () => responder([]));
+          return;
         }
         if (u.pathname === '/principal') return principalApi(req, res, u);
         if (u.pathname === '/respaldo') return respaldoApi(req, res, u);

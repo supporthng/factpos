@@ -103,6 +103,12 @@ if ($Servidor -notmatch '^https?://') { $Servidor = "http://$Servidor" }
 if ($Servidor -notmatch ':\d+$') { $Servidor = "$($Servidor):3000" }
 try { $info = Invoke-RestMethod "$Servidor/descubrir" -TimeoutSec 5 } catch { throw "No responde un servidor FactPOS en $Servidor" }
 Listo "Servidor: $Servidor  ($($info.empresa) · $($info.sucursales -join ', '))"
+# El instalador (FactPOS-Caja-Setup) lee esta dirección para crear el acceso «FactPOS Caja» ya apuntando a este servidor
+try {
+  $dirFactpos = Join-Path $env:LOCALAPPDATA "FactPOS"
+  New-Item -ItemType Directory -Force -Path $dirFactpos | Out-Null
+  [IO.File]::WriteAllText((Join-Path $dirFactpos "servidor-detectado.txt"), $Servidor, [Text.Encoding]::ASCII)
+} catch { }
 
 # --------------------------------------------------------- Acceso de Caja
 # En el instalador NSIS integrado, Electron crea los accesos. No crear

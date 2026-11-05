@@ -212,7 +212,7 @@ function Pantalla({ children }: { children: React.ReactNode }) {
 interface Encontrado { url: string; empresa: string | null; sucursales: string[]; equipo: string }
 
 /** Pregunta a una dirección si es un servidor FactPOS (responde /descubrir). */
-async function probar(url: string, ms = 1200): Promise<Encontrado | null> {
+async function probar(url: string, ms = 800): Promise<Encontrado | null> {
   try {
     const r = await fetch(`${url}/descubrir`, { signal: AbortSignal.timeout(ms) });
     if (!r.ok) return null;
@@ -245,8 +245,13 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
     const e = await probar(location.origin, 3000);
     if (e) return anotar(e);
   }
-  avance("Buscando factpos.local…");
-  anotar(await probar("http://factpos.local:3000", 2500));
+  // La aplicación de escritorio busca por UDP en la red (como el instalador) y, si hace falta, barre las redes de este equipo;
+  // al mismo tiempo se prueba el nombre factpos.local. En un navegador /descubrir-red no existe y se sigue con lo demás.
+  avance("Buscando el servidor en la red…");
+  const delEscritorio = fetch("/descubrir-red", { signal: AbortSignal.timeout(9000), cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : [])).then((l) => (Array.isArray(l) ? (l as Encontrado[]) : [])).catch(() => [] as Encontrado[]);
+  const [porNombre, lista] = await Promise.all([probar("http://factpos.local:3000", 1500), delEscritorio]);
+  if (lista.length) lista.forEach(anotar); else anotar(porNombre); // el mismo servidor por IP y por nombre no se ofrece dos veces
   if (vistos.size) return;
 
   // Redes locales: la de esta misma pantalla (si se abrió por IP) y las de los routers más usados
@@ -257,8 +262,8 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
   for (const red of redes) {
     avance(`Buscando en la red ${red}.x…`);
     const ips = Array.from({ length: 254 }, (_, k) => `http://${red}.${k + 1}:3000`);
-    for (let k = 0; k < ips.length; k += 64) {
-      (await Promise.all(ips.slice(k, k + 64).map((u) => probar(u)))).forEach(anotar);
+    for (let k = 0; k < ips.length; k += 127) {
+      (await Promise.all(ips.slice(k, k + 127).map((u) => probar(u, 600)))).forEach(anotar);
     }
     if (vistos.size) return;
   }
