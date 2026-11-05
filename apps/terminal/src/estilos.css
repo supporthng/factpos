@@ -932,3 +932,8 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-cobro .pv-caja-panel { flex: 1 1 0; min-height: 0; max-height: 360px; grid-auto-rows: minmax(46px, 1fr); }
 .pv-cobro .pv-caja-panel .pv-funcion { min-height: 0; height: 100%; font-size: clamp(13px, 1.9vh, 17px); }
 .pv-cobro .boton.cobrar.abajo { margin-top: auto; flex: none; height: clamp(52px, 10vh, 100px); font-size: clamp(22px, 3.4vh, 34px); }
+/* Totales del panel de cobro: el total a pagar más grande y el desglose legible a distancia */
+.pv-cobro .pv-total { padding: clamp(10px, 1.8vh, 18px) 16px; }
+.pv-cobro .pv-total > b, .con-catalogo .pv-cobro .pv-total > b { font-size: clamp(34px, 6.2vh, 60px); }
+.pv-cobro .pv-desglose > div { font-size: clamp(13px, 2vh, 18px); }
+.pv-cobro .pv-desglose dd { font-weight: 700; }
