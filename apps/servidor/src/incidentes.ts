@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 import { renovarSiToca } from "./licencia/cliente.js";
 import { uuidv7 } from "@factpos/compartido";
 import { avisoIncidentePorCorreo, incidentesPorCorreo, procesarEnvios } from "./correo/envios.js";
+import { versionActual } from "./actualizacion.js";
 import { pool } from "./db.js";
 import { encolarFilas } from "./sync/outbox.js";
 
@@ -17,7 +19,7 @@ import { encolarFilas } from "./sync/outbox.js";
  * Los avisos los manda la CENTRAL (tiene internet estable): así llega el aviso aunque
  * el servidor de la sucursal esté apagado.
  */
-export type TipoIncidente = "CAJA_SIN_SERVIDOR" | "SERVIDOR_APAGADO" | "SUCURSAL_SIN_COMUNICACION" | "PRUEBA" | "RESPALDO_ATRASADO";
+export type TipoIncidente = "CAJA_SIN_SERVIDOR" | "SERVIDOR_APAGADO" | "SUCURSAL_SIN_COMUNICACION" | "PRUEBA" | "RESPALDO_ATRASADO" | "ERROR_SISTEMA";
 
 export interface Incidente {
   id: string; empresa_id: string | null; sucursal_id: string | null; caja_id: string | null; tipo: TipoIncidente;
@@ -73,6 +75,10 @@ export function textoAviso(i: Incidente & { sucursal?: string | null; caja?: str
     typeof d.ventas === "number" && `🧾 Ventas hechas sin servidor: ${d.ventas}${d.monto ? ` (RD$${Number(d.monto).toLocaleString("es-DO", { minimumFractionDigits: 2 })})` : ""}`,
     typeof d.pendientes === "number" && d.pendientes > 0 && `⏳ Ventas pendientes de subir a la nube: ${d.pendientes}`,
     typeof d.equipo === "string" && `💻 Equipo: ${d.equipo}`,
+    i.tipo === "ERROR_SISTEMA" && typeof d.ruta === "string" && `🧩 ${d.metodo ?? ""} ${d.ruta}`.trim(),
+    i.tipo === "ERROR_SISTEMA" && typeof d.mensaje === "string" && `⚠ ${d.mensaje}`,
+    i.tipo === "ERROR_SISTEMA" && typeof d.version === "string" && `🏷 Versión ${d.version}${typeof d.veces === "number" && d.veces > 1 ? ` · se repitió ${d.veces} veces` : ""}`,
+    !fin && i.tipo === "ERROR_SISTEMA" && "El sistema detectó un error inesperado y lo reportó solo. Si se repite o afecta las ventas, reenvíe este mensaje al servicio técnico.",
     !fin && i.tipo === "SUCURSAL_SIN_COMUNICACION" && "Revise: luz e internet de la tienda, que la PC del servidor esté encendida y el servicio «FactPOS Servidor» corriendo.",
     !fin && i.tipo === "CAJA_SIN_SERVIDOR" && "La caja siguió vendiendo y ya envió sus ventas. Revise por qué se cayó el servidor (registro: C:\\FactPOS\\logs\\servidor.log).",
     !fin && i.tipo === "RESPALDO_ATRASADO" && "Hace más de 24 horas que no se hace un respaldo. Revise el disco (espacio libre) y que el servidor esté encendido; en Administración › Respaldos puede hacer uno ahora.",
@@ -241,4 +247,53 @@ export async function iniciarLatido(log: (m: string) => void) {
   } catch (e) {
     log(`Latido: ${(e as Error).message}`);
   }
+}
+
+
+// --------------------------------------------------------------- Auto-reporte de errores
+/**
+ * Los errores inesperados del servidor (500 o promesas rechazadas sin atender) se registran solos como incidentes y
+ * salen por los canales de aviso (correo del panel, Telegram, webhook). Nunca incluye datos de ventas ni clientes:
+ * solo la ruta, el mensaje corto y las primeras líneas de la pila. El mismo error no se repite en una hora y hay un tope
+ * de avisos por hora, para que una falla repetida no llene el correo.
+ */
+const VENTANA_MS = 60 * 60_000, MAX_POR_HORA = 10;
+const vistos = new Map<string, { t: number; n: number; id: string }>();
+let recientes: number[] = [];
+
+export async function reportarError(err: unknown, ctx: { ruta?: string; metodo?: string; empresaId?: unknown } = {}) {
+  try {
+    if (process.env.NODE_ENV === "test" || process.env.VITEST) return;
+    const e = err instanceof Error ? err : new Error(String(err));
+    const ahora = Date.now();
+    for (const [k, v] of vistos) if (ahora - v.t > VENTANA_MS) vistos.delete(k);
+    const mensaje = e.message.replace(/\s+/g, " ").slice(0, 200);
+    const pila = (e.stack ?? "").split("\n").slice(1, 5).map((l) => l.trim().replace(/^at /, "").replace(/(?:[A-Za-z]:)?[\\/][^\s():]*[\\/]/g, "…/").slice(0, 160));
+    const ruta = (ctx.ruta ?? "").replace(/[0-9a-f]{8}-[0-9a-f-]{27}|\b\d+\b/gi, ":id");
+    const firma = createHash("sha1").update([ctx.metodo, ruta, e.name, mensaje, pila[0]].join("|")).digest("hex");
+    const previo = vistos.get(firma);
+    if (previo) {
+      previo.n++;
+      if ([5, 25, 100, 500].includes(previo.n)) await pool.query("UPDATE incidentes SET detalle = jsonb_set(COALESCE(detalle, '{}'::jsonb), '{veces}', to_jsonb($2::int)), actualizado_en = now() WHERE id = $1", [previo.id, previo.n]).catch(() => {});
+      return;
+    }
+    recientes = recientes.filter((t) => ahora - t < VENTANA_MS);
+    if (recientes.length >= MAX_POR_HORA) return;
+    recientes.push(ahora);
+    let empresa = typeof ctx.empresaId === "string" && /^[0-9a-f-]{36}$/i.test(ctx.empresaId) ? ctx.empresaId : null;
+    if (!empresa) {
+      const r = await pool.query<{ id: string }>("SELECT id FROM empresas WHERE activo ORDER BY id LIMIT 2").catch(() => null);
+      if (r?.rowCount === 1) empresa = r.rows[0]!.id;
+    }
+    const id = uuidv7();
+    vistos.set(firma, { t: ahora, n: 1, id });
+    const desde = new Date(ahora).toISOString();
+    await registrarIncidente(pool, {
+      id, empresa_id: empresa, sucursal_id: null, caja_id: null, tipo: "ERROR_SISTEMA", gravedad: "MEDIA",
+      titulo: `Error del sistema: ${mensaje.slice(0, 100) || e.name}`,
+      detalle: { ruta: ctx.ruta ?? null, metodo: ctx.metodo ?? null, mensaje, pila, version: versionActual(), equipo: hostname(), veces: 1 },
+      desde, hasta: desde,
+    });
+    void avisarPendientes().catch(() => {});
+  } catch { /* reportar nunca debe causar otro error */ }
 }

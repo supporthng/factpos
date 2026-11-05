@@ -10,6 +10,8 @@ const TIPO: Record<string, string> = {
   SUCURSAL_SIN_COMUNICACION: "Servidor sin comunicación",
   CAJA_SIN_SERVIDOR: "Caja sin servidor",
   SERVIDOR_APAGADO: "Servidor apagado",
+  RESPALDO_ATRASADO: "Respaldo atrasado",
+  ERROR_SISTEMA: "Error del sistema",
 };
 const fecha = (v: string) => new Date(v).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" });
 const duracion = (s: number) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`);

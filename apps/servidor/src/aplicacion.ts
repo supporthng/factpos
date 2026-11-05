@@ -37,6 +37,7 @@ import { rutasCentral } from "./rutas/central.js";
 import { rutasCentralInventario } from "./rutas/central-inventario.js";
 import { rutasCentralMovil } from "./rutas/central-movil.js";
 import { rutasCentralSeguridad, accesoWebPermitido } from "./rutas/central-seguridad.js";
+import { reportarError } from "./incidentes.js";
 import { rutasDispositivos, dispositivoExigido, estadoDispositivo, rutaDeAltaDispositivo } from "./rutas/dispositivos.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
@@ -182,12 +183,13 @@ export async function crearApp() {
     }
   });
 
-  app.setErrorHandler((err, _req, rep) => {
+  app.setErrorHandler((err, req, rep) => {
     if (err instanceof ZodError) {
       return rep.code(400).send({ error: err.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message)).join("; ") });
     }
     if (err instanceof ErrorNegocio) return rep.code(err.estado).send({ error: err.message });
     app.log.error(err);
+    void reportarError(err, { ruta: req.routeOptions?.url ?? req.url.split("?")[0], metodo: req.method, empresaId: req.headers["x-empresa-id"] }); // se reporta solo a soporte
     return rep.code(500).send({ error: "Error interno del servidor" });
   });
 
