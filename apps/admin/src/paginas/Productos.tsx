@@ -43,6 +43,15 @@ const TIPOS: { v: Tipo; t: string; d: string }[] = [
   { v: "COMBO", t: "Combo", d: "Descuenta sus componentes" },
 ];
 
+/** ¿Existe otro producto con ese código de barras o SKU? Devuelve el nombre del que ya lo tiene. */
+async function buscarDuplicado(q: { codigo?: string; sku?: string; excluir?: string | null }) {
+  const p = new URLSearchParams();
+  if (q.codigo) p.set("codigo", q.codigo);
+  if (q.sku) p.set("sku", q.sku);
+  if (q.excluir) p.set("excluir", q.excluir);
+  return api<{ codigo: { id: string; nombre: string } | null; sku: { id: string; nombre: string } | null }>(`/central/productos/duplicado?${p}`);
+}
+
 /* ---------- Cálculos de precio ---------- */
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 /** Precio de venta sin ITBIS. */
@@ -276,9 +285,9 @@ function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAb
           <div className="pestanas">
             {pestanas.map((p) => <button key={p.id} className={pestana === p.id ? "activa" : ""} onClick={() => setPestana(p.id)}>{p.t}</button>)}
           </div>
-          {pestana === "principal" && <Principal f={f} cambiar={cambiar} nuevo={!id} setMsg={setMsg} tasa={tasa} />}
+          {pestana === "principal" && <Principal f={f} cambiar={cambiar} nuevo={!id} id={id} setMsg={setMsg} tasa={tasa} />}
           {pestana === "principal" && f.tipo === "COMBO" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} />}
-          {pestana === "general" && <General f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} setMsg={setMsg} />}
+          {pestana === "general" && <General f={f} cambiar={cambiar} id={id} aux={aux} recargarAux={recargarAux} setMsg={setMsg} />}
           {pestana === "precios" && <PreciosFicha f={f} cambiar={cambiar} tasa={tasa} costo={costoUnidad} aux={aux} />}
           {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} id={id} tipo={f.tipo} alAgregar={refrescarExistencia} />}
           {pestana === "proveedores" && <ProveedoresFicha f={f} cambiar={cambiar} aux={aux} recargarAux={recargarAux} />}
@@ -321,8 +330,8 @@ function ZonaImagen({ f, cambiar }: { f: Ficha; cambiar: (p: Partial<Ficha>) => 
   );
 }
 
-function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
-  f: Ficha; cambiar: (p: Partial<Ficha>) => void; nuevo: boolean; tasa: number;
+function Principal({ f, cambiar, nuevo, id, setMsg, tasa }: {
+  f: Ficha; cambiar: (p: Partial<Ficha>) => void; nuevo: boolean; id?: string | null; tasa: number;
   setMsg: (m: { t: string; tipo: "ok" | "error" | "info" } | null) => void;
 }) {
   const [codigo, setCodigo] = useState("");
@@ -372,7 +381,7 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
         <div className="principal-cuerpo">
           <div className="principal-datos">
           <div className="campo codigos"><span>Código de barras</span>
-            <Codigos valores={p0.codigos} onCambio={(codigos) => fijarPres({ codigos })} />
+            <Codigos valores={p0.codigos} excluir={id ?? null} onCambio={(codigos) => fijarPres({ codigos })} />
             <small className="suave">Escanee el código del producto. Puede agregar varios.</small>
           </div>
           <label className="campo"><span>Nombre</span><input value={f.nombre} onChange={(e) => cambiar({ nombre: e.target.value })} /></label>
@@ -411,11 +420,13 @@ function Principal({ f, cambiar, nuevo, setMsg, tasa }: {
 }
 
 /* ---------- Más datos ---------- */
-function General({ f, cambiar, aux, recargarAux, setMsg }: {
+function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
+  id?: string | null;
   f: Ficha; cambiar: (p: Partial<Ficha>) => void; aux: Auxiliares; recargarAux: () => void; nuevo?: boolean;
   setMsg?: (m: { t: string; tipo: "ok" | "error" | "info" } | null) => void;
 }) {
   const [nuevaCat, setNuevaCat] = useState<string | null>(null);
+  const [skuDup, setSkuDup] = useState<string | null>(null);
   const esLicor = /licor|ron|whisky|vino|cerveza|vodka|alcohol/i.test(aux.categorias.find((c) => c.id === f.categoriaId)?.nombre ?? "");
 
   const crearCategoria = async () => {
@@ -436,7 +447,10 @@ function General({ f, cambiar, aux, recargarAux, setMsg }: {
             <input value={f.nombreCorto ?? ""} maxLength={32} onChange={(e) => cambiar({ nombreCorto: e.target.value })} placeholder={f.nombre.slice(0, 32) || "Corto, para el papel de 80 mm"} /></label>
         </div>
         <div className="tres-col">
-          <label className="campo"><span>SKU / código interno</span><input value={f.sku} onChange={(e) => cambiar({ sku: e.target.value.toUpperCase() })} /></label>
+          <label className="campo"><span>SKU / código interno</span><input value={f.sku} onChange={(e) => { cambiar({ sku: e.target.value.toUpperCase() }); setSkuDup(null); }}
+            onBlur={async () => { if (!f.sku.trim()) return; try { const r = await buscarDuplicado({ sku: f.sku.trim(), excluir: id ?? null }); setSkuDup(r.sku?.nombre ?? null); } catch { /* el servidor lo comprueba al guardar */ } }} />
+            {skuDup && <div className="aviso-linea error" role="alert">⚠ El SKU <b className="mono">{f.sku}</b> ya existe: pertenece al producto <b>“{skuDup}”</b>.</div>}
+          </label>
           <label className="campo"><span>Marca</span><input value={f.marca ?? ""} onChange={(e) => cambiar({ marca: e.target.value })} /></label>
           <label className="campo"><span>Categoría</span>
             {nuevaCat === null ? (
@@ -519,15 +533,29 @@ function Regla({ v, on, t, d, aviso }: { v: boolean; on: (v: boolean) => void; t
   );
 }
 
-function Codigos({ valores, onCambio }: { valores: string[]; onCambio: (v: string[]) => void }) {
+function Codigos({ valores, onCambio, excluir }: { valores: string[]; onCambio: (v: string[]) => void; excluir?: string | null }) {
   const [t, setT] = useState("");
-  const agregar = () => { const c = t.trim(); if (c && !valores.includes(c)) onCambio([...valores, c]); setT(""); };
+  const [dup, setDup] = useState<{ codigo: string; nombre: string } | null>(null);
+  const agregar = async () => {
+    const c = t.trim();
+    setT("");
+    if (!c || valores.includes(c)) return;
+    try {
+      const r = await buscarDuplicado({ codigo: c, excluir });
+      if (r.codigo) { setDup({ codigo: c, nombre: r.codigo.nombre }); return; } // ya es de otro producto: no se agrega
+    } catch { /* sin conexión: el servidor lo vuelve a comprobar al guardar */ }
+    setDup(null);
+    onCambio([...valores, c]);
+  };
   return (
-    <div className="codigos-caja">
-      {valores.map((c) => <span key={c} className="chip-codigo mono">{c}<button onClick={() => onCambio(valores.filter((x) => x !== c))} aria-label={`Quitar ${c}`}>×</button></span>)}
-      <input value={t} onChange={(e) => setT(e.target.value)} placeholder={valores.length ? "Otro código" : "Escanee aquí"}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab" || e.key === ",") { if (t.trim()) { e.preventDefault(); agregar(); } } }} onBlur={agregar} />
-    </div>
+    <>
+      <div className="codigos-caja">
+        {valores.map((c) => <span key={c} className="chip-codigo mono">{c}<button onClick={() => onCambio(valores.filter((x) => x !== c))} aria-label={`Quitar ${c}`}>×</button></span>)}
+        <input value={t} onChange={(e) => { setT(e.target.value); setDup(null); }} placeholder={valores.length ? "Otro código" : "Escanee aquí"}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab" || e.key === ",") { if (t.trim()) { e.preventDefault(); agregar(); } } }} onBlur={agregar} />
+      </div>
+      {dup && <div className="aviso-linea error" role="alert">⚠ El código <b className="mono">{dup.codigo}</b> ya existe: pertenece al producto <b>“{dup.nombre}”</b>. No se agregó.</div>}
+    </>
   );
 }
 
@@ -955,6 +983,7 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [guardando, setGuardando] = useState(false);
   const refCodigo = useRef<HTMLInputElement>(null);
+  const [dupCodigo, setDupCodigo] = useState<{ codigo: string; nombre: string } | null>(null);
 
   const tasa = aux.impuestos.find((i) => i.id === impuestoId)?.tasa ?? 0;
   const c = n(costo);
@@ -986,7 +1015,8 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
     if (!/^\d{6,14}$/.test(d)) return setMsg({ t: "El código debe tener de 6 a 14 dígitos.", tipo: "error" });
     try {
       const r = await api<{ existe: boolean; producto?: { nombre: string }; sugerencia?: { nombre: string | null; marca: string | null; imagen: string | null; fuente: string } | null; sinConexion?: boolean }>(`/central/productos/codigo/${d}`);
-      if (r.existe) return setMsg({ t: `Ese código ya pertenece a “${r.producto!.nombre}”.`, tipo: "error" });
+      if (r.existe) { setDupCodigo({ codigo: d, nombre: r.producto!.nombre }); return setMsg({ t: `Ese código ya pertenece a “${r.producto!.nombre}”.`, tipo: "error" }); }
+      setDupCodigo(null);
       const s = r.sugerencia;
       if (s) { setNombre((x) => x || s.nombre || ""); setMarca((x) => x || s.marca || ""); setImagen((x) => x || s.imagen); }
       setMsg(s ? { t: `Datos sugeridos por ${s.fuente}. Revíselos.`, tipo: "info" } : { t: r.sinConexion ? "Sin internet para buscar el código; complete los datos." : "Código nuevo. Complete los datos.", tipo: "info" });
@@ -1119,7 +1149,8 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
         <div className="pr-fila pr-fila-2">
           <label className="campo"><span>Código de barras <em className="suave">(opcional)</em></span>
             <input ref={refCodigo} autoFocus value={codigo} inputMode="numeric" placeholder="Escanee o escriba"
-              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} onBlur={buscarCodigo} onKeyDown={(e) => e.key === "Enter" && buscarCodigo()} />
+              onChange={(e) => { setCodigo(e.target.value.replace(/\D/g, "")); setDupCodigo(null); }} onBlur={buscarCodigo} onKeyDown={(e) => e.key === "Enter" && buscarCodigo()} />
+            {dupCodigo && <div className="aviso-linea error" role="alert">⚠ El código <b className="mono">{dupCodigo.codigo}</b> ya existe: pertenece al producto <b>“{dupCodigo.nombre}”</b>.</div>}
           </label>
           <label className="campo"><span>Nombre</span>
             <input id="pr-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
@@ -1201,8 +1232,8 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
         <div className="acciones-modal pr-acciones">
           <button className="boton fantasma" onClick={() => onCompleta(editar ?? armar())} title="Imágenes, presentaciones, proveedores, lotes y más">Ficha completa…</button>
           <span className="pr-espacio" />
-          {!editar && <button className="boton" disabled={guardando} onClick={() => crear(true)}>Crear y agregar otro</button>}
-          <button className="boton primario" disabled={guardando} onClick={() => (editar ? guardarCambios() : crear(false))}>{guardando ? "Guardando…" : editar ? "Guardar cambios" : "Crear producto"}</button>
+          {!editar && <button className="boton" disabled={guardando || !!dupCodigo} onClick={() => crear(true)}>Crear y agregar otro</button>}
+          <button className="boton primario" disabled={guardando || !!dupCodigo} onClick={() => (editar ? guardarCambios() : crear(false))}>{guardando ? "Guardando…" : editar ? "Guardar cambios" : "Crear producto"}</button>
         </div>
       </div>
     </div>
