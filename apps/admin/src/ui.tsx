@@ -142,3 +142,19 @@ export function Tabla<T>({ filas, columnas, clave, vacio = "Sin datos", tarjetas
     </div>
   );
 }
+
+/**
+ * Etiqueta de versión para el cliente: la versión interna cuenta cada actualización publicada (25.5, 25.6…) y se
+ * muestra dividida entre 10 con un decimal (2.5, 2.6…). Es solo una etiqueta: la versión real no cambia.
+ */
+export function versionCliente(v: string | null | undefined): string {
+  const m = /^(\d+)\.(\d)(?:\.|$)/.exec(v ?? "");
+  if (!m) return v ?? "—";
+  const k = Number(m[1]) * 10 + Number(m[2]);
+  return k < 100 ? (v as string) : (Math.floor(k / 10) / 10).toFixed(1);
+}
+/** Como versionCliente, pero si la etiqueta de la nueva coincide con la actual aclara la compilación para distinguirlas. */
+export function versionNueva(nueva: string | null | undefined, actual: string | null | undefined): string {
+  const e = versionCliente(nueva);
+  return nueva && versionCliente(actual) === e ? `${e} (compilación ${nueva})` : e;
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, puede } from "../api";
-import { Aviso, Encabezado, Kpi, useDatos } from "../ui";
+import { Aviso, Encabezado, Kpi, useDatos, versionCliente, versionNueva } from "../ui";
 
 /** Versión instalada de FactPOS y actualización con un clic (servidor principal o de sucursal). */
 interface Estado {
@@ -34,20 +34,20 @@ export function Actualizaciones() {
       {d && (
         <>
           <div className="kpis">
-            <Kpi titulo="Versión instalada" valor={d.actual} />
-            <Kpi titulo="Última publicada" valor={d.disponible ?? "—"} tono={d.hayNueva ? "alerta" : "ok"}
-              detalle={d.publicada ? new Date(d.publicada).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" }) : "No se pudo consultar la versión publicada"} />
+            <Kpi titulo="Versión instalada" valor={versionCliente(d.actual)} detalle={`Compilación ${d.actual}`} />
+            <Kpi titulo="Última publicada" valor={d.disponible ? versionCliente(d.disponible) : "—"} tono={d.hayNueva ? "alerta" : "ok"}
+              detalle={d.publicada ? `Compilación ${d.disponible} · ${new Date(d.publicada).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" })}` : "No se pudo consultar la versión publicada"} />
           </div>
           {d.proceso && (
             <Aviso tipo={d.proceso.estado === "ERROR" ? "error" : "info"}
-              texto={d.proceso.estado === "ERROR" ? `La actualización a ${d.proceso.version.replace(/\.0$/, "")} falló: ${d.proceso.mensaje}` : `Actualizando a ${d.proceso.version.replace(/\.0$/, "")}…`} />
+              texto={d.proceso.estado === "ERROR" ? `La actualización a ${versionCliente(d.proceso.version.replace(/\.0$/, ""))} falló: ${d.proceso.mensaje}` : `Actualizando a ${versionCliente(d.proceso.version.replace(/\.0$/, ""))}…`} />
           )}
           {d.hayNueva ? (
             <div className="panel">
-              <h3 style={{ marginTop: 0 }}>Hay una versión nueva: {d.disponible}</h3>
+              <h3 style={{ marginTop: 0 }}>Hay una versión nueva: {versionNueva(d.disponible, d.actual)}</h3>
               {d.notas && <pre className="notas-version">{d.notas}</pre>}
               {d.puedeInstalar
-                ? <button className="boton primario" disabled={trabajando || !puede("*") || sinPermiso} onClick={instalar}>{trabajando ? "Preparando…" : `Instalar ${d.disponible}`}</button>
+                ? <button className="boton primario" disabled={trabajando || !puede("*") || sinPermiso} onClick={instalar}>{trabajando ? "Preparando…" : `Instalar ${versionCliente(d.disponible)}`}</button>
                 : <p className="suave">Esta instalación se actualiza desde su proveedor.</p>}
               {!puede("*") && <p className="suave pequeno">Solo un administrador puede instalarla.</p>}
               {d.puedeInstalar && sinPermiso && (
@@ -89,7 +89,7 @@ export function AvisoActualizacion({ irA }: { irA: () => void }) {
   if (!admin || !d || !d.hayNueva || !d.puedeInstalar || oculto) return null;
   if (d.proceso && d.proceso.estado !== "ERROR") return null;
   const instalar = async () => {
-    if (!confirm(`¿Instalar FactPOS ${d.disponible}? El servidor se reinicia (1 a 3 minutos). Las cajas siguen vendiendo mientras tanto.`)) return;
+    if (!confirm(`¿Instalar FactPOS ${versionNueva(d.disponible, d.actual)}? El servidor se reinicia (1 a 3 minutos). Las cajas siguen vendiendo mientras tanto.`)) return;
     setTrabajando(true); setMsg("");
     try { await api("/central/actualizacion/instalar", { cuerpo: {} }); setMsg("Instalando… el sistema se reinicia y se vuelve a abrir solo."); }
     catch (e) { setMsg((e as Error).message); }
@@ -97,7 +97,7 @@ export function AvisoActualizacion({ irA }: { irA: () => void }) {
   };
   return (
     <div className="aviso-licencia">
-      <span><b>Hay una versión nueva de FactPOS: {d.disponible}</b> (usted tiene la {d.actual}).{msg && <> {msg}</>}</span>
+      <span><b>Hay una versión nueva de FactPOS: {versionNueva(d.disponible, d.actual)}</b> (usted tiene la {versionCliente(d.actual)}).{msg && <> {msg}</>}</span>
       <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <button className="enlace" onClick={irA}>Ver detalles</button>
         <button className="enlace" onClick={() => setOculto(true)}>Más tarde</button>
