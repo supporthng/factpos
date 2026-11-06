@@ -1230,3 +1230,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .consulta-ficha .sin-stock { color: var(--error); }
 .entrada-texto.centrado { text-align: center; }
 .resultados[hidden] { display: none; }
+/* Caja táctil: accesos directos con solo icono junto al título del carrito */
+.pv-iconos-directos { display: flex; gap: 6px; margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--borde); }
+.pv-iconos-directos button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel-2, var(--panel)); color: var(--texto); cursor: pointer; }
+.pv-iconos-directos button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pv-iconos-directos button:disabled { opacity: .4; cursor: default; }
+.pv-iconos-directos button:not(:disabled):active { background: var(--primario); color: #fff; border-color: var(--primario); }
