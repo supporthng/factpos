@@ -1216,3 +1216,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .btn-teclado:active { background: var(--primario); color: var(--texto-sobre-primario, #fff); border-color: var(--primario); }
 .pv-escaner .pv-btn-teclado { align-self: center; height: 40px; margin-right: 8px; }
 .buscador .btn-teclado { width: 40px; height: 36px; }
+
+/* Precio de la línea: doble clic / doble toque abre los 3 precios (con autorización) */
+.pv-precio-editable { cursor: pointer; text-decoration: underline dotted color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
