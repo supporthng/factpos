@@ -124,9 +124,22 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
           </label>
           <label className="campo">
             <span>{usuario?.tienePin ? "Nuevo PIN (vacío = no cambia)" : "PIN de caja"}</span>
-            <input inputMode="numeric" value={pin} disabled={quitarPin || !usaCaja} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={usaCaja ? "4 a 6 números" : "Su rol no usa la caja"} autoComplete="off" />
+            <input type="text" inputMode="numeric" pattern="[0-9]*" name="pin-caja" value={pin} disabled={quitarPin || !usaCaja} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={usaCaja ? "4 a 6 números" : "Su rol no usa la caja"} autoComplete="off" />
           </label>
         </div>
+        {usaCaja && !quitarPin && (
+          <div className="pin-pad" aria-label="Teclado numérico para el PIN">
+            <span className="suave pequeno">PIN de caja con el teclado en pantalla:</span>
+            <div className="pin-pad-teclas">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+                <button type="button" key={d} onPointerDown={(e) => e.preventDefault()} onClick={() => setPin((x) => (x + d).slice(0, 6))}>{d}</button>
+              ))}
+              <button type="button" className="aux" onPointerDown={(e) => e.preventDefault()} onClick={() => setPin("")}>Borrar todo</button>
+              <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => setPin((x) => (x + "0").slice(0, 6))}>0</button>
+              <button type="button" className="aux" onPointerDown={(e) => e.preventDefault()} onClick={() => setPin((x) => x.slice(0, -1))}>⌫</button>
+            </div>
+          </div>
+        )}
         <fieldset className="grupo-permisos acceso-sucursales" disabled={yo}>
           <legend>Sucursales a las que tiene acceso</legend>
           <label className="interruptor"><input type="radio" name="acceso" checked={!soloAlgunas} onChange={() => setSoloAlgunas(false)} /><span>Todas, incluidas las que se creen después</span></label>
