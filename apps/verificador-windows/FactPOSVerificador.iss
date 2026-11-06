@@ -27,7 +27,6 @@ RestartApplications=no
 [Languages]
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 [Tasks]
-Name: "inicio"; Description: "Abrir automáticamente al iniciar Windows (recomendado para el verificador)"
 Name: "escritorio"; Description: "Crear un acceso directo en el escritorio"
 Name: "kiosco"; Description: "Preparar Windows para quiosco: quitar los avisos y reinicios automáticos de Windows Update (pide permiso de administrador una vez)"
 [Files]
@@ -37,7 +36,7 @@ Source: "Preparar_Windows_Kiosco.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{group}\Verificador FactPOS"; Filename: "{app}\{#MyAppExeName}"
 Name: "{userdesktop}\Verificador FactPOS"; Filename: "{app}\{#MyAppExeName}"; Tasks: escritorio
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FactPOSVerificador"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: inicio
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FactPOSVerificador"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue
 [Run]
 ; Preparar Windows para quiosco: el script se ejecuta elevado (aparece el aviso de permiso de administrador). Nunca en una actualización automática (silenciosa).
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""try {{ Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \""{app}\Preparar_Windows_Kiosco.ps1\""' }} catch {{ }}"""; Flags: runhidden waituntilterminated; Tasks: kiosco; Check: not WizardSilent; StatusMsg: "Preparando Windows para el verificador..."
