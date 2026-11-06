@@ -31,7 +31,7 @@ export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | 
 
 export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
-  items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string }[];
+  items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string; precioNuevo?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
   local?: CobroLocal;
   onCerrar: () => void; onVendido: (r: ResultadoVenta, opciones?: { sinImprimir: boolean }) => void;
