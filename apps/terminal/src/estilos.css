@@ -1228,3 +1228,5 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .consulta-ficha .cf-extra { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; color: var(--suave); }
 .consulta-ficha .cf-extra b { color: var(--texto); }
 .consulta-ficha .sin-stock { color: var(--error); }
+.entrada-texto.centrado { text-align: center; }
+.resultados[hidden] { display: none; }
