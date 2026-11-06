@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *  · Numérico si el campo declara inputMode numeric / decimal / tel; alfanumérico en el resto.
  *  · Se abre al tocar o hacer clic en el campo, nunca con el lector de códigos ni por autoFocus (así no estorba al escanear).
  *    Ajuste «teclado.modo»: "siempre" (por defecto: también con mouse, salvo en los campos de escaneo) | "tactil" (solo dedo) | "nunca".
- *  · Los campos de PIN (type=password) no lo abren: ya traen su propio teclado.
+ *  · Los campos de contraseña no lo abren, salvo el PIN de autorización (data-pin-flotante), que usa este teclado flotante y centrado.
  */
 
 type Campo = HTMLInputElement | HTMLTextAreaElement;
@@ -24,7 +24,7 @@ function modoAjuste(): "tactil" | "siempre" | "nunca" {
 function esCampoDeTexto(el: EventTarget | null): el is Campo {
   if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled;
   if (!(el instanceof HTMLInputElement)) return false;
-  if (el.readOnly || el.disabled || SIN_TEXTO.has(el.type) || el.type === "password") return false;
+  if (el.readOnly || el.disabled || SIN_TEXTO.has(el.type) || (el.type === "password" && !el.hasAttribute("data-pin-flotante"))) return false;
   return !el.closest("[data-sin-teclado]");
 }
 
@@ -210,7 +210,7 @@ export function TecladoPantalla() {
           <div className="tp-fila">
             <button type="button" className="tp-tecla tp-ancha" onClick={() => tecla("0")}>0</button>
             <button type="button" className="tp-tecla" disabled={modo === "num"} onClick={() => tecla("00")}>00</button>
-            <button type="button" className="tp-tecla tp-listo" onClick={cerrar}>Listo</button>
+            <button type="button" className="tp-tecla tp-listo" onClick={() => { if (campo.hasAttribute("data-pin-flotante")) enter(); cerrar(); }}>Listo</button>
           </div>
         </div>
       )}
