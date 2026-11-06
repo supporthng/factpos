@@ -179,7 +179,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
       <div className="cobro2">
         <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>
         <div className="cobro2-grid">
-          <div className="cobro2-col">
+          <div className={"cobro2-col" + (forma === "MIXTO" ? " mixto" : "")}>
             <div className="formas" role="radiogroup" aria-label="Forma de pago">
               {(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "MIXTO"] as MetodoPago[]).map((f) => (
                 <button key={f} role="radio" aria-checked={forma === f} className={"forma" + (forma === f ? " activo" : "")} onClick={() => elegirForma(f)}>

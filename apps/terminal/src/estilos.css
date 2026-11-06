@@ -1187,3 +1187,18 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .modal:has(.cobro2) > * { flex: 0 0 auto; }
 .modal:has(.cobro2) > .cobro2 { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .modal:has(.cobro2) > .boton.cobrar { margin-top: 8px; }
+
+/* Cobrar en Mixto: montos más pequeños y de dos en dos para que todo quepa sin desplazarse */
+.cobro2-col.mixto { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 12px; align-content: start; }
+.cobro2-col.mixto > .formas, .cobro2-col.mixto > p { grid-column: 1 / -1; }
+.cobro2-col.mixto > .formas { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.cobro2-col.mixto > .formas .forma { padding: 8px 2px; font-size: 13px; }
+.cobro2-col.mixto > .formas .forma:last-child:nth-child(odd) { grid-column: auto; }
+.cobro2-col.mixto .cobro2-bloque { gap: 4px; min-width: 0; }
+.cobro2-col.mixto .entrada-grande, .cobro2-col.mixto .campo input { font-size: 16px; padding: 7px 10px; }
+.cobro2-col.mixto .fila-campo { display: flex; flex-direction: column; align-items: stretch; gap: 2px; font-size: 12px; }
+.cobro2-col.mixto .fila-campo > span, .cobro2 .cobro2-col.mixto .fila-campo > span { width: auto; }
+.cobro2-col.mixto .billetes { gap: 4px; }
+.cobro2-col.mixto .billetes .boton.chico { padding: 4px 8px; font-size: 12px; }
+.cobro2-col.mixto .cambio-grande { font-size: 15px; }
+.cobro2-col.mixto > .cobro2-bloque:has(.fila-campo + .fila-campo) { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 12px; }
