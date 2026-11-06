@@ -1,5 +1,5 @@
 import { sesionActual } from "./api";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { Icono, type NombreIcono } from "./Iconos";
 
@@ -169,4 +169,48 @@ export function versionCliente(v: string | null | undefined): string {
 export function versionNueva(nueva: string | null | undefined, actual: string | null | undefined): string {
   const e = versionCliente(nueva);
   return nueva && versionCliente(actual) === e ? `${e} (compilación ${nueva})` : e;
+}
+
+
+/**
+ * Lista desplegable propia (en vez del <select> del sistema): se dibuja con la página, así abre igual en cualquier equipo
+ * (el desplegable nativo no siempre se muestra en pantallas remotas o con aceleración desactivada).
+ */
+export function ElegirOpcion({ valor, opciones, onCambiar, disabled = false, ariaLabel }: {
+  valor: string; opciones: { id: string; texto: string }[]; onCambiar: (id: string) => void; disabled?: boolean; ariaLabel?: string;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [activo, setActivo] = useState(0);
+  const caja = useRef<HTMLDivElement>(null);
+  const actual = opciones.find((o) => o.id === valor);
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (e: PointerEvent) => { if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false); };
+    document.addEventListener("pointerdown", fuera);
+    return () => document.removeEventListener("pointerdown", fuera);
+  }, [abierto]);
+  const abrir = () => { if (disabled) return; setActivo(Math.max(0, opciones.findIndex((o) => o.id === valor))); setAbierto(true); };
+  const elegir = (id: string) => { onCambiar(id); setAbierto(false); };
+  return (
+    <div className="elegir" ref={caja}>
+      <button type="button" className="elegir-boton" disabled={disabled} aria-haspopup="listbox" aria-expanded={abierto} aria-label={ariaLabel}
+        onClick={() => (abierto ? setAbierto(false) : abrir())}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setAbierto(false);
+          else if (e.key === "ArrowDown") { e.preventDefault(); if (!abierto) abrir(); else setActivo((a) => Math.min(opciones.length - 1, a + 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); if (!abierto) abrir(); else setActivo((a) => Math.max(0, a - 1)); }
+          else if (e.key === "Enter" && abierto && opciones[activo]) { e.preventDefault(); elegir(opciones[activo]!.id); }
+        }}>
+        <span>{actual?.texto ?? "Elegir…"}</span><span className="elegir-flecha" aria-hidden="true">▾</span>
+      </button>
+      {abierto && (
+        <ul className="elegir-lista" role="listbox">
+          {opciones.map((o, k) => (
+            <li key={o.id} role="option" aria-selected={o.id === valor} className={(o.id === valor ? "elegido " : "") + (k === activo ? "activo" : "")}
+              onPointerDown={(e) => { e.preventDefault(); elegir(o.id); }} onMouseEnter={() => setActivo(k)}>{o.texto}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

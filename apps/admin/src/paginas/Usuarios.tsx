@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { api, sesionActual } from "../api";
-import { Aviso, Encabezado, Tabla, useCatalogo, useDatos } from "../ui";
+import { Aviso, ElegirOpcion, Encabezado, Tabla, useCatalogo, useDatos } from "../ui";
 
 interface Usuario { id: string; nombre: string; usuario: string; activo: boolean; rolId: string; rol: string; tienePin: boolean; tieneClave: boolean; sucursales: string[] | null }
 interface Rol { id: string; nombre: string; permisos: string[]; usuarios: number }
@@ -115,9 +115,7 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
           <label className="campo"><span>Usuario</span><input value={nick} disabled={!!usuario} onChange={(e) => setNick(e.target.value.toLowerCase().replace(/\s/g, ""))} autoCapitalize="none" placeholder="maria.perez" /></label>
         </div>
         <label className="campo"><span>Rol</span>
-          <select value={rolId} disabled={yo} onChange={(e) => setRolId(e.target.value)}>
-            {roles.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </select>
+          <ElegirOpcion valor={rolId} disabled={yo} onCambiar={setRolId} ariaLabel="Rol" opciones={roles.map((r) => ({ id: r.id, texto: r.nombre }))} />
         </label>
         <div className="dos-col">
           <label className="campo">
