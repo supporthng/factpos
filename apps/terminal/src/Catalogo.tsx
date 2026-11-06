@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { precioPara, ofertasPara, ofertaVigente, type Catalogo, type ProductoCatalogo, type Oferta } from "@factpos/compartido";
 import { rd } from "./api";
+import { ImagenSinFondo } from "./ImagenSinFondo";
 
 /**
  * Modo Catálogo: tarjetas con imagen, categoría, precio y existencia.
@@ -94,7 +95,7 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
             <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
               style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>
               <div className="arte">
-                {p.imagen ? <img src={p.imagen.startsWith("/") ? servidor.replace(/\/$/, "") + p.imagen : p.imagen} alt="" loading="lazy" decoding="async" /> : <Arte icono={p.categoriaIcono} />}
+                {p.imagen ? <ImagenSinFondo src={p.imagen.startsWith("/") ? servidor.replace(/\/$/, "") + p.imagen : p.imagen} /> : <Arte icono={p.categoriaIcono} />}
                 {p.categoria && <span className="chip-cat">{p.categoria}</span>}
                 {oferta && <span className="chip-oferta" title={oferta.nombre}>{etiquetaOferta(oferta)}{oferta.restantes != null && <small> · quedan {Math.floor(Number(oferta.restantes) / Number(p.factor))}</small>}</span>}
                 {n > 0 && <span className="cuenta">{p.esPesable ? "✓" : n}</span>}
