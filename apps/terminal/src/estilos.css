@@ -1173,3 +1173,14 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pos-hibrido.con-catalogo .celda-cantidad input { font-size: 17px; font-weight: 600; }
 .pos-hibrido.con-catalogo .celda-cantidad button { font-size: 22px; }
 .pos-hibrido.con-catalogo .pv-quitar { width: 38px; height: 38px; font-size: 26px; color: #c9d4e0; }
+
+/* --- Caja clásica: el panel de cobro no se desborda con la letra grande --- */
+.pv-total { container-type: inline-size; }
+.pv-cobro .pv-total > b { font-size: clamp(22px, 12.5cqi, 40px); }
+.pos-hibrido:not(.con-catalogo) .pv-cobro { overflow-x: hidden; }
+.pos-hibrido:not(.con-catalogo) .pv-cobro .pv-desglose > div { font-size: 14px; padding: 3px 0; }
+.pos-hibrido:not(.con-catalogo) .pv-cobro .pv-atajos-min { max-height: 190px; grid-auto-rows: minmax(52px, 1fr); }
+.pos-hibrido:not(.con-catalogo) .pv-cobro .pv-atajos-min button { font-size: 15px; }
+.pos-hibrido:not(.con-catalogo) .pv-cliente-texto b { white-space: normal; line-height: 1.15; overflow-wrap: anywhere; }
+.pos-hibrido:not(.con-catalogo) .pv-cliente-accion kbd { display: none; }
+.pos-hibrido:not(.con-catalogo) .pv-cliente { gap: 8px; }
