@@ -65,6 +65,45 @@ public class MainActivity extends Activity {
     private boolean saliendo = false;
     private final Runnable traerAlFrente = this::volverAlFrente;
 
+    // ------------------------------------------------------------ copia local para consultar precios sin servidor
+    private volatile boolean sinServidor = false;
+    private final java.util.concurrent.atomic.AtomicBoolean vigilando = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    private String leerCopia(String nombre) {
+        try (FileInputStream in = new FileInputStream(new File(getFilesDir(), nombre))) {
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[8192]; int n;
+            while ((n = in.read(b)) > 0) o.write(b, 0, n);
+            return new String(o.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Exception e) { return ""; }
+    }
+    private void escribirCopia(String nombre, String texto) {
+        try {
+            File tmp = new File(getFilesDir(), nombre + ".tmp");
+            try (FileOutputStream o = new FileOutputStream(tmp)) { o.write(texto.getBytes(StandardCharsets.UTF_8)); }
+            if (!tmp.renameTo(new File(getFilesDir(), nombre))) tmp.delete();
+        } catch (Exception e) { }
+    }
+    /** Mientras se muestra la copia, se prueba el servidor cada 10 s y se vuelve a la pantalla real apenas responda. */
+    private void vigilarServidor() {
+        if (!vigilando.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            try {
+                while (sinServidor && !saliendo) {
+                    try { Thread.sleep(10000); } catch (InterruptedException e) { return; }
+                    try {
+                        Uri u = Uri.parse(servidor());
+                        HttpURLConnection c = (HttpURLConnection) new URL(u.getScheme() + "://" + u.getAuthority() + "/verificador/config").openConnection();
+                        c.setConnectTimeout(3000); c.setReadTimeout(3000);
+                        c.getResponseCode();      // cualquier respuesta: el servidor está vivo
+                        sinServidor = false;
+                        hilo.post(() -> { if (web != null) web.loadUrl(direccion()); });
+                    } catch (Exception sigueCaido) { }
+                }
+            } finally { vigilando.set(false); }
+        }, "vigilar-servidor").start();
+    }
+
     private SharedPreferences prefs() { return getSharedPreferences("config", MODE_PRIVATE); }
     private String servidor() { return prefs().getString("servidor", ""); }
     private String direccion() { String s = servidor(); return s.isEmpty() ? CONFIG : s; }
@@ -199,6 +238,16 @@ public class MainActivity extends Activity {
             public void onReceivedError(WebView vista, WebResourceRequest pedido, WebResourceError error) {
                 // Servidor apagado o sin red: avisar y reintentar solo.
                 if (pedido != null && pedido.isForMainFrame() && !servidor().isEmpty()) {
+                    // Con una copia guardada de la pantalla y del catálogo se sigue consultando precios sin el servidor
+                    String copia = leerCopia("copia_pagina.html");
+                    if (!copia.isEmpty() && !leerCopia("copia_catalogo.json").isEmpty()) {
+                        sinServidor = true;
+                        String base = servidor();
+                        vista.loadDataWithBaseURL(base, copia.replaceFirst("<head>", "<head><script>window.__factposSinConexion=true;</script>"),
+                                "text/html", "utf-8", base);
+                        vigilarServidor();
+                        return;
+                    }
                     vista.loadData("<html><body style='font-family:sans-serif;background:#10202e;color:#f0f4f8;"
                             + "display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"
                             + "text-align:center'><div><div style='font-size:52px'>📶</div><h2>Sin conexión con el servidor</h2>"
@@ -422,6 +471,13 @@ public class MainActivity extends Activity {
     /** Lo que las páginas (configuración y /verificador) pueden pedir. Salir y cambiar de servidor exigen la clave. */
     private class Puente {
         @JavascriptInterface public boolean esApp() { return true; }
+        /** La pantalla del verificador entrega una copia de sí misma y del catálogo de precios (solo los guarda si parecen completos). */
+        @JavascriptInterface public void guardarCopia(String pagina, String catalogo) {
+            if (pagina == null || catalogo == null || pagina.length() < 1000 || !catalogo.contains("\"items\"")) return;
+            escribirCopia("copia_catalogo.json", catalogo);
+            escribirCopia("copia_pagina.html", pagina);
+        }
+        @JavascriptInterface public String leerCopia() { return MainActivity.this.leerCopia("copia_catalogo.json"); }
         @JavascriptInterface public String plataforma() { return "android"; }
         @JavascriptInterface public String version() { return versionApp(); }
 
@@ -466,6 +522,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean cambiarServidor(String clave) {
             if (!claveOk(clave)) return false;
             prefs().edit().remove("servidor").remove("pines").apply();
+            new File(getFilesDir(), "copia_catalogo.json").delete(); new File(getFilesDir(), "copia_pagina.html").delete();
             hilo.post(() -> { if (web != null) web.loadUrl(CONFIG); });
             return true;
         }

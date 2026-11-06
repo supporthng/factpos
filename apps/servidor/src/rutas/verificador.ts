@@ -195,6 +195,35 @@ export async function rutasVerificador(app: FastifyInstance) {
     return r.rows[0];
   });
 
+  /**
+   * Copia del catálogo para que las apps del verificador sigan consultando precios sin conexión con el servidor:
+   * solo códigos, nombre y precio al detalle (sin existencia ni ofertas). Las apps la piden de vez en cuando.
+   */
+  app.get("/verificador/catalogo", async (req) => {
+    const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
+    const s = await pool.query<{ id: string; empresa_id: string; almacen_id: string }>(
+      `SELECT s.id, s.empresa_id, a.id AS almacen_id FROM sucursales s
+         JOIN almacenes a ON a.sucursal_id = s.id AND a.es_principal
+        WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null]);
+    if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    if (!sucursal && s.rowCount > 1) throw new ErrorNegocio("Este servidor atiende varias sucursales: indique ?sucursal=ID", 409);
+    const { id: sucursalId, empresa_id: empresaId, almacen_id: almacenId } = s.rows[0];
+    const prod = await pool.query<PresentacionVenta>(
+      `${SQL_PRESENTACION} AND pr.id IN (SELECT presentacion_id FROM codigos_barra WHERE empresa_id = $1 AND activo)`,
+      [empresaId, sucursalId, almacenId, null]);
+    const cod = await pool.query<{ presentacionId: string; codigo: string }>(
+      `SELECT presentacion_id AS "presentacionId", codigo FROM codigos_barra WHERE empresa_id = $1 AND activo`, [empresaId]);
+    const codigos = new Map<string, string[]>();
+    for (const c of cod.rows) { const l = codigos.get(c.presentacionId); if (l) l.push(c.codigo); else codigos.set(c.presentacionId, [c.codigo]); }
+    return {
+      generado: new Date().toISOString(), sucursalId,
+      items: prod.rows.filter((p) => p.precio !== null && codigos.has(p.presentacionId)).map((p) => ({
+        c: codigos.get(p.presentacionId), d: `${p.nombre} ${p.presentacion}`.trim(), p: p.precio,
+        i: p.precioIncluyeItbis ? 1 : 0, z: p.esPesable ? 1 : 0,
+      })),
+    };
+  });
+
   /** Ajustes del verificador de la empresa (hoy: mostrar u ocultar las ofertas). */
   const permisoPrecios = (req: unknown) => {
     const sesion = (req as { sesion?: SesionAdmin }).sesion;
