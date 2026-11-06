@@ -150,7 +150,7 @@ export async function rutasFacturas(app: FastifyInstance) {
   /** El supervisor teclea su PIN y obtiene una aprobación para una acción concreta. */
   app.post("/cajas/:cajaId/autorizar", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "venta.credito"]) }).parse(req.body);
+    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.precio", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "venta.credito"]) }).parse(req.body);
     const ctx = await contextoCaja(cajaId);
     return autorizarConPin(pool, ctx.empresaId, cajaId, b.pin, b.permiso);
   });
@@ -161,7 +161,7 @@ export async function rutasFacturas(app: FastifyInstance) {
    */
   app.post("/cajas/:cajaId/autorizar-propio", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const b = z.object({ permiso: z.enum(["venta.descuento", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "venta.credito"]) }).parse(req.body);
+    const b = z.object({ permiso: z.enum(["venta.descuento", "venta.precio", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "venta.credito"]) }).parse(req.body);
     const s = (req as typeof req & { sesionCaja?: { u: string; p: string[] } }).sesionCaja;
     if (!s) throw new ErrorNegocio("Su sesión en la caja terminó: vuelva a entrar con su PIN", 401);
     const tiene = s.p.includes("*") || s.p.includes(b.permiso) || (b.permiso === "caja.salir" && s.p.includes("venta.anular"));

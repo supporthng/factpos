@@ -61,7 +61,7 @@ export function CambiarPrecio({ ajustes, nombre, cantidad, precioActual, niveles
       )}
       {sel && <p>Rebaja en la línea: <b>{rd(descuento.toFixed(2))}</b></p>}
       {sel && (
-        <PinSupervisor ajustes={ajustes} permiso="venta.descuento" textoBoton="Aprobar precio"
+        <PinSupervisor ajustes={ajustes} permiso="venta.precio" textoBoton="Aprobar precio"
           onAprobado={(a) => onAplicar(n.toFixed(2), descuento.toFixed(2), `Precio ${sel.nivel}: de ${rd(precioActual)} a ${rd(n.toFixed(2))}${motivo.trim() ? `: ${motivo.trim()}` : ""}`, a)} />
       )}
     </Modal>

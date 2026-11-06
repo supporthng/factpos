@@ -241,7 +241,7 @@ export async function registrarVenta(
 
   // Descuentos manuales: solo con aprobación de un supervisor
   const descManual = body.items.reduce((a, i) => a.plus(i.descuentoManual ?? 0), new Decimal(0));
-  const aprobacion = descManual.gt(0) ? verificarAutorizacion(body.autorizacionDescuento, "venta.descuento", cajaId) : null;
+  const aprobacion = descManual.gt(0) ? verificarAutorizacion(body.autorizacionDescuento, ["venta.descuento", "venta.precio"], cajaId) : null;
 
   const q = await cotizar(c, ctx, body, true, !!cont);
   if (["E31", "B01", "B14", "B15"].includes(body.tipoDocumento) && !(q.cliente && ["RNC", "CEDULA"].includes(q.cliente.tipo_documento))) {

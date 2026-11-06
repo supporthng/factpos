@@ -78,6 +78,7 @@ export const tienePermiso = (permisos: string[], p: string) => permisos.includes
 export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: string }[] = [
   { id: "venta.crear", grupo: "Caja", nombre: "Vender y abrir/cerrar su turno" },
   { id: "venta.descuento", grupo: "Caja", nombre: "Aprobar descuentos" },
+  { id: "venta.precio", grupo: "Caja", nombre: "Aprobar cambio de precio (los 3 precios definidos)" },
   { id: "venta.anular", grupo: "Caja", nombre: "Aprobar anulaciones" },
   { id: "venta.corregir", grupo: "Caja", nombre: "Aprobar correcciones de factura" },
   { id: "cliente.precio", grupo: "Caja", nombre: "Cambiar el nivel de precio de un cliente" },
