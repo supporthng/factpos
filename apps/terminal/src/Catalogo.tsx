@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { precioPara, ofertasPara, ofertaVigente, type Catalogo, type ProductoCatalogo, type Oferta } from "@factpos/compartido";
 import { rd } from "./api";
 import { ImagenSinFondo } from "./ImagenSinFondo";
+import { BotonTeclado } from "./Teclado";
 
 /**
  * Modo Catálogo: tarjetas con imagen, categoría, precio y existencia.
@@ -50,13 +51,16 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
       (!categoria || (p.categoria ?? "Otros") === categoria) &&
       partes.every((x) => norm(`${p.nombre} ${p.presentacion} ${p.sku} ${p.codigos.join(" ")}`).includes(x)));
   }, [q, categoria, catalogo]);
+  const buscador = useRef<HTMLInputElement>(null);
 
   return (
     <div className="catalogo">
       <div className="catalogo-barra">
         <div className="buscador">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          <BotonTeclado campo={buscador} />
           <input
+            ref={buscador}
             data-entrada-principal
             data-teclado="tactil"
             value={q}
