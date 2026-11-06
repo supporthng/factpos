@@ -1158,3 +1158,8 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pos-hibrido.con-catalogo .pv-cobro .boton.cobrar { order: 5; flex: 0 0 auto; grid-row: auto; grid-column: auto; width: 120px; height: 56px; padding: 0 8px; font-size: 18px; margin: 0; }
 .pos-hibrido.con-catalogo .pv-mas { left: 10px; }
 .pos-hibrido.con-catalogo .pv-mas.pv-cd { grid-template-columns: 1fr; width: 220px; left: 200px; }
+
+/* Fotos de producto sin fondo propio en la Caja táctil: se ven directo sobre la tarjeta */
+.pos-hibrido.con-catalogo .pv-catalogo .arte { background: none; }
+.pos-hibrido.con-catalogo .pv-catalogo .arte::before, .pos-hibrido.con-catalogo .pv-catalogo .arte::after { background: none; box-shadow: none; }
+.pos-hibrido.con-catalogo .pv-catalogo .arte img { background: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
