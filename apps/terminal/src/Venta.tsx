@@ -647,6 +647,19 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         <section className="pv-venta" aria-label="Productos de la venta" ref={ventaRef}>
           <header className="pv-venta-cabeza">
             <h2>{verCatalogo ? <><Icono n="carrito" />Carrito</> : "Venta en curso"}</h2>
+            {verCatalogo && (
+              <div className="pv-iconos-directos" role="toolbar" aria-label="Accesos directos">
+                {([
+                  ["recibo", "Pago de factura", () => setModal("pagoFactura"), false],
+                  ["salidaEfectivo", "Salida de efectivo", () => setModal("salida"), false],
+                  ["etiqueta", "Consultar precio", () => setModal("consulta"), !catalogo],
+                  ["impresora", "Reimprimir última", () => reimprimirUltima(), !ultima],
+                  ["gaveta", "Abrir gaveta", () => setModal("gaveta"), false],
+                ] as const).map(([n, t, f, d]) => (
+                  <button key={n} type="button" title={t} aria-label={t} disabled={d} onClick={f}><Icono n={n} /></button>
+                ))}
+              </div>
+            )}
             <span className="suave">{lineas.length ? `${lineas.length} línea(s) · ${articulos % 1 ? articulos.toFixed(2) : articulos} artículo(s)` : "Sin productos"}</span>
             <span className="flex" />
             {verCatalogo && clienteBloque}
@@ -780,15 +793,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ...(!verCatalogo ? [[cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false] as const] : []),
                 [notas ? "Nota ✓" : "Nota", () => setModal("nota"), false],
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
-                ["Pago de factura", () => setModal("pagoFactura"), false],
-                ["Salida de efectivo", () => setModal("salida"), false],
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ...(verCatalogo ? [
-                  ["Consultar precio", () => setModal("consulta"), !catalogo] as const,
                   ["Pedidos", () => setModal("pedidos"), false] as const,
                   ["Existencias", () => setModal("existencias"), !catalogo] as const,
-                  ["Reimprimir última", () => reimprimirUltima(), !ultima] as const,
-                  ["Abrir gaveta", () => setModal("gaveta"), false] as const,
                 ] : []),
               ] as const).map(([t, f, d]) => (
                 <button key={t} role="menuitem" disabled={d} onClick={() => { setMasAbierto(false); f(); }}>{t}</button>
@@ -1273,6 +1281,8 @@ function Icono({ n }: { n: string }) {
     caja: <><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></>,
     impresora: <><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M6 14h12v7H6z" /></>,
     gaveta: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 12h18M10 16h4" /></>,
+    recibo: <><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></>,
+    salidaEfectivo: <><rect x="2" y="6" width="14" height="10" rx="2" /><circle cx="9" cy="11" r="2" /><path d="M19 9l3 3-3 3M22 12h-4" /></>,
     moto: <><circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" /><path d="M9 17h6l-3-6h-4M15 6h3l3 8" /></>,
     cierre: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
     pantalla: <><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></>,
