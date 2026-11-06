@@ -673,6 +673,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                   onDoubleClick={(e) => {
                     // Doble toque sobre el producto: abre el teclado numérico para digitar la cantidad (no aplica a los controles − + ni a la ×)
                     if ((e.target as HTMLElement).closest(".celda-cantidad, .pv-quitar")) return;
+                    // Doble toque sobre un monto de la línea (precio c/u, precio o total): abre los 3 precios, no la cantidad
+                    if ((e.target as HTMLElement).closest(".pv-precio-editable, .pv-precio-mini, .der")) { abrirPrecio(e, i); return; }
                     const campo = e.currentTarget.querySelector<HTMLInputElement>(".celda-cantidad input");
                     if (!campo) return;
                     setSel(i); campo.focus(); campo.select();
