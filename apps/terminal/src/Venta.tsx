@@ -661,7 +661,15 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               const precio = precioDe(l);
               const desc = c ? Number(c.calc.descuento) : 0;
               return (
-                <div key={i} role="row" className={"pv-fila" + (i === sel ? " seleccionada" : "")} onClick={() => setSel(i)}>
+                <div key={i} role="row" className={"pv-fila" + (i === sel ? " seleccionada" : "")} onClick={() => setSel(i)}
+                  onDoubleClick={(e) => {
+                    // Doble toque sobre el producto: abre el teclado numérico para digitar la cantidad (no aplica a los controles − + ni a la ×)
+                    if ((e.target as HTMLElement).closest(".celda-cantidad, .pv-quitar")) return;
+                    const campo = e.currentTarget.querySelector<HTMLInputElement>(".celda-cantidad input");
+                    if (!campo) return;
+                    setSel(i); campo.focus(); campo.select();
+                    campo.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" })); // el teclado en pantalla se abre con el toque
+                  }}>
                   <span className="pv-num">{i + 1}</span>
                   <span className="pv-desc">
                     <b>{l.prod.nombre}</b> <span className="suave">{l.prod.presentacion}</span>
