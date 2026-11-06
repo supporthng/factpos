@@ -182,6 +182,65 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     r.setProperty("--brillo", "rgba(" + a.map(Math.round).join(",") + ",.42)");
   }
   const hora = () => new Date().toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
+
+  // ---- Sin conexión con el servidor: la app (Android / Windows) guarda una copia de esta pantalla y del catálogo de precios
+  // y, si el servidor no responde, abre la copia con window.__factposSinConexion = true y consulta los precios aquí mismo.
+  const puenteApp = () => window.FactPOSApp || (window.pywebview && window.pywebview.api) || null;
+  const sinRed = !!window.__factposSinConexion;
+  const qsSucursal = () => (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "");
+  let copia = null, copiaT = 0;
+  const sinZeros = (c) => String(c).replace(/^0+/, "");
+  async function leerCopia() {
+    if (copia && Date.now() - copiaT < 60000) return copia;
+    try {
+      const p = puenteApp();
+      if (p && p.leerCopia) {
+        const t = await Promise.resolve(p.leerCopia());
+        if (t) {
+          const c = JSON.parse(t), mapa = new Map();
+          for (const it of c.items || []) for (const k of it.c || []) { mapa.set(String(k), it); mapa.set(sinZeros(k), it); }
+          copia = { generado: c.generado, sucursalId: c.sucursalId, mapa }; copiaT = Date.now();
+        }
+      }
+    } catch {}
+    return copia;
+  }
+  const fechaCopia = (c) => { try { return new Date(c.generado).toLocaleString("es-DO", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return ""; } };
+  function avisoSinConexion(c) {
+    const e = document.getElementById("sinconexion");
+    e.textContent = "Sin conexión con el servidor" + (c ? " · precios guardados el " + fechaCopia(c) : "");
+    e.style.display = "block";
+  }
+  /** undefined = no hay copia; {r, d, local} = respuesta equivalente a la del servidor (sin existencia ni ofertas) */
+  async function buscarLocal(codigo) {
+    const c = await leerCopia();
+    if (!c) return undefined;
+    avisoSinConexion(c);
+    const it = c.mapa.get(String(codigo)) || c.mapa.get(sinZeros(codigo));
+    if (!it) return { r: { ok: false }, d: { error: "Producto no encontrado" }, local: true };
+    return { r: { ok: true }, local: true, d: { codigo, descripcion: it.d, precio: it.p, itbisIncluido: it.i === 1, pesable: it.z === 1, peso: null, importe: null, promocion: null, niveles: [], copiaDe: fechaCopia(c) } };
+  }
+  async function consultar(codigo) {
+    if (!sinRed) {
+      try {
+        const r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(codigo));
+        return { r, d: await r.json(), local: false };
+      } catch (e) { if (!(e instanceof TypeError)) throw e; }
+    }
+    const l = await buscarLocal(codigo);
+    if (l === undefined) throw new TypeError("sin copia");
+    return l;
+  }
+  async function sincronizarCopia() {
+    const p = puenteApp();
+    if (sinRed || !p || !p.guardarCopia) return;
+    try {
+      const [rc, rp] = await Promise.all([fetch("/verificador/catalogo" + qsSucursal(), { cache: "no-store" }), fetch(location.pathname + location.search, { cache: "no-store" })]);
+      if (!rc.ok || !rp.ok) return;
+      await Promise.resolve(p.guardarCopia(await rp.text(), await rc.text()));
+    } catch {}
+  }
+  setTimeout(sincronizarCopia, 8000); setInterval(sincronizarCopia, 10 * 60 * 1000);
   setInterval(() => { const t = document.getElementById("reloj"); if (t) t.textContent = hora(); }, 15000);
   function cabecera(conHora) {
     return '<header class="cab">' + (logo ? '<img class="logo" src="' + logo + '" alt="">' : "") +
@@ -364,6 +423,14 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   setInterval(cargarOfertas, 30 * 1000); // las ofertas nuevas aparecen en menos de 30 segundos
   // Sin ?sucursal=: el servidor dice cuál es (un servidor de sucursal atiende una sola) y entrega la marca de la empresa
   async function cargarConfig() {
+    if (sinRed) {   // abierta desde la copia guardada: sin marca ni ofertas, solo la espera y la consulta de precios
+      const c = await leerCopia();
+      sucursal = sucursal || (c && c.sucursalId) || null;
+      qrActivo = false;
+      avisoSinConexion(c);
+      espera();
+      return;
+    }
     try {
       const r = await fetch("/verificador/config" + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : ""));
       if (!r.ok) return;
@@ -399,9 +466,8 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
     if (!sucursal) { await cargarConfig(); if (!sucursal) { vista.className = ""; vista.innerHTML = '<div class="tarjeta"><p class="error">Falta configurar la sucursal</p><p class="detalle">Abra esta página con ?sucursal=ID_DE_LA_SUCURSAL</p></div>'; return; } }
     clearTimeout(temporizador);
     try {
-      const r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(codigo));
-      document.getElementById("sinconexion").style.display = "none";
-      const d = await r.json();
+      const { r, d, local } = await consultar(codigo);
+      if (!local) document.getElementById("sinconexion").style.display = "none";
       if (!r.ok) throw new Error(d.error || "Producto no encontrado");
       const oferta = d.promocion && d.promocion.precioOferta ? d.promocion : null;
       let html = cabecera(false) + '<main class="centro' + (oferta ? ' con-oferta' : '') + '"><h1>' + esc(d.descripcion) + '</h1><div class="cod">Código ' + esc(codigo) + '</div><div class="caja-precio">';
@@ -410,7 +476,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
       html += '</div>';
       if (d.promocion) html += '<div class="promo"><span class="chip">' + esc(d.promocion.nombre) + '</span>' + (oferta && Number(d.precio) > Number(oferta.precioOferta) ? '<span class="gana">Ahorras ' + rd(Number(d.precio) - Number(oferta.precioOferta)) + '</span>' : "") + '</div>';
       if (d.peso !== null) html += '<div class="peso">Peso ' + d.peso.toFixed(3) + ' · Importe ' + esc(d.importe) + '</div>';
-      html += '<div class="nota">' + (d.itbisIncluido ? 'ITBIS incluido' : 'Precio sin ITBIS') + '</div>';
+      html += '<div class="nota">' + (d.itbisIncluido ? 'ITBIS incluido' : 'Precio sin ITBIS') + (d.copiaDe ? ' · precio guardado el ' + esc(d.copiaDe) : '') + '</div>';
       if (mostrarNiveles && d.niveles.length > 1) {
         html += '<div class="niveles">' + d.niveles.map((n) => '<div class="nivel"><b>' + esc(n.lista) + '</b><br>' + rd(n.precio) + '</div>').join("") + '</div>';
       }

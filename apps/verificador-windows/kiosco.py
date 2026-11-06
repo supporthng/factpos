@@ -302,7 +302,20 @@ def url_config():
 
     class Pagina(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path.split("?")[0] in ("/", "/config.html"):
+            if self.path.split("?")[0] == "/copia":
+                # La pantalla del verificador guardada, para cuando el servidor no responde (consulta precios con la copia del catálogo)
+                pagina = leer_copia("copia_pagina.html")
+                if not pagina:
+                    self.send_error(404)
+                    return
+                cuerpo = pagina.replace("<head>", "<head><script>window.__factposSinConexion=true;</script>", 1).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(cuerpo)))
+                self.end_headers()
+                self.wfile.write(cuerpo)
+            elif self.path.split("?")[0] in ("/", "/config.html"):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
@@ -336,6 +349,61 @@ def guardar_config(cfg):
         json.dump(cfg, f)
 
 
+def leer_copia(nombre):
+    try:
+        with open(os.path.join(DATOS, nombre), encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+
+def escribir_copia(nombre, texto):
+    os.makedirs(DATOS, exist_ok=True)
+    ruta = os.path.join(DATOS, nombre)
+    with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+        f.write(texto)
+    os.replace(ruta + ".tmp", ruta)
+
+
+def _servidor_responde(servidor):
+    """Cualquier respuesta HTTP (aunque sea un error) significa que el servidor está vivo."""
+    try:
+        u = urllib.parse.urlparse(servidor)
+        urllib.request.urlopen(f"{u.scheme}://{u.netloc}/verificador/config", timeout=3).close()
+        return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:
+        return False
+
+
+def _vigilar_servidor(api):
+    """Si el servidor deja de responder se abre la copia guardada de la pantalla (los precios se consultan con la copia
+    del catálogo) y, apenas vuelve, se regresa a la pantalla real."""
+    sin_servidor = False
+    fallos = 0
+    while True:
+        time.sleep(5)
+        try:
+            sv = leer_config().get("servidor") or ""
+            if not sv or not api._ventana:
+                continue
+            vivo = _servidor_responde(sv)
+            if vivo and sin_servidor:
+                sin_servidor = False
+                fallos = 0
+                api._ventana.load_url(sv)
+            elif vivo:
+                fallos = 0
+            else:
+                fallos += 1
+                if fallos >= 2 and not sin_servidor and leer_copia("copia_pagina.html") and leer_copia("copia_catalogo.json"):
+                    sin_servidor = True
+                    api._ventana.load_url(url_config().rsplit("/", 1)[0] + "/copia")
+        except Exception:
+            pass
+
+
 # --------------------------------------------------------------------------- puente con las páginas
 class Kiosco:
     """Lo que las páginas (configuración y /verificador) pueden pedir (window.pywebview.api.*).
@@ -350,6 +418,17 @@ class Kiosco:
 
     def esApp(self):
         return True
+
+    def guardarCopia(self, pagina, catalogo):
+        """La pantalla del verificador entrega una copia de sí misma y del catálogo de precios (solo se guardan si parecen completos)."""
+        if not isinstance(pagina, str) or not isinstance(catalogo, str) or len(pagina) < 1000 or '"items"' not in catalogo:
+            return False
+        escribir_copia("copia_catalogo.json", catalogo)
+        escribir_copia("copia_pagina.html", pagina)
+        return True
+
+    def leerCopia(self):
+        return leer_copia("copia_catalogo.json")
 
     def plataforma(self):
         return "windows"
@@ -467,6 +546,11 @@ class Kiosco:
         c.pop("servidor", None)
         c.pop("pines", None)     # los PIN eran del servidor anterior
         guardar_config(c)
+        for n in ("copia_pagina.html", "copia_catalogo.json"):
+            try:
+                os.remove(os.path.join(DATOS, n))
+            except OSError:
+                pass
         if self._ventana:
             self._ventana.load_url(url_config())
         return True
@@ -562,6 +646,7 @@ def main():
     os.makedirs(WEBVIEW, exist_ok=True)
     api = Kiosco()
     threading.Thread(target=_bucle_actualizar, name="actualizar", daemon=True).start()
+    threading.Thread(target=_vigilar_servidor, args=(api,), name="vigilar-servidor", daemon=True).start()
     ventana = webview.create_window(
         "Verificador FactPOS", api._direccion(), js_api=api,
         fullscreen=True, frameless=True, on_top=True, easy_drag=False,
