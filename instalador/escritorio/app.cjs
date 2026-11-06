@@ -378,20 +378,43 @@ async function syncUi() {
   } catch { return false; /* sin servidor o a medias: se queda la pantalla actual */ }
   finally { syncing = false; }
 }
+// Arranque: se dibuja de inmediato una ventanita de «Abriendo…» (antes no se veía nada hasta que la caja estaba lista)
+// y se anota cuánto tarda cada etapa en arranque.log (carpeta de datos de la app) para saber dónde se va el tiempo.
+let splash = null;
+const t0 = Date.now();
+function marca(etapa) {
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'arranque.log'), `${new Date().toISOString()} +${Date.now() - t0}ms ${etapa}\n`); } catch { /* es solo diagnóstico */ }
+}
+function abrirSplash() {
+  try {
+    splash = new BrowserWindow({ icon: ICON, width: 380, height: 190, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, closable: false, skipTaskbar: true, alwaysOnTop: true, center: true, backgroundColor: '#102b3a', title: 'FactPOS' });
+    splash.removeMenu();
+    const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#102b3a;color:#fff;font:600 20px Segoe UI,sans-serif">
+<div style="width:34px;height:34px;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:g 1s linear infinite;margin-bottom:18px"></div>
+FactPOS<div style="font:400 14px Segoe UI,sans-serif;opacity:.8;margin-top:6px">Abriendo la caja…</div><style>@keyframes g{to{transform:rotate(360deg)}}</style>`;
+    splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  } catch { splash = null; }
+}
+function cerrarSplash() { try { if (splash && !splash.isDestroyed()) { splash.setClosable(true); splash.destroy(); } } catch { /* ya cerrada */ } splash = null; }
+
 async function startCaja() {
+  marca('inicio'); abrirSplash();
   mostrarEscritorio(); // por si la vez anterior se cerró a la fuerza con el escritorio oculto
   try { server = new URL(localUrl); } catch { server = null; }
   if (!await startUiServer()) {
+    cerrarSplash();
     dialog.showErrorBox('FactPOS Caja', `No se pudo iniciar la caja: el puerto ${UI_PORT} de este equipo está ocupado por otro programa.`);
     app.quit(); return;
   }
   endpoint = new URL(`http://127.0.0.1:${UI_PORT}/`);
+  marca('servidor de pantalla listo');
   if (config.principal) startBuzon(); // la clave llega cuando la pantalla habla con el servidor
   // Si el servidor está en este mismo equipo y no corre, se intenta encender sin hacer esperar a la caja
   if (server && localServer()) { available(server).then(ok => { if (!ok) startInstalledServer(); }); }
-  // Antes de abrir la ventana se revisa si el servidor trae una pantalla o un código más nuevo (como mucho 4 s: sin servidor se abre igual).
+  // Antes de abrir la ventana se revisa si el servidor trae una pantalla o un código más nuevo (como mucho 2,5 s: sin servidor se abre igual).
   // Así la caja abre YA con la versión nueva y no hace falta cerrarla y volverla a abrir.
-  const revision = await Promise.race([Promise.all([syncUi(), syncCodigo()]), new Promise(r => setTimeout(() => r(null), 4000))]);
+  const revision = await Promise.race([Promise.all([syncUi(), syncCodigo()]), new Promise(r => setTimeout(() => r(null), 2500))]);
+  marca('revisión de pantalla y código lista');
   if (revision && revision[1] === true && !args.includes('--codigo-nuevo')) {
     // El código de esta ventana de escritorio solo se carga al arrancar: se reinicia una sola vez para usar el nuevo
     try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); app.exit(0); return; } catch { /* sigue con el actual */ }
@@ -548,7 +571,7 @@ function openMain(onShown) {
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
-  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); try { global.__factposListo && global.__factposListo(); } catch {} if (kiosko) { win.setKiosk(true); ocultarEscritorio(); } win.focus(); win.webContents.focus(); if (onShown) onShown();
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); cerrarSplash(); marca('ventana mostrada'); try { global.__factposListo && global.__factposListo(); } catch {} if (kiosko) { win.setKiosk(true); ocultarEscritorio(); } win.focus(); win.webContents.focus(); if (onShown) onShown();
     // Con un segundo monitor, la pantalla del cliente se abre sola (se puede apagar con pantallaCliente:false en la configuración)
     if (selected === 'caja' && config.pantallaCliente !== false && screen.getAllDisplays().length > 1) setTimeout(() => { try { openCustomer(); win.focus(); } catch {} }, 1500);
   };
@@ -599,7 +622,7 @@ function openMain(onShown) {
   }, 10000);
   vigiaPantalla.unref();
   win.webContents.on('did-start-loading', () => clearTimeout(calma));
-  win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 400); });
+  win.webContents.on('did-finish-load', () => { marca('pantalla cargada'); clearTimeout(calma); calma = setTimeout(mostrar, 400); });
   win.webContents.on('did-fail-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 500); });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(({ url }) => {
