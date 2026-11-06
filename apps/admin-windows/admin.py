@@ -59,6 +59,11 @@ document.getElementById("f").addEventListener("submit", async (ev) => {
 </script></body></html>"""
 
 
+PAGINA_ABRIENDO = """<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0E1B26;color:#fff;font:600 22px Segoe UI,sans-serif">
+<div style="width:36px;height:36px;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:g 1s linear infinite;margin-bottom:18px"></div>
+FactPOS Admin<div style="font:400 14px Segoe UI,sans-serif;opacity:.75;margin-top:6px">Abriendo…</div><style>@keyframes g{to{transform:rotate(360deg)}}</style>"""
+
+
 def leer_empresa():
     try:
         with open(CONFIG, encoding="utf-8") as f:
@@ -242,8 +247,9 @@ def main():
             json.dump({"empresa": nueva}, f)
     empresa = leer_empresa()
     url = direccion(empresa)
+    # Con empresa: se abre ya una pantalla de «Abriendo…» y la dirección se carga enseguida (antes se veía un fondo vacío hasta que cargaba la nube)
     ventana = webview.create_window(
-        "FactPOS Admin", url=url, html=None if url else PAGINA_EMPRESA.replace("__VALOR__", ""),
+        "FactPOS Admin", html=PAGINA_ABRIENDO if url else PAGINA_EMPRESA.replace("__VALOR__", ""),
         js_api=api, width=1280, height=820, min_size=(900, 600), background_color="#0E1B26", confirm_close=False)
     api.ventana = ventana
     ventana.events.loaded += recordar_destino
@@ -254,7 +260,15 @@ def main():
         webview.menu.MenuSeparator(),
         webview.menu.MenuAction("Salir", salir),
     ])]
-    webview.start(buscar_actualizacion, gui="edgechromium", menu=menu, private_mode=False, storage_path=WEBVIEW, debug=False)
+    def arrancar():
+        if url:
+            try:
+                ventana.load_url(url)
+            except Exception:
+                pass
+        buscar_actualizacion()
+
+    webview.start(arrancar, gui="edgechromium", menu=menu, private_mode=False, storage_path=WEBVIEW, debug=False)
 
 
 if __name__ == "__main__":
