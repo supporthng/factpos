@@ -179,7 +179,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
       <div className="cobro2">
         <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>
         <div className="cobro2-grid">
-          <div className="cobro2-col">
+          <div className={"cobro2-col" + (forma === "MIXTO" ? " mixto" : "")}>
             <div className="formas" role="radiogroup" aria-label="Forma de pago">
               {(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "MIXTO"] as MetodoPago[]).map((f) => (
                 <button key={f} role="radio" aria-checked={forma === f} className={"forma" + (forma === f ? " activo" : "")} onClick={() => elegirForma(f)}>
@@ -222,8 +222,11 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
             {(forma === "TARJETA" || forma === "MIXTO") && (
               <div className="cobro2-bloque">
                 {forma === "MIXTO" && campo("Tarjeta", tarjeta, setTarjeta)}
-                <input autoFocus={forma === "TARJETA"} className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
-                  value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
+                {forma === "MIXTO"
+                  ? <label className="campo fila-campo"><span>Núm. de aprobación</span><input className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
+                  value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} /></label>
+                  : <input autoFocus={forma === "TARJETA"} className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
+                  value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />}
               </div>
             )}
             {forma === "MIXTO" && (
