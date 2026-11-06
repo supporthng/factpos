@@ -1267,3 +1267,9 @@ textarea { line-height: 1.35; }
 .foto-nombre { font-weight: 700; font-size: 13px; line-height: 1.2; }
 .foto-off { font-size: 11px; line-height: 1.2; }
 .fotos-sin ul { max-height: 160px; overflow: auto; margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+
+/* Buscador de opciones en el inicio */
+.buscador-inicio { position: relative; max-width: 560px; margin: 4px 0 18px; }
+.buscador-inicio input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 42px; font-size: 16px; border: 1px solid var(--borde); border-radius: 12px; background: var(--panel); }
+.buscador-inicio input:focus { outline: 2px solid var(--primario); outline-offset: 1px; }
+.buscador-lupa { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--suave); display: flex; pointer-events: none; }

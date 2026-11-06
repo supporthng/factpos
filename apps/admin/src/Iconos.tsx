@@ -1,5 +1,6 @@
 /** Íconos de línea de la Administración (24 × 24, trazo de 1.8). Heredan el color del texto. */
 const TRAZOS = {
+  buscar: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
   resumen: <><rect x="3" y="3" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" /></>,
   productos: <><path d="M21 7.5 12 3 3 7.5l9 4.5 9-4.5Z" /><path d="M3 7.5v9L12 21l9-4.5v-9" /><path d="M12 12v9" /></>,
   compras: <><circle cx="9" cy="20" r="1.4" /><circle cx="18" cy="20" r="1.4" /><path d="M2.5 3.5h2.8l2.4 11a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.5L21 7.5H6.2" /></>,

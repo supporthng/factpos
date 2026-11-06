@@ -210,6 +210,7 @@ function AppInterna() {
   const [error, setError] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
   const [cambiarClave, setCambiarClave] = useState(false);
+  const [buscaOpcion, setBuscaOpcion] = useState("");
   const [menuUsuario, setMenuUsuario] = useState(false);
   const [, setRefresco] = useState(0);
   const [cfgMovil, setCfgMovil] = useState<CfgMovil | null>(null);
@@ -269,6 +270,16 @@ function AppInterna() {
   const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
+  // Buscador del inicio: sin acentos ni mayúsculas, por nombre de la opción, su módulo o su descripción
+  const plano = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const opcionesBuscadas = (() => {
+    const q = plano(buscaOpcion.trim());
+    if (!q) return [] as { s: Item; g: string }[];
+    const palabras = q.split(/\s+/);
+    return visibles.map((s) => ({ s, g: s.grupo, texto: plano(`${s.titulo} ${s.grupo} ${DESCRIPCION[s.id] ?? ""}`), ini: plano(s.titulo).startsWith(q) }))
+      .filter((x) => palabras.every((w) => x.texto.includes(w)))
+      .sort((a, b) => Number(b.ini) - Number(a.ini));
+  })();
   // Ruta: "inicio", "g-<grupo>" o el id de una opción
   const actual = visibles.find((s) => s.id === seccion);
   const grupoAbierto = seccion.startsWith("g-") ? grupos.find((g) => "g-" + datosGrupo(g).slug === seccion) : undefined;
@@ -384,6 +395,23 @@ function AppInterna() {
                   <h1>{saludo()}, {sesion.nombre.split(" ")[0]}</h1>
                   <p className="suave">¿Qué desea hacer hoy? Elija una función.</p>
                 </div>
+                <div className="buscador-inicio">
+                  <span className="buscador-lupa" aria-hidden="true"><Icono n="buscar" tamano={18} /></span>
+                  <input type="search" value={buscaOpcion} onChange={(e) => setBuscaOpcion(e.target.value)} placeholder="Buscar una opción: productos, facturas, NCF, precios…" aria-label="Buscar una opción"
+                    onKeyDown={(e) => { if (e.key === "Escape") setBuscaOpcion(""); if (e.key === "Enter" && opcionesBuscadas[0]) setSeccion(opcionesBuscadas[0].s.id); }} />
+                </div>
+                {buscaOpcion.trim() ? (
+                  <div className="cuadricula cuadricula-opciones">
+                    {opcionesBuscadas.map(({ s, g }, k) => (
+                      <button key={s.id} className="mosaico mosaico-opcion" style={{ "--c": PALETA_OPCIONES[k % PALETA_OPCIONES.length] } as React.CSSProperties} onClick={() => setSeccion(s.id)}>
+                        <span className="mosaico-icono"><Icono n={s.i} tamano={24} /></span>
+                        <span className="mosaico-texto"><b>{s.titulo}</b><small>{g}{DESCRIPCION[s.id] ? " · " + DESCRIPCION[s.id] : ""}</small></span>
+                        <span className="mosaico-flecha" aria-hidden="true">›</span>
+                      </button>
+                    ))}
+                    {!opcionesBuscadas.length && <p className="suave">Ninguna opción coincide con “{buscaOpcion.trim()}”.</p>}
+                  </div>
+                ) : (<>
                 <h2 className="titulo-seccion">Módulos</h2>
                 <div className="cuadricula cuadricula-grupos">
                   {grupos.map((g) => {
@@ -406,6 +434,7 @@ function AppInterna() {
                   })}
                   {!enPortal && <EstadoSistema />}
                 </div>
+                </>)}
               </>
             )}
 
