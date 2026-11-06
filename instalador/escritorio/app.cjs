@@ -603,7 +603,7 @@ function openMain(onShown) {
       if (r === 0) app.quit();
     }
   });
-  const tope = setTimeout(mostrar, 12000);
+  const tope = setTimeout(mostrar, 6000);
   // Salvavidas: la caja bloqueada nunca debe dejar solo un fondo azul. Si la pantalla falla al cargar, se cierra el proceso de
   // dibujo o se queda en blanco, se recarga sola; si no se recupera, se devuelve el escritorio de Windows para poder salir.
   let fallos = 0, reintento = null;
@@ -622,6 +622,8 @@ function openMain(onShown) {
   }, 10000);
   vigiaPantalla.unref();
   win.webContents.on('did-start-loading', () => clearTimeout(calma));
+  // La ventana se muestra en cuanto la pantalla está armada (dom-ready), sin esperar a que termine de cargar todo (imágenes, etc.): antes podía tardar hasta el tope
+  win.webContents.on('dom-ready', () => { marca('pantalla armada'); clearTimeout(calma); calma = setTimeout(mostrar, 700); });
   win.webContents.on('did-finish-load', () => { marca('pantalla cargada'); clearTimeout(calma); calma = setTimeout(mostrar, 400); });
   win.webContents.on('did-fail-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 500); });
   win.removeMenu();
