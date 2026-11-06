@@ -1236,3 +1236,6 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pv-iconos-directos button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .pv-iconos-directos button:disabled { opacity: .4; cursor: default; }
 .pv-iconos-directos button:not(:disabled):active { background: var(--primario); color: #fff; border-color: var(--primario); }
+
+/* Catálogo grande en cajas modestas: lo que está fuera de la pantalla no se calcula ni se pinta hasta que se desplaza hasta ahí */
+.rejilla .tarjeta-producto { content-visibility: auto; contain-intrinsic-size: auto 210px; }

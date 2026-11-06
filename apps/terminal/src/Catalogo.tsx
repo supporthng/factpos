@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { precioPara, ofertasPara, ofertaVigente, type Catalogo, type ProductoCatalogo, type Oferta } from "@factpos/compartido";
 import { rd } from "./api";
 import { ImagenSinFondo } from "./ImagenSinFondo";
@@ -52,6 +52,10 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
       partes.every((x) => norm(`${p.nombre} ${p.presentacion} ${p.sku} ${p.codigos.join(" ")}`).includes(x)));
   }, [q, categoria, catalogo]);
   const buscador = useRef<HTMLInputElement>(null);
+  // Función estable hacia las tarjetas memorizadas (siempre llama a la versión más reciente)
+  const agregarActual = useRef(onAgregar);
+  agregarActual.current = onAgregar;
+  const agregarEstable = useCallback((p: ProductoCatalogo) => agregarActual.current(p), []);
 
   return (
     <div className="catalogo">
@@ -86,44 +90,54 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
       </div>
 
       <div className="rejilla">
-        {lista.map((p) => {
-          const precio = precioPara(p, nivel, catalogo.nivelPredeterminado).precio;
-          const ahora = new Date();
-          // Ofertas con tope agotadas no se anuncian
-          const oferta = ofertasPara(catalogo, p, nivel).find((o) => ofertaVigente(o, ahora) && (o.restantes == null || Number(o.restantes) / Number(p.factor) >= 1));
-          const n = enCarrito.get(p.presentacionId) ?? 0;
-          const stock = Number(p.existencia ?? 0);
-          const minimo = Number(p.minimo ?? 0);
-          const estado = !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
-          return (
-            <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
-              style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>
-              <div className="arte">
-                {p.imagen ? <ImagenSinFondo src={p.imagen.startsWith("/") ? servidor.replace(/\/$/, "") + p.imagen : p.imagen} /> : <Arte icono={p.categoriaIcono} />}
-                {p.categoria && <span className="chip-cat">{p.categoria}</span>}
-                {oferta && <span className="chip-oferta" title={oferta.nombre}>{etiquetaOferta(oferta)}{oferta.restantes != null && <small> · quedan {Math.floor(Number(oferta.restantes) / Number(p.factor))}</small>}</span>}
-                {n > 0 && <span className="cuenta">{p.esPesable ? "✓" : n}</span>}
-              </div>
-              <div className="info">
-                <b className="nombre">{p.nombre}</b>
-                {(Number(p.factor) > 1 || p.esPesable) && <span className="presentacion">{Number(p.factor) > 1 ? `${p.presentacion} · ${Number(p.factor)} unidades` : "Por libra"}</span>}
-                <div className="pie">
-                  <span className="precio">{p.precioVariable ? "Precio libre" : precio ? rd(precio) : "Sin precio"}{p.esPesable && <small>/lb</small>}</span>
-                  {estado && (
-                    <span className={"stock " + estado} title={estado === "agotado" ? "Agotado" : estado === "bajo" ? "Existencia baja" : "En existencia"}>
-                      <i /><b>{fmt(stock)}</b>{estado === "agotado" && " · agotado"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        {lista.map((p) => (
+          <TarjetaProducto key={p.presentacionId} p={p} nivel={nivel} n={enCarrito.get(p.presentacionId) ?? 0} catalogo={catalogo} servidor={servidor} onAgregar={agregarEstable} />
+        ))}
         {!lista.length && <div className="vacio-catalogo">No hay productos que coincidan con “{q}”.</div>}
       </div>
     </div>
   );
 }
+
+/**
+ * Una tarjeta del catálogo. Va memorizada: al agregar algo a la venta solo se vuelven a dibujar las tarjetas cuyo producto,
+ * cantidad en el carrito, nivel de precio o catálogo cambiaron, no las cientos de tarjetas del catálogo (en cajas modestas
+ * eso hacía que el producto tardara varios segundos en aparecer en el carrito).
+ */
+const TarjetaProducto = memo(function TarjetaProducto({ p, nivel, n, catalogo, servidor, onAgregar }: {
+  p: ProductoCatalogo; nivel: number; n: number; catalogo: Catalogo; servidor: string; onAgregar: (p: ProductoCatalogo) => void;
+}) {
+      const precio = precioPara(p, nivel, catalogo.nivelPredeterminado).precio;
+      const ahora = new Date();
+      // Ofertas con tope agotadas no se anuncian
+      const oferta = ofertasPara(catalogo, p, nivel).find((o) => ofertaVigente(o, ahora) && (o.restantes == null || Number(o.restantes) / Number(p.factor) >= 1));
+      const stock = Number(p.existencia ?? 0);
+      const minimo = Number(p.minimo ?? 0);
+      const estado = !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
+      return (
+        <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
+          style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>
+          <div className="arte">
+            {p.imagen ? <ImagenSinFondo src={p.imagen.startsWith("/") ? servidor.replace(/\/$/, "") + p.imagen : p.imagen} /> : <Arte icono={p.categoriaIcono} />}
+            {p.categoria && <span className="chip-cat">{p.categoria}</span>}
+            {oferta && <span className="chip-oferta" title={oferta.nombre}>{etiquetaOferta(oferta)}{oferta.restantes != null && <small> · quedan {Math.floor(Number(oferta.restantes) / Number(p.factor))}</small>}</span>}
+            {n > 0 && <span className="cuenta">{p.esPesable ? "✓" : n}</span>}
+          </div>
+          <div className="info">
+            <b className="nombre">{p.nombre}</b>
+            {(Number(p.factor) > 1 || p.esPesable) && <span className="presentacion">{Number(p.factor) > 1 ? `${p.presentacion} · ${Number(p.factor)} unidades` : "Por libra"}</span>}
+            <div className="pie">
+              <span className="precio">{p.precioVariable ? "Precio libre" : precio ? rd(precio) : "Sin precio"}{p.esPesable && <small>/lb</small>}</span>
+              {estado && (
+                <span className={"stock " + estado} title={estado === "agotado" ? "Agotado" : estado === "bajo" ? "Existencia baja" : "En existencia"}>
+                  <i /><b>{fmt(stock)}</b>{estado === "agotado" && " · agotado"}
+                </span>
+              )}
+            </div>
+          </div>
+        </button>
+      );
+});
 
 const fmt = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
 
