@@ -29,7 +29,7 @@ const CarritoSchema = z.object({
   clienteId: z.string().uuid().optional(),
   cuponCodigo: z.string().trim().min(1).max(30).optional(),
   items: z
-    .array(z.object({ presentacionId: z.string().uuid(), cantidad, descuentoManual: monto.optional(), precioVariable: monto.optional() }))
+    .array(z.object({ presentacionId: z.string().uuid(), cantidad, descuentoManual: monto.optional(), precioVariable: monto.optional(), precioNuevo: monto.optional() }))
     .min(1, "La venta no tiene productos")
     .max(500),
 });
@@ -135,6 +135,31 @@ export async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, c
     if (p.precio === null) throw new ErrorNegocio(`${p.nombre} no tiene precio asignado`);
     return Number(descuentoNivelPct) > 0 ? { ...p, listaPrecioId: listaCliente } : p;
   });
+
+  // Cambio de precio en caja: solo a uno de los 3 precios definidos del producto, menor al vigente, y la rebaja no puede superar la diferencia
+  if (!contingencia) {
+    for (const [idx, it] of carrito.items.entries()) {
+      if (!it.precioNuevo) continue;
+      const p = prods[idx];
+      const nombre = p.nombre;
+      if (p.precioVariable) throw new ErrorNegocio(`${nombre} es de precio variable: no admite cambio de precio`);
+      const niveles = await c.query<{ precio: string }>(
+        `SELECT x.precio::text AS precio FROM precios x JOIN listas_precio lp ON lp.id = x.lista_precio_id
+          WHERE x.presentacion_id = $1 AND x.activo AND lp.empresa_id = $2 AND lp.nivel BETWEEN 1 AND 3
+            AND (x.sucursal_id IS NULL OR (x.sucursal_id = $3 AND (SELECT precios_por_sucursal FROM empresas WHERE id = $2)))`,
+        [it.presentacionId, ctx.empresaId, ctx.sucursalId],
+      );
+      const nuevo = new Decimal(it.precioNuevo);
+      if (!niveles.rows.some((n) => new Decimal(n.precio).eq(nuevo))) {
+        throw new ErrorNegocio(`El precio ${nuevo.toFixed(2)} de ${nombre} no es uno de los 3 precios definidos`);
+      }
+      if (nuevo.gte(p.precio!)) throw new ErrorNegocio(`El nuevo precio de ${nombre} debe ser menor al vigente (${p.precio})`);
+      const esperado = new Decimal(p.precio!).minus(nuevo).mul(it.cantidad);
+      if (new Decimal(it.descuentoManual ?? 0).minus(esperado).gt(0.01)) {
+        throw new ErrorNegocio(`La rebaja de ${nombre} es mayor que la del cambio de precio`);
+      }
+    }
+  }
 
   // Productos que no se venden sin existencia
   const demanda = new Map<string, { p: PresentacionVenta; cant: Decimal }>();
