@@ -568,6 +568,23 @@ function openMain(onShown) {
     }
   });
   const tope = setTimeout(mostrar, 12000);
+  // Salvavidas: la caja bloqueada nunca debe dejar solo un fondo azul. Si la pantalla falla al cargar, se cierra el proceso de
+  // dibujo o se queda en blanco, se recarga sola; si no se recupera, se devuelve el escritorio de Windows para poder salir.
+  let fallos = 0, reintento = null;
+  const recargar = () => { if (win.isDestroyed() || updating) return; fallos++; if (fallos >= 3) mostrarEscritorio(); try { win.webContents.loadURL(endpoint.toString()); } catch {} };
+  win.webContents.on('did-fail-load', (_e, codigo, _d, _u, principal) => { if (principal && codigo !== -3 && selected === 'caja') { clearTimeout(reintento); reintento = setTimeout(recargar, 3000); } });
+  win.webContents.on('render-process-gone', () => { if (selected === 'caja') { clearTimeout(reintento); reintento = setTimeout(recargar, 1000); } });
+  win.webContents.on('unresponsive', () => { if (selected !== 'caja') return; clearTimeout(reintento); reintento = setTimeout(() => { if (!win.isDestroyed() && !updating) { try { win.webContents.reloadIgnoringCache(); } catch {} } }, 15000); });
+  const vigiaPantalla = setInterval(async () => {
+    if (win.isDestroyed()) { clearInterval(vigiaPantalla); return; }
+    if (selected !== 'caja' || !shown || updating) return;
+    try {
+      const n = await win.webContents.executeJavaScript('(document.body && document.body.innerText || "").trim().length');
+      if (n > 0) { fallos = 0; return; }
+      recargar();
+    } catch { recargar(); }
+  }, 10000);
+  vigiaPantalla.unref();
   win.webContents.on('did-start-loading', () => clearTimeout(calma));
   win.webContents.on('did-finish-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 400); });
   win.webContents.on('did-fail-load', () => { clearTimeout(calma); calma = setTimeout(mostrar, 500); });
@@ -744,13 +761,25 @@ function finishUpdate(ok, text) {
 function watchUpdates() {
   if (selected === 'admin' && config.empresa) return; // administración en la nube: la actualiza el portal
   if (!server) return;
-  let busy = false;
+  let busy = false, versionConocida = null, sinRespuesta = 0;
   const timer = setInterval(async () => {
     if (busy) return; busy = true;
     try {
       const st = await getJson(new URL('/actualizacion/estado', server));
       if (!updating) {
+        // El servidor puede reiniciarse entre dos revisiones (o quedar sin responder unos segundos): la actualización se detecta
+        // por el archivo de estado (equipo del servidor), por el cambio de versión o porque el servidor volvió con otra versión.
+        sinRespuesta = st ? 0 : sinRespuesta + 1;
+        const archivo = !st && sinRespuesta >= 2 ? readStateFile() : null;
         if (st && st.actualizando) beginUpdate(st);
+        else if (archivo && archivo.estado === 'EN_CURSO') beginUpdate({ version: versionConocida, ...archivo });
+        else if (st && versionConocida && st.version && st.version !== versionConocida && !st.actualizando) {
+          // La actualización terminó mientras no se miraba: se muestra el cuadro y se vuelve a abrir el sistema con lo nuevo
+          beginUpdate({ version: versionConocida });
+          updating = 'cerrando';
+          finishUpdate(true, `FactPOS ${String(st.version).replace(/\.0$/, '')} listo`);
+        }
+        if (st && st.version) versionConocida = st.version;
       } else if (st && !st.actualizando) {
         updating = 'cerrando';
         const changed = st.version !== versionBefore;
