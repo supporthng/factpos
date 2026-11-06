@@ -484,10 +484,12 @@ function openCustomer() {
   url.hash = '/cliente';
   customerWindow = new BrowserWindow({
     icon: ICON, title: 'FactPOS · Pantalla del cliente', autoHideMenuBar: true, backgroundColor: '#0b1620',
-    ...(otra ? { x: area.x, y: area.y, width: area.width, height: area.height, fullscreen: true } : { width: 1100, height: 700 }),
+    ...(otra ? { x: area.x, y: area.y, width: area.width, height: area.height, fullscreen: true } : { width: 1100, height: 700, alwaysOnTop: true }),
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   });
   customerWindow.removeMenu();
+  // Con una sola pantalla la caja (kiosko) está por encima de todo: la ventana del cliente se pone al mismo nivel para que se vea
+  if (!otra) { try { customerWindow.setAlwaysOnTop(true, 'screen-saver'); } catch {} }
   customerWindow.on('closed', () => { customerWindow = null; });
   customerWindow.loadURL(url.toString());
 }
@@ -553,7 +555,7 @@ function openMain(onShown) {
   win.on('restore', () => { if (bloqueada()) { ocultarEscritorio(); setTimeout(fijar, 50); } });
   win.on('leave-full-screen', () => { if (bloqueada()) setTimeout(fijar, 50); });
   win.on('show', fijar);
-  win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !win.isFocused() && !win.getChildWindows().length) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
+  win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !win.isFocused() && !win.getChildWindows().length && !(customerWindow && !customerWindow.isDestroyed() && customerWindow.isFocused())) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
   win.webContents.on('before-input-event', (event, input) => {
     if (selected !== 'caja' || input.type !== 'keyDown') return;
     if (input.key === 'F11') { event.preventDefault(); if (!bloqueada()) win.setKiosk(!win.isKiosk()); }
