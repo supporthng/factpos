@@ -1168,3 +1168,12 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pos-hibrido:not(.con-catalogo) .pv-cliente-texto b { white-space: normal; line-height: 1.15; overflow-wrap: anywhere; }
 .pos-hibrido:not(.con-catalogo) .pv-cliente-accion kbd { display: none; }
 .pos-hibrido:not(.con-catalogo) .pv-cliente { gap: 8px; }
+
+/* Barra inferior de la Caja táctil: el total y Cobrar nunca se montan sobre los botones */
+.pos-hibrido.con-catalogo .pv-total { container-type: normal; flex: 0 0 auto; min-width: max-content; padding: 0 8px; }
+.pos-hibrido.con-catalogo .pv-total > span { white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-total > b, .pos-hibrido.con-catalogo .pv-cobro .pv-total > b { font-size: 30px; line-height: 1.1; }
+.pos-hibrido.con-catalogo .pv-desglose { flex: 0 0 auto; min-width: max-content; }
+.pos-hibrido.con-catalogo .pv-atajos-min button, .pos-hibrido.con-catalogo .pv-cancelar-barra { flex: 1 1 0; min-width: 72px; max-width: 190px; height: 56px; font-size: 15px; white-space: normal; }
+.pos-hibrido.con-catalogo .pv-cobro .boton.cobrar { flex: 0 0 auto; width: 170px; min-width: 170px; height: 60px; font-size: 20px; white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-cobro { min-height: 72px; }
