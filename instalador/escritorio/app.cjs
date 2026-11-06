@@ -492,6 +492,19 @@ function openCustomer() {
   if (!otra) { try { customerWindow.setAlwaysOnTop(true, 'screen-saver'); } catch {} }
   customerWindow.on('closed', () => { customerWindow = null; });
   customerWindow.loadURL(url.toString());
+  // Si la pantalla del cliente queda vacía (falló la carga o no dibujó nada), se recarga sola
+  const cw = customerWindow;
+  const revisar = async () => {
+    if (cw.isDestroyed()) return false;
+    try { const n = await cw.webContents.executeJavaScript('(document.body && document.body.innerText || "").trim().length'); if (n > 0) return true; } catch {}
+    try { cw.webContents.loadURL(url.toString()); } catch {}
+    return false;
+  };
+  cw.webContents.on('did-fail-load', (_e, codigo, _d, _u, principal) => { if (principal && codigo !== -3) setTimeout(() => { if (!cw.isDestroyed()) { try { cw.webContents.loadURL(url.toString()); } catch {} } }, 2500); });
+  cw.webContents.on('render-process-gone', () => setTimeout(() => { if (!cw.isDestroyed()) { try { cw.webContents.loadURL(url.toString()); } catch {} } }, 1000));
+  let intentos = 0;
+  const vigia = setInterval(async () => { if (cw.isDestroyed() || ++intentos > 6) { clearInterval(vigia); return; } if (await revisar()) clearInterval(vigia); }, 4000);
+  vigia.unref();
 }
 
 function openMain(onShown) {
