@@ -223,7 +223,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
               <div className="cobro2-bloque">
                 {forma === "MIXTO" && campo("Tarjeta", tarjeta, setTarjeta)}
                 {forma === "MIXTO"
-                  ? <label className="campo fila-campo"><span>Núm. de aprobación</span><input autoFocus={forma === "TARJETA"} className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
+                  ? <label className="campo fila-campo"><span>Núm. de aprobación</span><input className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
                   value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} /></label>
                   : <input autoFocus={forma === "TARJETA"} className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
                   value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />}
