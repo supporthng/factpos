@@ -1206,3 +1206,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cobro2-col.mixto > .cobro2-bloque:has(.entrada-grande.ref, .fila-campo + label.fila-campo) { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 12px; align-items: end; }
 .cobro2-col.mixto .fila-campo input.ref { text-transform: uppercase; letter-spacing: .04em; }
 .cobro2-col.mixto .fila-campo > input { flex: 0 0 auto; height: auto; width: 100%; box-sizing: border-box; }
+
+/* Caja clásica: todas las funciones visibles en el panel derecho (Cerrar turno al final) */
+.pos-hibrido:not(.con-catalogo) .pv-cobro .pv-atajos-fijos { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; grid-auto-rows: 46px; gap: 6px 8px; align-content: start; }
+.pos-hibrido:not(.con-catalogo) .pv-cobro .pv-atajos-fijos button { height: 46px; min-height: 46px; font-size: 14px; }
