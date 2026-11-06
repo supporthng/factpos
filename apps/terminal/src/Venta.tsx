@@ -852,8 +852,11 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             }
             setUltima(r); setTicketVista({ venta: r, copia: false }); nuevaVenta();
             setModal(null);
-            if (op?.sinImprimir) setConfirmacion({ titulo: "Venta registrada", cambio: null, nota: "Comprobante no impreso (puede usar Reimprimir última)" });
-            else { setTicketAuto(r); setConfirmacion({ titulo: "Venta registrada", cambio: Number(r.cambio) > 0 ? rd(r.cambio) : null, nota: null }); }
+            // El cambio se muestra siempre que hubo efectivo (aunque sea RD$0.00), también cuando no se imprime el comprobante
+            const huboEfectivo = r.pagos.some((x) => x.formaPago === "EFECTIVO");
+            const cambioAviso = huboEfectivo || Number(r.cambio) > 0 ? rd(r.cambio) : null;
+            if (op?.sinImprimir) setConfirmacion({ titulo: "Venta registrada", cambio: cambioAviso, nota: "Comprobante no impreso (puede usar Reimprimir última)" });
+            else { setTicketAuto(r); setConfirmacion({ titulo: "Venta registrada", cambio: cambioAviso, nota: null }); }
             existenciasRef.current().catch(() => {}); }}
         />
       )}
