@@ -725,23 +725,42 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
           {!verCatalogo && <span className="pv-titulo-pago">Cliente</span>}
           {!verCatalogo && clienteBloque}
-          <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
-            <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
-            <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
-            {verCatalogo
-              ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
-              : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
-            <button className={masAbierto ? "activo" : ""} onClick={() => { setCdAbierto(false); setMasAbierto((v) => !v); }} aria-expanded={masAbierto}>
-              Más {masAbierto ? "▴" : "▾"}
-            </button>
-          </div>
+          {!verCatalogo ? (
+            <div className="pv-atajos pv-atajos-min pv-atajos-fijos" aria-label="Acciones de la venta">
+              {([
+                ["Suspender", pausar, !lineas.length],
+                [`Retomar${pausadas.length ? ` (${pausadas.length})` : ""}`, () => setModal("pausadas"), false],
+                [cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón", () => (cupon ? setCupon(null) : setModal("cupon")), false],
+                ["Cotización", () => setModal("cotizacion"), !lineas.length || !cot.r],
+                [notas ? "Nota ✓" : "Nota", () => setModal("nota"), false],
+                ["Facturas y devolución", () => setModal("facturasPin"), false],
+                ["Pago de factura", () => setModal("pagoFactura"), false],
+                ["Salida de efectivo", () => setModal("salida"), false],
+                ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
+                ["Cerrar turno", () => setModal("turno"), false],
+              ] as const).map(([t, f, d]) => (
+                <button key={t} disabled={d} onClick={f}>{t}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
+              <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
+              <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
+              {verCatalogo
+                ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
+                : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
+              <button className={masAbierto ? "activo" : ""} onClick={() => { setCdAbierto(false); setMasAbierto((v) => !v); }} aria-expanded={masAbierto}>
+                Más {masAbierto ? "▴" : "▾"}
+              </button>
+            </div>
+          )}
           {verCatalogo && cdAbierto && (
             <div className="pv-mas pv-cd" role="menu">
               <button role="menuitem" onClick={() => { setCdAbierto(false); if (cupon) setCupon(null); else setModal("cupon"); }}>{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"}</button>
               <button role="menuitem" disabled={!lineas.length} onClick={() => { setCdAbierto(false); abrirDescuento("linea"); }}>Descuento</button>
             </div>
           )}
-          {masAbierto && (
+          {verCatalogo && masAbierto && (
             <div className="pv-mas" role="menu">
               {([
                 ...(verCatalogo ? [
