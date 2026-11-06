@@ -536,6 +536,12 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   // El campo de código siempre recupera el foco: en la Caja clásica es la barra de arriba; en la táctil, la búsqueda del catálogo (ahí escanea el lector)
   const [masAbierto, setMasAbierto] = useState(false);
   const [cdAbierto, setCdAbierto] = useState(false);
+  // Doble clic / doble toque sobre el precio de una línea: abre los 3 precios definidos (el cambio pide autorización)
+  const abrirPrecio = (e: React.SyntheticEvent, i: number) => {
+    e.stopPropagation();
+    if (lineas[i]?.prod.precioVariable) return;
+    setSel(i); setModal("cambiarPrecio");
+  };
   const enfocarEntrada = () => { (entrada.current ?? document.querySelector<HTMLInputElement>("[data-entrada-principal]"))?.focus(); };
   useEffect(() => {
     if (modal) return;
@@ -677,7 +683,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                     <b>{l.prod.nombre}</b> <span className="suave">{l.prod.presentacion}</span>
                     <span className="pv-etiquetas">
                       {l.prod.codigos[0] && <span className="pv-codigo" title="Código de barras">{l.prod.codigos[0]}</span>}
-                      <span className="pv-precio-mini">{rd(precio)}{l.prod.esPesable ? "/lb" : " c/u"}</span>
+                      <span className="pv-precio-mini pv-precio-editable" title="Doble toque: cambiar precio" onDoubleClick={(e) => abrirPrecio(e, i)}>{rd(precio)}{l.prod.esPesable ? "/lb" : " c/u"}</span>
                       {c?.oferta && <em className="t-oferta">{c.oferta.nombre}{c.oferta.agotada && ` · solo ${Number(c.oferta.unidades)} en oferta`}</em>}
                       {l.precioCambiado && <em className="t-desc">Precio cambiado a {rd(l.precioCambiado)}</em>}
                       {l.descuentoManual && !l.precioCambiado && <em className="t-desc">Descuento aprobado</em>}
@@ -692,7 +698,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                     <CeldaCantidad linea={l} onMenos={() => (Number(l.cantidad) > 1 ? cambiarCantidad(i, -1) : quitar(i))} onMas={() => cambiarCantidad(i, 1)}
                       onFijar={(v) => fijarCantidad(i, v)} onListo={enfocarEntrada} />
                   </span>
-                  <span className="der">{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
+                  <span className="der pv-precio-editable" title="Doble clic: cambiar precio" onDoubleClick={(e) => abrirPrecio(e, i)}>{rd(precio)}{l.prod.esPesable && <small>/lb</small>}</span>
                   <span className={"der" + (desc > 0 ? " pv-ahorro" : " suave")}>{desc > 0 ? `−${rd(desc.toFixed(2))}` : "—"}</span>
                   <span className="der fuerte">{c ? rd(c.calc.total) : "—"}</span>
                   <button className="pv-quitar" aria-label={`Quitar ${l.prod.nombre}`} title="Quitar (Supr)" onClick={(e) => { e.stopPropagation(); quitar(i); }}>×</button>
