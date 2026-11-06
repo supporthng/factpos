@@ -1296,3 +1296,10 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .elegir-lista li { padding: 9px 12px; border-radius: 8px; cursor: pointer; }
 .elegir-lista li.activo { background: var(--primario-suave); }
 .elegir-lista li.elegido { font-weight: 700; color: var(--primario); }
+
+/* Teclado numérico en pantalla para el PIN de caja (Nuevo/Editar usuario) */
+.pin-pad { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; align-items: flex-start; }
+.pin-pad-teclas { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; }
+.pin-pad-teclas button { height: 42px; font-size: 18px; font-weight: 700; border: 1px solid var(--borde-fuerte); border-radius: 10px; background: var(--panel); color: var(--texto); }
+.pin-pad-teclas button:active { background: var(--primario-suave); }
+.pin-pad-teclas .aux { font-size: 12px; font-weight: 600; }
