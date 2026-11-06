@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, rd, num, sesionActual } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
+import { FotosProductos } from "./FotosProductos";
 import { useFuncionSeguridad } from "../seguridad";
 import { Aviso, Encabezado, SelectorProducto, Tabla, useCatalogo, useDatos } from "../ui";
 
@@ -106,6 +107,7 @@ export function Productos() {
   const [editarRapido, setEditarRapido] = useState<string | null>(null);
   const [pestanaIni, setPestanaIni] = useState<Pestana | undefined>(undefined);
   const [importar, setImportar] = useState(false);
+  const [fotos, setFotos] = useState(false);
   const [borrador, setBorrador] = useState<Ficha | null>(null);
   const [version, setVersion] = useState(0);
   const [creado, setCreado] = useState("");
@@ -116,7 +118,8 @@ export function Productos() {
         onCerrar={() => { setEditando(null); setBorrador(null); setPestanaIni(undefined); }} onAbrir={(id) => { setBorrador(null); setEditando(id); }} />
     : (
       <>
-        <Listado onAbrir={setEditarRapido} onNuevo={() => setRapido(true)} onImportar={() => setImportar(true)} aux={aux.datos} version={version} creado={creado} />
+        <Listado onAbrir={setEditarRapido} onNuevo={() => setRapido(true)} onImportar={() => setImportar(true)} onFotos={() => setFotos(true)} aux={aux.datos} version={version} creado={creado} />
+        {fotos && <FotosProductos onCerrar={() => setFotos(false)} onTerminado={() => setVersion((v) => v + 1)} />}
         {importar && <ImportarProductos aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setImportar(false)} onTerminado={() => setVersion((v) => v + 1)} />}
         {rapido && (
           <ProductoRapido aux={aux.datos} recargarAux={aux.recargar} onCerrar={() => setRapido(false)}
@@ -155,7 +158,7 @@ function cuerpoGuardar(f: Ficha) {
 }
 
 /* ---------- Listado ---------- */
-function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbrir: (id: string | "nuevo") => void; onNuevo: () => void; onImportar: () => void; aux: Auxiliares; version: number; creado: string }) {
+function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }: { onAbrir: (id: string | "nuevo") => void; onNuevo: () => void; onImportar: () => void; onFotos: () => void; aux: Auxiliares; version: number; creado: string }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [estado, setEstado] = useState("activos");
@@ -168,6 +171,7 @@ function Listado({ onAbrir, onNuevo, onImportar, aux, version, creado }: { onAbr
   return (
     <>
       <Encabezado titulo="Productos" descripcion="Ficha, códigos, los 3 niveles de precio, proveedores y combos. La existencia de cada sucursal se ve aquí y se corrige con un ajuste.">
+        <button className="boton" onClick={onFotos} title="Buscar en internet la foto de los productos sin foto, por su código de barras">Buscar fotos</button>
         <button className="boton" onClick={onImportar} title="Cargar su inventario desde Excel o CSV">Importar desde Excel</button>
         <button className="boton primario" onClick={onNuevo}>Nuevo producto</button>
       </Encabezado>
