@@ -534,6 +534,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
 
   // El campo de código siempre recupera el foco: en la Caja clásica es la barra de arriba; en la táctil, la búsqueda del catálogo (ahí escanea el lector)
   const [masAbierto, setMasAbierto] = useState(false);
+  const [cdAbierto, setCdAbierto] = useState(false);
   const enfocarEntrada = () => { (entrada.current ?? document.querySelector<HTMLInputElement>("[data-entrada-principal]"))?.focus(); };
   useEffect(() => {
     if (modal) return;
@@ -720,12 +721,18 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
             <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
             {verCatalogo
-              ? <button disabled={!lineas.length} onClick={() => abrirDescuento("linea")}>Descuento</button>
+              ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
               : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
-            <button className={masAbierto ? "activo" : ""} onClick={() => setMasAbierto((v) => !v)} aria-expanded={masAbierto}>
+            <button className={masAbierto ? "activo" : ""} onClick={() => { setCdAbierto(false); setMasAbierto((v) => !v); }} aria-expanded={masAbierto}>
               Más {masAbierto ? "▴" : "▾"}
             </button>
           </div>
+          {verCatalogo && cdAbierto && (
+            <div className="pv-mas pv-cd" role="menu">
+              <button role="menuitem" onClick={() => { setCdAbierto(false); if (cupon) setCupon(null); else setModal("cupon"); }}>{cupon ? `Quitar cupón ${cupon.codigo}` : "Cupón"}</button>
+              <button role="menuitem" disabled={!lineas.length} onClick={() => { setCdAbierto(false); abrirDescuento("linea"); }}>Descuento</button>
+            </div>
+          )}
           {masAbierto && (
             <div className="pv-mas" role="menu">
               {([
@@ -757,7 +764,6 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <button className="enlace" onClick={reimprimirUltima}>Reimprimir</button>
             </div>
           )}
-          {verCatalogo && <button className={"boton fantasma pv-cupon-barra" + (cupon ? " activo" : "")} onClick={() => (cupon ? setCupon(null) : setModal("cupon"))}>{cupon ? "Quitar cupón" : "Cupón"}</button>}
           {verCatalogo && <button className="boton fantasma pv-cancelar pv-cancelar-barra" disabled={!lineas.length} onClick={() => setModal("cancelar")}>Cancelar</button>}
           <button className="boton cobrar abajo" disabled={!lineas.length || !!cot.error} onClick={() => cobrarCon("EFECTIVO")}>
             Cobrar <kbd>F12</kbd>

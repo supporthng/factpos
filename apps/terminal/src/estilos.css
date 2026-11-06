@@ -1137,3 +1137,29 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .pos-hibrido.con-catalogo .pv-desglose { grid-column: 1 / 3; }
 .pos-hibrido.con-catalogo .pv-total { grid-column: 3 / 5; }
 .pos-hibrido.con-catalogo .pv-cobro .boton.cobrar { grid-column: 5 / 7; }
+
+/* --- Barra inferior en UNA fila (como la maqueta): montos en vertical a la izquierda,
+       Suspender · Retomar · Cupón / Desc. · Más · Cancelar, y al final Total y Cobrar --- */
+.pos-hibrido.con-catalogo .pv-cobro { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 8px 10px; height: auto; }
+.pos-hibrido.con-catalogo .pv-desglose { order: 1; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 0 6px 0 2px; min-width: 0; }
+.pos-hibrido.con-catalogo .pv-desglose > div { display: flex; flex-direction: row; align-items: baseline; gap: 4px; padding: 0; font-size: 11px; line-height: 1.35; white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-desglose dt, .pos-hibrido.con-catalogo .pv-desglose dd { display: inline; margin: 0; font-size: 11px; }
+.pos-hibrido.con-catalogo .pv-desglose dt::after { content: ":"; }
+.pos-hibrido.con-catalogo .pv-atajos-min { display: contents; }
+.pos-hibrido.con-catalogo .pv-atajos-min button, .pos-hibrido.con-catalogo .pv-cancelar-barra {
+  order: 2; flex: 1 1 0; min-width: 0; width: auto; height: 52px; padding: 0 4px; font-size: 13px; line-height: 1.15;
+  white-space: normal; text-align: center; overflow: hidden; text-overflow: clip; grid-row: auto; grid-column: auto;
+}
+.pos-hibrido.con-catalogo .pv-atajos-min button.activo, .pos-hibrido.con-catalogo .pv-atajos-min button.con-cupon { border-color: #58b08a; color: #7be0a4; }
+.pos-hibrido.con-catalogo .pv-cancelar-barra { order: 3; }
+.pos-hibrido.con-catalogo .pv-total { order: 4; flex: 0 0 auto; grid-row: auto; grid-column: auto; margin: 0 0 0 auto; align-items: flex-end; text-align: right; }
+.pos-hibrido.con-catalogo .pv-total > span { font-size: 11px; }
+.pos-hibrido.con-catalogo .pv-total > b, .pos-hibrido.con-catalogo .pv-cobro .pv-total > b { font-size: 26px; white-space: nowrap; }
+.pos-hibrido.con-catalogo .pv-cobro .boton.cobrar { order: 5; flex: 0 0 auto; grid-row: auto; grid-column: auto; width: 120px; height: 56px; padding: 0 8px; font-size: 18px; margin: 0; }
+.pos-hibrido.con-catalogo .pv-mas { left: 10px; }
+.pos-hibrido.con-catalogo .pv-mas.pv-cd { grid-template-columns: 1fr; width: 220px; left: 200px; }
+
+/* Fotos de producto sin fondo propio en la Caja táctil: se ven directo sobre la tarjeta */
+.pos-hibrido.con-catalogo .pv-catalogo .arte { background: none; }
+.pos-hibrido.con-catalogo .pv-catalogo .arte::before, .pos-hibrido.con-catalogo .pv-catalogo .arte::after { background: none; box-shadow: none; }
+.pos-hibrido.con-catalogo .pv-catalogo .arte img { background: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
