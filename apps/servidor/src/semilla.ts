@@ -75,7 +75,7 @@ export async function semilla() {
              ($1,$3,$4,'Administrador','admin','pendiente'), ($2,$3,$5,'María Cajera','maria','pendiente')`,
       [DEMO.admin, DEMO.cajera, DEMO.empresa, DEMO.rolAdmin, DEMO.rolCajero]);
     // Supervisor que aprueba descuentos y anulaciones con su PIN
-    await q("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,'Supervisor','{venta.crear,venta.descuento,venta.anular,venta.corregir,cliente.precio,caja.retiro,caja.gasto,cxc.abono}')",
+    await q("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,'Supervisor','{venta.crear,venta.descuento,venta.precio,venta.anular,venta.corregir,cliente.precio,caja.retiro,caja.gasto,cxc.abono}')",
       [DEMO.rolSupervisor, DEMO.empresa]);
     await q("INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash) VALUES ($1,$2,$3,'Carlos Supervisor','carlos','pendiente',$4)",
       [DEMO.supervisor, DEMO.empresa, DEMO.rolSupervisor, hashPin(DEMO.empresa, "4321")]);

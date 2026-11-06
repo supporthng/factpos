@@ -19,7 +19,7 @@ import { ErrorNegocio } from "./db.js";
 const secreto = () => process.env.PIN_SECRETO ?? "factpos-desarrollo-cambiar-en-produccion";
 const VIGENCIA_MS = 10 * 60 * 1000;
 
-export type Permiso = "venta.descuento" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto" | "caja.salir" | "venta.credito";
+export type Permiso = "venta.descuento" | "venta.precio" | "venta.anular" | "venta.corregir" | "cliente.precio" | "caja.retiro" | "caja.gasto" | "caja.salir" | "venta.credito";
 
 export const hashPin = (empresaId: string, pin: string) =>
   createHmac("sha256", secreto()).update(`${empresaId}:${pin}`).digest("hex");
@@ -72,7 +72,7 @@ export function autorizacionDirecta(supervisorId: string, supervisor: string, pe
   return `${cuerpo}.${firmar(cuerpo)}`;
 }
 
-export function verificarAutorizacion(token: string | undefined, permiso: Permiso, cajaId: string): Autorizacion {
+export function verificarAutorizacion(token: string | undefined, permiso: Permiso | Permiso[], cajaId: string): Autorizacion {
   if (!token) throw new ErrorNegocio("Esta acción requiere la aprobación de un supervisor", 403);
   const [cuerpo, firma] = token.split(".");
   const esperada = firmar(cuerpo ?? "");
@@ -80,7 +80,7 @@ export function verificarAutorizacion(token: string | undefined, permiso: Permis
     throw new ErrorNegocio("Autorización inválida", 403);
   }
   const a: Autorizacion = JSON.parse(Buffer.from(cuerpo, "base64url").toString());
-  if (a.permiso !== permiso || a.cajaId !== cajaId) throw new ErrorNegocio("La autorización no corresponde a esta acción", 403);
+  if (!(Array.isArray(permiso) ? permiso : [permiso]).includes(a.permiso) || a.cajaId !== cajaId) throw new ErrorNegocio("La autorización no corresponde a esta acción", 403);
   if (a.expira < Date.now()) throw new ErrorNegocio("La autorización venció; pida la aprobación otra vez", 403);
   return a;
 }
