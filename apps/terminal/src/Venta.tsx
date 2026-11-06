@@ -1,4 +1,5 @@
 import { publicarMarca, publicarCarrito, publicarGracias } from "./pantalla-cliente";
+import { BotonTeclado } from "./Teclado";
 import { versionCliente } from "./version";
 import { modoInicial } from "./vista";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -619,6 +620,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               if (e.key === "Enter") { procesarEntrada(codigo); setCodigo(""); }
             }}
           />
+          <BotonTeclado campo={entrada} className="pv-btn-teclado" />
           <button className="pv-buscar" onClick={() => { setBusqueda(codigo.trim()); setCodigo(""); setModal("buscar"); }} title="Buscar producto (F2)">
             <Icono n="lupa" /><kbd>F2</kbd>
           </button>

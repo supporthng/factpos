@@ -217,3 +217,16 @@ export function TecladoPantalla() {
     </div>
   );
 }
+
+/** Botón con un teclado dibujado: abre el teclado en pantalla (alfanumérico) sobre el campo indicado, sin depender de tocar el campo. */
+export function BotonTeclado({ campo, className = "" }: { campo: React.RefObject<HTMLInputElement | null>; className?: string }) {
+  return (
+    <button type="button" className={"btn-teclado " + className} title="Teclado en pantalla" aria-label="Abrir teclado en pantalla"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => { const el = campo.current; if (!el) return; el.focus(); window.dispatchEvent(new CustomEvent("factpos-teclado", { detail: el })); }}>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6" />
+      </svg>
+    </button>
+  );
+}

@@ -1210,3 +1210,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 /* Caja clásica: todas las funciones visibles en el panel derecho (Cerrar turno al final) */
 .pos-hibrido:not(.con-catalogo) .pv-cobro .pv-atajos-fijos { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; grid-auto-rows: 46px; gap: 6px 8px; align-content: start; }
 .pos-hibrido:not(.con-catalogo) .pv-cobro .pv-atajos-fijos button { height: 46px; min-height: 46px; font-size: 14px; }
+
+/* Botón de teclado en pantalla junto a la lupa de búsqueda (Caja táctil y clásica) */
+.btn-teclado { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 40px; padding: 0; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel); color: var(--texto); cursor: pointer; }
+.btn-teclado:active { background: var(--primario); color: var(--texto-sobre-primario, #fff); border-color: var(--primario); }
+.pv-escaner .pv-btn-teclado { align-self: center; height: 40px; margin-right: 8px; }
+.buscador .btn-teclado { width: 40px; height: 36px; }
