@@ -617,6 +617,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           <Icono n="codigo" />
           <input
             ref={entrada}
+            data-listo-enter=""
             data-teclado="tactil"
             value={codigo}
             aria-label="Código de barras, código o nombre del producto"
@@ -1228,7 +1229,7 @@ function CeldaCantidad({ linea, onMenos, onMas, onFijar, onListo }: {
   return (
     <span className="celda-cantidad" onClick={(e) => e.stopPropagation()}>
       <button type="button" aria-label="Uno menos" onClick={onMenos}>−</button>
-      <input inputMode="numeric" aria-label={`Cantidad de ${linea.prod.nombre}`} value={valor}
+      <input inputMode="numeric" data-listo-enter="" aria-label={`Cantidad de ${linea.prod.nombre}`} value={valor}
         onChange={(e) => setValor(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
         onFocus={(e) => e.target.select()}
         onBlur={confirmar}
