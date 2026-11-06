@@ -12,6 +12,8 @@ Ctrl+Alt+Supr no se puede bloquear desde un programa (es una protección de Wind
 bloqueo total, usar además "Acceso asignado" de Windows.
 """
 import ctypes
+import hashlib
+import hmac
 import json
 import os
 import platform
@@ -376,27 +378,70 @@ class Kiosco:
         return json.dumps(sorted({ip.rsplit(".", 1)[0] for ip in ips
                                   if ip.count(".") == 3 and not ip.startswith(("127.", "169.254."))}))
 
+    # Sin conexión con el servidor no se puede validar el PIN allá: se acepta uno que ESTE equipo ya validó antes
+    # con el servidor (se guarda solo su huella con sal, nunca el PIN). Si el servidor lo rechaza después, se olvida.
+    @staticmethod
+    def _huella(pin, sal):
+        return hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"), sal, 100_000).hex()
+
+    def _pin_recordado(self, pin):
+        for e in leer_config().get("pines") or []:
+            try:
+                if hmac.compare_digest(self._huella(pin, bytes.fromhex(e["s"])), e["h"]):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _recordar_pin(self, pin):
+        try:
+            if self._pin_recordado(pin):
+                return
+            c = leer_config()
+            sal = os.urandom(16)
+            c["pines"] = ((c.get("pines") or []) + [{"s": sal.hex(), "h": self._huella(pin, sal)}])[-5:]
+            guardar_config(c)
+        except Exception:
+            pass
+
+    def _olvidar_pin(self, pin):
+        try:
+            c = leer_config()
+            antes = c.get("pines") or []
+            c["pines"] = [e for e in antes if not hmac.compare_digest(self._huella(pin, bytes.fromhex(e["s"])), e["h"])]
+            if len(c["pines"]) != len(antes):
+                guardar_config(c)
+        except Exception:
+            pass
+
     def _comprobar_pin(self, pin):
         """El PIN de un supervisor o administrador de FactPOS, validado por el servidor de la sucursal.
-        Devuelve "ok", "incorrecta", "sin_conexion" o el texto que mande el servidor."""
+        Devuelve "ok", "incorrecta", "sin_conexion" o el texto que mande el servidor.
+        Si no hay conexión, vale un PIN que este equipo ya validó antes con el servidor."""
         sv = leer_config().get("servidor") or ""
-        if not sv or not isinstance(pin, str) or not re.match(r"^\d{4,8}$", pin):
+        if not isinstance(pin, str) or not re.match(r"^\d{4,8}$", pin):
             return "incorrecta"
+        if not sv:
+            return "ok" if self._pin_recordado(pin) else "incorrecta"
         try:
             u = urllib.parse.urlparse(sv)
             pedido = urllib.request.Request(f"{u.scheme}://{u.netloc}/verificador/autorizar-salida",
                                             data=json.dumps({"pin": pin}).encode("utf-8"),
                                             headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(pedido, timeout=8) as r:
-                return "ok" if r.status == 200 else "sin_conexion"
+                if r.status == 200:
+                    self._recordar_pin(pin)
+                    return "ok"
+                return "ok" if self._pin_recordado(pin) else "sin_conexion"
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
+                self._olvidar_pin(pin)
                 return "incorrecta"
             if e.code == 429:
                 return "Demasiados intentos: espere unos minutos."
-            return "sin_conexion"
+            return "ok" if self._pin_recordado(pin) else "sin_conexion"
         except Exception:
-            return "sin_conexion"
+            return "ok" if self._pin_recordado(pin) else "sin_conexion"
 
     def verificarClave(self, pin):
         return self._comprobar_pin(pin)
@@ -408,7 +453,9 @@ class Kiosco:
             return "Escriba una dirección válida, por ejemplo http://192.168.1.10:3000/verificador"
         if leer_config().get("servidor"):
             return "Este equipo ya tiene un servidor: para cambiarlo use ⓘ › Cambiar de servidor."
-        guardar_config({"servidor": v})
+        c = leer_config()
+        c["servidor"] = v
+        guardar_config(c)
         if self._ventana:
             self._ventana.load_url(v)
         return ""
@@ -418,6 +465,7 @@ class Kiosco:
             return False
         c = leer_config()
         c.pop("servidor", None)
+        c.pop("pines", None)     # los PIN eran del servidor anterior
         guardar_config(c)
         if self._ventana:
             self._ventana.load_url(url_config())

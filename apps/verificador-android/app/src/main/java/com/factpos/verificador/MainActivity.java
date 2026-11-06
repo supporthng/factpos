@@ -71,10 +71,54 @@ public class MainActivity extends Activity {
     private boolean vigilar() { return !saliendo; }
 
     // ------------------------------------------------------------ clave de salida = PIN de un supervisor o administrador
-    /** "ok" | "incorrecta" | "sin_conexion" | texto del servidor (p. ej. demasiados intentos). Se llama desde el hilo del puente, no de la pantalla. */
+    // Sin conexión con el servidor no se puede validar el PIN allá: vale uno que ESTE equipo ya validó antes con el servidor
+    // (se guarda solo su huella con sal, nunca el PIN). Si el servidor lo rechaza después, se olvida.
+    private static String hex(byte[] b) { StringBuilder x = new StringBuilder(); for (byte y : b) x.append(String.format("%02x", y)); return x.toString(); }
+    private static String huella(String pin, byte[] sal) throws Exception {
+        return hex(javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1")
+                .generateSecret(new javax.crypto.spec.PBEKeySpec(pin.toCharArray(), sal, 20000, 256)).getEncoded());
+    }
+    private static byte[] deHex(String h) { byte[] r = new byte[h.length() / 2]; for (int i = 0; i < r.length; i++) r[i] = (byte) Integer.parseInt(h.substring(2 * i, 2 * i + 2), 16); return r; }
+    private org.json.JSONArray pinesGuardados() {
+        try { return new org.json.JSONArray(prefs().getString("pines", "[]")); } catch (Exception e) { return new org.json.JSONArray(); }
+    }
+    private boolean pinRecordado(String pin) {
+        try {
+            org.json.JSONArray a = pinesGuardados();
+            for (int i = 0; i < a.length(); i++) {
+                org.json.JSONObject e = a.getJSONObject(i);
+                if (java.security.MessageDigest.isEqual(huella(pin, deHex(e.getString("s"))).getBytes(StandardCharsets.UTF_8), e.getString("h").getBytes(StandardCharsets.UTF_8))) return true;
+            }
+        } catch (Exception e) { }
+        return false;
+    }
+    private void recordarPin(String pin) {
+        try {
+            if (pinRecordado(pin)) return;
+            byte[] sal = new byte[16]; new java.security.SecureRandom().nextBytes(sal);
+            org.json.JSONArray a = pinesGuardados(), n = new org.json.JSONArray();
+            for (int i = Math.max(0, a.length() - 4); i < a.length(); i++) n.put(a.get(i));
+            n.put(new JSONObject().put("s", hex(sal)).put("h", huella(pin, sal)));
+            prefs().edit().putString("pines", n.toString()).apply();
+        } catch (Exception e) { }
+    }
+    private void olvidarPin(String pin) {
+        try {
+            org.json.JSONArray a = pinesGuardados(), n = new org.json.JSONArray();
+            for (int i = 0; i < a.length(); i++) {
+                org.json.JSONObject e = a.getJSONObject(i);
+                if (!java.security.MessageDigest.isEqual(huella(pin, deHex(e.getString("s"))).getBytes(StandardCharsets.UTF_8), e.getString("h").getBytes(StandardCharsets.UTF_8))) n.put(e);
+            }
+            prefs().edit().putString("pines", n.toString()).apply();
+        } catch (Exception e) { }
+    }
+
+    /** "ok" | "incorrecta" | "sin_conexion" | texto del servidor (p. ej. demasiados intentos). Se llama desde el hilo del puente, no de la pantalla.
+     *  Sin conexión vale un PIN que este equipo ya validó antes con el servidor. */
     private String comprobarPin(String pin) {
         String sv = servidor();
-        if (sv.isEmpty() || pin == null || !pin.matches("\\d{4,8}")) return "incorrecta";
+        if (pin == null || !pin.matches("\\d{4,8}")) return "incorrecta";
+        if (sv.isEmpty()) return pinRecordado(pin) ? "ok" : "incorrecta";
         try {
             Uri u = Uri.parse(sv);
             HttpURLConnection c = (HttpURLConnection) new URL(u.getScheme() + "://" + u.getAuthority() + "/verificador/autorizar-salida").openConnection();
@@ -85,11 +129,11 @@ public class MainActivity extends Activity {
             c.setRequestProperty("Content-Type", "application/json");
             try (OutputStream o = c.getOutputStream()) { o.write(new JSONObject().put("pin", pin).toString().getBytes(StandardCharsets.UTF_8)); }
             int codigo = c.getResponseCode();
-            if (codigo == 200) return "ok";
-            if (codigo == 401 || codigo == 403) return "incorrecta";
+            if (codigo == 200) { recordarPin(pin); return "ok"; }
+            if (codigo == 401 || codigo == 403) { olvidarPin(pin); return "incorrecta"; }
             if (codigo == 429) return "Demasiados intentos: espere unos minutos.";
-            return "sin_conexion";
-        } catch (Exception e) { return "sin_conexion"; }
+            return pinRecordado(pin) ? "ok" : "sin_conexion";
+        } catch (Exception e) { return pinRecordado(pin) ? "ok" : "sin_conexion"; }
     }
     private boolean claveOk(String pin) { return "ok".equals(comprobarPin(pin)); }
 
@@ -421,7 +465,7 @@ public class MainActivity extends Activity {
         /** Con el PIN de un supervisor o administrador: olvida el servidor y vuelve a la pantalla de configuración. */
         @JavascriptInterface public boolean cambiarServidor(String clave) {
             if (!claveOk(clave)) return false;
-            prefs().edit().remove("servidor").apply();
+            prefs().edit().remove("servidor").remove("pines").apply();
             hilo.post(() -> { if (web != null) web.loadUrl(CONFIG); });
             return true;
         }
