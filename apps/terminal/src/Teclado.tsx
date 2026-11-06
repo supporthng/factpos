@@ -137,12 +137,13 @@ export function TecladoPantalla() {
     const r = campo.getBoundingClientRect(); const w = c.offsetWidth, h = c.offsetHeight;
     const margen = 10;
     if (manual.current && pos) { setPos({ x: Math.min(Math.max(0, pos.x), innerWidth - w), y: Math.min(Math.max(0, pos.y), innerHeight - h) }); return; }
-    const abajo = r.top + r.height / 2 < innerHeight / 2;
-    const x = Math.max(0, Math.round((innerWidth - w) / 2));   // siempre centrado horizontalmente
-    const y = abajo ? innerHeight - h - margen : margen;
+    void r; void margen;
+    // Siempre al centro de la pantalla (numérico o alfanumérico); se puede arrastrar mientras está abierto
+    const x = Math.max(0, Math.round((innerWidth - w) / 2));
+    const y = Math.max(0, Math.round((innerHeight - h) / 2));
     setPos({ x, y });
   }, [campo, pos]);
-  useEffect(() => { if (campo) requestAnimationFrame(colocar); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [campo]);
+  useEffect(() => { if (campo) { manual.current = false; requestAnimationFrame(colocar); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [campo]);
 
   if (!campo) return null;
   const modo = modoDe(campo);
@@ -171,7 +172,7 @@ export function TecladoPantalla() {
 
   return (
     <div ref={caja} data-teclado-pantalla className={"teclado-pantalla " + (modo === "abc" ? "abc" : "num")}
-      style={pos ? { left: pos.x, top: pos.y } : { left: "50%", bottom: 10, transform: "translateX(-50%)" }}
+      style={pos ? { left: pos.x, top: pos.y } : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
       onMouseDown={sinFoco} role="group" aria-label="Teclado en pantalla">
       <div className="tp-barra" onPointerDown={arrastrar}>
         <span>⠿ Teclado</span>
