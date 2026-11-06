@@ -578,7 +578,9 @@ Section "FactPOS" SecPrincipal
           CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
           CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
           CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
-          Delete "$SMSTARTUP\FactPOS Caja.lnk"
+          ; Se abren solas al iniciar Windows (el servidor arranca antes; las apps reintentan hasta que responda)
+          CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          CreateShortCut "$SMSTARTUP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
         ${EndIf}
       ${Else}
         StrCpy $Fallo "1"
@@ -621,13 +623,15 @@ Section "FactPOS" SecPrincipal
         ${If} $Tipo == "caja"
           ${If} $Servidor != ""
             CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=$Servidor"
+            CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=$Servidor"
           ${Else}
             CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja"
+            CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja"
           ${EndIf}
-          Delete "$SMSTARTUP\FactPOS Caja.lnk"
         ${Else}
           CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=$Destino"
           CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=$Destino"
+          CreateShortCut "$SMSTARTUP\FactPOS Administración.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=$Destino"
         ${EndIf}
       ${Else}
         StrCpy $Fallo "1"
@@ -756,6 +760,7 @@ Section "Uninstall"
   SetShellVarContext current
   Delete "$DESKTOP\FactPOS Caja.lnk"
   Delete "$SMSTARTUP\FactPOS Caja.lnk"
+  Delete "$SMSTARTUP\FactPOS Administración.lnk"
   Delete "$DESKTOP\FactPOS Administración.lnk"
   Delete "$SMPROGRAMS\FactPOS Administración.lnk"
 
