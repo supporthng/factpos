@@ -1239,3 +1239,7 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Catálogo grande en cajas modestas: lo que está fuera de la pantalla no se calcula ni se pinta hasta que se desplaza hasta ahí */
 .rejilla .tarjeta-producto { content-visibility: auto; contain-intrinsic-size: auto 210px; }
+
+/* Lo escrito, visible encima de las teclas del teclado en pantalla (el teclado puede tapar el campo) */
+.tp-pantalla { min-height: 40px; margin: 0 10px 8px; padding: 6px 12px; border-radius: 10px; background: var(--panel-2, #eef2f6); color: var(--texto); font-size: 24px; font-weight: 700; letter-spacing: 2px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-pantalla .tp-vacio { font-size: 14px; font-weight: 500; letter-spacing: 0; color: var(--suave); }

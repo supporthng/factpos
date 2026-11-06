@@ -145,6 +145,16 @@ export function TecladoPantalla() {
   }, [campo, pos]);
   useEffect(() => { if (campo) { manual.current = false; requestAnimationFrame(colocar); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [campo]);
 
+  // Lo escrito se muestra encima de las teclas: el teclado puede quedar sobre el propio campo y taparlo
+  const [texto, setTexto] = useState("");
+  useEffect(() => {
+    if (!campo) return;
+    const f = () => setTexto(campo.value);
+    f();
+    campo.addEventListener("input", f);
+    return () => campo.removeEventListener("input", f);
+  }, [campo]);
+
   if (!campo) return null;
   const modo = modoDe(campo);
   const cerrar = () => { try { campo.blur(); } catch { /* nada */ } setCampo(null); };
@@ -178,6 +188,7 @@ export function TecladoPantalla() {
         <span>⠿ Teclado</span>
         <button type="button" className="tp-cerrar" onClick={cerrar}>Cerrar</button>
       </div>
+      <div className="tp-pantalla" aria-live="polite">{texto ? (campo.type === "password" ? "•".repeat(texto.length) : texto) : <span className="tp-vacio">{campo.placeholder || "…"}</span>}</div>
       {modo === "abc" ? (
         <div className="tp-filas">
           {FILAS_ABC.map((f, i) => (
@@ -210,7 +221,7 @@ export function TecladoPantalla() {
           <div className="tp-fila">
             <button type="button" className="tp-tecla tp-ancha" onClick={() => tecla("0")}>0</button>
             <button type="button" className="tp-tecla" disabled={modo === "num"} onClick={() => tecla("00")}>00</button>
-            <button type="button" className="tp-tecla tp-listo" onClick={() => { if (campo.hasAttribute("data-pin-flotante")) enter(); cerrar(); }}>Listo</button>
+            <button type="button" className="tp-tecla tp-listo" onClick={() => { if (campo.hasAttribute("data-pin-flotante") || campo.hasAttribute("data-listo-enter")) enter(); cerrar(); }}>Listo</button>
           </div>
         </div>
       )}

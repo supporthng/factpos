@@ -66,6 +66,7 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
           <input
             ref={buscador}
             data-entrada-principal
+            data-listo-enter=""
             data-teclado="tactil"
             value={q}
             placeholder="Buscar producto"
