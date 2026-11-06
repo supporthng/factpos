@@ -1219,3 +1219,14 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Precio de la línea: doble clic / doble toque abre los 3 precios (con autorización) */
 .pv-precio-editable { cursor: pointer; text-decoration: underline dotted color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+
+/* Verificador de precios: ficha grande con nombre y precio del producto escaneado o buscado */
+.consulta-ficha { text-align: center; padding: 14px 12px; margin: 10px 0; border: 1px solid var(--borde); border-radius: 14px; background: var(--panel-2, var(--panel)); }
+.consulta-ficha .cf-nombre { font-size: clamp(18px, 3.2vw, 28px); font-weight: 800; line-height: 1.15; }
+.consulta-ficha .cf-nombre span { font-weight: 500; font-size: .6em; color: var(--suave); }
+.consulta-ficha .cf-precio { font-size: clamp(40px, 8vw, 72px); font-weight: 900; line-height: 1.1; margin: 6px 0; color: var(--primario); font-variant-numeric: tabular-nums; }
+.consulta-ficha .cf-extra { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 15px; color: var(--suave); }
+.consulta-ficha .cf-extra b { color: var(--texto); }
+.consulta-ficha .sin-stock { color: var(--error); }
+.entrada-texto.centrado { text-align: center; }
+.resultados[hidden] { display: none; }

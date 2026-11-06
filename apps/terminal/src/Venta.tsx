@@ -1059,7 +1059,7 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar, consulta = false
   useEffect(() => { lista.current?.querySelector(".resultado.activo")?.scrollIntoView({ block: "nearest" }); }, [i]);
   return (
     <Modal titulo={consulta ? "Consultar precio" : "Buscar producto"} onCerrar={onCerrar} clase="buscar-todos">
-      <input autoFocus className="entrada-grande entrada-texto" value={q} placeholder="Escriba para filtrar por nombre, SKU, código o categoría"
+      <input autoFocus className={"entrada-grande entrada-texto" + (consulta ? " centrado" : "")} value={q} placeholder={consulta ? "Escanee o escriba el código" : "Escriba para filtrar por nombre, SKU, código o categoría"}
         onChange={(e) => { setQ(e.target.value); setI(0); }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => Math.min(res.length - 1, x + 1)); }
@@ -1067,8 +1067,23 @@ function Buscar({ catalogo, inicial, nivel, onElegir, onCerrar, consulta = false
           if (e.key === "PageDown") { e.preventDefault(); setI((x) => Math.min(res.length - 1, x + 10)); }
           if (e.key === "PageUp") { e.preventDefault(); setI((x) => Math.max(0, x - 10)); }
           if (e.key === "Enter" && res[i] && !consulta) onElegir(res[i]);
+          if (e.key === "Enter" && consulta) e.currentTarget.select(); // listo para escanear el siguiente
         }} />
-      <div className="resultados" ref={lista}>
+      {consulta && q.trim() && res[i] && (() => {
+        // Verificador de precios: al escanear o escribir un producto se muestra grande su nombre y su precio
+        const p = res[i];
+        const ex = p.controlaStock ? Number(p.existencia ?? 0) : null;
+        return (
+          <div className="consulta-ficha" aria-live="polite">
+            <div className="cf-nombre">{p.nombre} <span>{p.presentacion}</span></div>
+            <div className="cf-precio">{rd(precioPara(p, nivel, catalogo.nivelPredeterminado).precio ?? 0)}</div>
+            <div className="cf-extra">
+              <span className={ex != null && ex <= 0 ? "sin-stock" : ""}>Existencia: <b>{ex == null ? "—" : ex}</b></span>
+            </div>
+          </div>
+        );
+      })()}
+      <div className="resultados" ref={lista} hidden={consulta}>
         <div className="res-cab"><span>Producto</span><span>Categoría</span><span>SKU</span><span className="der">Existencia</span><span className="der">Precio</span></div>
         {res.map((p, j) => {
           const ex = p.controlaStock ? Number(p.existencia ?? 0) : null;
