@@ -432,6 +432,60 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     }
   });
 
+  // ---- Fotos por código de barras (Open Food Facts): se buscan, se revisan una a una y solo entonces se guardan ----
+  /** Productos activos sin foto que tienen un código de barras numérico (8 a 14 dígitos). */
+  app.get("/central/productos/fotos/pendientes", async (req) => {
+    const r = await pool.query<{ id: string; sku: string; nombre: string; marca: string | null; barras: string }>(
+      `SELECT p.id, p.sku, p.nombre, p.marca, cb.codigo AS barras
+         FROM productos p
+         JOIN LATERAL (SELECT c.codigo FROM presentaciones pr JOIN codigos_barra c ON c.presentacion_id = pr.id AND c.activo
+                        WHERE pr.producto_id = p.id AND c.codigo ~ '^[0-9]{8,14}$'
+                        ORDER BY pr.es_principal DESC, pr.factor, c.codigo LIMIT 1) cb ON TRUE
+        WHERE p.empresa_id = $1 AND p.activo AND p.imagen IS NULL AND p.tipo <> 'COMBO'
+        ORDER BY p.nombre LIMIT 1500`, [empresaDe(req)]);
+    return r.rows;
+  });
+
+  /** Foto de Open Food Facts para ese código exacto (nunca por nombre), ya descargada como imagen para guardarla en el producto. */
+  app.get("/central/productos/fotos/sugerencia/:codigo", async (req) => {
+    const { codigo } = z.object({ codigo: z.string().regex(/^\d{8,14}$/, "Código inválido") }).parse(req.params);
+    const vacio = (motivo: string) => ({ imagen: null as string | null, motivo, nombre: null as string | null });
+    try {
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${codigo}.json?fields=code,product_name,product_name_es,brands,quantity,image_front_url,image_front_small_url`, {
+        headers: { "user-agent": "FactPOS/1.0" }, signal: AbortSignal.timeout(6000),
+      });
+      const d: any = await r.json();
+      if (d?.status !== 1) return vacio("no está en Open Food Facts");
+      const pr = d.product ?? {};
+      if (pr.code && String(pr.code).replace(/^0+/, "") !== codigo.replace(/^0+/, "")) return vacio("el código no coincide");
+      const nombre = [pr.product_name_es || pr.product_name, pr.quantity].filter(Boolean).join(" ") || null;
+      for (const url of [pr.image_front_url, pr.image_front_small_url]) {
+        if (typeof url !== "string") continue;
+        let u: URL;
+        try { u = new URL(url); } catch { continue; }
+        if (u.protocol !== "https:" || !/(^|\.)openfoodfacts\.org$/.test(u.hostname)) continue;
+        const img = await fetch(u, { headers: { "user-agent": "FactPOS/1.0" }, signal: AbortSignal.timeout(8000) });
+        const tipo = (img.headers.get("content-type") ?? "").split(";")[0].trim();
+        if (!img.ok || !/^image\/(jpeg|png|webp)$/.test(tipo)) continue;
+        const bytes = Buffer.from(await img.arrayBuffer());
+        if (bytes.length > 280_000) continue;   // si es muy pesada se intenta la versión pequeña
+        return { imagen: `data:${tipo};base64,${bytes.toString("base64")}`, motivo: null, nombre };
+      }
+      return { ...vacio(pr.image_front_url ? "la foto es muy pesada" : "sin foto frontal"), nombre };
+    } catch {
+      return vacio("sin conexión con Open Food Facts");
+    }
+  });
+
+  /** Guarda la foto aprobada. Solo si el producto sigue sin foto: nunca pisa una que alguien ya puso. */
+  app.put("/central/productos/:id/imagen", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const { imagen } = z.object({ imagen: z.string().regex(/^data:image\//).max(400000, "La imagen es muy pesada") }).parse(req.body);
+    const r = await pool.query("UPDATE productos SET imagen = $3 WHERE id = $1 AND empresa_id = $2 AND imagen IS NULL", [id, empresaDe(req), imagen]);
+    if (!r.rowCount) throw new ErrorNegocio("El producto ya tiene foto o no existe", 409);
+    return { ok: true };
+  });
+
   /** Precios 2 y 3 como % de descuento sobre el precio 1 (se definen una vez para toda la empresa) */
   app.put("/central/niveles-precio", async (req) => {
     const b = z.object({ nivel2: z.number().min(0).max(90), nivel3: z.number().min(0).max(90) }).parse(req.body);

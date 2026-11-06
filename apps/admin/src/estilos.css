@@ -1253,3 +1253,17 @@ textarea { line-height: 1.35; }
 /* Precios 2 y 3 automáticos (descuento global sobre el precio 1) */
 .etiqueta-auto { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--primario-suave); color: var(--primario); }
 .tabla-edicion input.auto::placeholder { color: var(--texto); opacity: .8; font-style: italic; }
+
+/* Buscar fotos de productos por código de barras */
+.fotos-modal { display: flex; flex-direction: column; gap: 10px; }
+.fotos-cab { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.fotos-cab h2 { margin: 0 0 4px; }
+.fotos-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 0; }
+.fotos-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.foto-tarjeta { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 2px solid var(--borde); border-radius: 12px; cursor: pointer; background: var(--panel); }
+.foto-tarjeta.marcada { border-color: var(--primario); }
+.foto-tarjeta img { width: 100%; height: 120px; object-fit: contain; background: #fff; border-radius: 8px; }
+.foto-tarjeta input { position: absolute; top: 12px; left: 12px; width: 20px; height: 20px; }
+.foto-nombre { font-weight: 700; font-size: 13px; line-height: 1.2; }
+.foto-off { font-size: 11px; line-height: 1.2; }
+.fotos-sin ul { max-height: 160px; overflow: auto; margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
