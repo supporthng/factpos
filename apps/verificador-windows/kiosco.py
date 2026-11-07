@@ -59,6 +59,7 @@ def ya_abierta():
 # --------------------------------------------------------------------------- bloqueo de teclas
 WH_KEYBOARD_LL = 13
 LLKHF_ALTDOWN = 0x20
+LLKHF_INJECTED = 0x10   # teclas que manda otro programa (AnyDesk): no son del cliente
 VK_TAB, VK_ESCAPE, VK_SPACE, VK_F4 = 0x09, 0x1B, 0x20, 0x73
 VK_LWIN, VK_RWIN, VK_APPS, VK_CONTROL, VK_SHIFT = 0x5B, 0x5C, 0x5D, 0x11, 0x10
 WM_QUIT = 0x0012
@@ -107,7 +108,7 @@ class Teclado:
             datos = ctypes.cast(lparam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
             ctrl = bool(user32.GetAsyncKeyState(VK_CONTROL) & 0x8000)
             shift = bool(user32.GetAsyncKeyState(VK_SHIFT) & 0x8000)
-            if tecla_bloqueada(datos.vkCode, datos.flags, ctrl, shift):
+            if not (datos.flags & LLKHF_INJECTED) and tecla_bloqueada(datos.vkCode, datos.flags, ctrl, shift):
                 return 1
         return user32.CallNextHookEx(self._gancho, codigo, wparam, lparam)
 
@@ -207,6 +208,57 @@ kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 TITULO_VENTANA = "Verificador FactPOS"
 
 
+# Soporte remoto: mientras AnyDesk tenga una ventana a la vista (la solicitud de conexión o la sesión abierta) el escudo no le
+# quita el foco ni se pone encima. En reposo AnyDesk no tiene ventanas, así que el cliente no puede abrirlo.
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+kernel32.OpenProcess.restype = wintypes.HANDLE
+kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+
+def _es_anydesk(hwnd):
+    try:
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if not h:
+            return False
+        try:
+            buf = ctypes.create_unicode_buffer(520)
+            n = wintypes.DWORD(520)
+            if not kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)):
+                return False
+            return os.path.basename(buf.value).lower().startswith("anydesk")
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        return False
+
+
+def ventanas_anydesk():
+    """Ventanas visibles (con título) de AnyDesk."""
+    halladas = []
+
+    def cada(hwnd, _):
+        try:
+            if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0 and _es_anydesk(hwnd):
+                halladas.append(hwnd)
+        except Exception:
+            pass
+        return True
+
+    try:
+        user32.EnumWindows(WNDENUMPROC(cada), 0)
+    except Exception:
+        pass
+    return halladas
+
+
 class Escudo:
     """Mantiene la ventana del verificador al frente y con el foco: los avisos de Windows (reinicio por actualizaciones,
     notificaciones, otras apps) quedan debajo y no reciben toques. Solo actúa cuando el equipo ya tiene servidor
@@ -214,6 +266,7 @@ class Escudo:
 
     def __init__(self):
         self._activo = False
+        self._vistas_anydesk = set()
 
     def iniciar(self):
         if self._activo:
@@ -233,6 +286,17 @@ class Escudo:
                 hwnd = user32.FindWindowW(None, TITULO_VENTANA)
                 if not hwnd or not user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
                     continue
+                anydesk = ventanas_anydesk()
+                if anydesk:
+                    # Soporte remoto en curso (solicitud de conexión o sesión): se deja pasar. Una ventana nueva se trae al frente una vez
+                    nuevas = [w for w in anydesk if w not in self._vistas_anydesk]
+                    self._vistas_anydesk = set(anydesk)
+                    if nuevas:
+                        for w in nuevas:
+                            user32.SetWindowPos(w, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+                        self._tomar_foco(nuevas[0], user32.GetForegroundWindow())
+                    continue
+                self._vistas_anydesk = set()
                 if user32.IsIconic(hwnd):
                     user32.ShowWindow(hwnd, SW_RESTORE)
                 # Por encima de todo, también de otras ventanas «siempre visibles»
