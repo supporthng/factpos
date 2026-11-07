@@ -572,8 +572,10 @@ Section "FactPOS" SecPrincipal
     ; Sustituir los accesos creados por los scripts antiguos por Electron.
     ${If} $Fallo == "0"
       ${If} ${FileExists} "$PLUGINSDIR\paquete\escritorio\FactPOS-Escritorio.exe"
+        ; La aplicación va descomprimida (carpeta): el .exe portable se descomprimía en %TEMP% en cada apertura y tardaba ~1 minuto
+        RMDir /r "$INSTDIR\escritorio"
         CreateDirectory "$INSTDIR\escritorio"
-        CopyFiles /SILENT "$PLUGINSDIR\paquete\escritorio\FactPOS-Escritorio.exe" "$INSTDIR\escritorio\FactPOS-Escritorio.exe"
+        CopyFiles /SILENT "$PLUGINSDIR\paquete\escritorio\*.*" "$INSTDIR\escritorio"
         ; Administración ve este equipo en la red (UDP 41236 Caja / 41237 Administración), solo desde la red local
         nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Get-NetFirewallRule -DisplayName 'FactPOS equipo en la red' -ErrorAction SilentlyContinue | Remove-NetFirewallRule; New-NetFirewallRule -DisplayName 'FactPOS equipo en la red' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 41236,41237 -RemoteAddress LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -Profile Any | Out-Null"`
         Pop $0
@@ -597,7 +599,9 @@ Section "FactPOS" SecPrincipal
     File "${PAQUETE}\instalador\instalar-caja.ps1"
     File "${PAQUETE}\instalador\instalar-administracion.ps1"
     File "${PAQUETE}\instalador\factpos.ico"
-    File /oname=FactPOS-Escritorio.exe "${PAQUETE}\escritorio\FactPOS-Escritorio.exe"
+    SetOutPath "$PLUGINSDIR\escritorio"
+    File /r "${PAQUETE}\escritorio\*.*"
+    SetOutPath "$PLUGINSDIR\instalador"
     ${If} $Tipo == "caja"
       StrCpy $2 "-NoInteractivo"
       ${If} $Servidor != ""
@@ -620,9 +624,10 @@ Section "FactPOS" SecPrincipal
       !insertmacro Ejecutar "$PLUGINSDIR\instalador\instalar-administracion.ps1" "-Url '$Destino' -NoInteractivo"
     ${EndIf}
     ${If} $Fallo == "0"
-      ${If} ${FileExists} "$PLUGINSDIR\instalador\FactPOS-Escritorio.exe"
+      ${If} ${FileExists} "$PLUGINSDIR\escritorio\FactPOS-Escritorio.exe"
+        RMDir /r "$LOCALAPPDATA\FactPOS\escritorio"
         CreateDirectory "$LOCALAPPDATA\FactPOS\escritorio"
-        CopyFiles /SILENT "$PLUGINSDIR\instalador\FactPOS-Escritorio.exe" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe"
+        CopyFiles /SILENT "$PLUGINSDIR\escritorio\*.*" "$LOCALAPPDATA\FactPOS\escritorio"
         ${If} $Tipo == "caja"
           ${If} $Servidor != ""
             CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=$Servidor"

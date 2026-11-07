@@ -5,7 +5,7 @@
 // migraciones, las dependencias de producción (todas en JavaScript puro, así
 // que sirven en Windows aunque se armen en Linux) y los instaladores.
 import { execSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,15 +35,17 @@ for (const nombre of readdirSync(join(raiz, "instalador"))) {
 // Código de la ventana de escritorio, para que el servidor se lo ofrezca a las cajas (se actualizan solas, sin reinstalar)
 mkdirSync(join(dir, "instalador/escritorio-codigo"), { recursive: true });
 for (const f of ["app.cjs", "preload.cjs", "actualizando.html"]) cpSync(join(raiz, "instalador/escritorio", f), join(dir, "instalador/escritorio-codigo", f));
-// El ejecutable Electron se compila antes de empaquetar, en una carpeta fuera de paquete/.
-const escritorioDir = join(raiz, "instalador/escritorio/out");
-const ejecutables = existsSync(escritorioDir) ? readdirSync(escritorioDir).filter(n => /^FactPOS-Escritorio-.*\.exe$/i.test(n)) : [];
-if (process.env.FACTPOS_REQUIERE_ESCRITORIO === "1" && ejecutables.length !== 1) {
-  throw new Error("Falta el ejecutable Electron para el instalador. Compílelo primero.");
+// La aplicación Electron se compila antes de empaquetar, en una carpeta fuera de paquete/. Va DESCOMPRIMIDA (carpeta con su .exe):
+// el .exe «portable» se descomprimía en %TEMP% (~200 MB, revisado por el antivirus) en cada apertura y la Caja tardaba ~1 minuto en aparecer.
+const escritorioDir = join(raiz, "instalador/escritorio/out/win-unpacked");
+const exeEscritorio = existsSync(escritorioDir) ? readdirSync(escritorioDir).find(n => /^FactPOS[ -]Escritorio\.exe$/i.test(n)) : undefined;
+if (process.env.FACTPOS_REQUIERE_ESCRITORIO === "1" && !exeEscritorio) {
+  throw new Error("Falta la aplicación Electron para el instalador. Compílela primero.");
 }
-if (ejecutables.length === 1) {
+if (exeEscritorio) {
   mkdirSync(join(dir, "escritorio"), { recursive: true });
-  cpSync(join(escritorioDir, ejecutables[0]), join(dir, "escritorio/FactPOS-Escritorio.exe"));
+  cpSync(escritorioDir, join(dir, "escritorio"), { recursive: true });
+  if (exeEscritorio !== "FactPOS-Escritorio.exe") renameSync(join(dir, "escritorio", exeEscritorio), join(dir, "escritorio/FactPOS-Escritorio.exe"));
 }
 
 rmSync(join(dir, "instalador/setup"), { recursive: true, force: true }); // fuentes del setup.exe (no van en el paquete)
