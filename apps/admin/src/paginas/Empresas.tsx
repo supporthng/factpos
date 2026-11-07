@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api, fijarSesion, sesionActual } from "../api";
 import { Aviso, useDatos } from "../ui";
 
@@ -8,6 +8,33 @@ async function pasarA(id: string) {
   const r = await api<{ token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>("/central/empresas/cambiar", { cuerpo: { empresaId: id } });
   fijarSesion({ ...sesionActual(), token: r.token, empresaId: r.empresa.id, empresa: r.empresa.nombre, usuarioId: r.usuario.id, nombre: r.usuario.nombre, permisos: r.usuario.permisos, sucursales: null });
   location.reload();
+}
+
+/** Color propio de cada empresa (sale de su id, siempre el mismo): así se nota de un vistazo en cuál se está trabajando. */
+export function colorEmpresa(id: string) {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 65% 42%)`;
+}
+
+/** Con más de una empresa enlazada: nombre y RNC de la empresa activa con su color, y un borde del mismo color en toda la página. */
+export function FranjaEmpresa() {
+  const { datos } = useDatos<EmpresaGrupo[]>("/central/empresas");
+  const activa = datos && datos.length > 1 ? datos.find((e) => e.actual) : undefined;
+  useEffect(() => {
+    if (!activa) return;
+    const anterior = document.body.style.borderTop;
+    document.body.style.borderTop = `5px solid ${colorEmpresa(activa.id)}`;
+    return () => { document.body.style.borderTop = anterior; };
+  }, [activa?.id]);
+  if (!activa) return null;
+  const color = colorEmpresa(activa.id);
+  return (
+    <span title="Empresa en la que está trabajando" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, border: `1px solid ${color}`, color, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+      <span style={{ width: 9, height: 9, borderRadius: 999, background: color, display: "inline-block" }} />
+      {activa.nombre} · RNC {activa.rnc}
+    </span>
+  );
 }
 
 /** Selector de empresa en la barra superior (solo si hay más de una enlazada). */
