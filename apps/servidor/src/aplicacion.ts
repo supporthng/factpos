@@ -29,6 +29,7 @@ import { rutasVentas } from "./rutas/ventas.js";
 import { rutasReportes } from "./rutas/reportes.js";
 import { rutasTraspasos } from "./rutas/traspasos.js";
 import { rutasVerificador } from "./rutas/verificador.js";
+import { rutasEquiposRed } from "./rutas/equipos-red.js";
 import { rutasDelivery } from "./rutas/delivery.js";
 import { rutasFacturas } from "./rutas/facturas.js";
 import { rutasCierre } from "./rutas/cierre.js";
@@ -239,6 +240,7 @@ export async function crearApp() {
   await app.register(rutasReportes);
   await app.register(rutasTraspasos);
   await app.register(rutasVerificador);
+  await app.register(rutasEquiposRed);
   await app.register(rutasDelivery);
   await app.register(rutasPedidos);
   await app.register(rutasCentralFacturas);

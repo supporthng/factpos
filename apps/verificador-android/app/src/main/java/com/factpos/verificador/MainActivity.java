@@ -104,6 +104,76 @@ public class MainActivity extends Activity {
         }, "vigilar-servidor").start();
     }
 
+    // ------------------------------------------------------------ Administración ve este equipo y puede apuntarlo al servidor
+    private static final int PUERTO_EQUIPOS = 41235;
+    private java.net.DatagramSocket socketEquipos;
+    private static boolean ipPrivada(String ip) {
+        try {
+            String[] a = ip.split("\\.");
+            int p = Integer.parseInt(a[0]), q = Integer.parseInt(a[1]);
+            return p == 10 || (p == 172 && q >= 16 && q <= 31) || (p == 192 && q == 168);
+        } catch (Exception e) { return false; }
+    }
+    /** ¿Responde un servidor FactPOS en esta dirección? */
+    private boolean esFactpos(String base) {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL(base + "/descubrir").openConnection();
+            c.setConnectTimeout(2500); c.setReadTimeout(2500);
+            if (c.getResponseCode() != 200) return false;
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[1024]; int n;
+            try (InputStream in = c.getInputStream()) { while ((n = in.read(b)) > 0 && o.size() < 20000) o.write(b, 0, n); }
+            return "FactPOS".equals(new JSONObject(o.toString("UTF-8")).optString("producto"));
+        } catch (Exception e) { return false; }
+    }
+    private JSONObject apuntar(String url, String origen) throws Exception {
+        Uri u = Uri.parse(url);
+        if (u.getScheme() == null || u.getAuthority() == null || !(u.getScheme().equals("http") || u.getScheme().equals("https")) || !ipPrivada(origen))
+            return new JSONObject().put("ok", false).put("error", "Orden no permitida");
+        String nuevo = u.getScheme() + "://" + u.getAuthority();
+        if (!esFactpos(nuevo)) return new JSONObject().put("ok", false).put("error", "En esa dirección no responde un servidor FactPOS");
+        String actual = servidor();
+        if (actual.equals(nuevo) || actual.startsWith(nuevo + "/")) return new JSONObject().put("ok", true);
+        prefs().edit().putString("servidor", nuevo + "/verificador").remove("pines").apply();   // los PIN eran del servidor anterior
+        new File(getFilesDir(), "copia_catalogo.json").delete(); new File(getFilesDir(), "copia_pagina.html").delete();
+        sinServidor = false;
+        hilo.post(() -> { if (web != null) web.loadUrl(direccion()); });
+        return new JSONObject().put("ok", true);
+    }
+    /** Contesta a Administración (UDP 41235): quién es este equipo y a qué servidor apunta; y acepta «apuntar». */
+    private void responderEquipos() {
+        new Thread(() -> {
+            try {
+                socketEquipos = new java.net.DatagramSocket(null);
+                socketEquipos.setReuseAddress(true);
+                socketEquipos.bind(new java.net.InetSocketAddress(PUERTO_EQUIPOS));
+                byte[] buf = new byte[4096];
+                while (!saliendo) {
+                    java.net.DatagramPacket in = new java.net.DatagramPacket(buf, buf.length);
+                    socketEquipos.receive(in);
+                    String origen = in.getAddress().getHostAddress();
+                    if (!ipPrivada(origen)) continue;
+                    String texto = new String(in.getData(), 0, in.getLength(), StandardCharsets.UTF_8).trim();
+                    JSONObject r = null;
+                    try {
+                        if (texto.equals("FACTPOS-EQUIPOS?")) {
+                            r = new JSONObject().put("producto", "FactPOS-equipo").put("tipo", "verificador").put("id", idEquipo())
+                                    .put("nombre", android.os.Build.MODEL).put("version", versionApp()).put("plataforma", "Android").put("servidor", servidor());
+                        } else if (texto.startsWith("FACTPOS-APUNTAR ")) {
+                            r = apuntar(new JSONObject(texto.substring(16)).optString("url"), origen);
+                        }
+                    } catch (Exception e) {
+                        try { r = new JSONObject().put("ok", false).put("error", "No se pudo aplicar"); } catch (Exception ignorada) { }
+                    }
+                    if (r != null) {
+                        byte[] salida = r.toString().getBytes(StandardCharsets.UTF_8);
+                        socketEquipos.send(new java.net.DatagramPacket(salida, salida.length, in.getAddress(), in.getPort()));
+                    }
+                }
+            } catch (Exception e) { /* sin red o puerto ocupado: simplemente no aparece en la lista */ }
+        }, "equipos-red").start();
+    }
+
     private SharedPreferences prefs() { return getSharedPreferences("config", MODE_PRIVATE); }
     private String servidor() { return prefs().getString("servidor", ""); }
     private String direccion() { String s = servidor(); return s.isEmpty() ? CONFIG : s; }
@@ -189,6 +259,7 @@ public class MainActivity extends Activity {
         setContentView(raiz);
         crearWeb();
         web.loadUrl(direccion());
+        responderEquipos();
         ocultarBarras();
         activarBloqueo();
         if (!actualizacionProgramada) { actualizacionProgramada = true; programarActualizacion(20 * 1000L); }

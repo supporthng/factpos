@@ -466,6 +466,81 @@ def _vigilar_servidor(api, empezar_en_copia=False):
             pass
 
 
+# --------------------------------------------------------------------------- Administración ve y corrige este equipo
+PUERTO_EQUIPOS = 41235
+
+
+def _ip_privada(ip):
+    try:
+        a = [int(x) for x in ip.split(".")]
+    except ValueError:
+        return False
+    return a[0] == 10 or (a[0] == 172 and 16 <= a[1] <= 31) or (a[0] == 192 and a[1] == 168)
+
+
+def _id_equipo():
+    c = leer_config()
+    if not c.get("id"):
+        c["id"] = os.urandom(8).hex()
+        guardar_config(c)
+    return c["id"]
+
+
+def _apuntar(api, base, origen):
+    """Orden de Administración: usar este servidor. Solo desde la red local y solo hacia una dirección donde responde un FactPOS."""
+    u = urllib.parse.urlparse(base)
+    if u.scheme not in ("http", "https") or not u.hostname or not _ip_privada(origen):
+        return {"ok": False, "error": "Orden no permitida"}
+    nuevo = f"{u.scheme}://{u.netloc}"
+    ident = _identidad(nuevo)
+    if not ident:
+        return {"ok": False, "error": "En esa dirección no responde un servidor FactPOS"}
+    c = leer_config()
+    viejo = c.get("servidor") or ""
+    if viejo.startswith(nuevo + "/") or viejo == nuevo:
+        return {"ok": True}
+    c["servidor"] = nuevo + "/verificador"
+    c["identidad"] = ident
+    c.pop("pines", None)     # los PIN eran del servidor anterior
+    guardar_config(c)
+    for n in ("copia_pagina.html", "copia_catalogo.json"):
+        try:
+            os.remove(os.path.join(DATOS, n))
+        except OSError:
+            pass
+    if api._ventana:
+        api._ventana.load_url(c["servidor"])
+    return {"ok": True}
+
+
+def _responder_equipos(api):
+    """Contesta a Administración (UDP 41235): quién es este equipo y a qué servidor apunta; y acepta «apuntar»."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("", PUERTO_EQUIPOS))
+    except Exception:
+        return
+    while True:
+        try:
+            datos, quien = s.recvfrom(4096)
+            texto = datos.decode("utf-8", "ignore").strip()
+            if texto == "FACTPOS-EQUIPOS?":
+                if not _ip_privada(quien[0]):
+                    continue
+                s.sendto(json.dumps({"producto": "FactPOS-equipo", "tipo": "verificador", "id": _id_equipo(),
+                                     "nombre": socket.gethostname(), "version": VERSION, "plataforma": "Windows",
+                                     "servidor": leer_config().get("servidor") or ""}).encode("utf-8"), quien)
+            elif texto.startswith("FACTPOS-APUNTAR "):
+                try:
+                    r = _apuntar(api, str(json.loads(texto[16:]).get("url", "")), quien[0])
+                except Exception as e:
+                    r = {"ok": False, "error": str(e)[:120]}
+                s.sendto(json.dumps(r).encode("utf-8"), quien)
+        except Exception:
+            time.sleep(1)
+
+
 # --------------------------------------------------------------------------- puente con las páginas
 class Kiosco:
     """Lo que las páginas (configuración y /verificador) pueden pedir (window.pywebview.api.*).
@@ -717,6 +792,7 @@ def main():
         inicio = url_config().rsplit("/", 1)[0] + "/copia"
         en_copia = True
     threading.Thread(target=_vigilar_servidor, args=(api, en_copia), name="vigilar-servidor", daemon=True).start()
+    threading.Thread(target=_responder_equipos, args=(api,), name="equipos-red", daemon=True).start()
     ventana = webview.create_window(
         "Verificador FactPOS", inicio, js_api=api,
         fullscreen=True, frameless=True, on_top=True, easy_drag=False,

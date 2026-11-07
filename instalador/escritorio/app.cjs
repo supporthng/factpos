@@ -25,7 +25,8 @@ let config = {};
 try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch {}
 const urlArg = args.find(x => x.startsWith('--servidor='));
 const PORTAL = (process.env.FACTPOS_PORTAL_URL || 'https://factpos.vercel.app').replace(/\/+$/, '');
-const localUrl = (urlArg ? urlArg.slice('--servidor='.length) : '') || process.env.FACTPOS_SERVIDOR || config.servidor || 'http://127.0.0.1:3000';
+// config.apuntado: dirección que Administración le ordenó usar (gana sobre la del acceso directo)
+let localUrl = config.apuntado || (urlArg ? urlArg.slice('--servidor='.length) : '') || process.env.FACTPOS_SERVIDOR || config.servidor || 'http://127.0.0.1:3000';
 let server;
 let endpoint;
 function saveConfig() { try { fs.mkdirSync(path.dirname(configPath), { recursive: true }); fs.writeFileSync(configPath, JSON.stringify(config, null, 2)); } catch {} }
@@ -844,6 +845,38 @@ function watchUpdates() {
   }, 2500);
   timer.unref();
 }
+// Administración ve este equipo en la red y puede apuntarlo al servidor: contesta por UDP (Caja 41236, Administración 41237)
+function responderEquipos() {
+  const puerto = selected === 'caja' ? 41236 : 41237;
+  const privada = ip => { const a = String(ip).split('.').map(Number); return a[0] === 10 || (a[0] === 172 && a[1] >= 16 && a[1] <= 31) || (a[0] === 192 && a[1] === 168); };
+  if (!config.id) { config.id = crypto.randomBytes(8).toString('hex'); saveConfig(); }
+  let s;
+  try { s = dgram.createSocket({ type: 'udp4', reuseAddr: true }); } catch { return; }
+  s.on('error', () => { try { s.close(); } catch {} });
+  s.on('message', async (msg, quien) => {
+    const texto = msg.toString('utf8').trim();
+    const enviar = o => { try { s.send(Buffer.from(JSON.stringify(o)), quien.port, quien.address); } catch {} };
+    if (!privada(quien.address)) return;
+    if (texto === 'FACTPOS-EQUIPOS?') {
+      enviar({ producto: 'FactPOS-equipo', tipo: selected, id: config.id, nombre: os.hostname(), version: app.getVersion(), plataforma: process.platform === 'win32' ? 'Windows' : process.platform,
+        servidor: config.empresa && selected === 'admin' ? PORTAL : (server ? server.origin : localUrl) });
+    } else if (texto.startsWith('FACTPOS-APUNTAR ')) {
+      try {
+        if (selected === 'admin' && config.empresa) return enviar({ ok: false, error: 'Esta Administración usa la nube de la empresa, no un servidor local' });
+        const u = new URL(String(JSON.parse(texto.slice(16)).url));
+        if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) return enviar({ ok: false, error: 'Orden no permitida' });
+        if (!(await probarHttp(u.origin, 2500))) return enviar({ ok: false, error: 'En esa dirección no responde un servidor FactPOS' });
+        if (server && server.origin === u.origin) return enviar({ ok: true });
+        config.servidor = u.origin; config.apuntado = u.origin; localUrl = u.origin; saveConfig();
+        enviar({ ok: true });
+        // Se reinicia la app para que tome la dirección nueva (la Caja la usa también para su servidor interno)
+        setTimeout(() => { try { app.relaunch(); app.exit(0); } catch {} }, 600);
+      } catch (e) { enviar({ ok: false, error: String(e && e.message || e).slice(0, 120) }); }
+    }
+  });
+  s.bind(puerto);
+}
+if (unica) app.whenReady().then(responderEquipos);
 if (unica) app.whenReady().then(start);
 let mainOpened = false;
 app.on('before-quit', () => { saliendo = true; });
