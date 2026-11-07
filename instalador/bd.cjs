@@ -38,11 +38,29 @@ const RAIZ = path.resolve(__dirname, "..");
 const ARCHIVO_CLAVE = path.join(RAIZ, "clave-respaldo.key");
 const HEX64 = /^[0-9a-fA-F]{64}$/;
 
+/** ¿Existe el archivo de la clave? Solo ENOENT significa que no existe: un EPERM/EACCES es un archivo que está pero no se deja abrir. */
+function existeClave() {
+  try { fs.statSync(ARCHIVO_CLAVE); return true; } catch (e) { if (e && e.code === "ENOENT") return false; return true; }
+}
+/** En Windows el archivo puede quedar con permisos o atributos (oculto, solo lectura) que impiden abrirlo al servicio: se devuelve el control a administradores y sistema y se reintenta. */
+function repararClave() {
+  if (process.platform !== "win32") return;
+  try { execFileSync("attrib", ["-h", "-s", "-r", ARCHIVO_CLAVE], { stdio: "ignore" }); } catch { /* sin attrib */ }
+  try { execFileSync("takeown", ["/f", ARCHIVO_CLAVE], { stdio: "ignore" }); } catch { /* sin takeown */ }
+  try { execFileSync("icacls", [ARCHIVO_CLAVE, "/grant:r", "*S-1-5-32-544:F", "*S-1-5-18:F"], { stdio: "ignore" }); } catch { /* sin icacls */ }
+}
+function conReparo(accion) {
+  try { return accion(); } catch (e) {
+    if (!e || (e.code !== "EPERM" && e.code !== "EACCES")) throw e;
+    repararClave();
+    return accion();
+  }
+}
 function claveRespaldo(crear) {
   const env = (process.env.FACTPOS_CLAVE_RESPALDO || "").trim();
   if (env) { if (!HEX64.test(env)) throw new Error("FACTPOS_CLAVE_RESPALDO no es una clave válida (64 caracteres hexadecimales)"); return Buffer.from(env, "hex"); }
-  if (fs.existsSync(ARCHIVO_CLAVE)) {
-    const t = fs.readFileSync(ARCHIVO_CLAVE, "utf8").trim();
+  if (existeClave()) {
+    const t = conReparo(() => fs.readFileSync(ARCHIVO_CLAVE, "utf8")).trim();
     if (!HEX64.test(t)) throw new Error(`El archivo ${ARCHIVO_CLAVE} no tiene una clave válida`);
     return Buffer.from(t, "hex");
   }
