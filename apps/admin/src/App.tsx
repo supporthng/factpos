@@ -37,6 +37,7 @@ const Traspasos = lazy(() => import("./paginas/Traspasos").then((m) => ({ defaul
 const Delivery = lazy(() => import("./paginas/Delivery").then((m) => ({ default: m.Delivery })));
 const Reportes = lazy(() => import("./paginas/Reportes").then((m) => ({ default: m.Reportes })));
 const Kardex = lazy(() => import("./paginas/Kardex").then((m) => ({ default: m.Kardex })));
+const EquiposRed = lazy(() => import("./paginas/EquiposRed").then((m) => ({ default: m.EquiposRed })));
 const Verificador = lazy(() => import("./paginas/Verificador").then((m) => ({ default: m.Verificador })));
 const ComprobantesNcf = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.ComprobantesNcf })));
 const Fiscal = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.Fiscal })));
@@ -88,6 +89,7 @@ const SECCIONES = [
   { id: "equipos", titulo: "Equipos de la caja", grupo: "Cajas y equipos", C: EquiposCaja, i: "ticket", p: ["admin.config"] },
   { id: "formatos", titulo: "Formatos de impresión", grupo: "Cajas y equipos", C: FormatosImpresion, i: "ticket", p: ["admin.config"] },
   { id: "pantallacliente", titulo: "Pantalla del cliente", grupo: "Cajas y equipos", C: PantallaCliente, i: "resumen", p: ["admin.config"] },
+  { id: "equiposred", titulo: "Equipos en la red", grupo: "Cajas y equipos", C: EquiposRed, i: "web", p: ["admin.config"] },
   { id: "versiones", titulo: "Versiones de los equipos", grupo: "Cajas y equipos", C: VersionesEquipos, i: "actualizaciones", p: ["admin.config"] },
   { id: "instaladores", titulo: "Instaladores", grupo: "Instaladores", C: Instaladores, i: "actualizaciones", p: ["admin.config"] },
   { id: "accesoremoto", titulo: "Acceso remoto", grupo: "Sistema", C: AccesoRemoto, i: "web", p: ["*"] },
