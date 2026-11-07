@@ -25,11 +25,42 @@
     var tiempo = null;
     function cerrarVelo() { clearTimeout(tiempo); velo.style.display = "none"; }
     function armar(ms) { clearTimeout(tiempo); tiempo = setTimeout(cerrarVelo, ms); }
+    // Cambiar la clave propia de este equipo (4 a 8 números); sirve para cerrar la app aunque no haya conexión con el servidor
+    function nuevaClave(actual) {
+      caja.innerHTML = ""; armar(30000); caja.onpointerdown = function () { armar(30000); };
+      caja.appendChild(el("h2", "margin:0 0 8px;font-size:24px", "Clave de este equipo"));
+      caja.appendChild(el("div", "color:#5d6d7e", "Escriba la clave nueva (de 4 a 8 números)"));
+      var inp = el("input", "width:100%;font-size:26px;letter-spacing:.3em;padding:10px;border:2px solid #cfd8e0;border-radius:12px;text-align:center;margin:10px 0 4px;box-sizing:border-box");
+      inp.type = "password"; inp.autocomplete = "off"; inp.setAttribute("inputmode", "none"); inp.maxLength = 8;
+      inp.onblur = function () { setTimeout(function () { if (velo.style.display === "flex" && caja.contains(inp)) inp.focus(); }, 0); };
+      var err = el("div", "color:#c0362c;font-weight:700;min-height:1.3em");
+      var tecla = function (txt, fondo, color) {
+        var b = el("button", "font-size:26px;font-weight:700;padding:0;height:clamp(46px,9vh,60px);border:0;border-radius:14px;cursor:pointer;touch-action:manipulation;background:" + fondo + ";color:" + color, txt);
+        b.type = "button"; b.onmousedown = function (e) { e.preventDefault(); }; return b;
+      };
+      var guardar = tecla("Guardar", "#1a7f4b", "#fff"); guardar.style.fontSize = "19px";
+      var teclado = el("div", "display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px");
+      "123456789".split("").forEach(function (d) { var t = tecla(d, "#eef1f4", "#10202e"); t.onclick = function () { armar(30000); if (inp.value.length < 8) inp.value += d; }; teclado.appendChild(t); });
+      var borrar = tecla("\u232B", "#eef1f4", "#10202e"); borrar.onclick = function () { armar(30000); inp.value = inp.value.slice(0, -1); };
+      var cero = tecla("0", "#eef1f4", "#10202e"); cero.onclick = function () { armar(30000); if (inp.value.length < 8) inp.value += "0"; };
+      teclado.appendChild(borrar); teclado.appendChild(cero); teclado.appendChild(guardar);
+      var no = el("button", "display:block;width:100%;font-size:18px;font-weight:700;padding:10px;margin-top:8px;border:0;border-radius:999px;cursor:pointer;background:#eef1f4;color:#10202e", "Cancelar"); no.type = "button"; no.onclick = cerrarVelo;
+      guardar.onclick = function () {
+        if (!/^\d{4,8}$/.test(inp.value)) { err.style.color = "#c0362c"; err.textContent = "Debe tener de 4 a 8 números"; return; }
+        llamar("cambiarClaveEquipo", actual, inp.value).then(function (v) {
+          err.style.color = v === true ? "#1a7f4b" : "#c0362c";
+          err.textContent = v === true ? "Clave guardada" : "No se pudo guardar la clave";
+          if (v === true) { clearTimeout(tiempo); tiempo = setTimeout(cerrarVelo, 1500); }
+        });
+      };
+      caja.appendChild(inp); caja.appendChild(err); caja.appendChild(teclado); caja.appendChild(no);
+      inp.focus();
+    }
     function abrir(accion) {
       caja.innerHTML = "";
       armar(5000);
       caja.appendChild(el("h2", "margin:0 0 8px;font-size:24px", accion === "cerrar" ? "Cerrar la app" : "Opciones del equipo"));
-      caja.appendChild(el("div", "color:#5d6d7e", "Escriba el PIN de un supervisor o administrador"));
+      caja.appendChild(el("div", "color:#5d6d7e", "Escriba la clave de este equipo o el PIN de un supervisor o administrador"));
       var inp = el("input", "width:100%;font-size:26px;letter-spacing:.3em;padding:10px;border:2px solid #cfd8e0;border-radius:12px;text-align:center;margin:10px 0 4px;box-sizing:border-box");
       inp.type = "password"; inp.autocomplete = "off"; inp.setAttribute("inputmode", "none"); inp.maxLength = 8;   // el teclado va en pantalla (más abajo)
       // Versiones viejas de la página devuelven el foco al lector cada segundo: aquí se recupera mientras se escribe la clave
@@ -61,17 +92,18 @@
         clearTimeout(tiempo);   // mientras se comprueba no se cierra
         err.textContent = "Comprobando…";
         llamar("verificarClave", c).then(function (v) {
-          if (v !== "ok") { err.textContent = v === "incorrecta" ? "PIN incorrecto, o no es de un supervisor o administrador." : v === "sin_conexion" ? "Sin conexión con el servidor: solo sirve un PIN que este equipo ya haya usado con conexión." : String(v); inp.value = ""; armar(5000); return; }
+          if (v !== "ok") { err.textContent = v === "incorrecta" ? "Clave incorrecta." : v === "sin_conexion" ? "Sin conexión con el servidor: solo sirve la clave de este equipo o un PIN que ya haya usado con conexión." : String(v); inp.value = ""; armar(5000); return; }
           if (accion === "cerrar") { llamar("salir", c); return; }
           caja.innerHTML = "";
           armar(30000); caja.onpointerdown = function () { armar(30000); };
           caja.appendChild(el("h2", "margin:0 0 4px;font-size:24px", "Opciones del equipo"));
           Promise.all([llamar("plataforma"), llamar("version")]).then(function (r) { caja.appendChild(el("div", "color:#5d6d7e;margin-bottom:6px", "Verificador FactPOS " + r[0] + " " + r[1])); });
-          var cs = btn("Cambiar de servidor", "#10202e", "#fff"), sa = btn("Cerrar la app", "#c0362c", "#fff"), ca = btn("Volver", "#eef1f4", "#10202e");
+          var cc = btn("Cambiar la clave de este equipo", "#eef1f4", "#10202e"), cs = btn("Cambiar de servidor", "#10202e", "#fff"), sa = btn("Cerrar la app", "#c0362c", "#fff"), ca = btn("Volver", "#eef1f4", "#10202e");
           cs.onclick = function () { llamar("cambiarServidor", c); };
           sa.onclick = function () { llamar("salir", c); };
           ca.onclick = cerrarVelo;
-          caja.appendChild(cs); caja.appendChild(sa); caja.appendChild(ca);
+          cc.onclick = function () { nuevaClave(c); };
+          caja.appendChild(cc); caja.appendChild(cs); caja.appendChild(sa); caja.appendChild(ca);
         });
       };
       inp.onkeydown = function (e) { e.stopPropagation(); armar(5000); if (e.key === "Enter") ok.click(); };
