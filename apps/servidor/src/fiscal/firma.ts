@@ -25,6 +25,8 @@ export interface Certificado {
   /** De dónde salió: archivo del .env, el que se subió en la Administración, o el de prueba */
   origen?: "archivo" | "administracion" | "prueba";
   emisor?: string; numeroSerie?: string; validoDesde?: Date; huella?: string;
+  /** Todos los datos del titular del certificado en un texto (para buscar el RNC o la cédula) */
+  sujeto?: string;
 }
 
 let cache: Certificado | null = null;
@@ -65,7 +67,19 @@ export function leerP12(der: Buffer, clave: string): Certificado {
     validoDesde: cert.validity.notBefore,
     vence: cert.validity.notAfter,
     huella: forge.md.sha256.create().update(derCert).digest().toHex(),
+    sujeto: cert.subject.attributes.map((a) => `${a.shortName ?? a.name ?? ""}=${String(a.value ?? "")}`).join(", "),
   };
+}
+
+/**
+ * ¿El certificado es del RNC (o cédula) de la empresa? Los certificados dominicanos suelen traer el RNC en el titular.
+ * true = aparece; false = trae otros números de RNC/cédula pero no este; null = no trae ninguno y no se puede saber.
+ */
+export function rncDelCertificado(sujeto: string | undefined, rncEmpresa: string): { coincide: boolean | null; encontrados: string[] } {
+  const texto = sujeto ?? "";
+  const encontrados = [...new Set(texto.match(/\d{9,11}/g) ?? [])];
+  if (texto.replace(/\D/g, "").includes(rncEmpresa.replace(/\D/g, ""))) return { coincide: true, encontrados };
+  return { coincide: encontrados.length ? false : null, encontrados };
 }
 
 /** Pone en uso un certificado (el que se subió en la Administración). */

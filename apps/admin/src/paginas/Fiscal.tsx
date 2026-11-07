@@ -302,8 +302,15 @@ function Configuracion() {
   if (!c) return <p className="suave">Cargando…</p>;
   const guardar = async () => {
     try {
-      await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: c.pseUrl || null, alertaRestantes: Number(c.alertaRestantes) } });
+      await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: c.pseUrl || null, pseNombre: c.pseNombre || null, ...(c.pseTokenNuevo !== undefined ? { pseToken: c.pseTokenNuevo || null } : {}), alertaRestantes: Number(c.alertaRestantes) } });
+      setC((x: any) => ({ ...x, pseTokenConfigurado: x.pseTokenNuevo !== undefined ? !!x.pseTokenNuevo : x.pseTokenConfigurado, pseTokenNuevo: undefined }));
       setMsg({ t: "Configuración guardada", tipo: "ok" });
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const probar = async () => {
+    try {
+      const r = await api<{ ok: boolean; mensaje: string }>("/central/fiscal/pse/probar", { metodo: "POST" });
+      setMsg({ t: r.mensaje, tipo: r.ok ? "ok" : "error" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
   };
   return (
@@ -330,7 +337,19 @@ function Configuracion() {
           </select>
         </label>
       </div>
-      {c.transmisor === "PSE" && <label className="campo"><span>Dirección del API del PSE</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>}
+      {c.transmisor === "PSE" && (
+        <>
+          <div className="dos-col">
+            <label className="campo"><span>Proveedor (nombre, opcional)</span><input value={c.pseNombre ?? ""} onChange={(e) => setC({ ...c, pseNombre: e.target.value })} placeholder="Ej.: mseller" /></label>
+            <label className="campo"><span>Dirección del API del PSE</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>
+          </div>
+          <label className="campo"><span>Llave de API de esta empresa {c.pseTokenConfigurado && c.pseTokenNuevo === undefined ? "(guardada ✓)" : ""}</span>
+            <input type="password" autoComplete="off" value={c.pseTokenNuevo ?? ""} onChange={(e) => setC({ ...c, pseTokenNuevo: e.target.value })} placeholder={c.pseTokenConfigurado ? "Deje vacío para conservar la guardada" : "Pegue la llave que le dio el proveedor"} />
+          </label>
+          <p className="suave" style={{ marginTop: 0 }}>Cada empresa usa su propia cuenta con el proveedor. La llave se guarda cifrada. Guarde antes de probar.</p>
+          <button className="boton" onClick={probar}>Probar conexión</button>
+        </>
+      )}
       <label className="campo"><span>Avisar cuando queden menos de (e-NCF)</span><input inputMode="numeric" value={c.alertaRestantes} onChange={(e) => setC({ ...c, alertaRestantes: e.target.value.replace(/\D/g, "") })} /></label>
       <button className="boton primario" onClick={guardar}>Guardar</button>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
@@ -388,8 +407,17 @@ function CertificadoDigital() {
         r.onerror = () => mal(new Error("No se pudo leer el archivo"));
         r.readAsDataURL(archivo);
       });
-      const r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave } });
-      setMsg({ t: `Certificado de ${r.titular} guardado. Quedó activo en todas las sucursales y lo cargan solas en su próxima sincronización.`, tipo: "ok" });
+      let r;
+      try {
+        r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave } });
+      } catch (e) {
+        const m = (e as Error).message;
+        // El certificado no trae el RNC de esta empresa: se pide confirmación antes de usarlo
+        if (!m.startsWith("RNC_DISTINTO|")) throw e;
+        if (!window.confirm(m.slice("RNC_DISTINTO|".length) + "\n\n¿Usarlo de todas formas?")) { setMsg({ t: "No se guardó: el certificado no coincide con el RNC de la empresa.", tipo: "error" }); return; }
+        r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave, confirmarRnc: true } });
+      }
+      setMsg({ t: `Certificado de ${r.titular} guardado${r.rncVerificado === true ? " (el RNC coincide con la empresa)" : r.rncVerificado === null ? " (no trae RNC visible: no se pudo comprobar que sea de esta empresa)" : ""}. Quedó activo en todas las sucursales y lo cargan solas en su próxima sincronización.`, tipo: "ok" });
       setArchivo(null); setClave(""); setReemplazar(false);
       recargar();
     } catch (e) {

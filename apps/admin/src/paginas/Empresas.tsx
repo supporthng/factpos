@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api, fijarSesion, sesionActual } from "../api";
 import { Aviso, useDatos } from "../ui";
 
@@ -8,6 +8,56 @@ async function pasarA(id: string) {
   const r = await api<{ token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>("/central/empresas/cambiar", { cuerpo: { empresaId: id } });
   fijarSesion({ ...sesionActual(), token: r.token, empresaId: r.empresa.id, empresa: r.empresa.nombre, usuarioId: r.usuario.id, nombre: r.usuario.nombre, permisos: r.usuario.permisos, sucursales: null });
   location.reload();
+}
+
+/** Color propio de cada empresa (sale de su id, siempre el mismo): así se nota de un vistazo en cuál se está trabajando. */
+export function colorEmpresa(id: string) {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 65% 42%)`;
+}
+
+/** Con más de una empresa enlazada: nombre y RNC de la empresa activa con su color, y un borde del mismo color en toda la página. */
+export function FranjaEmpresa() {
+  const { datos } = useDatos<EmpresaGrupo[]>("/central/empresas");
+  const activa = datos && datos.length > 1 ? datos.find((e) => e.actual) : undefined;
+  useEffect(() => {
+    if (!activa) return;
+    const anterior = document.body.style.borderTop;
+    document.body.style.borderTop = `5px solid ${colorEmpresa(activa.id)}`;
+    return () => { document.body.style.borderTop = anterior; };
+  }, [activa?.id]);
+  if (!activa) return null;
+  const color = colorEmpresa(activa.id);
+  return (
+    <span title="Empresa en la que está trabajando" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, border: `1px solid ${color}`, color, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+      <span style={{ width: 9, height: 9, borderRadius: 999, background: color, display: "inline-block" }} />
+      {activa.nombre} · RNC {activa.rnc}
+    </span>
+  );
+}
+
+interface PasoMarcha { id: string; titulo: string; ok: boolean; detalle: string; ir?: string }
+
+/** Qué le falta a la empresa activa antes de poder facturar. */
+export function PuestaEnMarcha() {
+  const ir = (seccion: string) => { location.hash = seccion; };
+  const { datos } = useDatos<{ pasos: PasoMarcha[]; listos: number; total: number }>("/central/empresas/puesta-en-marcha");
+  if (!datos) return null;
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Puesta en marcha <span className="suave pequeno">{datos.listos} de {datos.total} listos</span></h3>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {datos.pasos.map((p) => (
+          <li key={p.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "5px 0" }}>
+            <span aria-hidden style={{ color: p.ok ? "#1a7f37" : "#b42318", fontWeight: 700, width: 16 }}>{p.ok ? "✓" : "○"}</span>
+            <span style={{ flex: 1 }}><b>{p.titulo}</b><br /><span className="suave pequeno">{p.detalle}</span></span>
+            {!p.ok && p.ir && <button className="enlace" onClick={() => ir(p.ir!)}>Resolver</button>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Selector de empresa en la barra superior (solo si hay más de una enlazada). */
@@ -63,7 +113,9 @@ export function EmpresasEnlazadas() {
         </div>
       )}
       {(datos?.length ?? 0) > 1 && <CopiarCatalogo otras={(datos ?? []).filter((e) => !e.actual)} />}
+      {(datos?.length ?? 0) > 1 && <CopiarAjustes otras={(datos ?? []).filter((e) => !e.actual)} />}
       {(datos?.length ?? 0) > 1 && <Consolidado />}
+      {(datos?.length ?? 0) > 1 && <EstadoConsolidado />}
     </div>
   );
 }
@@ -105,6 +157,31 @@ function Consolidado() {
   );
 }
 
+/** Inventario, cuentas por cobrar y comprobantes electrónicos de todas las empresas del grupo. */
+function EstadoConsolidado() {
+  const { datos } = useDatos<{ empresaId: string; empresa: string; rnc: string; inventario: string; porCobrar: string; rechazados: number; pendientes: number }[]>("/central/empresas/estado-consolidado");
+  const tot = (datos ?? []).reduce((a, e) => ({ inv: a.inv + Number(e.inventario), cxc: a.cxc + Number(e.porCobrar), rec: a.rec + e.rechazados, pen: a.pen + e.pendientes }), { inv: 0, cxc: 0, rec: 0, pen: 0 });
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h4>Inventario, cuentas por cobrar y comprobantes</h4>
+      <table className="tabla">
+        <thead><tr><th>Empresa</th><th className="num">Inventario (al costo)</th><th className="num">Por cobrar</th><th className="num">e-CF rechazados (30 días)</th><th className="num">e-CF pendientes de envío</th></tr></thead>
+        <tbody>
+          {(datos ?? []).map((e) => (
+            <tr key={e.empresaId}>
+              <td><b>{e.empresa}</b> <span className="suave pequeno">RNC {e.rnc}</span></td>
+              <td className="num">{rd(e.inventario)}</td><td className="num">{rd(e.porCobrar)}</td>
+              <td className="num" style={e.rechazados ? { color: "#b42318", fontWeight: 700 } : undefined}>{e.rechazados}</td>
+              <td className="num" style={e.pendientes ? { color: "#b54708", fontWeight: 700 } : undefined}>{e.pendientes}</td>
+            </tr>
+          ))}
+          <tr><td><b>Total del grupo</b></td><td className="num"><b>{rd(tot.inv)}</b></td><td className="num"><b>{rd(tot.cxc)}</b></td><td className="num"><b>{tot.rec}</b></td><td className="num"><b>{tot.pen}</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Copia el catálogo de otra empresa del grupo a la empresa actual. */
 function CopiarCatalogo({ otras }: { otras: EmpresaGrupo[] }) {
   const [origen, setOrigen] = useState(otras[0]?.id ?? "");
@@ -132,6 +209,42 @@ function CopiarCatalogo({ otras }: { otras: EmpresaGrupo[] }) {
         <label><input type="checkbox" checked={precios} onChange={(e) => setPrecios(e.target.checked)} /> Copiar precios</label>
         <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
         <button className="boton" disabled={ocupado || !origen || !clave} onClick={copiar}>Copiar catálogo</button>
+      </div>
+    </div>
+  );
+}
+
+/** Copia roles, usuarios y formatos de otra empresa del grupo a la empresa actual. */
+function CopiarAjustes({ otras }: { otras: EmpresaGrupo[] }) {
+  const [origen, setOrigen] = useState(otras[0]?.id ?? "");
+  const [roles, setRoles] = useState(true);
+  const [usuarios, setUsuarios] = useState(false);
+  const [formatos, setFormatos] = useState(true);
+  const [clave, setClave] = useState("");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const copiar = async () => {
+    const o = otras.find((x) => x.id === origen)?.nombre ?? "";
+    if (!confirm(`Se copiará a esta empresa lo marcado de «${o}». Lo que ya exista con el mismo nombre se omite.${usuarios ? " Los usuarios entran con su misma contraseña y SIN PIN: hay que asignarles uno." : ""}`)) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await api<{ roles: number; usuarios: number; formatos: boolean }>("/central/empresas/copiar-ajustes", { cuerpo: { origenId: origen, clave, roles, usuarios, formatos } });
+      setMsg({ t: `Listo: ${r.roles} rol(es) nuevos, ${r.usuarios} usuario(s) nuevos${r.usuarios ? " (sin PIN: asígneles uno en Usuarios y permisos)" : ""}${r.formatos ? ", formatos copiados" : ""}.`, tipo: "ok" });
+      setClave("");
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setOcupado(false);
+  };
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h4>Copiar ajustes a esta empresa</h4>
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
+        <select value={origen} onChange={(e) => setOrigen(e.target.value)}>{otras.map((e) => <option key={e.id} value={e.id}>Desde: {e.nombre}</option>)}</select>
+        <label><input type="checkbox" checked={roles} onChange={(e) => setRoles(e.target.checked)} /> Roles</label>
+        <label><input type="checkbox" checked={usuarios} onChange={(e) => setUsuarios(e.target.checked)} /> Usuarios</label>
+        <label><input type="checkbox" checked={formatos} onChange={(e) => setFormatos(e.target.checked)} /> Formatos (ticket, pantalla del cliente, verificador)</label>
+        <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
+        <button className="boton" disabled={ocupado || !origen || !clave || (!roles && !usuarios && !formatos)} onClick={copiar}>Copiar ajustes</button>
       </div>
     </div>
   );

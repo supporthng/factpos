@@ -3,9 +3,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
-import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.js";
-import { usarCertificado, certificado } from "../fiscal/firma.js";
-import { dgii } from "../fiscal/transmisor.js";
+import { guardarCertificado, huellaEnUso, cifrarTexto, descifrarTexto } from "../fiscal/certificado-guardado.js";
+import { usarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
+import { dgii, pse } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
 import { firmarXml } from "../fiscal/firma.js";
@@ -40,8 +40,8 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT e.rnc, e.razon_social AS "razonSocial", e.nombre_comercial AS "nombreComercial",
               COALESCE(cf.direccion_emisor, '') AS "direccionEmisor", COALESCE(cf.ambiente, 'SIMULADO') AS ambiente,
-              COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url AS "pseUrl",
-              COALESCE(cf.alerta_restantes, 500) AS "alertaRestantes"
+              COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url AS "pseUrl", cf.pse_nombre AS "pseNombre",
+              (cf.pse_token IS NOT NULL) AS "pseTokenConfigurado", COALESCE(cf.alerta_restantes, 500) AS "alertaRestantes"
          FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`,
       [e],
     );
@@ -55,18 +55,37 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
         ambiente: z.enum(["SIMULADO", "TESTECF", "CERTECF", "ECF"]),
         transmisor: z.enum(["SIMULADO", "DGII", "PSE"]),
         pseUrl: z.string().url().nullable().optional(),
+        pseNombre: z.string().trim().max(40).nullable().optional(),
+        pseToken: z.string().trim().max(2000).nullable().optional(), // undefined = no cambia; null o vacío = quitar
         alertaRestantes: z.number().int().min(0).default(500),
       })
       .refine((x) => x.transmisor !== "PSE" || !!x.pseUrl, "Indique la dirección del PSE")
       .refine((x) => (x.ambiente === "SIMULADO") === (x.transmisor === "SIMULADO"), "El transmisor simulado solo se usa en el ambiente simulado")
       .parse(req.body);
+    const cambiaToken = b.pseToken !== undefined;
+    const tokenCifrado = b.pseToken ? cifrarTexto(b.pseToken) : null;
     await pool.query(
-      `INSERT INTO configuracion_fiscal (empresa_id, direccion_emisor, ambiente, transmisor, pse_url, alerta_restantes)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (empresa_id) DO UPDATE SET direccion_emisor = $2, ambiente = $3, transmisor = $4, pse_url = $5, alerta_restantes = $6`,
-      [empresaDe(req), b.direccionEmisor, b.ambiente, b.transmisor, b.pseUrl ?? null, b.alertaRestantes],
+      `INSERT INTO configuracion_fiscal (empresa_id, direccion_emisor, ambiente, transmisor, pse_url, alerta_restantes, pse_nombre, pse_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (empresa_id) DO UPDATE SET direccion_emisor = $2, ambiente = $3, transmisor = $4, pse_url = $5, alerta_restantes = $6,
+         pse_nombre = $7, pse_token = CASE WHEN $9::boolean THEN $8 ELSE configuracion_fiscal.pse_token END`,
+      [empresaDe(req), b.direccionEmisor, b.ambiente, b.transmisor, b.pseUrl ?? null, b.alertaRestantes, b.pseNombre || null, tokenCifrado, cambiaToken],
     );
     return { ok: true };
+  });
+
+  /** Prueba básica del proveedor e-CF de la empresa: se llega a su dirección y no rechaza la llave. */
+  app.post("/central/fiscal/pse/probar", async (req) => {
+    const cf = (await pool.query<{ transmisor: string; pse_url: string | null; pse_token: string | null; pse_nombre: string | null }>(
+      "SELECT transmisor, pse_url, pse_token, pse_nombre FROM configuracion_fiscal WHERE empresa_id = $1", [empresaDe(req)])).rows[0];
+    const url = cf?.pse_url || process.env.PSE_URL;
+    if (!cf || cf.transmisor !== "PSE" || !url) throw new ErrorNegocio("Elija «Proveedor de servicios (PSE)», escriba su dirección y guarde antes de probar");
+    try {
+      await pse(url, undefined, cf.pse_token ? descifrarTexto(cf.pse_token) : undefined).probar!();
+      return { ok: true, mensaje: `Se llegó a ${new URL(url).host} y no rechazó la llave. Esta prueba no valida un envío de e-CF: pruebe en el sandbox del proveedor.` };
+    } catch (e) {
+      return { ok: false, mensaje: (e as Error).message };
+    }
   });
 
   // ---- Rangos autorizados por la DGII ----
@@ -505,11 +524,18 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const b = z.object({
       archivo: z.string().min(100).max(1_500_000), // .p12 en base64
       clave: z.string().max(200),
+      confirmarRnc: z.boolean().optional(), // el usuario aceptó usar un certificado que no trae el RNC de la empresa
     }).parse(req.body);
     const p12 = Buffer.from(b.archivo.replace(/^data:[^,]*,/, ""), "base64");
     const usuario = uuid.safeParse(req.headers["x-usuario-id"]);
     const r = await enTransaccion(async (c) => {
       const cert = await guardarCertificado(c, empresaDe(req), { p12, clave: b.clave }, usuario.success ? usuario.data : null);
+      const emp = (await c.query<{ rnc: string; nombre: string }>("SELECT rnc, COALESCE(nombre_comercial, razon_social) AS nombre FROM empresas WHERE id = $1", [empresaDe(req)])).rows[0];
+      const rnc = emp ? rncDelCertificado(cert.sujeto, emp.rnc) : { coincide: null, encontrados: [] as string[] };
+      if (rnc.coincide === false && !b.confirmarRnc) {
+        throw new ErrorNegocio(`RNC_DISTINTO|Este certificado no parece ser del RNC ${emp!.rnc} de «${emp!.nombre}»: trae ${rnc.encontrados.join(" y ")} (titular: ${cert.titular}). Si es el certificado de otra empresa, firmaría con el RNC equivocado.`, 409);
+      }
+      (cert as unknown as { rncVerificado: boolean | null }).rncVerificado = rnc.coincide;
       if (cert.vence.getTime() < Date.now()) throw new ErrorNegocio(`Este certificado venció el ${cert.vence.toISOString().slice(0, 10)}: pida la renovación a la entidad certificadora`);
       if (cert.validoDesde && cert.validoDesde.getTime() > Date.now() + 86400e3) throw new ErrorNegocio("Este certificado todavía no es válido (revise la fecha de la computadora o espere a que empiece su vigencia)");
       // El cliente solo sube su certificado: queda activo en todas sus sucursales (sin configurar nada más)
@@ -521,6 +547,6 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     });
     if (!process.env.VERCEL) usarCertificado(r); // central en una PC: lo usa de una vez
     rep.code(201);
-    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella, sucursalesActivadas: r.sucursalesActivadas };
+    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella, sucursalesActivadas: r.sucursalesActivadas, rncVerificado: (r as unknown as { rncVerificado: boolean | null }).rncVerificado ?? null };
   });
 }

@@ -67,6 +67,42 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
     return r;
   });
 
+  /** Lista de puesta en marcha de la empresa activa: qué le falta antes de poder facturar. */
+  app.get("/central/empresas/puesta-en-marcha", async (req) => {
+    const e = sesionAdmin(req).e;
+    const un = async <T extends Record<string, any>>(sql: string) => (await pool.query<T>(sql, [e])).rows[0];
+    const [fis, cert, aut, suc, cajas, prod, usu] = await Promise.all([
+      un<{ direccion_emisor: string; municipio: string | null; provincia: string | null; ambiente: string; transmisor: string; pse_url: string | null }>(
+        "SELECT direccion_emisor, municipio, provincia, ambiente, transmisor, pse_url FROM configuracion_fiscal WHERE empresa_id = $1"),
+      un<{ vence: Date; titular: string }>("SELECT vence, titular FROM certificados_digitales WHERE empresa_id = $1 AND activo ORDER BY subido_en DESC LIMIT 1"),
+      un<{ n: string; vigentes: string }>("SELECT count(*) AS n, count(*) FILTER (WHERE vence_en >= current_date) AS vigentes FROM ecf_autorizaciones WHERE empresa_id = $1"),
+      un<{ n: string; en_linea: string }>(
+        `SELECT count(*) AS n, count(*) FILTER (WHERE GREATEST(y.ultima_subida, y.ultima_bajada) > now() - interval '2 minutes') AS en_linea
+           FROM sucursales s LEFT JOIN sync_sucursales y ON y.sucursal_id = s.id WHERE s.empresa_id = $1 AND s.activo`),
+      un<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND s.activo"),
+      un<{ n: string }>("SELECT count(*) AS n FROM productos WHERE empresa_id = $1 AND activo"),
+      un<{ n: string }>("SELECT count(*) AS n FROM usuarios WHERE empresa_id = $1 AND activo AND pin_hash IS NOT NULL"),
+    ]);
+    type Paso = { id: string; titulo: string; ok: boolean; detalle: string; ir?: string };
+    const dias = cert ? Math.floor((new Date(cert.vence).getTime() - Date.now()) / 86400e3) : 0;
+    const pasos: Paso[] = [
+      { id: "datos", titulo: "Datos fiscales del emisor", ok: !!fis?.direccion_emisor?.trim() && !!fis?.municipio && !!fis?.provincia,
+        detalle: fis?.direccion_emisor?.trim() ? "Dirección, municipio y provincia" : "Falta la dirección, el municipio o la provincia del emisor", ir: "fiscal" },
+      { id: "certificado", titulo: "Certificado digital (.p12) de este RNC", ok: !!cert && dias >= 0,
+        detalle: !cert ? "No hay certificado cargado" : dias < 0 ? `Venció hace ${-dias} días` : `${cert.titular} · vence en ${dias} días`, ir: "fiscal" },
+      { id: "rangos", titulo: "Rangos de e-NCF autorizados por la DGII", ok: Number(aut?.vigentes ?? 0) > 0,
+        detalle: Number(aut?.n ?? 0) === 0 ? "No hay rangos cargados" : Number(aut?.vigentes) === 0 ? "Todos los rangos están vencidos" : `${aut?.vigentes} rangos vigentes`, ir: "fiscal" },
+      { id: "transmisor", titulo: "Envío a la DGII o proveedor e-CF", ok: !!fis && fis.transmisor !== "SIMULADO" && (fis.transmisor !== "PSE" || !!fis.pse_url),
+        detalle: !fis || fis.transmisor === "SIMULADO" ? "Está en modo simulado: no se envía nada a la DGII" : fis.transmisor === "PSE" && !fis.pse_url ? "Falta la dirección del proveedor" : `${fis.transmisor === "PSE" ? "Proveedor e-CF" : "DGII directo"} · ambiente ${fis.ambiente}`, ir: "fiscal" },
+      { id: "servidor", titulo: "Servidor de la tienda conectado", ok: Number(suc?.en_linea ?? 0) > 0,
+        detalle: Number(suc?.en_linea ?? 0) > 0 ? `${suc?.en_linea} de ${suc?.n} sucursales en línea` : "Ningún servidor de tienda se ha comunicado en los últimos 2 minutos", ir: "sucursales" },
+      { id: "cajas", titulo: "Cajas creadas", ok: Number(cajas?.n ?? 0) > 0, detalle: `${cajas?.n ?? 0} cajas activas`, ir: "sucursales" },
+      { id: "productos", titulo: "Productos cargados", ok: Number(prod?.n ?? 0) > 0, detalle: `${prod?.n ?? 0} productos activos`, ir: "productos" },
+      { id: "usuarios", titulo: "Usuarios con PIN para la caja", ok: Number(usu?.n ?? 0) > 0, detalle: `${usu?.n ?? 0} usuarios con PIN`, ir: "usuarios" },
+    ];
+    return { pasos, listos: pasos.filter((x) => x.ok).length, total: pasos.length };
+  });
+
   /** Pasa a otra empresa del grupo: devuelve una sesión nueva como administrador de esa empresa. */
   app.post("/central/empresas/cambiar", async (req) => {
     const s = sesionAdmin(req);
@@ -177,5 +213,101 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
       const omitidos = ((await q("SELECT COUNT(*)::int AS n FROM productos WHERE empresa_id = $1 AND activo", [o])).rows[0].n as number) - nProd;
       return { productos: nProd, omitidos, categorias: nCat, codigos: nCod, precios: nPre };
     });
+  });
+
+  /**
+   * Copia ajustes de otra empresa del grupo a la actual: roles, usuarios (con su misma contraseña, sin PIN: el PIN depende de la empresa)
+   * y formatos (ticket, pantalla del cliente y verificador). Lo que ya exista con el mismo nombre se omite.
+   */
+  app.post("/central/empresas/copiar-ajustes", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede copiar ajustes", 403);
+    const b = z.object({
+      origenId: uuid, clave: z.string().min(1).max(200),
+      roles: z.boolean().default(false), usuarios: z.boolean().default(false), formatos: z.boolean().default(false),
+    }).parse(req.body);
+    if (!b.roles && !b.usuarios && !b.formatos) throw new ErrorNegocio("Marque qué desea copiar");
+    if (b.origenId === s.e) throw new ErrorNegocio("Elija otra empresa como origen");
+    const g = await grupoDe(s.e);
+    if ((await grupoDe(b.origenId)) !== g) throw new ErrorNegocio("Esa empresa no pertenece a su grupo", 403);
+    const me = (await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [s.u])).rows[0];
+    if (!me || !(await verificarClave(b.clave, me.clave_hash))) throw new ErrorNegocio("La contraseña no es correcta", 403);
+    const o = b.origenId, d = s.e;
+    return enTransaccion(async (c: PoolClient) => {
+      const q = (sql: string, p: unknown[] = []) => c.query(sql, p);
+      let roles = 0, usuarios = 0, formatos = false;
+      // Los usuarios necesitan sus roles: se copian los que falten por nombre
+      if (b.roles || b.usuarios) {
+        roles = (await q(`INSERT INTO roles (id, empresa_id, nombre, permisos)
+                 SELECT gen_random_uuid(), $2, r.nombre, r.permisos FROM roles r
+                  WHERE r.empresa_id = $1 AND NOT EXISTS (SELECT 1 FROM roles x WHERE x.empresa_id = $2 AND lower(x.nombre) = lower(r.nombre))`, [o, d])).rowCount ?? 0;
+      }
+      if (b.usuarios) {
+        usuarios = (await q(`INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash, activo, sucursales)
+                 SELECT gen_random_uuid(), $2,
+                        (SELECT x.id FROM roles x JOIN roles ro ON ro.id = u.rol_id WHERE x.empresa_id = $2 AND lower(x.nombre) = lower(ro.nombre) ORDER BY x.id LIMIT 1),
+                        u.nombre, u.usuario, u.clave_hash, NULL, u.activo, NULL
+                   FROM usuarios u
+                  WHERE u.empresa_id = $1 AND NOT EXISTS (SELECT 1 FROM usuarios x WHERE x.empresa_id = $2 AND lower(x.usuario) = lower(u.usuario))`, [o, d])).rowCount ?? 0;
+      }
+      if (b.formatos) {
+        formatos = ((await q(`INSERT INTO configuracion_marca (empresa_id, formato_ticket, pantalla_cliente, verificador)
+                 SELECT $2, m.formato_ticket, m.pantalla_cliente, m.verificador FROM configuracion_marca m WHERE m.empresa_id = $1
+                 ON CONFLICT (empresa_id) DO UPDATE SET formato_ticket = EXCLUDED.formato_ticket, pantalla_cliente = EXCLUDED.pantalla_cliente, verificador = EXCLUDED.verificador`, [o, d])).rowCount ?? 0) > 0;
+      }
+      return { roles, usuarios, formatos };
+    });
+  });
+
+  /**
+   * Da acceso a una persona en otras empresas del grupo: crea su usuario allí con el mismo usuario y contraseña (y un rol del mismo nombre).
+   * Sin PIN: el PIN es de cada empresa. Si ya existe un usuario con ese nombre en la otra empresa, se omite.
+   */
+  app.post("/central/usuarios/:id/compartir", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede dar acceso en otras empresas", 403);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ empresaIds: z.array(uuid).min(1).max(20), clave: z.string().min(1).max(200) }).parse(req.body);
+    const g = await grupoDe(s.e);
+    const me = (await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [s.u])).rows[0];
+    if (!me || !(await verificarClave(b.clave, me.clave_hash))) throw new ErrorNegocio("La contraseña no es correcta", 403);
+    const u = (await pool.query<{ nombre: string; usuario: string; clave_hash: string; activo: boolean; rol: string; permisos: string[] }>(
+      `SELECT u.nombre, u.usuario, u.clave_hash, u.activo, ro.nombre AS rol, ro.permisos
+         FROM usuarios u JOIN roles ro ON ro.id = u.rol_id WHERE u.id = $1 AND u.empresa_id = $2`, [id, s.e])).rows[0];
+    if (!u) throw new ErrorNegocio("Usuario no encontrado", 404);
+    return enTransaccion(async (c: PoolClient) => {
+      let creados = 0, omitidos = 0;
+      for (const destino of new Set(b.empresaIds)) {
+        if (destino === s.e || (await grupoDe(destino)) !== g) throw new ErrorNegocio("Una de las empresas no pertenece a su grupo", 403);
+        if ((await c.query("SELECT 1 FROM usuarios WHERE empresa_id = $1 AND lower(usuario) = lower($2)", [destino, u.usuario])).rowCount) { omitidos++; continue; }
+        let rol = (await c.query<{ id: string }>("SELECT id FROM roles WHERE empresa_id = $1 AND lower(nombre) = lower($2) ORDER BY id LIMIT 1", [destino, u.rol])).rows[0]?.id;
+        if (!rol) {
+          rol = uuidv7();
+          await c.query("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,$3,$4)", [rol, destino, u.rol, u.permisos]);
+        }
+        await c.query("INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash, activo, sucursales) VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,NULL)",
+          [uuidv7(), destino, rol, u.nombre, u.usuario, u.clave_hash, u.activo]);
+        creados++;
+      }
+      return { creados, omitidos };
+    });
+  });
+
+  /** Estado de cada empresa del grupo: inventario al costo, cuentas por cobrar y comprobantes electrónicos rechazados o pendientes. Solo administradores completos. */
+  app.get("/central/empresas/estado-consolidado", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede ver el consolidado", 403);
+    const g = await grupoDe(s.e);
+    const r = await pool.query(
+      `SELECT e.id AS "empresaId", COALESCE(e.nombre_comercial, e.razon_social) AS empresa, e.rnc,
+              COALESCE((SELECT SUM(x.cantidad * x.costo_promedio) FROM existencias x JOIN almacenes a ON a.id = x.almacen_id
+                          JOIN sucursales sc ON sc.id = a.sucursal_id WHERE sc.empresa_id = e.id), 0)::text AS inventario,
+              COALESCE((SELECT SUM(m.monto) FROM cxc_movimientos m JOIN sucursales sc ON sc.id = m.sucursal_id WHERE sc.empresa_id = e.id), 0)::text AS "porCobrar",
+              (SELECT count(*) FROM ecf_documentos d JOIN sucursales sc ON sc.id = d.sucursal_id
+                WHERE sc.empresa_id = e.id AND d.estado = 'RECHAZADO' AND d.creado_en > now() - interval '30 days')::int AS rechazados,
+              (SELECT count(*) FROM ecf_documentos d JOIN sucursales sc ON sc.id = d.sucursal_id
+                WHERE sc.empresa_id = e.id AND d.estado IN ('PENDIENTE','ENVIADO','EN_PROCESO','CONTINGENCIA'))::int AS pendientes
+         FROM empresas e WHERE COALESCE(e.grupo_id, e.id) = $1 AND e.activo ORDER BY empresa`, [g]);
+    return r.rows;
   });
 }

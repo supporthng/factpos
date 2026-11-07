@@ -14,7 +14,7 @@ import { DosPasos } from "./paginas/DosPasos";
 const ConfigMovil = lazy(() => import("./paginas/ConfigMovil").then((m) => ({ default: m.ConfigMovil })));
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.Correo })));
-import { SelectorEmpresa } from "./paginas/Empresas";
+import { FranjaEmpresa, SelectorEmpresa } from "./paginas/Empresas";
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
@@ -354,6 +354,7 @@ function AppInterna() {
               <button className={forma === "lateral" ? "activo" : ""} aria-pressed={forma === "lateral"} title="Menú lateral" onClick={() => cambiarForma("lateral")}><Icono n="menu-lateral" tamano={17} /></button>
             </div>
             <span className="empresa-superior">{sesion.empresa}</span>
+            {!enPortal && !esLocal() && <FranjaEmpresa />}
             {!enPortal && !esLocal() && <SelectorEmpresa />}
             {!enPortal && puede("*") && <AvisoAcceso irAAcceso={() => setSeccion("accesoremoto")} />}
             <div className="menu-usuario">

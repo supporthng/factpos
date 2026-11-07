@@ -157,6 +157,7 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
         </fieldset>
         {usuario?.tienePin && <label className="interruptor"><input type="checkbox" checked={quitarPin} onChange={(e) => setQuitarPin(e.target.checked)} /><span>Quitarle el PIN (ya no entra a la caja)</span></label>}
         {usuario && !yo && <label className="interruptor"><input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /><span>{activo ? "Activo" : "Inactivo: no puede entrar"}</span></label>}
+        {usuario && !yo && <OtrasEmpresas usuario={usuario} />}
         {error && <Aviso texto={error} />}
         <div className="acciones-modal">
           <button type="button" className="boton" onClick={onCerrar}>Cancelar</button>
@@ -164,6 +165,38 @@ function EditarUsuario({ usuario, roles, onCerrar, onListo }: { usuario: Usuario
         </div>
       </form>
     </div>
+  );
+}
+
+/** Dar acceso a esta persona en otras empresas del grupo (mismo usuario y contraseña, sin PIN). */
+function OtrasEmpresas({ usuario }: { usuario: Usuario }) {
+  const { datos } = useDatos<{ id: string; nombre: string; rnc: string; actual: boolean }[]>("/central/empresas");
+  const [elegidas, setElegidas] = useState<Set<string>>(new Set());
+  const [clave, setClave] = useState("");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const otras = (datos ?? []).filter((e) => !e.actual);
+  if (otras.length === 0) return null;
+  const dar = async () => {
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await api<{ creados: number; omitidos: number }>(`/central/usuarios/${usuario.id}/compartir`, { cuerpo: { empresaIds: [...elegidas], clave } });
+      setMsg({ t: `Listo: acceso creado en ${r.creados} empresa(s)${r.omitidos ? `, ${r.omitidos} ya tenían un usuario con ese nombre` : ""}. Su PIN de caja se asigna en cada empresa.`, tipo: "ok" });
+      setClave(""); setElegidas(new Set());
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setOcupado(false);
+  };
+  return (
+    <fieldset className="grupo-permisos">
+      <legend>Dar acceso en otras empresas</legend>
+      {otras.map((e) => (
+        <label key={e.id} className="interruptor"><input type="checkbox" checked={elegidas.has(e.id)} onChange={() => { const n = new Set(elegidas); if (n.has(e.id)) n.delete(e.id); else n.add(e.id); setElegidas(n); }} /><span>{e.nombre} · RNC {e.rnc}</span></label>
+      ))}
+      <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
+      <button type="button" className="boton" disabled={ocupado || !clave || !elegidas.size} onClick={dar}>Dar acceso</button>
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <p className="suave pequeno" style={{ margin: "4px 0 0" }}>Se crea con el mismo usuario y contraseña y un rol del mismo nombre. El PIN de caja es de cada empresa.</p>
+    </fieldset>
   );
 }
 

@@ -1,4 +1,5 @@
 import { pool } from "../db.js";
+import { descifrarTexto } from "./certificado-guardado.js";
 import { simulado, dgii, pse, SinConexion, type Transmisor } from "./transmisor.js";
 import { encolarFilas } from "../sync/outbox.js";
 
@@ -12,11 +13,11 @@ import { encolarFilas } from "../sync/outbox.js";
 const LOTE = 25;
 
 async function transmisorDe(empresaId: string): Promise<Transmisor> {
-  const r = await pool.query("SELECT transmisor, ambiente, pse_url FROM configuracion_fiscal WHERE empresa_id = $1", [empresaId]);
+  const r = await pool.query("SELECT transmisor, ambiente, pse_url, pse_token FROM configuracion_fiscal WHERE empresa_id = $1", [empresaId]);
   const cfg = r.rows[0] ?? { transmisor: "SIMULADO", ambiente: "SIMULADO" };
   if (cfg.transmisor === "DGII" && cfg.ambiente !== "SIMULADO") return dgii(cfg.ambiente);
   // La dirección del proveedor la pone FactPOS (PSE_URL del servidor); la de la empresa solo manda si la tiene
-  if (cfg.transmisor === "PSE" && (cfg.pse_url || process.env.PSE_URL)) return pse(cfg.pse_url || process.env.PSE_URL!);
+  if (cfg.transmisor === "PSE" && (cfg.pse_url || process.env.PSE_URL)) return pse(cfg.pse_url || process.env.PSE_URL!, undefined, cfg.pse_token ? descifrarTexto(cfg.pse_token) : undefined);
   return simulado;
 }
 
