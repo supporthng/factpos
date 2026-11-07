@@ -197,6 +197,16 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 
   body * { visibility: hidden; }
   #ticket, #ticket * { visibility: visible; }
   #ticket { position: absolute; left: 0; top: 0; width: 72mm; padding: 2mm 4mm; border-radius: 0; }
+  /* Lo oculto con visibility sigue ocupando sitio: la página salía tan alta como la pantalla y sobraba papel en blanco.
+     Lo que no es el ticket ni lo contiene, no se imprime ni ocupa espacio; y sin el zoom del tamaño de letra */
+  #root { zoom: 1 !important; }
+  body :not(#ticket):not(#ticket *):not(:has(#ticket)) { display: none !important; }
+  html, body, #root, :has(> #ticket), :has(#ticket):not(#ticket) {
+    height: auto !important; min-height: 0 !important; max-height: none !important; overflow: visible !important;
+    margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: none !important;
+    position: static !important; transform: none !important; width: auto !important;
+  }
+  #ticket { position: static !important; margin: 0 !important; }
 }
 
 /* Aprobaciones, facturas y pausas */
