@@ -115,6 +115,7 @@ export function EmpresasEnlazadas() {
       {(datos?.length ?? 0) > 1 && <CopiarCatalogo otras={(datos ?? []).filter((e) => !e.actual)} />}
       {(datos?.length ?? 0) > 1 && <CopiarAjustes otras={(datos ?? []).filter((e) => !e.actual)} />}
       {(datos?.length ?? 0) > 1 && <Consolidado />}
+      {(datos?.length ?? 0) > 1 && <EstadoConsolidado />}
     </div>
   );
 }
@@ -150,6 +151,31 @@ function Consolidado() {
             </Fragment>
           ))}
           <tr><td><b>Total del grupo</b></td><td className="num"><b>{rd(tot.venta)}</b></td><td className="num"><b>{tot.tx}</b></td><td className="num"><b>{rd(tot.ant)}</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Inventario, cuentas por cobrar y comprobantes electrónicos de todas las empresas del grupo. */
+function EstadoConsolidado() {
+  const { datos } = useDatos<{ empresaId: string; empresa: string; rnc: string; inventario: string; porCobrar: string; rechazados: number; pendientes: number }[]>("/central/empresas/estado-consolidado");
+  const tot = (datos ?? []).reduce((a, e) => ({ inv: a.inv + Number(e.inventario), cxc: a.cxc + Number(e.porCobrar), rec: a.rec + e.rechazados, pen: a.pen + e.pendientes }), { inv: 0, cxc: 0, rec: 0, pen: 0 });
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h4>Inventario, cuentas por cobrar y comprobantes</h4>
+      <table className="tabla">
+        <thead><tr><th>Empresa</th><th className="num">Inventario (al costo)</th><th className="num">Por cobrar</th><th className="num">e-CF rechazados (30 días)</th><th className="num">e-CF pendientes de envío</th></tr></thead>
+        <tbody>
+          {(datos ?? []).map((e) => (
+            <tr key={e.empresaId}>
+              <td><b>{e.empresa}</b> <span className="suave pequeno">RNC {e.rnc}</span></td>
+              <td className="num">{rd(e.inventario)}</td><td className="num">{rd(e.porCobrar)}</td>
+              <td className="num" style={e.rechazados ? { color: "#b42318", fontWeight: 700 } : undefined}>{e.rechazados}</td>
+              <td className="num" style={e.pendientes ? { color: "#b54708", fontWeight: 700 } : undefined}>{e.pendientes}</td>
+            </tr>
+          ))}
+          <tr><td><b>Total del grupo</b></td><td className="num"><b>{rd(tot.inv)}</b></td><td className="num"><b>{rd(tot.cxc)}</b></td><td className="num"><b>{tot.rec}</b></td><td className="num"><b>{tot.pen}</b></td></tr>
         </tbody>
       </table>
     </div>

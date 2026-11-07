@@ -292,4 +292,22 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
       return { creados, omitidos };
     });
   });
+
+  /** Estado de cada empresa del grupo: inventario al costo, cuentas por cobrar y comprobantes electrónicos rechazados o pendientes. Solo administradores completos. */
+  app.get("/central/empresas/estado-consolidado", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede ver el consolidado", 403);
+    const g = await grupoDe(s.e);
+    const r = await pool.query(
+      `SELECT e.id AS "empresaId", COALESCE(e.nombre_comercial, e.razon_social) AS empresa, e.rnc,
+              COALESCE((SELECT SUM(x.cantidad * x.costo_promedio) FROM existencias x JOIN almacenes a ON a.id = x.almacen_id
+                          JOIN sucursales sc ON sc.id = a.sucursal_id WHERE sc.empresa_id = e.id), 0)::text AS inventario,
+              COALESCE((SELECT SUM(m.monto) FROM cxc_movimientos m JOIN sucursales sc ON sc.id = m.sucursal_id WHERE sc.empresa_id = e.id), 0)::text AS "porCobrar",
+              (SELECT count(*) FROM ecf_documentos d JOIN sucursales sc ON sc.id = d.sucursal_id
+                WHERE sc.empresa_id = e.id AND d.estado = 'RECHAZADO' AND d.creado_en > now() - interval '30 days')::int AS rechazados,
+              (SELECT count(*) FROM ecf_documentos d JOIN sucursales sc ON sc.id = d.sucursal_id
+                WHERE sc.empresa_id = e.id AND d.estado IN ('PENDIENTE','ENVIADO','EN_PROCESO','CONTINGENCIA'))::int AS pendientes
+         FROM empresas e WHERE COALESCE(e.grupo_id, e.id) = $1 AND e.activo ORDER BY empresa`, [g]);
+    return r.rows;
+  });
 }
