@@ -51,7 +51,7 @@ export function EquiposRed() {
         <Tabla
           filas={lista}
           clave={(e) => e.ip + e.tipo}
-          vacio={buscando ? "Buscando equipos…" : "No se encontró ningún equipo. Solo aparecen los que tienen la versión más reciente instalada y están en la misma red que este servidor."}
+          vacio={buscando ? "Buscando equipos…" : "No se encontró ningún equipo. Solo aparecen los que tienen la versión más reciente instalada y están en la misma red que este servidor. Si un equipo no aparece, revise que tenga la versión nueva y que el firewall de Windows deje pasar el puerto UDP de FactPOS (41235 verificador, 41236 caja, 41237 administración)."}
           columnas={[
             { titulo: "Equipo", valor: (e) => <><b>{e.nombre}</b><div className="suave pequeno">{NOMBRE[e.tipo]} · {e.plataforma}</div></> },
             { titulo: "Dirección", valor: (e) => <span className="mono">{e.ip}</span> },
