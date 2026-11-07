@@ -932,7 +932,20 @@ function watchUpdates() {
   timer.unref();
 }
 // Administración ve este equipo en la red y puede apuntarlo al servidor: contesta por UDP (Caja 41236, Administración 41237)
+// Regla de Windows para que Administración pueda preguntarle a este equipo (UDP 41236/41237, solo red local). El instalador ya la crea;
+// esto cubre las instalaciones anteriores y solo funciona si el programa tiene permisos de administrador (si no, no hace nada).
+function abrirFirewallEquipo() {
+  if (process.platform !== 'win32') return;
+  const nombre = 'FactPOS equipo en la red';
+  try {
+    execFile('netsh', ['advfirewall', 'firewall', 'show', 'rule', `name=${nombre}`], { windowsHide: true, timeout: 20000 }, (err) => {
+      if (!err) return;
+      try { execFile('netsh', ['advfirewall', 'firewall', 'add', 'rule', `name=${nombre}`, 'dir=in', 'action=allow', 'protocol=UDP', 'localport=41236,41237', 'remoteip=LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16', 'profile=any'], { windowsHide: true, timeout: 20000 }, () => {}); } catch {}
+    });
+  } catch {}
+}
 function responderEquipos() {
+  abrirFirewallEquipo();
   const puerto = selected === 'caja' ? 41236 : 41237;
   const privada = ip => { const a = String(ip).split('.').map(Number); return a[0] === 10 || (a[0] === 172 && a[1] >= 16 && a[1] <= 31) || (a[0] === 192 && a[1] === 168); };
   if (!config.id) { config.id = crypto.randomBytes(8).toString('hex'); saveConfig(); }

@@ -628,6 +628,9 @@ Section "FactPOS" SecPrincipal
         RMDir /r "$LOCALAPPDATA\FactPOS\escritorio"
         CreateDirectory "$LOCALAPPDATA\FactPOS\escritorio"
         CopyFiles /SILENT "$PLUGINSDIR\escritorio\*.*" "$LOCALAPPDATA\FactPOS\escritorio"
+        ; Administración ve esta caja en la red (UDP 41236 Caja / 41237 Administración), solo desde la red local
+        nsExec::ExecToLog `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -Command "Get-NetFirewallRule -DisplayName 'FactPOS equipo en la red' -ErrorAction SilentlyContinue | Remove-NetFirewallRule; New-NetFirewallRule -DisplayName 'FactPOS equipo en la red' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 41236,41237 -RemoteAddress LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -Profile Any | Out-Null"`
+        Pop $0
         ${If} $Tipo == "caja"
           ${If} $Servidor != ""
             CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$LOCALAPPDATA\FactPOS\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=$Servidor"
