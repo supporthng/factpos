@@ -16,6 +16,8 @@ import { direccionesLocales } from "../red.js";
  * lo acepta si el pedido viene de su misma red local y si en esa dirección responde un FactPOS.
  */
 export const PUERTOS_EQUIPOS = { verificador: 41235, caja: 41236, admin: 41237 } as const;
+/** Puerto fijo desde el que este servidor pregunta y por el que recibe las respuestas (así el firewall puede dejarlas pasar). */
+export const PUERTO_ESCANEO_EQUIPOS = 41238;
 type Tipo = keyof typeof PUERTOS_EQUIPOS;
 
 export interface EquipoRed { ip: string; tipo: Tipo; id: string; nombre: string; version: string; plataforma: string; servidor: string; apuntaAqui: boolean }
@@ -59,12 +61,13 @@ export async function escanearEquipos(ms = 2200): Promise<EquipoRed[]> {
       } catch { /* respuesta ajena */ }
     });
     s.on("error", () => { try { s.close(); } catch { /* ya cerrado */ } resolver([...halladas.values()]); });
-    s.bind(0, () => {
+    const preguntar = () => {
       try { s.setBroadcast(true); } catch { /* sin broadcast */ }
       const pregunta = Buffer.from("FACTPOS-EQUIPOS?");
       for (const dir of difusiones()) for (const p of Object.values(PUERTOS_EQUIPOS)) s.send(pregunta, p, dir, () => {});
       setTimeout(() => { try { s.close(); } catch { /* ya cerrado */ } resolver([...halladas.values()].sort((a, b) => a.tipo.localeCompare(b.tipo) || a.nombre.localeCompare(b.nombre))); }, ms);
-    });
+    };
+    s.bind(PUERTO_ESCANEO_EQUIPOS, preguntar);
   });
 }
 

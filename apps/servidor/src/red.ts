@@ -117,7 +117,10 @@ export function asegurarFirewall(puerto: number, log: (m: string) => void) {
   const remoto = "LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
   const cmd = `$n='${nombre}'; $r = Get-NetFirewallRule -DisplayName $n -ErrorAction SilentlyContinue; ` +
     `if ($r) { Set-NetFirewallRule -DisplayName $n -Enabled True -Action Allow -Profile Any; Set-NetFirewallRule -DisplayName $n -RemoteAddress ${remoto} } ` +
-    `else { New-NetFirewallRule -DisplayName $n -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${puerto} -RemoteAddress ${remoto} -Profile Any | Out-Null }`;
+    `else { New-NetFirewallRule -DisplayName $n -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${puerto} -RemoteAddress ${remoto} -Profile Any | Out-Null }; ` +
+    // Respuestas de los equipos a «Equipos en la red» (UDP 41238, solo red local)
+    `$u='FactPOS equipos en la red (UDP 41238)'; if (-not (Get-NetFirewallRule -DisplayName $u -ErrorAction SilentlyContinue)) { ` +
+    `New-NetFirewallRule -DisplayName $u -Direction Inbound -Action Allow -Protocol UDP -LocalPort 41238 -RemoteAddress ${remoto} -Profile Any | Out-Null }`;
   execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], { timeout: 30_000, windowsHide: true }, (err) => {
     log(err ? `[firewall] no se pudo comprobar la regla: ${err.message}` : `[firewall] puerto ${puerto} abierto a la red local`);
   });

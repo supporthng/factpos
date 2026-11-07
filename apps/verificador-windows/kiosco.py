@@ -577,8 +577,24 @@ def _apuntar(api, base, origen):
     return {"ok": True}
 
 
+def _abrir_firewall_equipos():
+    """Regla de Windows para que Administración pueda preguntarle a este equipo (UDP 41235, solo red local).
+    Solo se puede crear con permisos de administrador (el instalador interactivo ya la crea); sin ellos no hace nada."""
+    try:
+        nombre = "FactPOS equipo en la red (verificador)"
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={nombre}"], capture_output=True, creationflags=flags, timeout=20).returncode == 0:
+            return
+        subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={nombre}", "dir=in", "action=allow", "protocol=UDP",
+                        f"localport={PUERTO_EQUIPOS}", "remoteip=LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", "profile=any"],
+                       capture_output=True, creationflags=flags, timeout=20)
+    except Exception:
+        pass
+
+
 def _responder_equipos(api):
     """Contesta a Administración (UDP 41235): quién es este equipo y a qué servidor apunta; y acepta «apuntar»."""
+    threading.Thread(target=_abrir_firewall_equipos, name="firewall-equipos", daemon=True).start()
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
