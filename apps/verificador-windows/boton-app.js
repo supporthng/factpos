@@ -66,7 +66,7 @@
           caja.innerHTML = "";
           armar(30000); caja.onpointerdown = function () { armar(30000); };
           caja.appendChild(el("h2", "margin:0 0 4px;font-size:24px", "Opciones del equipo"));
-          Promise.all([llamar("plataforma"), llamar("version")]).then(function (r) { caja.appendChild(el("div", "color:#5d6d7e;margin-bottom:6px", "Verificador FactPOS " + r[0] + " " + r[1])); });
+          Promise.all([llamar("plataforma"), llamar("version"), llamar("estado")]).then(function (r) { var sv = ""; try { sv = JSON.parse(r[2]).servidor || ""; } catch (e) {} caja.appendChild(el("div", "color:#5d6d7e;margin-bottom:6px;overflow-wrap:anywhere", "Verificador FactPOS " + r[0] + " " + r[1] + (sv ? " · Servidor: " + sv : ""))); });
           var cs = btn("Cambiar de servidor", "#10202e", "#fff"), sa = btn("Cerrar la app", "#c0362c", "#fff"), ca = btn("Volver", "#eef1f4", "#10202e");
           cs.onclick = function () { llamar("cambiarServidor", c); };
           sa.onclick = function () { llamar("salir", c); };
