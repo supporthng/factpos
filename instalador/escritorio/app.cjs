@@ -642,7 +642,7 @@ function openMain(onShown) {
   // La ventana se muestra cuando la pantalla terminó de cargar y dejó de recargarse (tras una actualización la pantalla
   // detecta la versión nueva y se recarga una vez): así el sistema aparece listo para escribir, sin parpadeos.
   let shown = false, calma = null;
-  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); cerrarSplash(); marca('ventana mostrada'); try { global.__factposListo && global.__factposListo(); } catch {} if (kiosko) { win.setKiosk(true); ocultarEscritorio(); } win.focus(); win.webContents.focus(); if (onShown) onShown();
+  const mostrar = () => { if (shown || win.isDestroyed()) return; shown = true; clearTimeout(calma); clearTimeout(tope); win.show(); cerrarSplash(); marca('ventana mostrada'); try { global.__factposListo && global.__factposListo(); } catch {} if (kiosko) { win.setKiosk(true); ocultarEscritorio(); iniciarVigiaAnydesk(); } win.focus(); win.webContents.focus(); if (onShown) onShown();
     // Con un segundo monitor, la pantalla del cliente se abre sola (se puede apagar con pantallaCliente:false en la configuración)
     if (selected === 'caja' && config.pantallaCliente !== false && screen.getAllDisplays().length > 1) setTimeout(() => { try { openCustomer(); win.focus(); } catch {} }, 1500);
   };
@@ -651,8 +651,35 @@ function openMain(onShown) {
   const kiosko = selected === 'caja' && !args.includes('--ventana');
   // Caja bloqueada: mientras está abierta (modo kiosko) no se puede minimizar, salir de pantalla completa, abrir otras ventanas
   // ni cambiar con F11. Para salir hace falta el permiso de un supervisor (Ctrl+Mayús+Q o Salir). Con --ventana no se bloquea.
+  // Soporte remoto: mientras AnyDesk tenga una ventana a la vista (solicitud de conexión o sesión abierta) la caja no se pone
+  // encima ni le quita el foco. En reposo AnyDesk no tiene ventanas, así que el cliente no puede abrirlo.
+  let anydeskVisible = false, vigiaAnydesk = null;
+  const iniciarVigiaAnydesk = () => {
+    if (process.platform !== 'win32' || vigiaAnydesk) return;
+    const ps = [
+      "Add-Type -Namespace W -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc p, IntPtr l); public delegate bool EnumProc(IntPtr h, IntPtr l); [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h); [DllImport(\"user32.dll\")] public static extern int GetWindowTextLength(IntPtr h); [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);'",
+      "$ult=-1",
+      "while($true){ $ids=@(Get-Process -Name AnyDesk -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }); $hay=0",
+      "if($ids.Count -gt 0){ $cb=[W.U+EnumProc]{ param($h,$l) if([W.U]::IsWindowVisible($h) -and [W.U]::GetWindowTextLength($h) -gt 0){ $p=[uint32]0; [void][W.U]::GetWindowThreadProcessId($h,[ref]$p); if($ids -contains [int]$p){ $script:hay=1 } }; return $true }; [void][W.U]::EnumWindows($cb,[IntPtr]::Zero) }",
+      "if($hay -ne $ult){ $ult=$hay; [Console]::Out.WriteLine($hay); [Console]::Out.Flush() }; Start-Sleep -Milliseconds 1000 }",
+    ].join('; ');
+    try {
+      vigiaAnydesk = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      let resto = '';
+      vigiaAnydesk.stdout.on('data', (d) => {
+        resto += d.toString();
+        const lineas = resto.split(/\r?\n/); resto = lineas.pop();
+        for (const l of lineas) {
+          if (l.trim() === '1') { anydeskVisible = true; try { win.setAlwaysOnTop(false); } catch {} }
+          else if (l.trim() === '0') { anydeskVisible = false; setTimeout(fijar, 50); }
+        }
+      });
+      vigiaAnydesk.on('exit', () => { vigiaAnydesk = null; anydeskVisible = false; });
+      win.on('closed', () => { try { vigiaAnydesk && vigiaAnydesk.kill(); } catch {} });
+    } catch { vigiaAnydesk = null; }
+  };
   const bloqueada = () => kiosko && selected === 'caja' && !saliendo && !updating && !win.isDestroyed();
-  const fijar = () => { if (!bloqueada()) return; try { win.setAlwaysOnTop(true, 'screen-saver'); if (!win.isKiosk()) win.setKiosk(true); } catch {} };
+  const fijar = () => { if (!bloqueada() || anydeskVisible) return; try { win.setAlwaysOnTop(true, 'screen-saver'); if (!win.isKiosk()) win.setKiosk(true); } catch {} };
   // Minimizar solo con el permiso de un supervisor: si se intenta sin permiso, la ventana vuelve y la pantalla pide el PIN
   win.on('minimize', () => {
     if (!bloqueada()) return;
@@ -662,7 +689,7 @@ function openMain(onShown) {
   win.on('restore', () => { if (bloqueada()) { ocultarEscritorio(); setTimeout(fijar, 50); } });
   win.on('leave-full-screen', () => { if (bloqueada()) setTimeout(fijar, 50); });
   win.on('show', fijar);
-  win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !win.isFocused() && !win.getChildWindows().length && !(customerWindow && !customerWindow.isDestroyed() && customerWindow.isFocused())) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
+  win.on('blur', () => { if (bloqueada()) setTimeout(() => { try { if (bloqueada() && !anydeskVisible && !win.isFocused() && !win.getChildWindows().length && !(customerWindow && !customerWindow.isDestroyed() && customerWindow.isFocused())) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); } } catch {} }, 300); });
   win.webContents.on('before-input-event', (event, input) => {
     if (selected !== 'caja' || input.type !== 'keyDown') return;
     if (input.key === 'F11') { event.preventDefault(); if (!bloqueada()) win.setKiosk(!win.isKiosk()); }

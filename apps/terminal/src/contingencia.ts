@@ -254,6 +254,12 @@ export async function verificarPinSinServidor(ajustes: Ajustes, usuarioId: strin
   const u = mapa[usuarioId];
   return !!u && u.huella === huellaPin(u.sal, pin);
 }
+/** Sin servidor: quién tiene este PIN entre los que ya entraron en esta caja. */
+export async function usuarioPorPinSinServidor(ajustes: Ajustes, pin: string) {
+  const mapa = (await leer<Record<string, { nombre: string; sal: string; huella: string }>>(k(ajustes.cajaId, "pines"))) ?? {};
+  for (const [id, u] of Object.entries(mapa)) if (u.huella === huellaPin(u.sal, pin)) return { id, nombre: u.nombre };
+  return null;
+}
 /** Huella lenta (10 mil vueltas de SHA-256) para que no se pueda adivinar el PIN copiando la caja. */
 function huellaPin(sal: string, pin: string) {
   let h = sha256(`${sal}:${pin}`);

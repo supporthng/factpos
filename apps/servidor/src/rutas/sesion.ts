@@ -35,17 +35,25 @@ export async function rutasSesionCaja(app: FastifyInstance) {
   /** El cajero entra con su PIN; la caja recibe una sesión firmada para esa caja. */
   app.post("/cajas/:cajaId/entrar", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const b = z.object({ usuarioId: uuid, pin: z.string().max(10) }).parse(req.body);
-    const llave = `caja:${cajaId}:${b.usuarioId}`;
+    // El PIN es único por empresa: basta con el PIN (usuarioId es opcional y solo lo usa la pantalla de bloqueo)
+    const b = z.object({ usuarioId: uuid.optional(), pin: z.string().max(10) }).parse(req.body);
+    const llave = `caja:${cajaId}:${b.usuarioId ?? "pin"}`;
     frenar(llave);
     const ctx = await contextoCaja(cajaId);
     const r = await pool.query<{ id: string; nombre: string; pin_hash: string | null; permisos: string[]; sucursales: string[] | null }>(
-      `SELECT u.id, u.nombre, u.pin_hash, ro.permisos, u.sucursales FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
-        WHERE u.id = $1 AND u.empresa_id = $2 AND u.activo`,
-      [b.usuarioId, ctx.empresaId],
+      b.usuarioId
+        ? `SELECT u.id, u.nombre, u.pin_hash, ro.permisos, u.sucursales FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
+            WHERE u.id = $1 AND u.empresa_id = $2 AND u.activo`
+        : `SELECT u.id, u.nombre, u.pin_hash, ro.permisos, u.sucursales FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
+            WHERE u.pin_hash = $1 AND u.empresa_id = $2 AND u.activo`,
+      [b.usuarioId ?? hashPin(ctx.empresaId, b.pin), ctx.empresaId],
     );
     const u = r.rows[0];
-    if (!u) throw new ErrorNegocio("Usuario no encontrado", 404);
+    if (!u) {
+      if (b.usuarioId) throw new ErrorNegocio("Usuario no encontrado", 404);
+      fallo(llave, 1);
+      throw new ErrorNegocio("PIN incorrecto", 401);
+    }
     if (!u.pin_hash) throw new ErrorNegocio("Usted no tiene PIN todavía: pídale al administrador que se lo asigne", 403);
     if (u.pin_hash !== hashPin(ctx.empresaId, b.pin)) {
       fallo(llave, 1);
