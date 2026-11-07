@@ -132,7 +132,14 @@ function AppInterna() {
       });
   }, [ajustes, usuario]);
 
-  const ventanaSalir = saliendo && ajustes ? (
+  // Sin turno abierto (ya se hizo el cierre) no hay nada que proteger: se cierra la caja con una confirmación, sin PIN
+  const ventanaSalir = saliendo && ajustes && turno === null ? (
+    <Modal titulo="Cerrar FactPOS" onCerrar={() => setSaliendo(false)}>
+      <p>El turno ya está cerrado. Al cerrar FactPOS podrá apagar el equipo o volver a abrir la caja desde su acceso directo.</p>
+      <button className="boton primario ancho" onClick={aprobadoSalir}>Cerrar FactPOS</button>
+      <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
+    </Modal>
+  ) : saliendo && ajustes ? (
     <Modal titulo="Hay un turno abierto" onCerrar={() => setSaliendo(false)}>
       <p>No se puede cerrar FactPOS con el turno abierto. Cierre el turno en <b>Turno y cierre</b>, o pida a un supervisor que autorice la salida.</p>
       <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar FactPOS" enfocar onAprobado={aprobadoSalir} />
@@ -162,7 +169,7 @@ function AppInterna() {
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
   if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />{ventanaSalir}{ventanaMin}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
-  if (turno === null) return <AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />;
+  if (turno === null) return <><AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onSalir={salir} onCerrarSistema={() => setSaliendo(true)} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />{ventanaSalir}</>;
 
   // El turno es de quien lo abrió: otro cajero no vende dentro de un turno ajeno (el cuadre sería de dos personas)
   if (turno.usuarioId !== usuario.id) {
@@ -416,8 +423,8 @@ function BienvenidaTurno({ usuario, fondo, onCerrar }: { usuario: string; fondo:
   );
 }
 
-function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
-  ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: (fondo: string) => void; recargar: () => void;
+function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, onCerrarSistema }: {
+  ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: (fondo: string) => void; recargar: () => void; onSalir: () => void; onCerrarSistema: () => void;
 }) {
   const [fondo, setFondo] = useState("2000");
   const [msg, setMsg] = useState("");
@@ -443,6 +450,8 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar }: {
       <p className="suave">Fondo: {rd(fondo || 0)}</p>
       <button className="boton primario ancho" onClick={abrir}>Abrir turno</button>
       <button className="boton ancho" onClick={() => setConsultando(true)}>Consultar precios</button>
+      <button className="enlace" style={{ marginTop: 10 }} onClick={onSalir}>← Volver a la pantalla del PIN</button>
+      <button className="enlace" onClick={onCerrarSistema}>Cerrar FactPOS (para apagar el equipo)</button>
       <p className="suave pequeno">Sin turno abierto solo se pueden consultar precios y existencias; para facturar hay que abrir el turno.</p>
       {msg && <p className="error">{msg}</p>}
       {consultando && <ConsultaPrecios ajustes={ajustes} onCerrar={() => setConsultando(false)} />}
