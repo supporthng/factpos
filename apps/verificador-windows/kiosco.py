@@ -507,7 +507,7 @@ class Kiosco:
             pedido = urllib.request.Request(f"{u.scheme}://{u.netloc}/verificador/autorizar-salida",
                                             data=json.dumps({"pin": pin}).encode("utf-8"),
                                             headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(pedido, timeout=8) as r:
+            with urllib.request.urlopen(pedido, timeout=3) as r:
                 if r.status == 200:
                     self._recordar_pin(pin)
                     return "ok"

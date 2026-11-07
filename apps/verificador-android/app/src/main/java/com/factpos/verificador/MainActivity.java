@@ -162,8 +162,8 @@ public class MainActivity extends Activity {
             Uri u = Uri.parse(sv);
             HttpURLConnection c = (HttpURLConnection) new URL(u.getScheme() + "://" + u.getAuthority() + "/verificador/autorizar-salida").openConnection();
             c.setRequestMethod("POST");
-            c.setConnectTimeout(6000);
-            c.setReadTimeout(8000);
+            c.setConnectTimeout(3000);
+            c.setReadTimeout(3000);
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json");
             try (OutputStream o = c.getOutputStream()) { o.write(new JSONObject().put("pin", pin).toString().getBytes(StandardCharsets.UTF_8)); }
