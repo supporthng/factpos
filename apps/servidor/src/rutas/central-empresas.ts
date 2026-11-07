@@ -70,7 +70,7 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
   /** Lista de puesta en marcha de la empresa activa: qué le falta antes de poder facturar. */
   app.get("/central/empresas/puesta-en-marcha", async (req) => {
     const e = sesionAdmin(req).e;
-    const un = async <T>(sql: string) => (await pool.query<T>(sql, [e])).rows[0];
+    const un = async <T extends Record<string, any>>(sql: string) => (await pool.query<T>(sql, [e])).rows[0];
     const [fis, cert, aut, suc, cajas, prod, usu] = await Promise.all([
       un<{ direccion_emisor: string; municipio: string | null; provincia: string | null; ambiente: string; transmisor: string; pse_url: string | null }>(
         "SELECT direccion_emisor, municipio, provincia, ambiente, transmisor, pse_url FROM configuracion_fiscal WHERE empresa_id = $1"),
