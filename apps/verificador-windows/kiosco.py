@@ -406,13 +406,13 @@ def _buscar_servidor(api, sv, identidad):
     return None
 
 
-def _vigilar_servidor(api):
+def _vigilar_servidor(api, empezar_en_copia=False):
     """Si el servidor deja de responder se abre la copia guardada de la pantalla (los precios se consultan con la copia
     del catálogo); apenas vuelve se regresa a la pantalla real. Si tarda en volver, lo busca en la red por si cambió
     de dirección."""
-    en_copia = False        # mostrando la copia guardada
-    caido = False           # el servidor dejó de responder (haya o no copia)
-    fallos = 0
+    en_copia = empezar_en_copia   # mostrando la copia guardada
+    caido = empezar_en_copia      # el servidor dejó de responder (haya o no copia)
+    fallos = 2 if empezar_en_copia else 0
     ultima_busqueda = 0.0
     while True:
         time.sleep(5)
@@ -695,9 +695,17 @@ def main():
     os.makedirs(WEBVIEW, exist_ok=True)
     api = Kiosco()
     threading.Thread(target=_bucle_actualizar, name="actualizar", daemon=True).start()
-    threading.Thread(target=_vigilar_servidor, args=(api,), name="vigilar-servidor", daemon=True).start()
+    # Si el equipo arranca y el servidor no responde, se abre de una vez la copia guardada (si no, quedaba una pantalla
+    # azul vacía y luego la página de error del navegador)
+    inicio = api._direccion()
+    en_copia = False
+    sv = leer_config().get("servidor") or ""
+    if sv and not _servidor_responde(sv) and leer_copia("copia_pagina.html") and leer_copia("copia_catalogo.json"):
+        inicio = url_config().rsplit("/", 1)[0] + "/copia"
+        en_copia = True
+    threading.Thread(target=_vigilar_servidor, args=(api, en_copia), name="vigilar-servidor", daemon=True).start()
     ventana = webview.create_window(
-        "Verificador FactPOS", api._direccion(), js_api=api,
+        "Verificador FactPOS", inicio, js_api=api,
         fullscreen=True, frameless=True, on_top=True, easy_drag=False,
         background_color="#10202E", text_select=False, zoomable=False, confirm_close=False)
     api._ventana = ventana
