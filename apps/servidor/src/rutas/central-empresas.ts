@@ -214,4 +214,48 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
       return { productos: nProd, omitidos, categorias: nCat, codigos: nCod, precios: nPre };
     });
   });
+
+  /**
+   * Copia ajustes de otra empresa del grupo a la actual: roles, usuarios (con su misma contraseña, sin PIN: el PIN depende de la empresa)
+   * y formatos (ticket, pantalla del cliente y verificador). Lo que ya exista con el mismo nombre se omite.
+   */
+  app.post("/central/empresas/copiar-ajustes", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede copiar ajustes", 403);
+    const b = z.object({
+      origenId: uuid, clave: z.string().min(1).max(200),
+      roles: z.boolean().default(false), usuarios: z.boolean().default(false), formatos: z.boolean().default(false),
+    }).parse(req.body);
+    if (!b.roles && !b.usuarios && !b.formatos) throw new ErrorNegocio("Marque qué desea copiar");
+    if (b.origenId === s.e) throw new ErrorNegocio("Elija otra empresa como origen");
+    const g = await grupoDe(s.e);
+    if ((await grupoDe(b.origenId)) !== g) throw new ErrorNegocio("Esa empresa no pertenece a su grupo", 403);
+    const me = (await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [s.u])).rows[0];
+    if (!me || !(await verificarClave(b.clave, me.clave_hash))) throw new ErrorNegocio("La contraseña no es correcta", 403);
+    const o = b.origenId, d = s.e;
+    return enTransaccion(async (c: PoolClient) => {
+      const q = (sql: string, p: unknown[] = []) => c.query(sql, p);
+      let roles = 0, usuarios = 0, formatos = false;
+      // Los usuarios necesitan sus roles: se copian los que falten por nombre
+      if (b.roles || b.usuarios) {
+        roles = (await q(`INSERT INTO roles (id, empresa_id, nombre, permisos)
+                 SELECT gen_random_uuid(), $2, r.nombre, r.permisos FROM roles r
+                  WHERE r.empresa_id = $1 AND NOT EXISTS (SELECT 1 FROM roles x WHERE x.empresa_id = $2 AND lower(x.nombre) = lower(r.nombre))`, [o, d])).rowCount ?? 0;
+      }
+      if (b.usuarios) {
+        usuarios = (await q(`INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash, activo, sucursales)
+                 SELECT gen_random_uuid(), $2,
+                        (SELECT x.id FROM roles x JOIN roles ro ON ro.id = u.rol_id WHERE x.empresa_id = $2 AND lower(x.nombre) = lower(ro.nombre) ORDER BY x.id LIMIT 1),
+                        u.nombre, u.usuario, u.clave_hash, NULL, u.activo, NULL
+                   FROM usuarios u
+                  WHERE u.empresa_id = $1 AND NOT EXISTS (SELECT 1 FROM usuarios x WHERE x.empresa_id = $2 AND lower(x.usuario) = lower(u.usuario))`, [o, d])).rowCount ?? 0;
+      }
+      if (b.formatos) {
+        formatos = ((await q(`INSERT INTO configuracion_marca (empresa_id, formato_ticket, pantalla_cliente, verificador)
+                 SELECT $2, m.formato_ticket, m.pantalla_cliente, m.verificador FROM configuracion_marca m WHERE m.empresa_id = $1
+                 ON CONFLICT (empresa_id) DO UPDATE SET formato_ticket = EXCLUDED.formato_ticket, pantalla_cliente = EXCLUDED.pantalla_cliente, verificador = EXCLUDED.verificador`, [o, d])).rowCount ?? 0) > 0;
+      }
+      return { roles, usuarios, formatos };
+    });
+  });
 }

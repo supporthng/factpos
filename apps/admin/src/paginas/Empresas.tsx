@@ -113,6 +113,7 @@ export function EmpresasEnlazadas() {
         </div>
       )}
       {(datos?.length ?? 0) > 1 && <CopiarCatalogo otras={(datos ?? []).filter((e) => !e.actual)} />}
+      {(datos?.length ?? 0) > 1 && <CopiarAjustes otras={(datos ?? []).filter((e) => !e.actual)} />}
       {(datos?.length ?? 0) > 1 && <Consolidado />}
     </div>
   );
@@ -182,6 +183,42 @@ function CopiarCatalogo({ otras }: { otras: EmpresaGrupo[] }) {
         <label><input type="checkbox" checked={precios} onChange={(e) => setPrecios(e.target.checked)} /> Copiar precios</label>
         <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
         <button className="boton" disabled={ocupado || !origen || !clave} onClick={copiar}>Copiar catálogo</button>
+      </div>
+    </div>
+  );
+}
+
+/** Copia roles, usuarios y formatos de otra empresa del grupo a la empresa actual. */
+function CopiarAjustes({ otras }: { otras: EmpresaGrupo[] }) {
+  const [origen, setOrigen] = useState(otras[0]?.id ?? "");
+  const [roles, setRoles] = useState(true);
+  const [usuarios, setUsuarios] = useState(false);
+  const [formatos, setFormatos] = useState(true);
+  const [clave, setClave] = useState("");
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const copiar = async () => {
+    const o = otras.find((x) => x.id === origen)?.nombre ?? "";
+    if (!confirm(`Se copiará a esta empresa lo marcado de «${o}». Lo que ya exista con el mismo nombre se omite.${usuarios ? " Los usuarios entran con su misma contraseña y SIN PIN: hay que asignarles uno." : ""}`)) return;
+    setOcupado(true); setMsg(null);
+    try {
+      const r = await api<{ roles: number; usuarios: number; formatos: boolean }>("/central/empresas/copiar-ajustes", { cuerpo: { origenId: origen, clave, roles, usuarios, formatos } });
+      setMsg({ t: `Listo: ${r.roles} rol(es) nuevos, ${r.usuarios} usuario(s) nuevos${r.usuarios ? " (sin PIN: asígneles uno en Usuarios y permisos)" : ""}${r.formatos ? ", formatos copiados" : ""}.`, tipo: "ok" });
+      setClave("");
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setOcupado(false);
+  };
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h4>Copiar ajustes a esta empresa</h4>
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
+        <select value={origen} onChange={(e) => setOrigen(e.target.value)}>{otras.map((e) => <option key={e.id} value={e.id}>Desde: {e.nombre}</option>)}</select>
+        <label><input type="checkbox" checked={roles} onChange={(e) => setRoles(e.target.checked)} /> Roles</label>
+        <label><input type="checkbox" checked={usuarios} onChange={(e) => setUsuarios(e.target.checked)} /> Usuarios</label>
+        <label><input type="checkbox" checked={formatos} onChange={(e) => setFormatos(e.target.checked)} /> Formatos (ticket, pantalla del cliente, verificador)</label>
+        <input type="password" autoComplete="current-password" placeholder="Su contraseña" value={clave} onChange={(e) => setClave(e.target.value)} />
+        <button className="boton" disabled={ocupado || !origen || !clave || (!roles && !usuarios && !formatos)} onClick={copiar}>Copiar ajustes</button>
       </div>
     </div>
   );
