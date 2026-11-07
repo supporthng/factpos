@@ -31,6 +31,9 @@ export function aplicarEscala() {
   const auto = bruto > 1 ? 1 + (bruto - 1) * 0.3 : bruto;
   const escala = Math.max(0.5, Math.min(2, auto * TAMANOS[leerTamano()].factor));
   document.documentElement.style.setProperty("--escala", escala.toFixed(3));
+  // Con «Grande» o «Muy grande» los nombres del carrito crecen solo un poco (la tercera parte): se compensa el resto del zoom
+  const f = TAMANOS[leerTamano()].factor;
+  document.documentElement.style.setProperty("--comp-nombres", (f > 1 ? (1 + (f - 1) * 0.35) / f : 1).toFixed(3));
 }
 
 export function iniciarEscala() {
