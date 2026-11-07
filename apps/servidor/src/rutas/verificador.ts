@@ -10,6 +10,7 @@ import { ofertasPara } from "../promociones.js";
 import QRCode from "qrcode";
 import { PAGINA_CONSULTA_MOVIL } from "../consulta-movil-pagina.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
+import { direccionesLocales } from "../red.js";
 
 /**
  * Verificador de precios.
@@ -49,8 +50,12 @@ export async function rutasVerificador(app: FastifyInstance) {
     const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
     const host = String(req.headers.host ?? "").replace(/[^a-zA-Z0-9.:\-\[\]]/g, "");
     if (!host) throw new ErrorNegocio("Sin dirección del servidor", 400);
-    const url = `http://${host}/verificador/movil${sucursal ? `?sucursal=${sucursal}` : ""}`;
-    rep.type("image/svg+xml").header("cache-control", "public, max-age=3600");
+    // Si la página se abrió en el propio servidor (127.0.0.1 / localhost), el celular no podría llegar: se usa la IP de la red de la tienda
+    const [nombreHost, puertoHost] = host.split(/:(?=\d+$)/);
+    const ip = /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])$/i.test(nombreHost) ? direccionesLocales()[0] : undefined;
+    const destino = ip ? `${ip}${puertoHost ? ":" + puertoHost : ""}` : host;
+    const url = `http://${destino}/verificador/movil${sucursal ? `?sucursal=${sucursal}` : ""}`;
+    rep.type("image/svg+xml").header("cache-control", "public, max-age=60");
     return QRCode.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
   });
 
