@@ -543,12 +543,24 @@ function openMain(onShown) {
     if (canal === 'factpos:imprimir') {
       // Impresión directa a la impresora predeterminada de Windows (sin el cuadro de imprimir). Si no se pudo (sin impresora, apagada),
       // se abre el cuadro normal para que el cajero elija otra en vez de perder el comprobante.
-      try {
-        win.webContents.print({ silent: true, printBackground: true, margins: { marginType: 'none' } }, (ok, razon) => {
-          if (ok || win.isDestroyed()) return;
-          try { win.webContents.print({ silent: false, printBackground: true }); } catch {}
-        });
-      } catch { try { win.webContents.print({ silent: false, printBackground: true }); } catch {} }
+      // El controlador de la impresora suele traer un largo de papel fijo (o de 30 cm) y sale papel en blanco de sobra:
+      // se pide una página del largo exacto del ticket (ancho 80 mm; micras).
+      (async () => {
+        let tamano;
+        try {
+          const mm = await win.webContents.executeJavaScript(`(() => { const t = document.getElementById('ticket'); if (!t) return 0;
+            const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
+            return Math.ceil(t.getBoundingClientRect().height / z * 25.4 / 96); })()`);
+          if (mm > 20 && mm < 2000) tamano = { width: 80000, height: (mm + 8) * 1000 };
+        } catch {}
+        const opciones = { silent: true, printBackground: true, margins: { marginType: 'none' }, ...(tamano ? { pageSize: tamano } : {}) };
+        try {
+          win.webContents.print(opciones, (ok) => {
+            if (ok || win.isDestroyed()) return;
+            try { win.webContents.print({ silent: false, printBackground: true }); } catch {}
+          });
+        } catch { try { win.webContents.print({ silent: false, printBackground: true }); } catch {} }
+      })();
       return;
     }
     if (canal === 'factpos:minimizar') { minimizarAutorizado = true; mostrarEscritorio(); try { win.setAlwaysOnTop(false); win.setKiosk(false); win.minimize(); } catch {} return; }
