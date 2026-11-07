@@ -224,9 +224,19 @@ public class MainActivity extends Activity {
 
     /** "ok" | "incorrecta" | "sin_conexion" | texto del servidor (p. ej. demasiados intentos). Se llama desde el hilo del puente, no de la pantalla.
      *  Sin conexión vale un PIN que este equipo ya validó antes con el servidor. */
+    /** Clave propia de este equipo: 3010 de fábrica (o la que se haya cambiado). Sirve siempre, con o sin servidor. */
+    private boolean claveEquipoOk(String pin) {
+        try {
+            String g = prefs().getString("clave_equipo", "");
+            if (g.isEmpty()) return java.security.MessageDigest.isEqual("3010".getBytes(StandardCharsets.UTF_8), pin.getBytes(StandardCharsets.UTF_8));
+            JSONObject e = new JSONObject(g);
+            return java.security.MessageDigest.isEqual(huella(pin, deHex(e.getString("s"))).getBytes(StandardCharsets.UTF_8), e.getString("h").getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) { return false; }
+    }
     private String comprobarPin(String pin) {
         String sv = servidor();
         if (pin == null || !pin.matches("\\d{4,8}")) return "incorrecta";
+        if (claveEquipoOk(pin)) return "ok";
         if (sv.isEmpty()) return pinRecordado(pin) ? "ok" : "incorrecta";
         try {
             Uri u = Uri.parse(sv);
@@ -587,6 +597,16 @@ public class MainActivity extends Activity {
             prefs().edit().putString("servidor", v).apply();
             hilo.post(() -> { if (web != null) web.loadUrl(direccion()); });
             return "";
+        }
+
+        /** Con un PIN válido (de supervisor, administrador o la clave actual de este equipo): fija la clave propia de este equipo. */
+        @JavascriptInterface public boolean cambiarClaveEquipo(String actual, String nueva) {
+            if (nueva == null || !nueva.matches("\\d{4,8}") || !claveOk(actual)) return false;
+            try {
+                byte[] sal = new byte[16]; new java.security.SecureRandom().nextBytes(sal);
+                prefs().edit().putString("clave_equipo", new JSONObject().put("s", hex(sal)).put("h", huella(nueva, sal)).toString()).apply();
+                return true;
+            } catch (Exception e) { return false; }
         }
 
         /** Con el PIN de un supervisor o administrador: olvida el servidor y vuelve a la pantalla de configuración. */

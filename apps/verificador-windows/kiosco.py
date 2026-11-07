@@ -630,6 +630,26 @@ class Kiosco:
         except Exception:
             pass
 
+    def _clave_equipo_ok(self, pin):
+        """Clave propia de este equipo: 3010 de fábrica (o la que se haya cambiado). Sirve siempre, con o sin servidor."""
+        try:
+            g = leer_config().get("clave_equipo")
+            if not g:
+                return hmac.compare_digest(pin.encode("utf-8"), b"3010")
+            return hmac.compare_digest(self._huella(pin, bytes.fromhex(g["s"])), g["h"])
+        except Exception:
+            return False
+
+    def cambiarClaveEquipo(self, actual, nueva):
+        """Con un PIN válido (supervisor, administrador o la clave actual de este equipo): fija la clave propia de este equipo."""
+        if not isinstance(nueva, str) or not re.match(r"^\d{4,8}$", nueva) or self._comprobar_pin(actual) != "ok":
+            return False
+        c = leer_config()
+        sal = os.urandom(16)
+        c["clave_equipo"] = {"s": sal.hex(), "h": self._huella(nueva, sal)}
+        guardar_config(c)
+        return True
+
     def _comprobar_pin(self, pin):
         """El PIN de un supervisor o administrador de FactPOS, validado por el servidor de la sucursal.
         Devuelve "ok", "incorrecta", "sin_conexion" o el texto que mande el servidor.
@@ -637,6 +657,8 @@ class Kiosco:
         sv = leer_config().get("servidor") or ""
         if not isinstance(pin, str) or not re.match(r"^\d{4,8}$", pin):
             return "incorrecta"
+        if self._clave_equipo_ok(pin):
+            return "ok"
         if not sv:
             return "ok" if self._pin_recordado(pin) else "incorrecta"
         try:
