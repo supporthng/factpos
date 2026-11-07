@@ -8,7 +8,7 @@ import { iniciarCola } from "./fiscal/cola.js";
 import { certificado } from "./fiscal/firma.js";
 import { cargarCertificadoGuardado } from "./fiscal/certificado-guardado.js";
 import { iniciarActualizacionPadron } from "./padron.js";
-import { iniciarAnuncioEnRed } from "./red.js";
+import { asegurarFirewall, iniciarAnuncioEnRed } from "./red.js";
 import { iniciarSincronizacion, resolverCentral, syncActiva } from "./sync/sucursal.js";
 import { renovarSiToca } from "./licencia/cliente.js";
 import { iniciarMaster } from "./master.js";
@@ -66,6 +66,7 @@ if (!enVercel && config.modo !== "portal") {
   iniciarActualizacionPadron((m) => app.log.info(m));
   // Las cajas encuentran este servidor solas: factpos.local y respuesta a la búsqueda por UDP
   iniciarAnuncioEnRed(config.puerto, (m) => app.log.info(m));
+  asegurarFirewall(config.puerto, (m) => app.log.info(m));
   // Servidor de sucursal: sube ventas y baja precios/productos/traspasos de la central
   // (recién instalado: primero se da de alta con un código; después sincroniza solo)
   if (config.modo === "sucursal") {

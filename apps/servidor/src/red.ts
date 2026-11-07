@@ -1,4 +1,5 @@
 import { createSocket } from "node:dgram";
+import { execFile } from "node:child_process";
 import { networkInterfaces, hostname } from "node:os";
 import multicastDns from "multicast-dns";
 import { pool } from "./db.js";
@@ -102,4 +103,22 @@ export function iniciarAnuncioEnRed(puerto: number, log: (m: string) => void) {
 
   const ips = direccionesLocales();
   log(`Cajas: abran http://${host}:${puerto}/terminal/${ips.length ? `  (o http://${ips[0]}:${puerto}/terminal/)` : ""}`);
+}
+
+/**
+ * Windows: se asegura, cada vez que arranca el servidor, de que el firewall deje entrar a este puerto desde la red de la
+ * tienda. Antes solo lo hacía el instalador, y con «solo la subred local» (o si la regla se borró al reinstalar) los
+ * verificadores y cajas de otro equipo veían «tardó demasiado en responder» aunque en el servidor todo funcionara.
+ * Acepta la subred local y las redes privadas típicas (10.x, 172.16-31.x, 192.168.x), nunca internet.
+ */
+export function asegurarFirewall(puerto: number, log: (m: string) => void) {
+  if (process.platform !== "win32" || process.env.ASEGURAR_FIREWALL === "no") return;
+  const nombre = `FactPOS servidor (TCP ${puerto})`;
+  const remoto = "LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+  const cmd = `$n='${nombre}'; $r = Get-NetFirewallRule -DisplayName $n -ErrorAction SilentlyContinue; ` +
+    `if ($r) { Set-NetFirewallRule -DisplayName $n -Enabled True -Action Allow -Profile Any; Set-NetFirewallRule -DisplayName $n -RemoteAddress ${remoto} } ` +
+    `else { New-NetFirewallRule -DisplayName $n -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${puerto} -RemoteAddress ${remoto} -Profile Any | Out-Null }`;
+  execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], { timeout: 30_000, windowsHide: true }, (err) => {
+    log(err ? `[firewall] no se pudo comprobar la regla: ${err.message}` : `[firewall] puerto ${puerto} abierto a la red local`);
+  });
 }
