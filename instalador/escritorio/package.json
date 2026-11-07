@@ -6,7 +6,7 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --win portable --x64"
+    "dist:win": "electron-builder --win dir --x64"
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -19,6 +19,6 @@
     "files": ["main.cjs", "app.cjs", "preload.cjs", "actualizando.html", "factpos.ico", "codigo-version.txt", "package.json"],
     "directories": { "output": "out" },
     "extraResources": [{ "from": "../../apps/terminal/dist", "to": "terminal-ui" }],
-    "win": { "target": ["portable"], "icon": "factpos.ico", "artifactName": "FactPOS-Escritorio-${version}.exe" }
+    "win": { "target": ["dir"], "icon": "factpos.ico", "executableName": "FactPOS-Escritorio" }
   }
 }

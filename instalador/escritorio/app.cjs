@@ -765,6 +765,7 @@ function getJson(url) {
 function readStateFile() {
   const roots = [];
   if (process.env.PORTABLE_EXECUTABLE_DIR) roots.push(path.resolve(process.env.PORTABLE_EXECUTABLE_DIR, '..'));
+  roots.push(path.resolve(path.dirname(process.execPath), '..')); // instalada descomprimida: <instalación>\escritorio\FactPOS-Escritorio.exe
   roots.push('C:\\FactPOS');
   for (const r of roots) {
     try {
