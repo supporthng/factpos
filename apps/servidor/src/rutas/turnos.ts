@@ -53,7 +53,8 @@ export async function rutasTurnos(app: FastifyInstance) {
                                  'secundario', CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END, 'logoEnTicket', COALESCE(m.logo_en_ticket, true), 'usarColores', COALESCE(m.usar_colores_logo, true),
                                  'formato', COALESCE(m.formato_ticket, '{}'::jsonb),
                                  'pantallaCliente', COALESCE(m.pantalla_cliente, '{}'::jsonb)) AS marca,
-              s.direccion, s.telefono, e.id AS "empresaId"
+              COALESCE(NULLIF(btrim(s.direccion), ''), NULLIF(btrim(e.direccion), '')) AS direccion,
+              COALESCE(NULLIF(btrim(s.telefono), ''), NULLIF(btrim(e.telefono), '')) AS telefono, e.id AS "empresaId"
          FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id JOIN empresas e ON e.id = s.empresa_id
          LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id
          LEFT JOIN configuracion_marca m ON m.empresa_id = e.id

@@ -4,7 +4,7 @@ import { leerTema } from "./escala";
 import { AvisoLicencia } from "./AvisoLicencia";
 import { useEffect, useRef, useState } from "react";
 import { api, equipoId, leerAjustes, guardarAjustes, rd, sesionCaja, fijarSesionCaja, type Ajustes } from "./api";
-import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuariosSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
+import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuarioPorPinSinServidor, verificarPinSinServidor, useConexion } from "./contingencia";
 import { Venta, Modal, ConsultaPrecios } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { TurnoCaja } from "./Turno";
@@ -186,11 +186,11 @@ function TurnoAjeno({ ajustes, config, usuario, turno, onSalir, onCerrado }: {
     <Pantalla>
       <h2>Esta caja tiene un turno abierto</h2>
       <p>El turno de <b>{turno.usuario}</b> sigue abierto. Cada cajero trabaja con su propio turno para que el cuadre sea de una sola persona.</p>
-      <p className="suave">{turno.usuario} debe cerrar su turno, o un supervisor puede cerrarlo ahora. Después podrá abrir el suyo con su fondo inicial.</p>
+      <p className="suave">{turno.usuario} debe cerrar su turno, o un supervisor o administrador puede cerrarlo ahora (si usted lo es, se cierra sin pedir otro PIN). Después podrá abrir el suyo con su fondo inicial.</p>
       {cerrando ? (
         <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar el turno" enfocar onAprobado={() => setAutorizado(true)} />
       ) : (
-        <button className="boton ancho" onClick={() => setCerrando(true)}>Cerrar el turno de {turno.usuario} (supervisor)</button>
+        <button className="boton ancho" onClick={() => setCerrando(true)}>Cerrar el turno de {turno.usuario} (supervisor o administrador)</button>
       )}
       <button className="enlace" style={{ marginTop: 10 }} onClick={onSalir}>← Volver a la pantalla del PIN</button>
     </Pantalla>
@@ -335,31 +335,31 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
 }
 
 function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void; bloqueo?: Usuario }) {
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [elegido, setElegido] = useState<Usuario | null>(bloqueo ?? null);
   const [pin, setPin] = useState("");
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [sinServidor, setSinServidor] = useState(false);
   const conexion = useConexion();
+  // Solo se averigua si hay servidor (la pantalla no muestra nombres: el PIN identifica a la persona)
   useEffect(() => {
     api<Usuario[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/usuarios`)
-      .then((u) => { setUsuarios(u); setSinServidor(false); })
-      // Sin servidor: solo quien ya entró antes en esta caja (su PIN se verifica aquí mismo)
-      .catch(async () => { setUsuarios(await usuariosSinServidor(ajustes)); setSinServidor(true); });
+      .then(() => setSinServidor(false))
+      .catch(() => setSinServidor(true));
   }, [ajustes, conexion.enLinea]);
 
   const entrar = async (valor = pin) => {
-    if (!elegido || valor.length < 4 || enviando) return;
+    if (valor.length < 4 || enviando) return;
     setEnviando(true); setMsg("");
     try {
       if (sinServidor) {
-        if (!(await verificarPinSinServidor(ajustes, elegido.id, valor))) throw new Error("PIN incorrecto");
+        // Sin servidor: solo entran quienes ya usaron esta caja (su PIN se verifica aquí mismo)
+        const quien = bloqueo ? ((await verificarPinSinServidor(ajustes, bloqueo.id, valor)) ? bloqueo : null) : await usuarioPorPinSinServidor(ajustes, valor);
+        if (!quien) throw new Error("PIN incorrecto");
         fijarSesionCaja(null);
-        onElegir({ id: elegido.id, nombre: elegido.nombre });
+        onElegir({ id: quien.id, nombre: quien.nombre });
         return;
       }
-      const r = await api<{ token: string; usuario: Usuario }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/entrar`, { cuerpo: { usuarioId: elegido.id, pin: valor } });
+      const r = await api<{ token: string; usuario: Usuario }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/entrar`, { cuerpo: { usuarioId: bloqueo?.id, pin: valor } });
       fijarSesionCaja({ token: r.token, usuario: r.usuario, cajaId: ajustes.cajaId });
       // Guardar el PIN para contingencia no debe poder trabar el ingreso (si el almacenamiento local se cuelga, se sigue)
       await Promise.race([recordarPin(ajustes, r.usuario, valor).catch(() => {}), new Promise((ok) => setTimeout(ok, 1500))]);
@@ -383,29 +383,12 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajuste
     if (pin.length < 6) setPin(pin + t);
   };
 
-  if (!elegido) {
-    return (
-      <Pantalla>
-        <p className="suave">{config.sucursal} · {config.nombre}</p>
-        <h2>¿Quién está en caja?</h2>
-        {sinServidor && <p className="aviso-sin-servidor-chico">Sin conexión con el servidor: solo pueden entrar quienes ya usaron esta caja.</p>}
-        <div className="lista-opciones">
-          {usuarios.map((u) => (
-            <button key={u.id} className="opcion grande" disabled={!u.tienePin} title={u.tienePin ? "" : "Sin PIN asignado"}
-              onClick={() => { setElegido(u); setPin(""); setMsg(""); }}>
-              {u.nombre}{!u.tienePin && <small className="suave"> · sin PIN</small>}
-            </button>
-          ))}
-        </div>
-        {msg && <p className="error">{msg}</p>}
-      </Pantalla>
-    );
-  }
   return (
     <Pantalla>
       <p className="suave">{config.sucursal} · {config.nombre}</p>
-      <h2>{bloqueo ? "Caja bloqueada" : elegido.nombre}</h2>
-      {bloqueo && <p className="suave">Por inactividad. {elegido.nombre}, escriba su PIN para continuar (o el PIN de un supervisor o administrador); la venta en curso se conserva.</p>}
+      <h2>{bloqueo ? "Caja bloqueada" : "Escriba su PIN"}</h2>
+      {bloqueo && <p className="suave">Por inactividad. Escriba su PIN para continuar (o el PIN de un supervisor o administrador); la venta en curso se conserva.</p>}
+      {sinServidor && !bloqueo && <p className="aviso-sin-servidor-chico">Sin conexión con el servidor: solo pueden entrar quienes ya usaron esta caja.</p>}
       <label className="campo">
         <span>Su PIN</span>
         <input autoFocus type="password" inputMode="numeric" autoComplete="off" className="entrada-grande pin" aria-label="PIN"
@@ -417,7 +400,6 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajuste
         ))}
       </div>
       {msg && <p className="error">{msg}</p>}
-      {!bloqueo && <button className="enlace" onClick={() => setElegido(null)}>← No soy {elegido.nombre.split(" ")[0]}</button>}
     </Pantalla>
   );
 }
