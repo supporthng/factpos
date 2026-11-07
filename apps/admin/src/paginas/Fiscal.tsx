@@ -388,8 +388,17 @@ function CertificadoDigital() {
         r.onerror = () => mal(new Error("No se pudo leer el archivo"));
         r.readAsDataURL(archivo);
       });
-      const r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave } });
-      setMsg({ t: `Certificado de ${r.titular} guardado. Quedó activo en todas las sucursales y lo cargan solas en su próxima sincronización.`, tipo: "ok" });
+      let r;
+      try {
+        r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave } });
+      } catch (e) {
+        const m = (e as Error).message;
+        // El certificado no trae el RNC de esta empresa: se pide confirmación antes de usarlo
+        if (!m.startsWith("RNC_DISTINTO|")) throw e;
+        if (!window.confirm(m.slice("RNC_DISTINTO|".length) + "\n\n¿Usarlo de todas formas?")) { setMsg({ t: "No se guardó: el certificado no coincide con el RNC de la empresa.", tipo: "error" }); return; }
+        r = await api("/central/fiscal/certificado", { cuerpo: { archivo: base64, clave, confirmarRnc: true } });
+      }
+      setMsg({ t: `Certificado de ${r.titular} guardado${r.rncVerificado === true ? " (el RNC coincide con la empresa)" : r.rncVerificado === null ? " (no trae RNC visible: no se pudo comprobar que sea de esta empresa)" : ""}. Quedó activo en todas las sucursales y lo cargan solas en su próxima sincronización.`, tipo: "ok" });
       setArchivo(null); setClave(""); setReemplazar(false);
       recargar();
     } catch (e) {

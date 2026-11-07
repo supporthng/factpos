@@ -4,7 +4,7 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.js";
-import { usarCertificado, certificado } from "../fiscal/firma.js";
+import { usarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
 import { dgii } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
@@ -505,11 +505,18 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const b = z.object({
       archivo: z.string().min(100).max(1_500_000), // .p12 en base64
       clave: z.string().max(200),
+      confirmarRnc: z.boolean().optional(), // el usuario aceptó usar un certificado que no trae el RNC de la empresa
     }).parse(req.body);
     const p12 = Buffer.from(b.archivo.replace(/^data:[^,]*,/, ""), "base64");
     const usuario = uuid.safeParse(req.headers["x-usuario-id"]);
     const r = await enTransaccion(async (c) => {
       const cert = await guardarCertificado(c, empresaDe(req), { p12, clave: b.clave }, usuario.success ? usuario.data : null);
+      const emp = (await c.query<{ rnc: string; nombre: string }>("SELECT rnc, COALESCE(nombre_comercial, razon_social) AS nombre FROM empresas WHERE id = $1", [empresaDe(req)])).rows[0];
+      const rnc = emp ? rncDelCertificado(cert.sujeto, emp.rnc) : { coincide: null, encontrados: [] as string[] };
+      if (rnc.coincide === false && !b.confirmarRnc) {
+        throw new ErrorNegocio(`RNC_DISTINTO|Este certificado no parece ser del RNC ${emp!.rnc} de «${emp!.nombre}»: trae ${rnc.encontrados.join(" y ")} (titular: ${cert.titular}). Si es el certificado de otra empresa, firmaría con el RNC equivocado.`, 409);
+      }
+      (cert as unknown as { rncVerificado: boolean | null }).rncVerificado = rnc.coincide;
       if (cert.vence.getTime() < Date.now()) throw new ErrorNegocio(`Este certificado venció el ${cert.vence.toISOString().slice(0, 10)}: pida la renovación a la entidad certificadora`);
       if (cert.validoDesde && cert.validoDesde.getTime() > Date.now() + 86400e3) throw new ErrorNegocio("Este certificado todavía no es válido (revise la fecha de la computadora o espere a que empiece su vigencia)");
       // El cliente solo sube su certificado: queda activo en todas sus sucursales (sin configurar nada más)
@@ -521,6 +528,6 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     });
     if (!process.env.VERCEL) usarCertificado(r); // central en una PC: lo usa de una vez
     rep.code(201);
-    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella, sucursalesActivadas: r.sucursalesActivadas };
+    return { id: r.id, titular: r.titular, emisor: r.emisor, vence: r.vence, huella: r.huella, sucursalesActivadas: r.sucursalesActivadas, rncVerificado: (r as unknown as { rncVerificado: boolean | null }).rncVerificado ?? null };
   });
 }
