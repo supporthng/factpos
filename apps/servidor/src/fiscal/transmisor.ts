@@ -166,14 +166,21 @@ export const formatoGenerico: FormatoPse = {
   cabeceras: () => ({ "content-type": "application/json", authorization: `Bearer ${process.env.PSE_TOKEN ?? ""}` }),
 };
 
-export function pse(url: string, formato: FormatoPse = formatoGenerico): Transmisor {
+export function pse(url: string, formatoBase: FormatoPse = formatoGenerico, token?: string): Transmisor {
   const base = url.replace(/\/$/, "");
+  // Con llave propia de la empresa se usa esa; sin ella, la del servidor (PSE_TOKEN)
+  const formato: FormatoPse = token ? { ...formatoBase, cabeceras: () => ({ "content-type": "application/json", authorization: `Bearer ${token}` }) } : formatoBase;
   /** 401/403: son las credenciales de FactPOS ante el proveedor, no un problema del documento: se reintenta, no se rechaza. */
   const revisar = (r: { status: number; cuerpo: any }) => {
     if (r.status === 401 || r.status === 403) throw new SinConexion(`El proveedor no aceptó las credenciales de FactPOS (${r.status}); se reintenta`);
     return r;
   };
   return {
+    /** Prueba básica: se llega al proveedor y no rechaza la llave. Cada proveedor tiene su API; esto no valida un envío. */
+    async probar() {
+      const r = await http(base, { method: "GET", headers: formato.cabeceras() });
+      if (r.status === 401 || r.status === 403) throw new Error(`El proveedor no aceptó la llave (${r.status})`);
+    },
     async enviar(d) {
       const p = formato.emitir(d);
       const r = revisar(await http(`${base}${p.ruta}`, { method: p.metodo, headers: formato.cabeceras(), body: JSON.stringify(p.cuerpo) }));

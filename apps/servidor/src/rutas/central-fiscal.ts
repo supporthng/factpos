@@ -3,9 +3,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
-import { guardarCertificado, huellaEnUso } from "../fiscal/certificado-guardado.js";
+import { guardarCertificado, huellaEnUso, cifrarTexto, descifrarTexto } from "../fiscal/certificado-guardado.js";
 import { usarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
-import { dgii } from "../fiscal/transmisor.js";
+import { dgii, pse } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
 import { firmarXml } from "../fiscal/firma.js";
@@ -40,8 +40,8 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT e.rnc, e.razon_social AS "razonSocial", e.nombre_comercial AS "nombreComercial",
               COALESCE(cf.direccion_emisor, '') AS "direccionEmisor", COALESCE(cf.ambiente, 'SIMULADO') AS ambiente,
-              COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url AS "pseUrl",
-              COALESCE(cf.alerta_restantes, 500) AS "alertaRestantes"
+              COALESCE(cf.transmisor, 'SIMULADO') AS transmisor, cf.pse_url AS "pseUrl", cf.pse_nombre AS "pseNombre",
+              (cf.pse_token IS NOT NULL) AS "pseTokenConfigurado", COALESCE(cf.alerta_restantes, 500) AS "alertaRestantes"
          FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`,
       [e],
     );
@@ -55,18 +55,37 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
         ambiente: z.enum(["SIMULADO", "TESTECF", "CERTECF", "ECF"]),
         transmisor: z.enum(["SIMULADO", "DGII", "PSE"]),
         pseUrl: z.string().url().nullable().optional(),
+        pseNombre: z.string().trim().max(40).nullable().optional(),
+        pseToken: z.string().trim().max(2000).nullable().optional(), // undefined = no cambia; null o vacío = quitar
         alertaRestantes: z.number().int().min(0).default(500),
       })
       .refine((x) => x.transmisor !== "PSE" || !!x.pseUrl, "Indique la dirección del PSE")
       .refine((x) => (x.ambiente === "SIMULADO") === (x.transmisor === "SIMULADO"), "El transmisor simulado solo se usa en el ambiente simulado")
       .parse(req.body);
+    const cambiaToken = b.pseToken !== undefined;
+    const tokenCifrado = b.pseToken ? cifrarTexto(b.pseToken) : null;
     await pool.query(
-      `INSERT INTO configuracion_fiscal (empresa_id, direccion_emisor, ambiente, transmisor, pse_url, alerta_restantes)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (empresa_id) DO UPDATE SET direccion_emisor = $2, ambiente = $3, transmisor = $4, pse_url = $5, alerta_restantes = $6`,
-      [empresaDe(req), b.direccionEmisor, b.ambiente, b.transmisor, b.pseUrl ?? null, b.alertaRestantes],
+      `INSERT INTO configuracion_fiscal (empresa_id, direccion_emisor, ambiente, transmisor, pse_url, alerta_restantes, pse_nombre, pse_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (empresa_id) DO UPDATE SET direccion_emisor = $2, ambiente = $3, transmisor = $4, pse_url = $5, alerta_restantes = $6,
+         pse_nombre = $7, pse_token = CASE WHEN $9::boolean THEN $8 ELSE configuracion_fiscal.pse_token END`,
+      [empresaDe(req), b.direccionEmisor, b.ambiente, b.transmisor, b.pseUrl ?? null, b.alertaRestantes, b.pseNombre || null, tokenCifrado, cambiaToken],
     );
     return { ok: true };
+  });
+
+  /** Prueba básica del proveedor e-CF de la empresa: se llega a su dirección y no rechaza la llave. */
+  app.post("/central/fiscal/pse/probar", async (req) => {
+    const cf = (await pool.query<{ transmisor: string; pse_url: string | null; pse_token: string | null; pse_nombre: string | null }>(
+      "SELECT transmisor, pse_url, pse_token, pse_nombre FROM configuracion_fiscal WHERE empresa_id = $1", [empresaDe(req)])).rows[0];
+    const url = cf?.pse_url || process.env.PSE_URL;
+    if (!cf || cf.transmisor !== "PSE" || !url) throw new ErrorNegocio("Elija «Proveedor de servicios (PSE)», escriba su dirección y guarde antes de probar");
+    try {
+      await pse(url, undefined, cf.pse_token ? descifrarTexto(cf.pse_token) : undefined).probar!();
+      return { ok: true, mensaje: `Se llegó a ${new URL(url).host} y no rechazó la llave. Esta prueba no valida un envío de e-CF: pruebe en el sandbox del proveedor.` };
+    } catch (e) {
+      return { ok: false, mensaje: (e as Error).message };
+    }
   });
 
   // ---- Rangos autorizados por la DGII ----

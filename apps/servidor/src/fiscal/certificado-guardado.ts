@@ -41,6 +41,27 @@ export function descifrar(texto: string): { p12: Buffer; clave: string } {
   }
 }
 
+/** Texto corto secreto (llave de API del proveedor e-CF): se guarda cifrado con la misma llave que el certificado. */
+export function cifrarTexto(texto: string): string {
+  const iv = randomBytes(12);
+  const c = createCipheriv("aes-256-gcm", llave(), iv);
+  const datos = Buffer.concat([c.update(texto, "utf8"), c.final()]);
+  return `t1:${Buffer.concat([iv, c.getAuthTag(), datos]).toString("base64")}`;
+}
+
+export function descifrarTexto(texto: string): string {
+  const [v, b64] = texto.split(":");
+  if (v !== "t1" || !b64) throw new Error("Formato de llave guardada desconocido");
+  const crudo = Buffer.from(b64, "base64");
+  try {
+    const d = createDecipheriv("aes-256-gcm", llave(), crudo.subarray(0, 12));
+    d.setAuthTag(crudo.subarray(12, 28));
+    return Buffer.concat([d.update(crudo.subarray(28)), d.final()]).toString("utf8");
+  } catch {
+    throw new Error("No se pudo abrir la llave del proveedor: el PIN_SECRETO de este servidor no es el mismo de la central");
+  }
+}
+
 export interface FilaCertificado {
   id: string; empresa_id: string; titular: string; emisor: string | null; numero_serie: string | null;
   valido_desde: string; vence: string; huella: string; cifrado: string; subido_por: string | null; subido_en: string;
