@@ -1,0 +1,83 @@
+import { useEffect, useState } from "react";
+
+/** Puente de la caja de escritorio (Electron). En un navegador no existe y no se muestra este módulo. */
+interface Puente {
+  impresionEstado?: () => Promise<Estado | null>;
+  impresionGuardar?: (c: { impresora: string; ancho: number }) => Promise<boolean>;
+  impresionPrueba?: () => Promise<{ ok: boolean; motivo: string; mm?: number }>;
+}
+interface Impresora { nombre: string; mostrar: string; descripcion: string; predeterminada: boolean; estado: number }
+interface Intento { en: string; impresora: string; ancho: number; origen: string; mm: number; ok: boolean; motivo: string }
+interface Estado { impresoras: Impresora[]; impresora: string; ancho: number; registro: Intento[] }
+const puente = () => (window as unknown as { factpos?: Puente }).factpos;
+
+export const hayModuloImpresion = () => !!puente()?.impresionEstado;
+
+/** Impresora y papel de esta terminal, prueba de impresión y los últimos errores. */
+export function ImpresionTerminal() {
+  const [e, setE] = useState<Estado | null>(null);
+  const [prueba, setPrueba] = useState<string>("");
+  const [probando, setProbando] = useState(false);
+  const cargar = () => puente()?.impresionEstado?.().then(setE).catch(() => setE(null));
+  useEffect(() => { cargar(); }, []);
+  if (!e) return null;
+
+  const guardar = async (impresora: string, ancho: number) => {
+    await puente()?.impresionGuardar?.({ impresora, ancho });
+    setPrueba("");
+    cargar();
+  };
+  const probar = async () => {
+    setProbando(true); setPrueba("");
+    try {
+      const r = await puente()!.impresionPrueba!();
+      setPrueba(r.ok ? `✓ Se envió la prueba a la impresora${r.mm ? ` (largo ${r.mm + 8} mm)` : ""}. Revise que el papel salga justo.` : `✗ No se pudo imprimir: ${r.motivo}`);
+    } catch (x) { setPrueba(`✗ ${(x as Error).message}`); }
+    setProbando(false); cargar();
+  };
+  const predeterminada = e.impresoras.find((p) => p.predeterminada);
+  const elegidaExiste = !e.impresora || e.impresoras.some((p) => p.nombre === e.impresora);
+  const fallos = e.registro.filter((r) => !r.ok);
+
+  return (
+    <div className="campo">
+      <span>Impresión</span>
+      {!e.impresoras.length && <p className="error">Windows no tiene ninguna impresora instalada. Instale la impresora de tickets y vuelva a abrir esta ventana.</p>}
+      {!elegidaExiste && <p className="error">La impresora elegida («{e.impresora}») ya no aparece en Windows (apagada, desconectada o desinstalada). Elija otra o use la predeterminada.</p>}
+      <div className="lista-opciones">
+        <button className={"opcion" + (!e.impresora ? " activo" : "")} onClick={() => guardar("", e.ancho)}>
+          <b>La predeterminada de Windows</b> <span className="suave">{predeterminada ? predeterminada.mostrar : "no hay ninguna marcada"}</span>
+        </button>
+        {e.impresoras.map((p) => (
+          <button key={p.nombre} className={"opcion" + (e.impresora === p.nombre ? " activo" : "")} onClick={() => guardar(p.nombre, e.ancho)}>
+            <b>{p.mostrar}</b> <span className="suave">{p.predeterminada ? "predeterminada · " : ""}{p.estado ? `estado ${p.estado} (puede estar sin papel, offline o con error)` : "lista"}</span>
+          </button>
+        ))}
+      </div>
+      <div className="tamano-pantalla">
+        <span className="suave">Ancho del papel</span>
+        <div className="selector-modo">
+          {[80, 58].map((a) => <button key={a} className={e.ancho === a ? "activo" : ""} onClick={() => guardar(e.impresora, a)}>{a} mm</button>)}
+        </div>
+      </div>
+      <div><button className="boton" disabled={probando || !e.impresoras.length} onClick={probar}>{probando ? "Imprimiendo…" : "Imprimir prueba"}</button></div>
+      {prueba && <p className={prueba.startsWith("✓") ? "suave" : "error"}>{prueba}</p>}
+      <small className="suave">
+        Si el papel sale largo: en Windows › Impresoras › esta impresora › Preferencias de impresión, ponga el papel como rollo de 80 mm de largo variable
+        (sin salto de página) y repita la prueba.
+      </small>
+      {e.registro.length > 0 && (
+        <details open={!!fallos.length}>
+          <summary className="suave">Últimos intentos de impresión{fallos.length ? ` · ${fallos.length} con error` : ""}</summary>
+          <ul className="registro-impresion">
+            {e.registro.slice(0, 8).map((r, i) => (
+              <li key={i} className={r.ok ? "" : "error"}>
+                {new Date(r.en).toLocaleTimeString("es-DO")} · {r.origen === "prueba" ? "prueba" : "ticket"} · {r.impresora} · {r.ok ? `enviado${r.mm ? ` (${r.mm + 8} mm)` : " (largo no medido)"}` : `ERROR: ${r.motivo}`}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
