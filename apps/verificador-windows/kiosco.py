@@ -377,11 +377,43 @@ def _servidor_responde(servidor):
         return False
 
 
+def _identidad(base):
+    """Quién es el servidor de la tienda (empresa + sucursales, de /descubrir), o None si no responde o no es FactPOS."""
+    try:
+        with urllib.request.urlopen(base + "/descubrir", timeout=1.5) as r:
+            d = json.loads(r.read(20000).decode("utf-8"))
+        if d.get("producto") != "FactPOS":
+            return None
+        return json.dumps([d.get("empresa"), sorted(d.get("sucursales") or [])], ensure_ascii=False)
+    except Exception:
+        return None
+
+
+def _buscar_servidor(api, sv, identidad):
+    """El servidor cambió de dirección (el router le dio otra IP): lo busca en las redes de este equipo, mismo puerto,
+    y solo lo acepta si es la misma empresa y sucursales que ya conocía. Devuelve la dirección nueva o None."""
+    from concurrent.futures import ThreadPoolExecutor
+    u = urllib.parse.urlparse(sv)
+    puerto = u.port or (443 if u.scheme == "https" else 80)
+    redes = set(json.loads(api.redes()))
+    if u.hostname and u.hostname.count(".") == 3:
+        redes.add(u.hostname.rsplit(".", 1)[0])
+    bases = [f"{u.scheme}://{red}.{k}:{puerto}" for red in redes for k in range(1, 255)]
+    with ThreadPoolExecutor(max_workers=64) as ex:
+        for base, ident in zip(bases, ex.map(_identidad, bases)):
+            if ident and ident == identidad:
+                return base
+    return None
+
+
 def _vigilar_servidor(api):
     """Si el servidor deja de responder se abre la copia guardada de la pantalla (los precios se consultan con la copia
-    del catálogo) y, apenas vuelve, se regresa a la pantalla real."""
-    sin_servidor = False
+    del catálogo); apenas vuelve se regresa a la pantalla real. Si tarda en volver, lo busca en la red por si cambió
+    de dirección."""
+    en_copia = False        # mostrando la copia guardada
+    caido = False           # el servidor dejó de responder (haya o no copia)
     fallos = 0
+    ultima_busqueda = 0.0
     while True:
         time.sleep(5)
         try:
@@ -389,17 +421,34 @@ def _vigilar_servidor(api):
             if not sv or not api._ventana:
                 continue
             vivo = _servidor_responde(sv)
-            if vivo and sin_servidor:
-                sin_servidor = False
+            if vivo:
+                if caido:
+                    caido = en_copia = False
+                    api._ventana.load_url(sv)       # incluye la página de error del navegador si no había copia
                 fallos = 0
-                api._ventana.load_url(sv)
-            elif vivo:
-                fallos = 0
-            else:
-                fallos += 1
-                if fallos >= 2 and not sin_servidor and leer_copia("copia_pagina.html") and leer_copia("copia_catalogo.json"):
-                    sin_servidor = True
+                c = leer_config()
+                if not c.get("identidad"):
+                    ident = _identidad("{0.scheme}://{0.netloc}".format(urllib.parse.urlparse(sv)))
+                    if ident:
+                        c["identidad"] = ident
+                        guardar_config(c)
+                continue
+            fallos += 1
+            if fallos >= 2:
+                caido = True
+                if not en_copia and leer_copia("copia_pagina.html") and leer_copia("copia_catalogo.json"):
+                    en_copia = True
                     api._ventana.load_url(url_config().rsplit("/", 1)[0] + "/copia")
+            ident = leer_config().get("identidad")
+            if fallos >= 6 and ident and time.time() - ultima_busqueda > 60:
+                ultima_busqueda = time.time()
+                nuevo = _buscar_servidor(api, sv, ident)
+                if nuevo:
+                    u = urllib.parse.urlparse(sv)
+                    c = leer_config()
+                    c["servidor"] = nuevo + (u.path or "") + (("?" + u.query) if u.query else "")
+                    guardar_config(c)
+                    # el siguiente ciclo lo ve vivo y recarga
         except Exception:
             pass
 
