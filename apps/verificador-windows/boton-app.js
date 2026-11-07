@@ -61,7 +61,7 @@
         clearTimeout(tiempo);   // mientras se comprueba no se cierra
         err.textContent = "Comprobando…";
         llamar("verificarClave", c).then(function (v) {
-          if (v !== "ok") { err.textContent = v === "incorrecta" ? "PIN incorrecto, o no es de un supervisor o administrador." : v === "sin_conexion" ? "No hay conexión con el servidor." : String(v); inp.value = ""; armar(5000); return; }
+          if (v !== "ok") { err.textContent = v === "incorrecta" ? "PIN incorrecto, o no es de un supervisor o administrador." : v === "sin_conexion" ? "Sin conexión con el servidor: solo sirve un PIN que este equipo ya haya usado con conexión." : String(v); inp.value = ""; armar(5000); return; }
           if (accion === "cerrar") { llamar("salir", c); return; }
           caja.innerHTML = "";
           armar(30000); caja.onpointerdown = function () { armar(30000); };
