@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, esLocal, sesionActual } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
-import { EmpresasEnlazadas } from "./Empresas";
+import { EmpresasEnlazadas, PuestaEnMarcha } from "./Empresas";
 
 interface Terminal { id: string; numero: number; nombre: string; activo: boolean; almacen: string; turnoAbierto: boolean; ultimaVenta: string | null }
 interface EstadoSync { sucursalId: string; ultimaSubida: string | null; ultimaBajada: string | null; pendientes: number | null; errores: number | null; ultimoError: string | null; enLinea: boolean | null; segundos: number | null; equipo: string | null }
@@ -60,6 +60,7 @@ export function Sucursales() {
         <button className="boton" onClick={() => { setAlta(alta ? false : true); setAbrir(false); }}>Escribir código de un servidor</button>
       </Encabezado>
       {!esLocal() && <EmpresasEnlazadas />}
+      {!esLocal() && <PuestaEnMarcha />}
       {!!pend.datos?.solicitudes.length && !alta && (
         <div className="panel esperando-alta">
           <div className="encabezado-sub" style={{ marginTop: 0 }}>

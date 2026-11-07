@@ -67,6 +67,42 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
     return r;
   });
 
+  /** Lista de puesta en marcha de la empresa activa: qué le falta antes de poder facturar. */
+  app.get("/central/empresas/puesta-en-marcha", async (req) => {
+    const e = sesionAdmin(req).e;
+    const un = async <T>(sql: string) => (await pool.query<T>(sql, [e])).rows[0];
+    const [fis, cert, aut, suc, cajas, prod, usu] = await Promise.all([
+      un<{ direccion_emisor: string; municipio: string | null; provincia: string | null; ambiente: string; transmisor: string; pse_url: string | null }>(
+        "SELECT direccion_emisor, municipio, provincia, ambiente, transmisor, pse_url FROM configuracion_fiscal WHERE empresa_id = $1"),
+      un<{ vence: Date; titular: string }>("SELECT vence, titular FROM certificados_digitales WHERE empresa_id = $1 AND activo ORDER BY subido_en DESC LIMIT 1"),
+      un<{ n: string; vigentes: string }>("SELECT count(*) AS n, count(*) FILTER (WHERE vence_en >= current_date) AS vigentes FROM ecf_autorizaciones WHERE empresa_id = $1"),
+      un<{ n: string; en_linea: string }>(
+        `SELECT count(*) AS n, count(*) FILTER (WHERE GREATEST(y.ultima_subida, y.ultima_bajada) > now() - interval '2 minutes') AS en_linea
+           FROM sucursales s LEFT JOIN sync_sucursales y ON y.sucursal_id = s.id WHERE s.empresa_id = $1 AND s.activo`),
+      un<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND s.activo"),
+      un<{ n: string }>("SELECT count(*) AS n FROM productos WHERE empresa_id = $1 AND activo"),
+      un<{ n: string }>("SELECT count(*) AS n FROM usuarios WHERE empresa_id = $1 AND activo AND pin_hash IS NOT NULL"),
+    ]);
+    type Paso = { id: string; titulo: string; ok: boolean; detalle: string; ir?: string };
+    const dias = cert ? Math.floor((new Date(cert.vence).getTime() - Date.now()) / 86400e3) : 0;
+    const pasos: Paso[] = [
+      { id: "datos", titulo: "Datos fiscales del emisor", ok: !!fis?.direccion_emisor?.trim() && !!fis?.municipio && !!fis?.provincia,
+        detalle: fis?.direccion_emisor?.trim() ? "Dirección, municipio y provincia" : "Falta la dirección, el municipio o la provincia del emisor", ir: "fiscal" },
+      { id: "certificado", titulo: "Certificado digital (.p12) de este RNC", ok: !!cert && dias >= 0,
+        detalle: !cert ? "No hay certificado cargado" : dias < 0 ? `Venció hace ${-dias} días` : `${cert.titular} · vence en ${dias} días`, ir: "fiscal" },
+      { id: "rangos", titulo: "Rangos de e-NCF autorizados por la DGII", ok: Number(aut?.vigentes ?? 0) > 0,
+        detalle: Number(aut?.n ?? 0) === 0 ? "No hay rangos cargados" : Number(aut?.vigentes) === 0 ? "Todos los rangos están vencidos" : `${aut?.vigentes} rangos vigentes`, ir: "fiscal" },
+      { id: "transmisor", titulo: "Envío a la DGII o proveedor e-CF", ok: !!fis && fis.transmisor !== "SIMULADO" && (fis.transmisor !== "PSE" || !!fis.pse_url),
+        detalle: !fis || fis.transmisor === "SIMULADO" ? "Está en modo simulado: no se envía nada a la DGII" : fis.transmisor === "PSE" && !fis.pse_url ? "Falta la dirección del proveedor" : `${fis.transmisor === "PSE" ? "Proveedor e-CF" : "DGII directo"} · ambiente ${fis.ambiente}`, ir: "fiscal" },
+      { id: "servidor", titulo: "Servidor de la tienda conectado", ok: Number(suc?.en_linea ?? 0) > 0,
+        detalle: Number(suc?.en_linea ?? 0) > 0 ? `${suc?.en_linea} de ${suc?.n} sucursales en línea` : "Ningún servidor de tienda se ha comunicado en los últimos 2 minutos", ir: "sucursales" },
+      { id: "cajas", titulo: "Cajas creadas", ok: Number(cajas?.n ?? 0) > 0, detalle: `${cajas?.n ?? 0} cajas activas`, ir: "sucursales" },
+      { id: "productos", titulo: "Productos cargados", ok: Number(prod?.n ?? 0) > 0, detalle: `${prod?.n ?? 0} productos activos`, ir: "productos" },
+      { id: "usuarios", titulo: "Usuarios con PIN para la caja", ok: Number(usu?.n ?? 0) > 0, detalle: `${usu?.n ?? 0} usuarios con PIN`, ir: "usuarios" },
+    ];
+    return { pasos, listos: pasos.filter((x) => x.ok).length, total: pasos.length };
+  });
+
   /** Pasa a otra empresa del grupo: devuelve una sesión nueva como administrador de esa empresa. */
   app.post("/central/empresas/cambiar", async (req) => {
     const s = sesionAdmin(req);

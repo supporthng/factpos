@@ -37,6 +37,29 @@ export function FranjaEmpresa() {
   );
 }
 
+interface PasoMarcha { id: string; titulo: string; ok: boolean; detalle: string; ir?: string }
+
+/** Qué le falta a la empresa activa antes de poder facturar. */
+export function PuestaEnMarcha() {
+  const ir = (seccion: string) => { location.hash = seccion; };
+  const { datos } = useDatos<{ pasos: PasoMarcha[]; listos: number; total: number }>("/central/empresas/puesta-en-marcha");
+  if (!datos) return null;
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Puesta en marcha <span className="suave pequeno">{datos.listos} de {datos.total} listos</span></h3>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {datos.pasos.map((p) => (
+          <li key={p.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "5px 0" }}>
+            <span aria-hidden style={{ color: p.ok ? "#1a7f37" : "#b42318", fontWeight: 700, width: 16 }}>{p.ok ? "✓" : "○"}</span>
+            <span style={{ flex: 1 }}><b>{p.titulo}</b><br /><span className="suave pequeno">{p.detalle}</span></span>
+            {!p.ok && p.ir && <button className="enlace" onClick={() => ir(p.ir!)}>Resolver</button>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Selector de empresa en la barra superior (solo si hay más de una enlazada). */
 export function SelectorEmpresa() {
   const { datos } = useDatos<EmpresaGrupo[]>("/central/empresas");
