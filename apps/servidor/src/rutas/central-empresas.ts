@@ -258,4 +258,38 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
       return { roles, usuarios, formatos };
     });
   });
+
+  /**
+   * Da acceso a una persona en otras empresas del grupo: crea su usuario allí con el mismo usuario y contraseña (y un rol del mismo nombre).
+   * Sin PIN: el PIN es de cada empresa. Si ya existe un usuario con ese nombre en la otra empresa, se omite.
+   */
+  app.post("/central/usuarios/:id/compartir", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede dar acceso en otras empresas", 403);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ empresaIds: z.array(uuid).min(1).max(20), clave: z.string().min(1).max(200) }).parse(req.body);
+    const g = await grupoDe(s.e);
+    const me = (await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [s.u])).rows[0];
+    if (!me || !(await verificarClave(b.clave, me.clave_hash))) throw new ErrorNegocio("La contraseña no es correcta", 403);
+    const u = (await pool.query<{ nombre: string; usuario: string; clave_hash: string; activo: boolean; rol: string; permisos: string[] }>(
+      `SELECT u.nombre, u.usuario, u.clave_hash, u.activo, ro.nombre AS rol, ro.permisos
+         FROM usuarios u JOIN roles ro ON ro.id = u.rol_id WHERE u.id = $1 AND u.empresa_id = $2`, [id, s.e])).rows[0];
+    if (!u) throw new ErrorNegocio("Usuario no encontrado", 404);
+    return enTransaccion(async (c: PoolClient) => {
+      let creados = 0, omitidos = 0;
+      for (const destino of new Set(b.empresaIds)) {
+        if (destino === s.e || (await grupoDe(destino)) !== g) throw new ErrorNegocio("Una de las empresas no pertenece a su grupo", 403);
+        if ((await c.query("SELECT 1 FROM usuarios WHERE empresa_id = $1 AND lower(usuario) = lower($2)", [destino, u.usuario])).rowCount) { omitidos++; continue; }
+        let rol = (await c.query<{ id: string }>("SELECT id FROM roles WHERE empresa_id = $1 AND lower(nombre) = lower($2) ORDER BY id LIMIT 1", [destino, u.rol])).rows[0]?.id;
+        if (!rol) {
+          rol = uuidv7();
+          await c.query("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,$3,$4)", [rol, destino, u.rol, u.permisos]);
+        }
+        await c.query("INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash, pin_hash, activo, sucursales) VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,NULL)",
+          [uuidv7(), destino, rol, u.nombre, u.usuario, u.clave_hash, u.activo]);
+        creados++;
+      }
+      return { creados, omitidos };
+    });
+  });
 }
