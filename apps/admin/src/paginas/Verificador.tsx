@@ -174,7 +174,15 @@ export function Verificador() {
   const [copiado, setCopiado] = useState<string | null>(null);
   const copiar = async (t: string, k: string) => { try { await navigator.clipboard.writeText(t); setCopiado(k); setTimeout(() => setCopiado(null), 2000); } catch { /* sin portapapeles */ } };
 
-  const base = location.origin;
+  // Abierta en el propio servidor (127.0.0.1 / localhost) la dirección no sirve a otros equipos: se muestra la IP de la red de la tienda
+  const [base, setBase] = useState(location.origin);
+  useEffect(() => {
+    if (!/^(127\.\d+\.\d+\.\d+|localhost)$/i.test(location.hostname)) return;
+    fetch("/descubrir").then((r) => r.json()).then((d: { direcciones?: string[] }) => {
+      const ip = (d.direcciones ?? []).find((x) => !/\.local(:|$)/i.test(x));
+      if (ip) setBase(ip);
+    }).catch(() => { /* se queda la dirección actual */ });
+  }, []);
   const params = [sucursalId ? `sucursal=${sucursalId}` : "", niveles ? "niveles=1" : ""].filter(Boolean).join("&");
   const pagina = `${base}/verificador${params ? `?${params}` : ""}`;
   const api = `${base}/verificador/${sucursalId || "ID_SUCURSAL"}/CODIGO_DE_BARRAS`;
