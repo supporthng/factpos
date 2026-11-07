@@ -390,20 +390,33 @@ def _identidad(base):
 
 
 def _buscar_servidor(api, sv, identidad):
-    """El servidor cambió de dirección (el router le dio otra IP): lo busca en las redes de este equipo, mismo puerto,
-    y solo lo acepta si es la misma empresa y sucursales que ya conocía. Devuelve la dirección nueva o None."""
+    """El servidor de la dirección guardada no responde (cambió de IP, o la guardada era de otro equipo, p. ej. uno de
+    prueba): lo busca como las cajas: primero por su nombre en la red (factpos.local) y luego recorriendo las redes de
+    este equipo en el mismo puerto. Prefiere el de la huella de empresa ya conocida; si no está, acepta
+    el único FactPOS que encuentre (si hay varios distintos no adivina). Devuelve la dirección nueva o None."""
     from concurrent.futures import ThreadPoolExecutor
     u = urllib.parse.urlparse(sv)
     puerto = u.port or (443 if u.scheme == "https" else 80)
     redes = set(json.loads(api.redes()))
     if u.hostname and u.hostname.count(".") == 3:
         redes.add(u.hostname.rsplit(".", 1)[0])
-    bases = [f"{u.scheme}://{red}.{k}:{puerto}" for red in redes for k in range(1, 255)]
+    bases = [f"{u.scheme}://factpos.local:{puerto}"] + [f"{u.scheme}://{red}.{k}:{puerto}" for red in redes for k in range(1, 255)]
+    propia = f"{u.scheme}://{u.netloc}"
+    hallados = []
     with ThreadPoolExecutor(max_workers=64) as ex:
         for base, ident in zip(bases, ex.map(_identidad, bases)):
-            if ident and ident == identidad:
-                return base
-    return None
+            if ident and base != propia:
+                hallados.append((base, ident))
+    if identidad and any(h[1] == identidad for h in hallados):
+        hallados = [h for h in hallados if h[1] == identidad]      # el mismo de antes, con otra IP
+    # factpos.local y la IP del mismo servidor cuentan una sola vez
+    distintos = {h[1] for h in hallados}
+    if len(distintos) != 1:
+        return None
+    for base, _ in hallados:                  # se prefiere la IP: no depende de que el equipo resuelva factpos.local
+        if "factpos.local" not in base:
+            return base
+    return hallados[0][0]
 
 
 def _vigilar_servidor(api, empezar_en_copia=False):
@@ -440,7 +453,7 @@ def _vigilar_servidor(api, empezar_en_copia=False):
                     en_copia = True
                     api._ventana.load_url(url_config().rsplit("/", 1)[0] + "/copia")
             ident = leer_config().get("identidad")
-            if fallos >= 6 and ident and time.time() - ultima_busqueda > 60:
+            if fallos >= 3 and time.time() - ultima_busqueda > 60:
                 ultima_busqueda = time.time()
                 nuevo = _buscar_servidor(api, sv, ident)
                 if nuevo:
