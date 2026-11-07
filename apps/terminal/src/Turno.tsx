@@ -4,6 +4,7 @@ import type { ConfigCaja, Turno, Usuario } from "./App";
 import { Modal, TamanoPantalla } from "./Venta";
 import { MovimientosCaja } from "./Caja";
 import { useConexion } from "./contingencia";
+import { imprimir as imprimirDirecto } from "./imprimir";
 
 /**
  * Turno de la caja registradora (F10):
@@ -205,7 +206,7 @@ function CuadreDia({ ajustes }: { ajustes: Ajustes }) {
 /* ---------- Reporte impreso (X o Z), ticket de 80 mm ---------- */
 function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar }: { r: Reporte; config: ConfigCaja; titulo: string; onCerrar: () => void; textoCerrar: string }) {
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); window.print(); } };
+    const h = (e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); imprimirDirecto(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
@@ -294,7 +295,7 @@ function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar }: { r: Repor
           )}
         </div>
         <div className="dos-columnas">
-          <button className="boton primario" onClick={() => window.print()}>Imprimir (Enter)</button>
+          <button className="boton primario" onClick={() => imprimirDirecto()}>Imprimir (Enter)</button>
           <button className="boton" onClick={onCerrar}>{textoCerrar}</button>
         </div>
       </div>
