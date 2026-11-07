@@ -1256,3 +1256,8 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 
 /* Nombres de los productos del carrito: con tamaño de letra Grande o Muy grande crecen menos que el resto de la pantalla */
 .pv-fila .pv-desc { zoom: var(--comp-nombres, 1); }
+
+/* Configuración › Impresión */
+.registro-impresion { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.registro-impresion li.error { color: var(--peligro, #dc2626); }
+.lista-opciones .opcion.activo { outline: 2px solid var(--primario, #2563eb); }

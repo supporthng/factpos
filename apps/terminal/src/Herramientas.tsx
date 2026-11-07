@@ -1,3 +1,4 @@
+import { ImpresionTerminal, hayModuloImpresion } from "./Impresion";
 import { abrirPantallaCliente } from "./pantalla-cliente";
 import { useEffect, useMemo, useState } from "react";
 import { precioPara, type Catalogo, type ProductoCatalogo } from "@factpos/compartido";
@@ -313,6 +314,7 @@ export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCe
       <p className="suave">{config.nombre} · {config.sucursal}</p>
       <TamanoPantalla />
       <VistaInicialCaja cajaId={config.id} />
+      {hayModuloImpresion() && <ImpresionTerminal />}
       <div className="campo">
         <span>Pantalla del cliente</span>
         <div><button className="boton" onClick={abrirPantallaCliente}>Abrir pantalla del cliente</button></div>

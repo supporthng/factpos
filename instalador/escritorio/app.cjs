@@ -531,6 +531,68 @@ function openCustomer() {
   vigia.unref();
 }
 
+// ---------------------------------------------------------------------------------------------------- Impresión de la caja
+// Qué impresora usa esta terminal y qué pasó en los últimos intentos (para revisar errores como «el papel sale largo» desde Configuración).
+const IMP_CFG = path.join(app.getPath('userData'), 'impresion.json');
+const IMP_LOG = path.join(app.getPath('userData'), 'impresion.log');
+let impCfg = { impresora: '', ancho: 80 };
+try { const c = JSON.parse(fs.readFileSync(IMP_CFG, 'utf8')); if (c && typeof c === 'object') impCfg = { impresora: String(c.impresora || ''), ancho: c.ancho === 58 ? 58 : 80 }; } catch {}
+const registroImp = [];
+function anotarImpresion(r) {
+  const fila = { en: new Date().toISOString(), impresora: impCfg.impresora || '(predeterminada)', ancho: impCfg.ancho, ...r };
+  registroImp.unshift(fila); registroImp.length = Math.min(registroImp.length, 20);
+  try { fs.appendFileSync(IMP_LOG, JSON.stringify(fila) + '\n'); } catch {}
+}
+async function midoTicket(wc) {
+  try {
+    const mm = await wc.executeJavaScript(`(() => { const t = document.getElementById('ticket'); if (!t) return 0;
+      const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
+      return Math.ceil(t.getBoundingClientRect().height / z * 25.4 / 96); })()`);
+    return mm > 20 && mm < 2000 ? mm : 0;
+  } catch { return 0; }
+}
+function opcionesImp(mm) {
+  const o = { silent: true, printBackground: true, margins: { marginType: 'none' } };
+  if (impCfg.impresora) o.deviceName = impCfg.impresora;
+  if (mm) o.pageSize = { width: impCfg.ancho * 1000, height: (mm + 8) * 1000 };   // micras: el largo exacto del ticket
+  return o;
+}
+// Imprime el contenido de una ventana con la impresora elegida; resuelve { ok, motivo }.
+function imprimirVentana(wc, mm) {
+  return new Promise(resolve => {
+    try { wc.print(opcionesImp(mm), (ok, motivo) => resolve({ ok: !!ok, motivo: ok ? '' : String(motivo || 'no se pudo imprimir') })); }
+    catch (e) { resolve({ ok: false, motivo: String(e && e.message || e) }); }
+  });
+}
+function registrarImpresionIpc() {
+  const deLaCaja = e => mainWindow && !mainWindow.isDestroyed() && e.sender === mainWindow.webContents;
+  ipcMain.handle('factpos:impresion-estado', async e => {
+    if (!deLaCaja(e)) return null;
+    let lista = [];
+    try { lista = (await mainWindow.webContents.getPrintersAsync()).map(p => ({ nombre: p.name, mostrar: p.displayName || p.name, descripcion: p.description || '', predeterminada: !!p.isDefault, estado: p.status })); } catch {}
+    return { impresoras: lista, impresora: impCfg.impresora, ancho: impCfg.ancho, registro: registroImp };
+  });
+  ipcMain.handle('factpos:impresion-guardar', async (e, c) => {
+    if (!deLaCaja(e) || !c) return false;
+    impCfg = { impresora: typeof c.impresora === 'string' ? c.impresora.slice(0, 200) : '', ancho: c.ancho === 58 ? 58 : 80 };
+    try { fs.writeFileSync(IMP_CFG, JSON.stringify(impCfg)); } catch {}
+    return true;
+  });
+  ipcMain.handle('factpos:impresion-prueba', async e => {
+    if (!deLaCaja(e)) return { ok: false, motivo: 'no permitido' };
+    const w = new BrowserWindow({ show: false, width: 400, height: 600, webPreferences: { sandbox: true } });
+    try {
+      const lineas = ['FactPOS · Prueba de impresión', new Date().toLocaleString('es-DO'), 'Impresora: ' + (impCfg.impresora || '(predeterminada)'), 'Papel: ' + impCfg.ancho + ' mm', '------------------------------', 'Si ve este texto completo y el papel', 'se corta justo debajo de la última línea,', 'la impresión está bien configurada.', '------------------------------', 'Fin de la prueba'];
+      const html = `<!doctype html><meta charset="utf-8"><body style="margin:0"><div id="ticket" style="width:${impCfg.ancho - 8}mm;padding:2mm 4mm;font:12px Consolas,monospace">${lineas.map(l => `<div>${l.replace(/[<&]/g, '')}</div>`).join('')}</div>`;
+      await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+      const mm = await midoTicket(w.webContents);
+      const r = await imprimirVentana(w.webContents, mm);
+      anotarImpresion({ origen: 'prueba', mm, ...r });
+      return { ...r, mm };
+    } catch (x) { const r = { ok: false, motivo: String(x && x.message || x) }; anotarImpresion({ origen: 'prueba', mm: 0, ...r }); return r; }
+    finally { try { w.destroy(); } catch {} }
+  });
+}
 function openMain(onShown) {
   // Nunca dos ventanas principales: si ya hay una, esa es la que se usa
   if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); if (onShown) onShown(); return; }
@@ -542,25 +604,21 @@ function openMain(onShown) {
     if (canal === 'factpos:turno') { turnoAbierto = !!modo; return; }
     if (canal === 'factpos:cerrar') { app.quit(); return; }
     if (canal === 'factpos:imprimir') {
-      // Impresión directa a la impresora predeterminada de Windows (sin el cuadro de imprimir). Si no se pudo (sin impresora, apagada),
-      // se abre el cuadro normal para que el cajero elija otra en vez de perder el comprobante.
-      // El controlador de la impresora suele traer un largo de papel fijo (o de 30 cm) y sale papel en blanco de sobra:
-      // se pide una página del largo exacto del ticket (ancho 80 mm; micras).
+      // Impresión directa por la impresora elegida en Configuración (o la predeterminada de Windows), sin el cuadro de imprimir.
+      // Si no se pudo (sin impresora, apagada), se abre el cuadro normal para que el cajero elija otra en vez de perder el comprobante.
+      // Se pide una página del largo exacto del ticket: el controlador suele traer un largo de papel fijo y sale papel en blanco de sobra.
       (async () => {
-        let tamano;
+        let css = null;
         try {
-          const mm = await win.webContents.executeJavaScript(`(() => { const t = document.getElementById('ticket'); if (!t) return 0;
-            const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
-            return Math.ceil(t.getBoundingClientRect().height / z * 25.4 / 96); })()`);
-          if (mm > 20 && mm < 2000) tamano = { width: 80000, height: (mm + 8) * 1000 };
-        } catch {}
-        const opciones = { silent: true, printBackground: true, margins: { marginType: 'none' }, ...(tamano ? { pageSize: tamano } : {}) };
-        try {
-          win.webContents.print(opciones, (ok) => {
-            if (ok || win.isDestroyed()) return;
-            try { win.webContents.print({ silent: false, printBackground: true }); } catch {}
-          });
-        } catch { try { win.webContents.print({ silent: false, printBackground: true }); } catch {} }
+          if (impCfg.ancho === 58) css = await win.webContents.insertCSS('@media print { #ticket { width: 50mm !important; } }');
+          const mm = await midoTicket(win.webContents);
+          const r = await imprimirVentana(win.webContents, mm);
+          anotarImpresion({ origen: 'ticket', mm, ...r });
+          if (!r.ok && !win.isDestroyed()) { try { win.webContents.print({ silent: false, printBackground: true }); } catch {} }
+        } catch (x) {
+          anotarImpresion({ origen: 'ticket', mm: 0, ok: false, motivo: String(x && x.message || x) });
+          try { win.webContents.print({ silent: false, printBackground: true }); } catch {}
+        } finally { if (css) { try { win.webContents.removeInsertedCSS(css); } catch {} } }
       })();
       return;
     }
@@ -876,6 +934,7 @@ function responderEquipos() {
   });
   s.bind(puerto);
 }
+if (unica) app.whenReady().then(registrarImpresionIpc);
 if (unica) app.whenReady().then(responderEquipos);
 if (unica) app.whenReady().then(start);
 let mainOpened = false;
