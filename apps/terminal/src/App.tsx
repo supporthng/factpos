@@ -133,7 +133,14 @@ function AppInterna() {
   }, [ajustes, usuario]);
 
   // Sin turno abierto (ya se hizo el cierre) no hay nada que proteger: se cierra la caja con una confirmación, sin PIN
-  const ventanaSalir = saliendo && ajustes && turno === null ? (
+  // En la pantalla del PIN (nadie ha entrado) no hay turno de nadie que proteger, pero cerrar la caja sí pide a un supervisor o administrador
+  const ventanaSalir = saliendo && ajustes && !usuario ? (
+    <Modal titulo="Cerrar FactPOS" onCerrar={() => setSaliendo(false)}>
+      <p>Para cerrar la caja escriba el PIN de un supervisor o administrador.</p>
+      <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar FactPOS" enfocar onAprobado={aprobadoSalir} />
+      <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
+    </Modal>
+  ) : saliendo && ajustes && turno === null ? (
     <Modal titulo="Cerrar FactPOS" onCerrar={() => setSaliendo(false)}>
       <p>El turno ya está cerrado. Al cerrar FactPOS podrá apagar el equipo o volver a abrir la caja desde su acceso directo.</p>
       <button className="boton primario ancho" onClick={aprobadoSalir}>Cerrar FactPOS</button>
@@ -167,7 +174,7 @@ function AppInterna() {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
-  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} />{ventanaSalir}{ventanaMin}</>;
+  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} onCerrar={() => setSaliendo(true)} />{ventanaSalir}{ventanaMin}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <><AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onSalir={salir} onCerrarSistema={() => setSaliendo(true)} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />{ventanaSalir}</>;
 
@@ -341,7 +348,7 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
   );
 }
 
-function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void; bloqueo?: Usuario }) {
+function ElegirUsuario({ ajustes, config, onElegir, bloqueo, onCerrar }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void; bloqueo?: Usuario; onCerrar?: () => void }) {
   const [pin, setPin] = useState("");
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -407,6 +414,7 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo }: { ajustes: Ajuste
         ))}
       </div>
       {msg && <p className="error">{msg}</p>}
+      {onCerrar && <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>}
     </Pantalla>
   );
 }
