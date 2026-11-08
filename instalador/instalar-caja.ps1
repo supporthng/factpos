@@ -66,10 +66,40 @@ function Buscar-Servidores {
   return $hallados
 }
 
+# Segunda búsqueda, igual que el verificador: prueba el puerto 3000 de cada equipo de la red local (/24) y pregunta /descubrir.
+# Sirve cuando el router no deja pasar el aviso por UDP ni resuelve factpos.local.
+function Buscar-PorRed {
+  $hallados = @{}
+  $redes = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
+    ForEach-Object { ($_.IPAddress -split '\.')[0..2] -join '.' } | Select-Object -Unique)
+  foreach ($red in $redes) {
+    $conexiones = @{}
+    foreach ($k in 1..254) {
+      $c = New-Object System.Net.Sockets.TcpClient
+      $conexiones["$red.$k"] = @{ c = $c; t = $c.ConnectAsync("$red.$k", 3000) }
+    }
+    Start-Sleep -Milliseconds 1500
+    foreach ($ip in $conexiones.Keys) {
+      $x = $conexiones[$ip]
+      if ($x.t.IsCompleted -and -not $x.t.IsFaulted -and -not $x.t.IsCanceled -and $x.c.Connected) {
+        try {
+          $r = Invoke-RestMethod "http://${ip}:3000/descubrir" -TimeoutSec 3
+          if ($r.producto -eq "FactPOS") { $hallados["http://${ip}:3000"] = $r }
+        } catch { }
+      }
+      try { $x.c.Close() } catch { }
+    }
+  }
+  return $hallados
+}
+
 Paso "Buscando el servidor FactPOS en la red local"
+$SinServidor = $false
 while (-not $Servidor) {
   Write-Host "   Buscando..."
   $hallados = Buscar-Servidores
+  if ($hallados.Count -eq 0) { $hallados = Buscar-PorRed }
   $lista = @($hallados.Keys)
   if ($lista.Count -eq 1) {
     $d = $hallados[$lista[0]]
@@ -87,7 +117,12 @@ while (-not $Servidor) {
     do { $n = Read-Host "   ¿Cuál es el de esta sucursal? (número)" } until ($n -match '^\d+$' -and [int]$n -ge 1 -and [int]$n -le $lista.Count)
     $Servidor = $lista[[int]$n - 1]
   } else {
-    if ($NoInteractivo) { throw "No se encontró el servidor FactPOS en la red. Revise que esté encendido y en la misma red, o escriba su IP en el instalador." }
+    if ($NoInteractivo) {
+      # La caja queda instalada igual: al abrirla busca el servidor sola y, si no lo halla, deja escribir su dirección.
+      Write-Host "   No se encontró el servidor FactPOS en la red (¿está encendido y en la misma red?). La caja se instala igual y lo buscará al abrirse." -ForegroundColor Yellow
+      $SinServidor = $true
+      break
+    }
     Write-Host "   No se encontró ningún servidor. Revise que esté encendido, instalado y en la misma red (mismo router o Wi-Fi)." -ForegroundColor Yellow
     $r = Read-Host "   Enter = buscar de nuevo · o escriba la dirección del servidor (ej. 192.168.1.10)"
     if ($r) {
@@ -98,17 +133,19 @@ while (-not $Servidor) {
     }
   }
 }
-$Servidor = $Servidor.Trim().TrimEnd("/")
-if ($Servidor -notmatch '^https?://') { $Servidor = "http://$Servidor" }
-if ($Servidor -notmatch ':\d+$') { $Servidor = "$($Servidor):3000" }
-try { $info = Invoke-RestMethod "$Servidor/descubrir" -TimeoutSec 5 } catch { throw "No responde un servidor FactPOS en $Servidor" }
-Listo "Servidor: $Servidor  ($($info.empresa) · $($info.sucursales -join ', '))"
-# El instalador (FactPOS-Caja-Setup) lee esta dirección para crear el acceso «FactPOS Caja» ya apuntando a este servidor
-try {
-  $dirFactpos = Join-Path $env:LOCALAPPDATA "FactPOS"
-  New-Item -ItemType Directory -Force -Path $dirFactpos | Out-Null
-  [IO.File]::WriteAllText((Join-Path $dirFactpos "servidor-detectado.txt"), $Servidor, [Text.Encoding]::ASCII)
-} catch { }
+if (-not $SinServidor) {
+  $Servidor = $Servidor.Trim().TrimEnd("/")
+  if ($Servidor -notmatch '^https?://') { $Servidor = "http://$Servidor" }
+  if ($Servidor -notmatch ':\d+$') { $Servidor = "$($Servidor):3000" }
+  try { $info = Invoke-RestMethod "$Servidor/descubrir" -TimeoutSec 5 } catch { throw "No responde un servidor FactPOS en $Servidor" }
+  Listo "Servidor: $Servidor  ($($info.empresa) · $($info.sucursales -join ', '))"
+  # El instalador (FactPOS-Caja-Setup) lee esta dirección para crear el acceso «FactPOS Caja» ya apuntando a este servidor
+  try {
+    $dirFactpos = Join-Path $env:LOCALAPPDATA "FactPOS"
+    New-Item -ItemType Directory -Force -Path $dirFactpos | Out-Null
+    [IO.File]::WriteAllText((Join-Path $dirFactpos "servidor-detectado.txt"), $Servidor, [Text.Encoding]::ASCII)
+  } catch { }
+}
 
 # --------------------------------------------------------- Acceso de Caja
 # En el instalador NSIS integrado, Electron crea los accesos. No crear
@@ -117,6 +154,7 @@ if ($env:FACTPOS_INSTALADOR -eq '1') {
   Paso "Caja de escritorio"
   Listo "El instalador principal creara el acceso FactPOS Caja con Electron."
 } else {
+  if ($SinServidor) { throw "No se encontró el servidor FactPOS en la red; escriba su dirección con -Servidor." }
   # --------------------------------------------------------- Navegador
   Paso "Navegador"
   $candidatos = @(

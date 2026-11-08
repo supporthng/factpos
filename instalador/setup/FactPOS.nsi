@@ -395,6 +395,10 @@ FunctionEnd
 
 ; ------------------------------------------------------------------ 2. datos
 Function PaginaDatos
+  ; La Caja no pregunta nada: el instalador busca solo el servidor de la tienda en la red (como el verificador)
+  ${If} $Tipo == "caja"
+    Abort
+  ${EndIf}
   nsDialogs::Create 1018
   Pop $0
   ${If} $Tipo == "master"
