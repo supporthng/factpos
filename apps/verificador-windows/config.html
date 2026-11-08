@@ -35,7 +35,7 @@
     <input id="srv" inputmode="url" placeholder="192.168.1.10:3000">
     <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
   </div>
-  <a href="#" id="verman" hidden class="enlace">Escribir la dirección a mano</a>
+  <a href="#" id="verman" class="enlace">Escribir la dirección a mano</a>
   <div id="error" role="alert"></div>
   <button type="submit">Conectar y abrir el verificador</button>
   <button type="button" class="aparte" id="botones" hidden>Bloquear los botones de Android (permiso una sola vez)</button>
@@ -82,7 +82,7 @@
     $("hallados").innerHTML = ""; elegido = ""; $("otra").hidden = true;
     $("buscando").hidden = false; $("buscando").textContent = "Buscando el servidor de la tienda en la red…";
     const redes = new Set();
-    try { JSON.parse(await llamar("redes")).forEach((x) => redes.add(x)); } catch {}
+    try { JSON.parse(await Promise.race([llamar("redes"), new Promise((_, no) => setTimeout(no, 3000))])).forEach((x) => redes.add(x)); } catch {}
     ["192.168.1", "192.168.0", "192.168.100", "10.0.0", "192.168.2", "192.168.10", "10.0.1"].forEach((x) => redes.add(x));
     const nombre = await probar("http://factpos.local:3000", 2500);
     if (nombre) mostrar(nombre);
