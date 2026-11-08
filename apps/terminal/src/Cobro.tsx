@@ -190,8 +190,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
             {(forma === "EFECTIVO" || forma === "MIXTO") && (
               <div className="cobro2-bloque">
                 <label className="campo">
-                  <span>Efectivo recibido {efectivo.gt(0) && <em>· a cobrar {rd(efectivo.toFixed(2))}</em>}</span>
-                  <input autoFocus className="entrada-grande" inputMode="decimal" value={recibido} placeholder={efectivo.toFixed(2)}
+                  <span>Efectivo recibido {efectivo.gt(0) && (forma !== "MIXTO" || otros.gt(0)) && <em>· a cobrar {rd(efectivo.toFixed(2))}</em>}</span>
+                  <input autoFocus className="entrada-grande" inputMode="decimal" value={recibido} placeholder={forma === "MIXTO" && otros.lte(0) ? "0.00" : efectivo.toFixed(2)}
                     onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && cobrar()} />
                 </label>
                 <div className="billetes">

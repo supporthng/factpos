@@ -431,10 +431,24 @@ function BienvenidaTurno({ usuario, fondo, onCerrar }: { usuario: string; fondo:
   );
 }
 
+/** Billetes y monedas de RD$ para contar el fondo de caja */
+const DENOMINACIONES = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
+
 function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, onCerrarSistema }: {
   ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: (fondo: string) => void; recargar: () => void; onSalir: () => void; onCerrarSistema: () => void;
 }) {
   const [fondo, setFondo] = useState("2000");
+  /** Desglose de billetes y monedas: cantidad por denominación. Mientras haya algo contado, el fondo es la suma. */
+  const [cant, setCant] = useState<Record<number, string>>({});
+  const totalContado = DENOMINACIONES.reduce((a, d) => a + d * (parseInt(cant[d] || "0", 10) || 0), 0);
+  const hayConteo = DENOMINACIONES.some((d) => (parseInt(cant[d] || "0", 10) || 0) > 0);
+  const contar = (d: number, v: string) => {
+    const nuevo = { ...cant, [d]: v.replace(/\D/g, "").slice(0, 4) };
+    setCant(nuevo);
+    const t = DENOMINACIONES.reduce((a, x) => a + x * (parseInt(nuevo[x] || "0", 10) || 0), 0);
+    setFondo(t > 0 ? String(t) : "");
+  };
+  const sumar = (d: number, delta: number) => contar(d, String(Math.max(0, (parseInt(cant[d] || "0", 10) || 0) + delta)));
   const [msg, setMsg] = useState("");
   const [consultando, setConsultando] = useState(false);
   const abrir = async () => {
@@ -452,9 +466,24 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, on
       <h2>Abrir turno</h2>
       <label className="campo">
         <span>Fondo de caja (efectivo inicial)</span>
-        <input autoFocus inputMode="decimal" value={fondo} onChange={(e) => setFondo(e.target.value.replace(/[^\d.]/g, ""))}
+        <input autoFocus inputMode="decimal" value={fondo} onChange={(e) => { setFondo(e.target.value.replace(/[^\d.]/g, "")); setCant({}); }}
           onKeyDown={(e) => e.key === "Enter" && abrir()} />
       </label>
+      <div className="desglose-turno">
+        <div className="desglose-titulo">Desglose de billetes y monedas <span className="suave">(cuente el efectivo y el fondo se calcula solo)</span></div>
+        <div className="desglose-grid">
+          {DENOMINACIONES.map((d) => (
+            <div className="desglose-fila" key={d}>
+              <b>{d.toLocaleString("es-DO")}</b>
+              <button type="button" className="boton fantasma chico" aria-label={`Quitar uno de ${d}`} onClick={() => sumar(d, -1)}>−</button>
+              <input inputMode="numeric" value={cant[d] ?? ""} placeholder="0" aria-label={`Cantidad de ${d}`} onChange={(e) => contar(d, e.target.value)} />
+              <button type="button" className="boton fantasma chico" aria-label={`Agregar uno de ${d}`} onClick={() => sumar(d, 1)}>+</button>
+            </div>
+          ))}
+        </div>
+        {hayConteo && <div className="desglose-total">Total contado: <b>{rd(totalContado)}</b></div>}
+        {hayConteo && <button type="button" className="enlace" onClick={() => { setCant({}); setFondo(""); }}>Borrar el conteo</button>}
+      </div>
       <p className="suave">Fondo: {rd(fondo || 0)}</p>
       <button className="boton primario ancho" onClick={abrir}>Abrir turno</button>
       <button className="boton ancho" onClick={() => setConsultando(true)}>Consultar precios</button>
