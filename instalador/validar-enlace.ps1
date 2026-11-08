@@ -39,6 +39,7 @@ try {
   try { $est = [int]$_.Exception.Response.StatusCode } catch { }
   if ($est -eq 404 -or $est -eq 410) { Fallar "El codigo no sirve: esta mal escrito, ya se uso o vencio. Genere uno nuevo en la central (Sucursales y terminales > Codigo de instalacion)." }
   if ($est -eq 400) { Fallar "El codigo no tiene el formato correcto (por ejemplo K7PD-4QX9) o el codigo de enlace esta incompleto." }
+  if ($est -eq 403) { Fallar "La central respondio 403: tiene activada la opcion Exigir dispositivo autorizado y bloquea a los servidores de sucursal. Actualice la central a la ultima version, o apague esa opcion un momento en Sistema > Seguridad." }
   if ($est -eq 429) { Fallar "Demasiados intentos con codigos incorrectos. Espere unos minutos y vuelva a intentar." }
   Fallar "No se pudo hablar con la central ($CentralUrl). Revise la conexion a internet y que la central este encendida."
 }
