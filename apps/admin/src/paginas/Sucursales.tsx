@@ -143,7 +143,7 @@ export function Sucursales() {
                   )}
                 </div>
                 <div className="suave pequeno">
-                  Al instalar el servidor elija «Tengo un código de instalación» y escríbalo: queda dado de alta solo.
+                  En el instalador elija «Servidor de sucursal (otro local)» y pegue el código en el primer campo: queda dado de alta solo.
                   <br />Vale hasta el {new Date(codigoDe(s.id)!.expiraEn).toLocaleDateString("es-DO")} y sirve una sola vez.
                   {" "}<button className="enlace" onClick={() => navigator.clipboard?.writeText(codigoDe(s.id)!.codigo)}>Copiar</button>
                   {" · "}<button className="enlace" onClick={async () => {
