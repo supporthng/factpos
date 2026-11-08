@@ -488,18 +488,18 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .t-contingencia { border: 1px dashed #000; padding: 4px; margin: 4px 0; font-size: 11px; }
 
 /* Aviso de conexión con el servidor (contingencia) */
-.aviso-conexion { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 16px; padding: 10px 16px; font-size: 15px; color: #fff; text-align: center; }
-.aviso-conexion b { font-size: 17px; letter-spacing: .02em; }
+.aviso-conexion { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 12px; padding: 5px 12px; font-size: 13px; line-height: 1.25; color: #fff; text-align: center; }
+.aviso-conexion b { font-size: 14px; letter-spacing: .02em; }
 .aviso-conexion.sin { background: #b91c1c; box-shadow: 0 -4px 18px rgba(185,28,28,.45); animation: latido-alerta 2s ease-in-out infinite; }
 .aviso-conexion.enviando { background: #b45309; }
 .aviso-conexion.ok { background: #15803d; }
-.aviso-conexion .poca-reserva { background: rgba(0,0,0,.25); border-radius: 999px; padding: 2px 10px; font-weight: 700; }
+.aviso-conexion .poca-reserva { background: rgba(0,0,0,.25); border-radius: 999px; padding: 1px 8px; font-weight: 700; font-size: 12px; }
 @keyframes latido-alerta { 50% { background: #991b1b; } }
 @media (prefers-reduced-motion: reduce) { .aviso-conexion.sin { animation: none; } }
 @media print { .aviso-conexion { display: none !important; } }
 .aviso-sin-servidor-chico { background: rgba(185,28,28,.15); color: var(--error); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
 .aviso-cobro-contingencia { background: rgba(185,28,28,.14); border: 1px solid rgba(248,113,113,.5); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
-.pos:has(> .aviso-conexion) { padding-bottom: 46px; }
+.pos:has(> .aviso-conexion) { padding-bottom: 34px; }
 
 
 /* =====================================================================

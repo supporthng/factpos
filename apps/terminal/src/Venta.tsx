@@ -1176,12 +1176,11 @@ function AvisoConexion() {
   if (!c.enLinea) {
     return (
       <div className="aviso-conexion sin" role="alert">
-        <b>SIN CONEXIÓN CON EL SERVIDOR{c.desde ? ` desde las ${hora(c.desde)}` : ""}</b>
-        <span>Siga vendiendo: las ventas se guardan en esta caja{c.pendientes ? ` (${c.pendientes} guardada${c.pendientes === 1 ? "" : "s"})` : ""}.
-          Solo factura de consumo, al contado. Avise al encargado.</span>
+        <b>SIN CONEXIÓN{c.desde ? ` desde las ${hora(c.desde)}` : ""}</b>
+        <span>Las ventas se guardan en esta caja{c.pendientes ? ` (${c.pendientes})` : ""} · solo consumo, al contado · avise al encargado</span>
         {c.reserva === 0
-          ? <span className="poca-reserva"><b>Sin números de factura de reserva: no se puede facturar hasta que vuelva el servidor.</b></span>
-          : c.reserva < 10 && <span className="poca-reserva">Quedan solo {c.reserva} números de factura de reserva. Avise al encargado.</span>}
+          ? <span className="poca-reserva">Sin números de reserva: no se puede facturar</span>
+          : c.reserva < 10 && <span className="poca-reserva">Quedan {c.reserva} números de reserva</span>}
         {c.pendientes > 0 && <GuardarCopia />}
       </div>
     );
