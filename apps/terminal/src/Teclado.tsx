@@ -46,9 +46,12 @@ function modoDe(el: Campo): Modo {
 }
 
 /** Escribe en el campo como si el usuario tecleara: dispara el evento «input» para que React actualice su estado. */
-function escribir(el: Campo, texto: string, borrar = false) {
+function escribir(el: Campo, texto: string, borrar = false, alFinal = false) {
   const valor = el.value;
   let ini = el.selectionStart ?? valor.length, fin = el.selectionEnd ?? valor.length;
+  // Montos y cantidades: se escribe siempre al final (y ⌫ borra el último), salvo que haya algo seleccionado.
+  // Así no importa dónde haya quedado el cursor tras repintar el campo (antes los números entraban al principio y ⌫ no borraba).
+  if (alFinal && ini === fin) { ini = fin = valor.length; }
   let nuevo: string, pos: number;
   if (borrar) {
     if (ini === fin) { if (ini === 0) return; ini -= 1; }
@@ -84,6 +87,7 @@ export function TecladoPantalla() {
   const manual = useRef(false);
   const caja = useRef<HTMLDivElement>(null);
   const ultimoToque = useRef<{ t: number; tipo: string }>({ t: 0, tipo: "" });
+  const ultimoPulso = useRef(0);   // última tecla accionada con el dedo (para ignorar el clic que le sigue)
 
   // Un toque (o clic, según el ajuste) sobre un campo abre el teclado; salir del campo lo cierra.
   useEffect(() => {
@@ -160,11 +164,12 @@ export function TecladoPantalla() {
   const cerrar = () => { try { campo.blur(); } catch { /* nada */ } setCampo(null); };
   const enter = () => { campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true })); };
   const tecla = (t: string) => {
-    if (t === "⌫") escribir(campo, "", true);
+    const alFinal = modo !== "abc";
+    if (t === "⌫") escribir(campo, "", true, alFinal);
     else if (t === "C") limpiar(campo);
     else if (t === "⇧") setMayus((m) => !m);
     else if (modo !== "abc" && t === "00" && campo.value.includes(".")) return;
-    else escribir(campo, modo === "abc" && mayus ? t.toUpperCase() : t);
+    else escribir(campo, modo === "abc" && mayus ? t.toUpperCase() : t, false, alFinal);
     if (modo === "abc" && mayus && t !== "⇧") setMayus(false);
   };
 
@@ -177,6 +182,12 @@ export function TecladoPantalla() {
     const fin = () => { document.removeEventListener("pointermove", mover); document.removeEventListener("pointerup", fin); };
     document.addEventListener("pointermove", mover); document.addEventListener("pointerup", fin);
   };
+  // Con el dedo la tecla actúa al TOCAR (pointerdown) y el clic que sigue se ignora: en pantallas táctiles de caja el clic se pierde
+  // si el dedo se mueve un poco, y por eso «a veces» no tomaba los números ni el borrar.
+  const accion = (fn: () => void) => ({
+    onPointerDown: (e: React.PointerEvent) => { if (e.pointerType !== "mouse") { e.preventDefault(); ultimoPulso.current = Date.now(); fn(); } },
+    onClick: () => { if (Date.now() - ultimoPulso.current > 700) fn(); },
+  });
   // Las teclas no deben robar el foco al campo
   const sinFoco = (e: React.MouseEvent) => e.preventDefault();
 
@@ -194,19 +205,19 @@ export function TecladoPantalla() {
           {FILAS_ABC.map((f, i) => (
             <div key={i} className="tp-fila">
               {f.map((t) => (
-                <button key={t} type="button" className={"tp-tecla" + (t === "⇧" ? " tp-esp" : "") + (t === "⇧" && mayus ? " activa" : "") + (t === "⌫" ? " tp-esp" : "")} onClick={() => tecla(t)}>
+                <button key={t} type="button" className={"tp-tecla" + (t === "⇧" ? " tp-esp" : "") + (t === "⇧" && mayus ? " activa" : "") + (t === "⌫" ? " tp-esp" : "")} {...accion(() => tecla(t))}>
                   {/^[a-zñ]$/.test(t) && mayus ? t.toUpperCase() : t}
                 </button>
               ))}
             </div>
           ))}
           <div className="tp-fila">
-            <button type="button" className="tp-tecla" onClick={() => tecla("-")}>-</button>
-            <button type="button" className="tp-tecla" onClick={() => tecla(".")}>.</button>
-            <button type="button" className="tp-tecla tp-espacio" onClick={() => tecla(" ")}>espacio</button>
-            <button type="button" className="tp-tecla" onClick={() => tecla("@")}>@</button>
-            <button type="button" className="tp-tecla" onClick={() => tecla("C")}>C</button>
-            <button type="button" className="tp-tecla tp-listo" onClick={() => { enter(); }}>Enter</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla("-"))}>-</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla("."))}>.</button>
+            <button type="button" className="tp-tecla tp-espacio" {...accion(() => tecla(" "))}>espacio</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla("@"))}>@</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla("C"))}>C</button>
+            <button type="button" className="tp-tecla tp-listo" {...accion(() => { enter(); })}>Enter</button>
           </div>
         </div>
       ) : (
@@ -214,14 +225,14 @@ export function TecladoPantalla() {
           {FILAS_NUM.map((f, i) => (
             <div key={i} className="tp-fila">
               {f.map((t) => (
-                <button key={t} type="button" className="tp-tecla" disabled={t === "." && modo === "num"} onClick={() => tecla(t)}>{t}</button>
+                <button key={t} type="button" className="tp-tecla" disabled={t === "." && modo === "num"} {...accion(() => tecla(t))}>{t}</button>
               ))}
             </div>
           ))}
           <div className="tp-fila">
-            <button type="button" className="tp-tecla tp-ancha" onClick={() => tecla("0")}>0</button>
-            <button type="button" className="tp-tecla" disabled={modo === "num"} onClick={() => tecla("00")}>00</button>
-            <button type="button" className="tp-tecla tp-listo" onClick={() => { if (campo.hasAttribute("data-pin-flotante") || campo.hasAttribute("data-listo-enter")) enter(); cerrar(); }}>Listo</button>
+            <button type="button" className="tp-tecla tp-ancha" {...accion(() => tecla("0"))}>0</button>
+            <button type="button" className="tp-tecla" disabled={modo === "num"} {...accion(() => tecla("00"))}>00</button>
+            <button type="button" className="tp-tecla tp-listo" {...accion(() => { if (campo.hasAttribute("data-pin-flotante") || campo.hasAttribute("data-listo-enter")) enter(); cerrar(); })}>Listo</button>
           </div>
         </div>
       )}

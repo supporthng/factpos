@@ -1261,3 +1261,14 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .registro-impresion { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
 .registro-impresion li.error { color: var(--peligro, #dc2626); }
 .lista-opciones .opcion.activo { outline: 2px solid var(--primario, #2563eb); }
+
+/* Desglose de billetes y monedas al abrir el turno */
+.desglose-turno { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--borde, #d6dbe3); border-radius: 12px; background: var(--panel-2, #f6f8fb); }
+.desglose-titulo { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+.desglose-titulo .suave { font-weight: 400; font-size: 12px; }
+.desglose-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.desglose-fila { display: grid; grid-template-columns: 52px 38px 1fr 38px; align-items: center; gap: 4px; }
+.desglose-fila b { text-align: right; font-size: 15px; }
+.desglose-fila input { min-width: 0; width: 100%; height: 38px; text-align: center; font-size: 18px; font-weight: 700; border: 1px solid var(--borde, #d6dbe3); border-radius: 8px; }
+.desglose-fila .boton { height: 38px; padding: 0; font-size: 20px; }
+.desglose-total { margin-top: 8px; text-align: right; font-size: 15px; }
