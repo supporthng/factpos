@@ -30,12 +30,11 @@
   <div id="buscando" class="busca">Buscando el servidor de la tienda en la red…</div>
   <div id="hallados"></div>
   <button type="button" class="aparte" id="otra" hidden>Buscar de nuevo</button>
-  <div id="manual" hidden>
-    <label for="srv">Dirección del servidor de la sucursal</label>
+  <div id="manual">
+    <label for="srv">O escriba la dirección del servidor de la sucursal</label>
     <input id="srv" inputmode="url" placeholder="192.168.1.10:3000">
     <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
   </div>
-  <a href="#" id="verman" class="enlace">Escribir la dirección a mano</a>
   <div id="error" role="alert"></div>
   <button type="submit">Conectar y abrir el verificador</button>
   <button type="button" class="aparte" id="botones" hidden>Bloquear los botones de Android (permiso una sola vez)</button>
@@ -46,6 +45,8 @@
   async function llamar(nombre, ...args) { const p = puente(); if (!p) throw new Error("La app no está lista"); return await p[nombre](...args); }
   const $ = (id) => document.getElementById(id);
   const error = (t) => { $("error").textContent = t; };
+  // Si algo del script falla, se ve en pantalla (en vez de quedarse la pantalla «muerta»)
+  window.onerror = (m) => { try { document.getElementById("error").textContent = "Error: " + m; } catch (e) {} };
 
   function normalizar(t) {
     let v = t.trim().replace(/\s+/g, "");
@@ -94,10 +95,9 @@
     }
     $("buscando").hidden = $("hallados").children.length > 0;
     if (!$("hallados").children.length) { $("buscando").textContent = "No se encontró el servidor. Revise que esté encendido y en la misma red, o escriba su dirección."; $("manual").hidden = false; }
-    $("otra").hidden = false; $("verman").hidden = $("manual").hidden === false;
+    $("otra").hidden = false;
   }
   $("otra").onclick = buscar;
-  $("verman").onclick = (e) => { e.preventDefault(); $("manual").hidden = false; $("verman").hidden = true; elegido = ""; document.querySelectorAll('input[name=srv]').forEach((r) => (r.checked = false)); $("srv").focus(); };
 
   async function iniciar() {
     for (let i = 0; i < 60 && !puente(); i++) await new Promise((r) => setTimeout(r, 250));
@@ -112,7 +112,7 @@
     ev.preventDefault();
     error("");
     let url;
-    try { url = elegido || normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
+    try { url = ($("srv").value.trim() ? normalizar($("srv").value) : elegido) || normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
     try {
       const r = await llamar("guardar", url);
       if (r) error(r);   // "" = guardado: la app abre el verificador sola
