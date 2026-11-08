@@ -14,6 +14,17 @@ const huella = (s: string) => createHash("sha256").update(s).digest("hex");
 /** Rutas del túnel que no exigen dispositivo autorizado (son las que sirven para pedirlo). */
 export const rutaDeAltaDispositivo = (ruta: string) => ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado";
 
+/**
+ * Rutas que usan los SERVIDORES de las sucursales para hablar con la central (alta y sincronización).
+ * No pasan por un navegador, así que no tienen «dispositivo»: se identifican con su propio código o clave
+ * de sucursal. Sin esta excepción, «Exigir dispositivo autorizado» las bloquea por el túnel.
+ */
+const RUTAS_DE_SERVIDOR = new Set([
+  "/central/alta/solicitar", "/central/alta/estado", "/central/alta/canjear", "/central/alta/verificar",
+  "/central/sync/subir", "/central/sync/equipo", "/central/sync/cambios", "/central/sync/certificado", "/central/vigilancia",
+]);
+export const rutaDeServidor = (ruta: string) => RUTAS_DE_SERVIDOR.has(ruta);
+
 let cache: { v: boolean; t: number } | null = null;
 export const olvidarCacheDispositivos = () => { cache = null; };
 export async function dispositivoExigido() {

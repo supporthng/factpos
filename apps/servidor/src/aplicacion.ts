@@ -39,7 +39,7 @@ import { rutasCentralInventario } from "./rutas/central-inventario.js";
 import { rutasCentralMovil } from "./rutas/central-movil.js";
 import { rutasCentralSeguridad, accesoWebPermitido } from "./rutas/central-seguridad.js";
 import { reportarError } from "./incidentes.js";
-import { rutasDispositivos, dispositivoExigido, estadoDispositivo, rutaDeAltaDispositivo } from "./rutas/dispositivos.js";
+import { rutasDispositivos, dispositivoExigido, estadoDispositivo, rutaDeAltaDispositivo, rutaDeServidor } from "./rutas/dispositivos.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
 import { rutasEnsayoFiscal } from "./rutas/central-fiscal-ensayo.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
@@ -114,7 +114,7 @@ export async function crearApp() {
       if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
       if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Sistema › Acceso remoto, desde la red local." });
       // Con «Exigir dispositivo autorizado» solo entran los equipos que un administrador autorizó (la web de la app sí carga: pide el acceso)
-      if (ruta !== "/salud" && ruta !== "/actualizacion/estado" && !ruta.startsWith("/admin") && !rutaDeAltaDispositivo(ruta) && (await dispositivoExigido())) {
+      if (ruta !== "/salud" && ruta !== "/actualizacion/estado" && !ruta.startsWith("/admin") && !rutaDeAltaDispositivo(ruta) && !rutaDeServidor(ruta) && (await dispositivoExigido())) {
         const est = await estadoDispositivo(req.headers["x-dispositivo"]);
         if (est !== "AUTORIZADO") return rep.code(403).send({ error: "Este dispositivo no está autorizado", dispositivo: est });
       }
