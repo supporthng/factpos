@@ -15,6 +15,7 @@ const ConfigMovil = lazy(() => import("./paginas/ConfigMovil").then((m) => ({ de
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.Correo })));
 import { FranjaEmpresa, SelectorEmpresa } from "./paginas/Empresas";
+import { AgregarAInicio } from "./AgregarAInicio";
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
@@ -560,6 +561,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
         {verServidor && <label className="campo"><span>Dirección de la central</span><input value={servidor} onChange={(e) => setServidor(e.target.value)} /></label>}
         <button className="boton primario ancho" disabled={!usuario || !clave || entrando || (pedirCodigo && !codigo)}>{entrando ? "Entrando…" : "Entrar"}</button>
         {msg && <p className="error">{msg}</p>}
+        <AgregarAInicio />
         {!verServidor && !CONFIG.modo && <button type="button" className="enlace pequeno" onClick={() => setVerServidor(true)}>Otra central…</button>}
       </form>
     </div>

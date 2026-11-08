@@ -1,4 +1,5 @@
 import { CONFIG } from "./api";
+import { AgregarAInicio } from "./AgregarAInicio";
 
 /**
  * Página de instalación de las apps FactPOS Admin: https://<portal>/<empresa>/#instalar
@@ -28,7 +29,7 @@ export function PaginaInstalar() {
         <p style={{ color: "#cfd8e0" }}>Administra tu negocio desde cualquier lugar.</p>
         {(movil || !/Windows/i.test(navigator.userAgent)) && bloque("Android", "admin-android", "Descargar la app para Android")}
         {!movil && bloque("Windows", "admin-windows", "Descargar el instalador para Windows")}
-        {movil && !/Android/i.test(navigator.userAgent) && <p style={{ color: "#cfd8e0" }}>En iPhone, abre esta página en Safari y usa «Compartir › Añadir a pantalla de inicio».</p>}
+        <AgregarAInicio siempre />
         <p><a style={{ color: "#fff" }} href={`${location.origin}/${slug}/`}>Entrar desde el navegador</a></p>
       </div>
     </div>
