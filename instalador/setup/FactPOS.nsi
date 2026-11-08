@@ -664,9 +664,19 @@ Section "FactPOS" SecPrincipal
           CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
           CreateShortCut "$SMSTARTUP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
         ${ElseIf} $Tipo == "sucursal"
-        ${AndIf} $Vende == "1"
-          CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
-          CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          ; La administración de la sucursal es la aplicación (no el navegador): reemplaza al acceso web del script
+          CreateShortCut "$DESKTOP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          CreateShortCut "$SMPROGRAMS\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          SetShellVarContext all
+          Delete "$DESKTOP\FactPOS Administración.url"
+          SetShellVarContext current
+          ${If} $Vende == "1"
+            CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+            CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+            SetShellVarContext all
+            Delete "$DESKTOP\FactPOS Caja (navegador).url"
+            SetShellVarContext current
+          ${EndIf}
         ${EndIf}
       ${Else}
         StrCpy $Fallo "1"
