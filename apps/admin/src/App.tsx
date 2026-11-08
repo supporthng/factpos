@@ -511,6 +511,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [rnc, setRnc] = useState("");
+  const [empresas, setEmpresas] = useState<{ rnc: string; nombre: string }[] | null>(null);
   const [pedirRnc, setPedirRnc] = useState(false);
   const [pedirCodigo, setPedirCodigo] = useState(false);
   const [codigo, setCodigo] = useState("");
@@ -530,8 +531,9 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
     e?.preventDefault();
     setMsg(""); setEntrando(true);
     try {
-      const r = await api<{ requiere2fa?: boolean; token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>(
+      const r = await api<{ requiere2fa?: boolean; elegirEmpresa?: boolean; empresas?: { rnc: string; nombre: string }[]; token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>(
         "/central/entrar", { servidor, cuerpo: { usuario, clave, rnc: rnc || undefined, codigo: codigo || undefined } });
+      if (r.elegirEmpresa && r.empresas) { setEmpresas(r.empresas); setRnc(r.empresas[0].rnc); setMsg("Elija la empresa a la que va a entrar."); return; }
       if (r.requiere2fa) { setPedirCodigo(true); setMsg("Escriba el código de su app de verificación (o un código de recuperación)."); return; }
       onListo({ servidor, token: r.token, empresaId: r.empresa.id, empresa: r.empresa.nombre, usuarioId: r.usuario.id, nombre: r.usuario.nombre, permisos: r.usuario.permisos });
     } catch (e) {
@@ -548,7 +550,12 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
         <div className="marca grande">Fact<span>POS</span><small>{enPortal ? "Portal de licencias" : CONFIG.cliente ?? "Administración"}</small></div>
         <label className="campo"><span>Usuario</span><input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoCapitalize="none" /></label>
         <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
-        {pedirRnc && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
+        {empresas && <label className="campo"><span>Empresa</span>
+          <select value={rnc} onChange={(e) => setRnc(e.target.value)}>
+            {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.nombre} · RNC {x.rnc}</option>)}
+          </select>
+        </label>}
+        {pedirRnc && !empresas && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
         {pedirCodigo && <label className="campo"><span>Código de verificación</span><input autoFocus value={codigo} onChange={(e) => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" /></label>}
         {verServidor && <label className="campo"><span>Dirección de la central</span><input value={servidor} onChange={(e) => setServidor(e.target.value)} /></label>}
         <button className="boton primario ancho" disabled={!usuario || !clave || entrando || (pedirCodigo && !codigo)}>{entrando ? "Entrando…" : "Entrar"}</button>

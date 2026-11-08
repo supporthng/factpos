@@ -77,14 +77,22 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     const ip = `ip:${String(req.headers["cf-connecting-ip"] ?? req.ip)}`;
     frenar(llave);
     frenar(ip, 20); // quien prueba muchos usuarios desde un mismo lugar
-    const r = await pool.query<{ id: string; nombre: string; empresa_id: string; empresa: string; clave_hash: string; permisos: string[] }>(
-      `SELECT u.id, u.nombre, u.empresa_id, e.nombre_comercial AS empresa, u.clave_hash, ro.permisos
+    const r = await pool.query<{ id: string; nombre: string; empresa_id: string; empresa: string; rnc: string; clave_hash: string; permisos: string[] }>(
+      `SELECT u.id, u.nombre, u.empresa_id, e.nombre_comercial AS empresa, e.rnc, u.clave_hash, ro.permisos
          FROM usuarios u JOIN roles ro ON ro.id = u.rol_id JOIN empresas e ON e.id = u.empresa_id
         WHERE lower(u.usuario) = $1 AND u.activo AND ($2::text IS NULL OR e.rnc = $2)`,
       [usuario, b.rnc?.replace(/\D/g, "") || null],
     );
-    if (r.rowCount! > 1) throw new ErrorNegocio("Ese usuario existe en varias empresas: escriba también el RNC de la empresa", 409);
-    const u = r.rows[0];
+    let u = r.rows[0];
+    if (r.rowCount! > 1) {
+      // El mismo usuario en varias empresas: solo se muestran las empresas donde la contraseña es la correcta
+      // (así no se revela a quien no la sabe en cuáles existe el usuario)
+      const buenas: typeof r.rows = [];
+      for (const f of r.rows) if (await verificarClave(b.clave, f.clave_hash)) buenas.push(f);
+      if (!buenas.length) { fallo(llave); fallo(ip, 15); throw new ErrorNegocio("Usuario o contraseña incorrectos", 401); }
+      if (buenas.length > 1) return { elegirEmpresa: true, empresas: buenas.map((f) => ({ rnc: f.rnc, nombre: f.empresa })) };
+      u = buenas[0];
+    }
     if (!u || !(await verificarClave(b.clave, u.clave_hash))) {
       fallo(llave); fallo(ip, 15);
       throw new ErrorNegocio("Usuario o contraseña incorrectos", 401);
