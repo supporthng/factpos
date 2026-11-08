@@ -413,15 +413,15 @@ Function PaginaDatos
     Pop $hVende
   ${ElseIf} $Tipo == "sucursal"
     !insertmacro MUI_HEADER_TEXT "Servidor de sucursal" "A qué empresa pertenece esta tienda."
-    ${NSD_CreateLabel} 0 0 100% 10u "Nombre corto de su empresa (no hace falta si pega un código de enlace):"
+    ${NSD_CreateLabel} 0 0 100% 10u "1. Código de enlace de la sucursal (se genera en la central; empieza con FPS1-):"
     Pop $0
-    ${NSD_CreateText} 0 11u 60% 12u "$Empresa"
-    Pop $hEmpresa
-    ${NSD_SetFocus} $hEmpresa
-    ${NSD_CreateLabel} 0 30u 100% 10u "Código de enlace o de instalación de la sucursal (se genera en la central):"
-    Pop $0
-    ${NSD_CreateText} 0 41u 90% 12u "$Codigo"
+    ${NSD_CreateText} 0 11u 90% 12u "$Codigo"
     Pop $hCodigo
+    ${NSD_SetFocus} $hCodigo
+    ${NSD_CreateLabel} 0 30u 100% 10u "2. Nombre corto de su empresa (solo si NO usa código de enlace):"
+    Pop $0
+    ${NSD_CreateText} 0 41u 60% 12u "$Empresa"
+    Pop $hEmpresa
     ${NSD_CreateLabel} 0 58u 100% 10u "Dirección de la central (solo si no usa código de enlace):"
     Pop $0
     ${NSD_CreateText} 0 69u 90% 12u "$Central"
@@ -467,6 +467,17 @@ Function PaginaDatosSalir
     ${If} $Tipo == "sucursal"
       ${NSD_GetText} $hCodigo $Codigo
       StrCpy $5 $Codigo 5
+    ${EndIf}
+    ; Un código de instalación (ej. K7PD-4QX9) escrito por error en el campo del nombre
+    ${If} $Tipo == "sucursal"
+      StrLen $0 $Empresa
+      StrCpy $2 $Empresa 1 4
+      ${If} $0 == 9
+      ${AndIf} $2 == "-"
+      ${AndIf} $Codigo == ""
+        MessageBox MB_ICONEXCLAMATION "Lo que escribió en «Nombre corto» parece un código de instalación. Péguelo en el primer campo (código de enlace) y deje el nombre vacío."
+        Abort
+      ${EndIf}
     ${EndIf}
     StrLen $0 $Empresa
     ; Con un código de enlace (FPS1-...) no hace falta el nombre de la empresa
