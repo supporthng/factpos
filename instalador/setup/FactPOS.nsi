@@ -88,6 +88,7 @@ Var PowerShell  ; powershell.exe de 64 bits si Windows es x64 (el stub NSIS es x
 
 ; controles
 Var hR1
+Var hR5
 Var hR2
 Var hR3
 Var hR4
@@ -284,6 +285,8 @@ Function PaginaExistenteSalir
     StrCpy $INSTDIR $ServLoc
     ${If} $ServTipo == "servidor"
       StrCpy $Tipo "servidor"
+    ${ElseIf} $ServTipo == "sucursal"
+      StrCpy $Tipo "sucursal"
     ${Else}
       StrCpy $Tipo "master"
     ${EndIf}
@@ -334,26 +337,32 @@ Function PaginaTipo
     Abort
   ${EndIf}
 
-  ${NSD_CreateRadioButton} 0 0 100% 12u "Instalación completa (Caja + Administración + Servidor)"
+  ${NSD_CreateRadioButton} 0 0 100% 12u "Instalación completa (Caja + Administración + Servidor principal)"
   Pop $hR1
   ${NSD_AddStyle} $hR1 ${WS_GROUP}
-  ${NSD_CreateLabel} 12u 13u -12u 18u "Instala el servidor local y los accesos de Caja y Administración en esta PC."
+  ${NSD_CreateLabel} 12u 12u -12u 16u "Servidor principal de su negocio en esta PC, con los accesos de Caja y Administración."
   Pop $0
-  ${NSD_CreateRadioButton} 0 36u 100% 12u "Solo Servidor"
+  ${NSD_CreateRadioButton} 0 28u 100% 12u "Solo Servidor principal"
   Pop $hR2
-  ${NSD_CreateLabel} 12u 49u -12u 18u "Instala el servidor local sin Caja. Las terminales se conectan desde otros equipos."
+  ${NSD_CreateLabel} 12u 40u -12u 16u "El servidor principal sin Caja. Las terminales se conectan desde otros equipos."
   Pop $0
-  ${NSD_CreateRadioButton} 0 72u 100% 12u "Solo Caja (terminal de venta)"
+  ${NSD_CreateRadioButton} 0 56u 100% 12u "Servidor de sucursal (otro local)"
+  Pop $hR5
+  ${NSD_CreateLabel} 12u 68u -12u 16u "Una tienda que se conecta a su servidor principal con un código de instalación."
+  Pop $0
+  ${NSD_CreateRadioButton} 0 84u 100% 12u "Solo Caja (terminal de venta)"
   Pop $hR3
-  ${NSD_CreateLabel} 12u 85u -12u 18u "Encuentra sola el servidor de la tienda en la red y deja el acceso «FactPOS Caja» en pantalla completa."
+  ${NSD_CreateLabel} 12u 96u -12u 16u "Encuentra sola el servidor de la tienda en la red y deja «FactPOS Caja» en pantalla completa."
   Pop $0
-  ${NSD_CreateRadioButton} 0 108u 100% 12u "Solo Administración"
+  ${NSD_CreateRadioButton} 0 112u 100% 12u "Solo Administración"
   Pop $hR4
-  ${NSD_CreateLabel} 12u 121u -12u 18u "Para la oficina o el dueño: abre la administración de su empresa en su propia ventana. No necesita servidor."
+  ${NSD_CreateLabel} 12u 124u -12u 16u "Para la oficina o el dueño: abre la administración de su empresa. No necesita servidor."
   Pop $0
 
   ${If} $Tipo == "servidor"
     ${NSD_Check} $hR2
+  ${ElseIf} $Tipo == "sucursal"
+    ${NSD_Check} $hR5
   ${ElseIf} $Tipo == "caja"
     ${NSD_Check} $hR3
   ${ElseIf} $Tipo == "admin"
@@ -368,8 +377,11 @@ Function PaginaTipoSalir
   ${NSD_GetState} $hR2 $0
   ${NSD_GetState} $hR3 $1
   ${NSD_GetState} $hR4 $2
+  ${NSD_GetState} $hR5 $3
   ${If} $0 == ${BST_CHECKED}
     StrCpy $Tipo "servidor"
+  ${ElseIf} $3 == ${BST_CHECKED}
+    StrCpy $Tipo "sucursal"
   ${ElseIf} $1 == ${BST_CHECKED}
     StrCpy $Tipo "caja"
   ${ElseIf} $2 == ${BST_CHECKED}
@@ -443,6 +455,7 @@ FunctionEnd
 Function PaginaDatosSalir
   ${If} $Tipo == "master"
   ${OrIf} $Tipo == "servidor"
+  ${OrIf} $Tipo == "sucursal"
     ${NSD_GetText} $hEmpresa $Empresa
     StrLen $0 $Empresa
     ${If} $0 < 3
@@ -522,6 +535,7 @@ Section "FactPOS" SecPrincipal
 
   ${If} $Tipo == "master"
   ${OrIf} $Tipo == "servidor"
+  ${OrIf} $Tipo == "sucursal"
     CreateDirectory "$INSTDIR\logs"
     StrCpy $Registro "$INSTDIR\logs\instalacion.log"
   ${Else}
@@ -530,6 +544,7 @@ Section "FactPOS" SecPrincipal
   ${EndIf}
   ${If} $Tipo == "master"
   ${OrIf} $Tipo == "servidor"
+  ${OrIf} $Tipo == "sucursal"
     DetailPrint "Preparando los archivos de FactPOS…"
     SetDetailsPrint textonly
     SetOutPath "$PLUGINSDIR\paquete"
@@ -586,6 +601,10 @@ Section "FactPOS" SecPrincipal
           ; Se abren solas al iniciar Windows (el servidor arranca antes; las apps reintentan hasta que responda)
           CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
           CreateShortCut "$SMSTARTUP\FactPOS Administración.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=admin --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+        ${ElseIf} $Tipo == "sucursal"
+        ${AndIf} $Vende == "1"
+          CreateShortCut "$DESKTOP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
+          CreateShortCut "$SMSTARTUP\FactPOS Caja.lnk" "$INSTDIR\escritorio\FactPOS-Escritorio.exe" "--modo=caja --servidor=http://127.0.0.1:3000" "$INSTDIR\instalador\factpos.ico"
         ${EndIf}
       ${Else}
         StrCpy $Fallo "1"
