@@ -169,6 +169,14 @@ if (makensis) {
   } catch (e) {
     console.warn(`(No se armó el instalador de Caja: ${e instanceof Error ? e.message : e})`);
   }
+  // Desinstalador / limpieza total de la Caja (un solo .exe). Si fallara, no impide publicar lo demás.
+  try {
+    const limpiar = join(salida, `FactPOS-Caja-Limpiar-${version}.exe`);
+    execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${limpiar}" LimpiarCaja.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
+    console.log(`Listo: ${relative(raiz, limpiar)} (${(statSync(limpiar).size / 1e6).toFixed(1)} MB, limpieza de Caja)`);
+  } catch (e) {
+    console.warn(`(No se armó el desinstalador de Caja: ${e instanceof Error ? e.message : e})`);
+  }
 } else {
   console.log("(No se armó FactPOS-Setup.exe: instale NSIS → apt install nsis / choco install nsis)");
 }
