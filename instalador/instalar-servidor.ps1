@@ -59,7 +59,8 @@ function Listo($t) { Write-Host "   $t" -ForegroundColor Green }
 function Clave([int]$n = 24) { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count $n | ForEach-Object { [char]$_ }) }
 function RefrescarPath { $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") }
 
-$Empresa = $Empresa.Trim().ToLower()
+# El nombre corto no lleva espacios: «Royal Liquor Store» se entiende como royalliquorstore
+$Empresa = ($Empresa.Trim().ToLower() -replace '\s', '')
 $Portal = $Portal.TrimEnd("/")
 if ($Master -and -not $Empresa) { throw "El servidor principal necesita el nombre corto de la empresa (-Empresa)" }
 # Sucursal que solo conoce su empresa: el portal dice dónde está su servidor principal
@@ -69,6 +70,10 @@ if (-not $Master -and $Empresa -and -not $CentralUrl) {
     if ($c.apiUrl) { $CentralUrl = $c.apiUrl; Listo "Empresa: $($c.nombre) · servidor principal en $CentralUrl" }
     else { Write-Host "   OJO: el servidor principal de $($c.nombre) todavía no está conectado. Esta sucursal lo buscará sola." -ForegroundColor Yellow }
   } catch { Write-Host "   OJO: no se pudo consultar el portal ahora. Esta sucursal buscará a su servidor principal sola." -ForegroundColor Yellow }
+}
+# Con código de instalación hace falta saber dónde está el servidor principal: sin eso quedaría "trabajando solo" sin avisar
+if (-not $Master -and $CodigoInstalacion -and -not $CentralUrl) {
+  throw "No se encontró el servidor principal de la empresa '$Empresa' en el portal. Revise el nombre corto de la empresa o escriba la dirección de la central (Administración › Sistema › Acceso remoto › Dirección directa) y vuelva a ejecutar el instalador."
 }
 $Alta = $false
 if (-not $Master -and $Empresa -and -not $SucursalId) { $Alta = $true }
