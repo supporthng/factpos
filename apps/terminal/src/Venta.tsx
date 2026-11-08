@@ -15,6 +15,7 @@ import { PanelDelivery } from "./Delivery";
 import { Ticket, type VentaRegistrada } from "./Ticket";
 import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
+import { guardarRespaldoPausadas, leerRespaldoPausadas } from "./pausadas-respaldo";
 import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
 import { guardarCache, leerCache, useConexion, disponibleCupo, pedirExistencia, exportarPendientes } from "./contingencia";
 
@@ -421,6 +422,22 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   useEffect(() => {
     try { localStorage.setItem(clavePausa, JSON.stringify(pausadas)); } catch { /* sin almacenamiento */ }
   }, [pausadas, clavePausa]);
+  // Copia en archivo (escritorio): si la pantalla arrancó sin ventas en pausa pero el archivo las tiene, se recuperan.
+  // No se escribe el archivo hasta terminar de revisarlo, para no vaciarlo con la lista inicial.
+  const [respaldoListo, setRespaldoListo] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      if (pausadas.length === 0) {
+        const r = await leerRespaldoPausadas<VentaPausada<Linea>>(ajustes.cajaId);
+        if (vivo && r.length) setPausadas((ps) => (ps.length ? ps : r));
+      }
+      if (vivo) setRespaldoListo(true);
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ajustes.cajaId]);
+  useEffect(() => { if (respaldoListo) void guardarRespaldoPausadas(ajustes.cajaId, pausadas); }, [pausadas, respaldoListo, ajustes.cajaId]);
   const pausar = () => {
     if (!lineas.length) return;
     setPausadas((ps) => [...ps, {

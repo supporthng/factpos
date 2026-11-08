@@ -165,6 +165,7 @@ function startUiServer() {
         }
         if (u.pathname === '/principal') return principalApi(req, res, u);
         if (u.pathname === '/respaldo') return respaldoApi(req, res, u);
+        if (u.pathname === '/respaldo-pausadas') return respaldoPausadasApi(req, res, u);
         if (u.pathname === '/sw.js') { res.writeHead(404); return res.end(); } // sin service worker: la aplicación ya funciona sin conexión
         const root = uiRoot();
         let rel = decodeURIComponent(u.pathname);
@@ -298,6 +299,37 @@ function respaldoApi(req, res, u) {
     } catch { json(500, {}); }
   });
 }
+// Ventas en pausa: copia en archivo (además de localStorage de la pantalla), porque lo guardado por la pantalla puede perderse
+// si el proceso se cierra a la fuerza al actualizar. Un archivo por caja; se escribe en cada cambio.
+function respaldoPausadasApi(req, res, u) {
+  const origin = req.headers.origin;
+  if (req.headers.host !== `127.0.0.1:${UI_PORT}` || (origin && origin !== `http://127.0.0.1:${UI_PORT}`)) { res.writeHead(403); return res.end(); }
+  const json = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  const idOk = v => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v);
+  const archivo = id => path.join(RESPALDO, 'pausadas-' + id + '.json');
+  if (req.method === 'GET') {
+    const id = u.searchParams.get('caja');
+    if (!idOk(id)) return json(400, {});
+    const b = readOr(archivo(id));
+    try { return json(200, b ? JSON.parse(b.toString()) : {}); } catch { return json(200, {}); }
+  }
+  const partes = []; let size = 0;
+  req.on('data', c => { size += c.length; if (size > 5 * 1024 * 1024) req.destroy(); else partes.push(c); });
+  req.on('end', () => {
+    try {
+      const m = JSON.parse(Buffer.concat(partes).toString());
+      if (!idOk(m.cajaId) || !Array.isArray(m.pausadas)) return json(400, {});
+      fs.mkdirSync(RESPALDO, { recursive: true });
+      const destino = archivo(m.cajaId);
+      const tmp = destino + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ cajaId: m.cajaId, guardado: new Date().toISOString(), pausadas: m.pausadas }));
+      fs.renameSync(tmp, destino);
+      json(200, { ok: true });
+    } catch { json(500, {}); }
+  });
+}
+// app.exit no pasa por before-quit: se vacía a disco lo que la pantalla guardó (ventas en pausa, etc.) antes de salir
+function salirYa() { try { session.defaultSession.flushStorageData(); } catch { /* sin sesión */ } setTimeout(() => app.exit(0), 300); }
 let syncing = false;
 // Código de la ventana de escritorio (este mismo programa): si el servidor trae uno más nuevo, se descarga, se verifica su huella
 // y se aplica la próxima vez que se abra la caja (lo carga main.cjs). Todo o nada.
@@ -418,7 +450,7 @@ async function startCaja() {
   marca('revisión de pantalla y código lista');
   if (revision && revision[1] === true && !args.includes('--codigo-nuevo')) {
     // El código de esta ventana de escritorio solo se carga al arrancar: se reinicia una sola vez para usar el nuevo
-    try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); app.exit(0); return; } catch { /* sigue con el actual */ }
+    try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); salirYa(); return; } catch { /* sigue con el actual */ }
   }
   openMain();
   // Con la caja abierta: si llega una pantalla nueva y no hay un turno en curso, se recarga sola (con turno abierto espera al próximo arranque)
@@ -486,7 +518,7 @@ async function start() {
     if (!config.empresa) {
       const codigo = await Promise.race([syncCodigo(), new Promise(r => setTimeout(() => r(null), 4000))]);
       if (codigo === true && !args.includes('--codigo-nuevo')) {
-        try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); app.exit(0); return; } catch { /* sigue con el actual */ }
+        try { app.relaunch({ args: process.argv.slice(1).concat('--codigo-nuevo') }); salirYa(); return; } catch { /* sigue con el actual */ }
       }
     }
     setInterval(syncCodigo, 30 * 60 * 1000).unref();
@@ -969,7 +1001,7 @@ function responderEquipos() {
         config.servidor = u.origin; config.apuntado = u.origin; localUrl = u.origin; saveConfig();
         enviar({ ok: true });
         // Se reinicia la app para que tome la dirección nueva (la Caja la usa también para su servidor interno)
-        setTimeout(() => { try { app.relaunch(); app.exit(0); } catch {} }, 600);
+        setTimeout(() => { try { app.relaunch(); salirYa(); } catch {} }, 600);
       } catch (e) { enviar({ ok: false, error: String(e && e.message || e).slice(0, 120) }); }
     }
   });
@@ -979,5 +1011,5 @@ if (unica) app.whenReady().then(registrarImpresionIpc);
 if (unica) app.whenReady().then(responderEquipos);
 if (unica) app.whenReady().then(start);
 let mainOpened = false;
-app.on('before-quit', () => { saliendo = true; });
+app.on('before-quit', () => { saliendo = true; try { session.defaultSession.flushStorageData(); } catch { /* sin sesión */ } });
 app.on('window-all-closed', () => { if (mainOpened && process.platform !== 'darwin') app.quit(); });
