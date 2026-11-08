@@ -491,6 +491,13 @@ Function PaginaDatosSalir
   ${ElseIf} $Tipo == "sucursal"
     ${NSD_GetText} $hCodigo $Codigo
     ${NSD_GetText} $hCentral $Central
+    ; Con código, se comprueba contra la central antes de seguir (sin gastarlo)
+    Call ValidarEnlace
+    Pop $0
+    ${If} $0 != ""
+      MessageBox MB_ICONEXCLAMATION "$0"
+      Abort
+    ${EndIf}
   ${ElseIf} $Tipo == "caja"
     ${NSD_GetText} $hServidor $Servidor
   ${ElseIf} $Tipo == "admin"
@@ -536,6 +543,31 @@ FunctionEnd
     StrCpy $Fallo "1"
   ${EndIf}
 !macroend
+
+; Comprueba el código de instalación con la central. Deja en la pila "" si sirve, o el motivo si no.
+Function ValidarEnlace
+  ${If} $Codigo == ""
+    Push ""
+    Return
+  ${EndIf}
+!ifndef TIPO_FIJO
+  !insertmacro ElegirPowerShell
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "${PAQUETE}\instalador\validar-enlace.ps1"
+  nsExec::ExecToStack `"$PowerShell" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\validar-enlace.ps1" -Codigo "$Codigo" -CentralUrl "$Central" -Empresa "$Empresa"`
+  Pop $0
+  Pop $1
+  ${If} $0 != "0"
+    ${If} $1 == ""
+      StrCpy $1 "No se pudo comprobar el código. Revise la conexión a internet."
+    ${EndIf}
+    Push $1
+    Return
+  ${EndIf}
+!endif
+  Push ""
+FunctionEnd
 
 Section "FactPOS" SecPrincipal
   SetDetailsPrint both

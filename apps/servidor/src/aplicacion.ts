@@ -134,7 +134,7 @@ export async function crearApp() {
         return rep.code(409).send({ error: "Esto se hace en la Administración en la nube (necesita internet): afecta a otras sucursales o a la facturación de toda la empresa." });
       }
       if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/equipo" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
-        || ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado" || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/inicio") return;
+        || ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado" || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/alta/verificar" || ruta === "/central/inicio") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
       // Si lo desactivaron o le cambiaron el rol, aplica de inmediato (no espera a que venza la sesión)

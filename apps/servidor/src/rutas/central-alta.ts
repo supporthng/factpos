@@ -169,6 +169,19 @@ export async function rutasCentralAlta(app: FastifyInstance) {
     });
   });
 
+  /** Comprueba un código de instalación SIN gastarlo (el instalador lo usa al pulsar Siguiente). */
+  app.post("/central/alta/verificar", async (req) => {
+    const ip = req.ip ?? "?";
+    const b = z.object({ codigo }).parse(req.body);
+    const a = (await pool.query(
+      `SELECT a.entregado_en AS "entregadoEn", s.nombre AS sucursal, e.nombre_comercial AS empresa
+         FROM altas_servidor a JOIN sucursales s ON s.id = a.sucursal_id JOIN empresas e ON e.id = a.empresa_id
+        WHERE a.codigo = $1 AND a.origen = 'ADMINISTRACION' AND a.descartado_en IS NULL AND a.expira_en > now()`, [b.codigo])).rows[0];
+    if (!a) { frenarIp(ip); throw new ErrorNegocio("Código de instalación no válido o vencido: genere otro en Administración › Sucursales", 404); }
+    if (a.entregadoEn) throw new ErrorNegocio("Ese código de instalación ya se usó", 410);
+    return { ok: true, sucursal: a.sucursal, empresa: a.empresa };
+  });
+
   // ---------------------------------------------------------------- administración (con sesión)
   /** Servidores que se instalaron y esperan que se confirme su sucursal, y los códigos de instalación vigentes. */
   app.get("/central/alta/pendientes", async (req) => {
