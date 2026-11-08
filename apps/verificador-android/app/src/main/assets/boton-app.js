@@ -18,8 +18,8 @@
     };
     var cerrar = boton("✕", "Cerrar la app"), info = boton("ⓘ", "Opciones del equipo");
     raiz.appendChild(cerrar); raiz.appendChild(info);
-    var velo = el("div", css + "inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center");
-    var caja = el("div", "background:#fff;color:#10202e;border-radius:18px;padding:22px;width:min(380px,92vw);max-height:96vh;overflow:auto;text-align:center;font-size:18px");
+    var velo = el("div", css + "top:0;left:0;right:0;bottom:0;width:100%;height:100%;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center");
+    var caja = el("div", "background:#fff;color:#10202e;border-radius:18px;padding:22px;width:340px;max-width:92%;max-height:96%;margin:auto;overflow:auto;text-align:center;font-size:18px");
     velo.appendChild(caja);
     // El diálogo se cierra solo si nadie escribe: 5 s para el PIN (se reinicia al teclear) y 30 s en el menú de opciones
     var tiempo = null;
@@ -35,11 +35,11 @@
       inp.onblur = function () { setTimeout(function () { if (velo.style.display === "flex" && caja.contains(inp)) inp.focus(); }, 0); };
       var err = el("div", "color:#c0362c;font-weight:700;min-height:1.3em");
       var tecla = function (txt, fondo, color) {
-        var b = el("button", "font-size:26px;font-weight:700;padding:0;height:clamp(46px,9vh,60px);border:0;border-radius:14px;cursor:pointer;touch-action:manipulation;background:" + fondo + ";color:" + color, txt);
+        var b = el("button", "font-size:26px;font-weight:700;padding:0;height:56px;width:31%;margin:1%;border:0;border-radius:14px;cursor:pointer;touch-action:manipulation;background:" + fondo + ";color:" + color, txt);
         b.type = "button"; b.onmousedown = function (e) { e.preventDefault(); }; return b;
       };
       var guardar = tecla("Guardar", "#1a7f4b", "#fff"); guardar.style.fontSize = "19px";
-      var teclado = el("div", "display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px");
+      var teclado = el("div", "display:flex;flex-wrap:wrap;justify-content:center;margin-top:4px");
       "123456789".split("").forEach(function (d) { var t = tecla(d, "#eef1f4", "#10202e"); t.onclick = function () { armar(30000); if (inp.value.length < 8) inp.value += d; }; teclado.appendChild(t); });
       var borrar = tecla("\u232B", "#eef1f4", "#10202e"); borrar.onclick = function () { armar(30000); inp.value = inp.value.slice(0, -1); };
       var cero = tecla("0", "#eef1f4", "#10202e"); cero.onclick = function () { armar(30000); if (inp.value.length < 8) inp.value += "0"; };
@@ -71,11 +71,11 @@
       no.style.marginTop = "8px"; no.style.padding = "10px";
       // Teclado numérico en pantalla: el equipo táctil no siempre abre el teclado del sistema
       var tecla = function (txt, fondo, color) {
-        var b = el("button", "font-size:26px;font-weight:700;padding:0;height:clamp(46px,9vh,60px);border:0;border-radius:14px;cursor:pointer;touch-action:manipulation;background:" + fondo + ";color:" + color, txt);
+        var b = el("button", "font-size:26px;font-weight:700;padding:0;height:56px;width:31%;margin:1%;border:0;border-radius:14px;cursor:pointer;touch-action:manipulation;background:" + fondo + ";color:" + color, txt);
         b.type = "button"; b.onmousedown = function (e) { e.preventDefault(); }; return b;
       };
       var ok = tecla("Entrar", "#c0362c", "#fff"); ok.style.fontSize = "19px";
-      var teclado = el("div", "display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px");
+      var teclado = el("div", "display:flex;flex-wrap:wrap;justify-content:center;margin-top:4px");
       "123456789".split("").forEach(function (d) {
         var t = tecla(d, "#eef1f4", "#10202e");
         t.onclick = function () { armar(5000); if (inp.value.length < 8) inp.value += d; };
