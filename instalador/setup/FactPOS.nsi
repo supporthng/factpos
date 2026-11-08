@@ -64,6 +64,8 @@ Var Tipo          ; master (completa) | servidor | caja | admin
 Var Empresa
 Var Licencia
 Var Codigo
+Var Central
+Var hCentral
 Var Servidor
 Var Destino
 Var Vende         ; 1 = esta PC también vende (caja aquí)
@@ -420,9 +422,13 @@ Function PaginaDatos
     Pop $0
     ${NSD_CreateText} 0 41u 40% 12u "$Codigo"
     Pop $hCodigo
-    ${NSD_CreateLabel} 0 56u 100% 18u "Con el código queda dada de alta sola. Sin código, la sucursal aparece en el servidor principal, en Sucursales › Servidores esperando alta, para confirmarla."
+    ${NSD_CreateLabel} 0 58u 100% 10u "Dirección de la central (opcional si el portal la conoce; está en Sistema › Acceso remoto):"
     Pop $0
-    ${NSD_CreateCheckBox} 0 78u 100% 12u "Esta computadora también vende (instalar una caja aquí)"
+    ${NSD_CreateText} 0 69u 90% 12u "$Central"
+    Pop $hCentral
+    ${NSD_CreateLabel} 0 84u 100% 18u "Con el código queda dada de alta sola. Sin código, aparece en Sucursales › Servidores esperando alta."
+    Pop $0
+    ${NSD_CreateCheckBox} 0 106u 100% 12u "Esta computadora también vende (instalar una caja aquí)"
     Pop $hVende
   ${ElseIf} $Tipo == "caja"
     !insertmacro MUI_HEADER_TEXT "Caja" "El servidor de la tienda."
@@ -477,6 +483,7 @@ Function PaginaDatosSalir
     ${NSD_GetText} $hLicencia $Licencia
   ${ElseIf} $Tipo == "sucursal"
     ${NSD_GetText} $hCodigo $Codigo
+    ${NSD_GetText} $hCentral $Central
   ${ElseIf} $Tipo == "caja"
     ${NSD_GetText} $hServidor $Servidor
   ${ElseIf} $Tipo == "admin"
@@ -560,8 +567,13 @@ Section "FactPOS" SecPrincipal
       ${If} $Licencia != ""
         StrCpy $1 "$1 -Licencia '$Licencia'"
       ${EndIf}
-    ${ElseIf} $Codigo != ""
-      StrCpy $1 "$1 -CodigoInstalacion '$Codigo'"
+    ${Else}
+      ${If} $Codigo != ""
+        StrCpy $1 "$1 -CodigoInstalacion '$Codigo'"
+      ${EndIf}
+      ${If} $Central != ""
+        StrCpy $1 "$1 -CentralUrl '$Central'"
+      ${EndIf}
     ${EndIf}
 
     DetailPrint "Instalando el servidor y preparando la base de datos. Puede tardar de 5 a 15 minutos; por favor espere…"
