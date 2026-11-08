@@ -20,6 +20,9 @@
   .busca { background:#eef1f4; border-radius:12px; padding:14px; font-weight:700; }
   .op { display:flex; gap:10px; align-items:center; border:2px solid #cfd8e0; border-radius:12px; padding:12px; margin:8px 0; cursor:pointer; }
   .op input { width:auto; } .op small { margin:0; }
+  .tec { display:flex; flex-wrap:wrap; justify-content:center; margin-top:10px; }
+  .tec button { width:23%; margin:1%; height:60px; margin-top:1%; font-size:26px; font-weight:700; padding:0; border:0; border-radius:14px; background:#eef1f4; color:#10202e; touch-action:manipulation; }
+  .tec button:active { background:#cfd8e0; }
   .aparte { background:#eef1f4; color:#10202e; margin-top:10px; font-size:16px; }
 </style>
 </head>
@@ -34,6 +37,7 @@
     <label for="srv">O escriba la dirección del servidor de la sucursal</label>
     <input id="srv" inputmode="url" placeholder="192.168.1.10:3000">
     <small>Es la que aparece en FactPOS › Administración › Verificador de precios.</small>
+    <div id="tec" class="tec" hidden></div>
   </div>
   <div id="error" role="alert"></div>
   <button type="submit">Conectar y abrir el verificador</button>
@@ -118,6 +122,29 @@
       if (r) error(r);   // "" = guardado: la app abre el verificador sola
     } catch (e) { error(e.message || "No se pudo guardar"); }
   };
+  // Teclado numérico en pantalla (Windows): el verificador no tiene teclado y el de Windows no sale en pantalla completa.
+  // En Android el campo usa el teclado del teléfono.
+  (function () {
+    if (window.FactPOSApp) return;
+    const campo = $("srv"), caja = $("tec");
+    campo.setAttribute("inputmode", "none");
+    let ultimo = 0;
+    function pulsar(t) {
+      if (t === "C") campo.value = "";
+      else if (t === "\u232B") campo.value = campo.value.slice(0, -1);
+      else campo.value += t;
+    }
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", ":", "\u232B", "C"].forEach((t) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = t;
+      b.onmousedown = (e) => e.preventDefault();
+      // Con el dedo se escribe al tocar (no depende de que el clic llegue); el clic que sigue se ignora
+      b.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") { e.preventDefault(); ultimo = Date.now(); pulsar(t); } });
+      b.addEventListener("click", () => { if (Date.now() - ultimo > 700) pulsar(t); });
+      caja.appendChild(b);
+    });
+    caja.hidden = false;
+  })();
   let arrancó = false;
   const arrancar = () => { if (!arrancó) { arrancó = true; iniciar(); } };
   window.addEventListener("pywebviewready", arrancar);
