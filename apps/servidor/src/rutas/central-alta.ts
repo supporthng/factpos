@@ -4,6 +4,18 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { huellaConexion } from "./sesion.js";
+import { estadoTunel, vieneDelTunel } from "../tunel.js";
+
+/** Dirección por la que una sucursal en otro local alcanza esta central (túnel, o la nube), o null si no se conoce. */
+function direccionPublica(req: { headers: Record<string, unknown> }): string | null {
+  const t = estadoTunel().url ?? process.env.TUNEL_URL;
+  if (t) return t.replace(/\/$/, "");
+  if (process.env.VERCEL || vieneDelTunel(req.headers)) {
+    const h = req.headers["x-forwarded-host"] ?? req.headers.host;
+    return typeof h === "string" && h ? `https://${h}` : null;
+  }
+  return null;
+}
 
 /**
  * Alta de servidores (en la central). Tres caminos, el que sea más cómodo:
@@ -193,7 +205,13 @@ export async function rutasCentralAlta(app: FastifyInstance) {
         `INSERT INTO altas_servidor (codigo, origen, empresa_id, sucursal_id, aprobado_por, aprobado_en, creado_por, expira_en)
          VALUES ($1, 'ADMINISTRACION', $2, $3, $4, now(), $4, now() + make_interval(days => $5)) ON CONFLICT (codigo) DO NOTHING
          RETURNING expira_en AS "expiraEn"`, [c, e, b.sucursalId, u, VIGENCIA_CODIGO_DIAS]);
-      if (r.rowCount) { rep.code(201); return { codigo: c, expiraEn: r.rows[0].expiraEn }; }
+      if (r.rowCount) {
+        rep.code(201);
+        // Código de enlace: lleva también la dirección de esta central, así el instalador solo pide un dato
+        const url = direccionPublica(req);
+        const enlace = url ? `FPS1-${Buffer.from(JSON.stringify({ u: url, c })).toString("base64url")}` : null;
+        return { codigo: c, expiraEn: r.rows[0].expiraEn, enlace };
+      }
     }
     throw new ErrorNegocio("No se pudo generar el código; intente de nuevo", 503);
   });

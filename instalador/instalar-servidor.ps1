@@ -59,6 +59,16 @@ function Listo($t) { Write-Host "   $t" -ForegroundColor Green }
 function Clave([int]$n = 24) { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count $n | ForEach-Object { [char]$_ }) }
 function RefrescarPath { $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") }
 
+# Código de enlace (FPS1-...): trae el código de instalación y la dirección de la central juntos
+if ($CodigoInstalacion -match '^FPS1-(.+)$') {
+  try {
+    $b64 = $Matches[1].Trim().Replace('-', '+').Replace('_', '/')
+    while ($b64.Length % 4) { $b64 += '=' }
+    $d = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)) | ConvertFrom-Json
+    $CodigoInstalacion = [string]$d.c
+    if (-not $CentralUrl) { $CentralUrl = [string]$d.u }
+  } catch { throw "El código de enlace no es válido: cópielo completo desde la Administración (Sucursales y terminales › Código de instalación)." }
+}
 # El nombre corto no lleva espacios: «Royal Liquor Store» se entiende como royalliquorstore
 $Empresa = ($Empresa.Trim().ToLower() -replace '\s', '')
 $Portal = $Portal.TrimEnd("/")

@@ -21,11 +21,11 @@ export function Sucursales() {
   const pend = useDatos<{ solicitudes: SolicitudAlta[]; codigos: CodigoInstalacion[] }>("/central/alta/pendientes");
   // Los servidores recién instalados aparecen solos
   useEffect(() => { const t = setInterval(() => pend.recargar(), 10_000); return () => clearInterval(t); }, [pend.recargar]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [codigos, setCodigos] = useState<Record<string, { codigo: string; expiraEn: string }>>({});
+  const [codigos, setCodigos] = useState<Record<string, { codigo: string; expiraEn: string; enlace?: string | null }>>({});
   const generarCodigo = async (sucursalId: string, nombre: string, silencioso = false) => {
     if (!silencioso && codigoDe(sucursalId) && !confirm(`${nombre} ya tiene un código de instalación sin usar. ¿Generar otro? (el anterior deja de servir)`)) return;
     try {
-      const r = await api<{ codigo: string; expiraEn: string }>("/central/alta/codigo", { cuerpo: { sucursalId } });
+      const r = await api<{ codigo: string; expiraEn: string; enlace?: string | null }>("/central/alta/codigo", { cuerpo: { sucursalId } });
       setCodigos((c) => ({ ...c, [sucursalId]: r }));
       pend.recargar();
       return r;
@@ -134,6 +134,13 @@ export function Sucursales() {
                 <div>
                   <span className="suave pequeno">Código de instalación del servidor de {s.nombre}</span>
                   <div className="mono codigo-grande">{codigoDe(s.id)!.codigo}</div>
+                  {(codigoDe(s.id) as { enlace?: string | null }).enlace && (
+                    <div style={{ marginTop: 8 }}>
+                      <span className="suave pequeno">Código de enlace (péguelo en el instalador; ya incluye la dirección de la central)</span>
+                      <div className="mono" style={{ wordBreak: "break-all", fontSize: 12 }}>{(codigoDe(s.id) as { enlace: string }).enlace}</div>
+                      <button className="enlace" onClick={() => navigator.clipboard?.writeText((codigoDe(s.id) as { enlace: string }).enlace)}>Copiar código de enlace</button>
+                    </div>
+                  )}
                 </div>
                 <div className="suave pequeno">
                   Al instalar el servidor elija «Tengo un código de instalación» y escríbalo: queda dado de alta solo.
