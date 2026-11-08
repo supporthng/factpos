@@ -37,8 +37,11 @@ export function leer(ruta) {
       servicio: p.tipo === "servicio",
       precio: Number(p.precio_venta) || 0,
       costo: Number(p.costo) || 0,
-      existencia: st ? Number(st.stock) || 0 : Number(p.stock) || 0,
-      minimo: st ? Number(st.stock_minimo) || 0 : Number(p.stock_minimo) || 0,
+      // La existencia viva de WilPOS está en productos.stock (cada venta y compra la actualiza; en un respaldo real coincidía con
+      // el último movimiento de inventario en 433 de 434 productos). stock_sucursal queda desactualizada y solo se usa si el producto
+      // no trae stock propio.
+      existencia: p.stock != null ? Number(p.stock) || 0 : Number(st?.stock) || 0,
+      minimo: p.stock_minimo != null ? Number(p.stock_minimo) || 0 : Number(st?.stock_minimo) || 0,
       pesable: !!p.venta_granel || p.unidad_medida === "lb",
       itbis: p.itebis ?? 0.18,
       imagen: typeof p.imagen === "string" && p.imagen.startsWith("data:image/") ? p.imagen : null,
