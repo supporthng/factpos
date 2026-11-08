@@ -413,16 +413,16 @@ Function PaginaDatos
     Pop $hVende
   ${ElseIf} $Tipo == "sucursal"
     !insertmacro MUI_HEADER_TEXT "Servidor de sucursal" "A qué empresa pertenece esta tienda."
-    ${NSD_CreateLabel} 0 0 100% 10u "Nombre corto de su empresa (ej. royalliquorstore):"
+    ${NSD_CreateLabel} 0 0 100% 10u "Nombre corto de su empresa (no hace falta si pega un código de enlace):"
     Pop $0
     ${NSD_CreateText} 0 11u 60% 12u "$Empresa"
     Pop $hEmpresa
     ${NSD_SetFocus} $hEmpresa
-    ${NSD_CreateLabel} 0 30u 100% 10u "Código de instalación de la sucursal (opcional, ej. K7PD-4QX9):"
+    ${NSD_CreateLabel} 0 30u 100% 10u "Código de enlace o de instalación de la sucursal (se genera en la central):"
     Pop $0
-    ${NSD_CreateText} 0 41u 40% 12u "$Codigo"
+    ${NSD_CreateText} 0 41u 90% 12u "$Codigo"
     Pop $hCodigo
-    ${NSD_CreateLabel} 0 58u 100% 10u "Dirección de la central (opcional si el portal la conoce; está en Sistema › Acceso remoto):"
+    ${NSD_CreateLabel} 0 58u 100% 10u "Dirección de la central (solo si no usa código de enlace):"
     Pop $0
     ${NSD_CreateText} 0 69u 90% 12u "$Central"
     Pop $hCentral
@@ -463,8 +463,15 @@ Function PaginaDatosSalir
   ${OrIf} $Tipo == "servidor"
   ${OrIf} $Tipo == "sucursal"
     ${NSD_GetText} $hEmpresa $Empresa
+    StrCpy $5 ""
+    ${If} $Tipo == "sucursal"
+      ${NSD_GetText} $hCodigo $Codigo
+      StrCpy $5 $Codigo 5
+    ${EndIf}
     StrLen $0 $Empresa
+    ; Con un código de enlace (FPS1-...) no hace falta el nombre de la empresa
     ${If} $0 < 3
+    ${AndIf} $5 != "FPS1-"
       MessageBox MB_ICONEXCLAMATION "Escriba el nombre corto de su empresa (se lo da su proveedor de FactPOS)."
       Abort
     ${EndIf}
