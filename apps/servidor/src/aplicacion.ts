@@ -1,4 +1,5 @@
 import { contextoCaja } from "./contexto.js";
+import { soloEnLaNube } from "./solo-en-la-nube.js";
 import { rutasActualizacion } from "./actualizacion.js";
 import { permitidoPorTunel, tunelActivo, vieneDelTunel } from "./tunel.js";
 import { rutasCentralCorreo } from "./rutas/central-correo.js";
@@ -130,10 +131,10 @@ export async function crearApp() {
     if (ruta.startsWith("/central/")) {
       // Administración LOCAL (servidor de sucursal): lo que necesita a todas las sucursales o a la nube se hace allá
       // (una tienda que trabaja sola, sin CENTRAL_URL, lo hace todo aquí)
-      if (config.modo === "sucursal" && syncActiva() && metodo !== "GET" && metodo !== "HEAD" && soloEnLaNube(metodo, ruta)) {
-        return rep.code(409).send({ error: "Esto se hace en la Administración en la nube (necesita internet): afecta a otras sucursales o a la facturación de toda la empresa." });
-      }
-      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/equipo" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
+      // Se hace en la nube: el servidor la reenvía solo (después de revisar la sesión y los permisos de aquí)
+      const reenviar = config.modo === "sucursal" && syncActiva() && metodo !== "GET" && metodo !== "HEAD" && soloEnLaNube(metodo, ruta);
+      if (reenviar && ruta.startsWith("/central/alta/")) return rep.code(409).send({ error: "El alta de equipos se hace en la Administración en la nube." });
+      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/admin" || ruta === "/central/sync/equipo" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
         || ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado" || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/alta/verificar" || ruta === "/central/inicio") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
@@ -163,6 +164,11 @@ export async function crearApp() {
         (req.body as Record<string, unknown>).usuarioId = s.u;
       }
       (req as typeof req & { sesion: unknown }).sesion = s;
+      if (reenviar) {
+        const { reenviarALaNube } = await import("./sync/sucursal.js");
+        const r = await reenviarALaNube(metodo, req.url, req.body, s.u);
+        return rep.code(r.estado).send(r.cuerpo);
+      }
       return;
     }
 
@@ -343,16 +349,6 @@ function causaBase(e: Error & { code?: string }): string {
   }
 }
 
-
-/** En la administración local: escrituras que solo se hacen en la nube. */
-function soloEnLaNube(metodo: string, ruta: string) {
-  if (/^\/central\/(alta|cxc|empresa|pedidos-sucursal|traspasos|terminales|licencia)(\/|$)/.test(ruta)) return true;
-  if (/^\/central\/fiscal\//.test(ruta) && !/^\/central\/fiscal\/documentos\/[^/]+\/reintentar$/.test(ruta)) return true;
-  if (ruta === "/central/incidentes/prueba") return true;
-  if (ruta === "/central/sucursales" || /^\/central\/sucursales\/[^/]+(\/(clave-conexion|terminales|tipo))?$/.test(ruta)) return true;
-  void metodo;
-  return false;
-}
 
 /** Toda sucursal que menciona una petición de la administración (para revisar el acceso). */
 function sucursalesPedidas(req: { query: unknown; body: unknown; params: unknown; url: string }): string[] {

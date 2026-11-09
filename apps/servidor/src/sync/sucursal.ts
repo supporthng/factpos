@@ -391,3 +391,28 @@ export async function estadoSincronizacion() {
   );
   return { activa: !!cfg.url, central: cfg.url || null, sucursalId: cfg.sucursalId || null, cadaSegundos: cfg.segundos, ...r.rows[0] };
 }
+
+/**
+ * La administración local reenvía a la nube lo que solo allá se puede hacer (sucursales, terminales,
+ * empresa, licencia…). Va firmado con la clave de conexión de esta sucursal y dice qué usuario lo pidió:
+ * la nube vuelve a revisar los permisos de ese usuario.
+ */
+export async function reenviarALaNube(metodo: string, ruta: string, cuerpo: unknown, usuarioId: string): Promise<{ estado: number; cuerpo: unknown }> {
+  const { url, clave, sucursalId } = configSync();
+  try {
+    const r = await fetch(`${url}/central/sync/admin`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(clave ? { [clave.startsWith("fps_") ? "x-sucursal-clave" : "x-clave-acceso"]: clave } : {}) },
+      body: JSON.stringify({ sucursalId, usuarioId, metodo, ruta, cuerpo: cuerpo ?? null }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    const texto = await r.text();
+    let json: unknown = null;
+    try { json = JSON.parse(texto); } catch { json = { error: texto.slice(0, 300) }; }
+    // Lo que se cambió en la nube baja de inmediato a esta sucursal
+    if (r.ok) void sincronizarAhora().catch(() => null);
+    return { estado: r.status, cuerpo: json };
+  } catch {
+    return { estado: 503, cuerpo: { error: "Sin conexión a la nube: este cambio se hace en la nube y ahora no hay internet. Inténtelo de nuevo cuando vuelva." } };
+  }
+}
