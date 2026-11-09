@@ -50,7 +50,12 @@ export async function rutasCentral(app: FastifyInstance) {
                    CASE $3 WHEN 'hoy' THEN hoy WHEN 'ayer' THEN hoy - 1 WHEN 'semana' THEN hoy
                            WHEN 'semanaPasada' THEN date_trunc('week', hoy)::date - 1 ELSE hoy END AS hasta FROM h),
       s AS (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))`;
-    const [hora, pago, top, cajas, agotados] = await Promise.all([
+    const [sucs, hora, pago, top, cajas, agotados] = await Promise.all([
+      pool.query(
+        `${rango}
+         SELECT v.sucursal_id AS id, v.sucursal AS nombre, COALESCE(SUM(v.venta_total), 0)::text AS venta, COALESCE(SUM(v.transacciones), 0)::text AS transacciones
+           FROM rpt_ventas_sucursal v, r WHERE v.sucursal_id IN (SELECT id FROM s) AND v.fecha BETWEEN r.desde AND r.hasta
+          GROUP BY v.sucursal_id, v.sucursal ORDER BY SUM(v.venta_total) DESC`, p),
       pool.query(
         `${rango}
          SELECT extract(hour FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int AS hora,
@@ -79,7 +84,7 @@ export async function rutasCentral(app: FastifyInstance) {
         `${rango}
          SELECT COUNT(*)::int AS n FROM rpt_sin_stock x WHERE x.sucursal_id IN (SELECT id FROM s)`, p).catch(() => ({ rows: [{ n: null }] })),
     ]);
-    return { periodo, porHora: hora.rows, formasPago: pago.rows, masVendidos: top.rows, cajasAbiertas: cajas.rows, sinStock: agotados.rows[0].n };
+    return { periodo, porHora: hora.rows, formasPago: pago.rows, masVendidos: top.rows, cajasAbiertas: cajas.rows, sinStock: agotados.rows[0].n, porSucursal: sucs.rows };
   });
 
   /**

@@ -12,6 +12,7 @@ interface Panel {
   masVendidos: { nombre: string; sku: string; unidades: string; ventaNeta: string }[];
   cajasAbiertas: { id: string; caja: string; sucursal: string; cajero: string; abiertoEn: string; ventas: string }[];
   sinStock: number | null;
+  porSucursal?: { id: string; nombre: string; venta: string; transacciones: string }[];
 }
 const leer = (k: string, def: string) => { try { return localStorage.getItem(k) ?? def; } catch { return def; } };
 const NOMBRE_PAGO: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", TRANSFERENCIA: "Transferencia", CREDITO: "Crédito", CHEQUE: "Cheque" };
@@ -38,6 +39,12 @@ export function PanelResumen({ irA }: { irA: (seccion: string) => void }) {
   const mejor = columnas.reduce((m, c) => (c.total > m.total ? c : m), { hora: -1, total: 0 });
   const totalPago = datos.formasPago.reduce((a, f) => a + Number(f.monto), 0);
   const maxTop = Math.max(1, ...datos.masVendidos.map((t) => Number(t.unidades)));
+  // Monto de cada forma de pago (las cuatro principales siempre, aunque estén en cero; las demás solo si hubo)
+  const montoDe = new Map(datos.formasPago.map((f) => [f.forma, Number(f.monto)]));
+  const formasMostrar = [...["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO"], ...datos.formasPago.map((f) => f.forma).filter((f) => !["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO"].includes(f))];
+  const sucursales = datos.porSucursal ?? [];
+  const totalSuc = sucursales.reduce((a, s) => a + Number(s.venta), 0);
+  const maxSuc = Math.max(1, ...sucursales.map((s) => Number(s.venta)));
 
   // Anillo de formas de pago: cada tramo es un trazo con su porcentaje (circunferencia 100)
   let acum = 0;
@@ -82,8 +89,27 @@ export function PanelResumen({ irA }: { irA: (seccion: string) => void }) {
               </ul>
             </div>
           ) : <p className="suave pn-vacio">Sin cobros en este período.</p>}
+          <dl className="pn-montos">
+            {formasMostrar.map((f) => <div key={f}><dt>{NOMBRE_PAGO[f] ?? f}</dt><dd>{rd(montoDe.get(f) ?? 0)}</dd></div>)}
+            <div className="total"><dt>Total cobrado</dt><dd>{rd(totalPago)}</dd></div>
+          </dl>
         </section>
       </div>
+
+      {sucursales.length > 1 && (
+        <section className="pn-tarjeta" aria-label="Comparativo por sucursal">
+          <div className="pn-cab"><h2>Todas las sucursales</h2><span className="suave">Total <b>{rd(totalSuc)}</b></span></div>
+          <ul className="pn-sucursales">
+            {sucursales.map((s) => (
+              <li key={s.id}>
+                <div><b>{s.nombre}</b><span className="suave">{num(s.transacciones, 0)} ventas · {totalSuc > 0 ? ((Number(s.venta) / totalSuc) * 100).toFixed(0) : 0} % del total</span></div>
+                <b>{rd(s.venta)}</b>
+                <div className="pn-meter"><i style={{ width: `${(Number(s.venta) / maxSuc) * 100}%` }} /></div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="pn-fila pn-fila-b">
         <section className="pn-tarjeta" aria-label="Más vendidos">
