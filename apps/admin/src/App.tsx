@@ -511,7 +511,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [rnc, setRnc] = useState("");
-  const [empresas, setEmpresas] = useState<{ rnc: string; nombre: string }[] | null>(null);
+  const [empresas, setEmpresas] = useState<{ rnc: string; nombre: string; sucursales?: string[] }[] | null>(null);
   const [pedirRnc, setPedirRnc] = useState(false);
   const [pedirCodigo, setPedirCodigo] = useState(false);
   const [codigo, setCodigo] = useState("");
@@ -531,7 +531,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
     e?.preventDefault();
     setMsg(""); setEntrando(true);
     try {
-      const r = await api<{ requiere2fa?: boolean; elegirEmpresa?: boolean; empresas?: { rnc: string; nombre: string }[]; token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>(
+      const r = await api<{ requiere2fa?: boolean; elegirEmpresa?: boolean; empresas?: { rnc: string; nombre: string; sucursales?: string[] }[]; token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>(
         "/central/entrar", { servidor, cuerpo: { usuario, clave, rnc: rnc || undefined, codigo: codigo || undefined } });
       if (r.elegirEmpresa && r.empresas) { setEmpresas(r.empresas); setRnc(r.empresas[0].rnc); setMsg("Elija la empresa a la que va a entrar."); return; }
       if (r.requiere2fa) { setPedirCodigo(true); setMsg("Escriba el código de su app de verificación (o un código de recuperación)."); return; }
@@ -552,7 +552,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
         <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
         {empresas && <label className="campo"><span>Empresa</span>
           <select value={rnc} onChange={(e) => setRnc(e.target.value)}>
-            {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.nombre} · RNC {x.rnc}</option>)}
+            {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.nombre}{x.sucursales?.length ? ` · ${x.sucursales.join(", ")}` : ""} · RNC {x.rnc}</option>)}
           </select>
         </label>}
         {pedirRnc && !empresas && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
