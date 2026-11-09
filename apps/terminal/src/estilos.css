@@ -207,6 +207,8 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 
     position: static !important; transform: none !important; width: auto !important;
   }
   #ticket { position: static !important; margin: 0 !important; }
+  /* Sin fondos al imprimir: en la térmica cualquier fondo oscuro sale como una franja negra bajo el ticket */
+  html, body, #root, #ticket { background: #fff !important; -webkit-print-color-adjust: economy; print-color-adjust: economy; }
 }
 
 /* Aprobaciones, facturas y pausas */

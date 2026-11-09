@@ -584,7 +584,7 @@ async function midoTicket(wc) {
   } catch { return 0; }
 }
 function opcionesImp(mm) {
-  const o = { silent: true, printBackground: true, margins: { marginType: 'none' } };
+  const o = { silent: true, printBackground: false, margins: { marginType: 'none' } };
   if (impCfg.impresora) o.deviceName = impCfg.impresora;
   if (mm) o.pageSize = { width: impCfg.ancho * 1000, height: (mm + 8) * 1000 };   // micras: el largo exacto del ticket
   return o;
@@ -646,10 +646,10 @@ function openMain(onShown) {
           const mm = await midoTicket(win.webContents);
           const r = await imprimirVentana(win.webContents, mm);
           anotarImpresion({ origen: 'ticket', mm, ...r });
-          if (!r.ok && !win.isDestroyed()) { try { win.webContents.print({ silent: false, printBackground: true }); } catch {} }
+          if (!r.ok && !win.isDestroyed()) { try { win.webContents.print({ silent: false, printBackground: false }); } catch {} }
         } catch (x) {
           anotarImpresion({ origen: 'ticket', mm: 0, ok: false, motivo: String(x && x.message || x) });
-          try { win.webContents.print({ silent: false, printBackground: true }); } catch {}
+          try { win.webContents.print({ silent: false, printBackground: false }); } catch {}
         } finally { if (css) { try { win.webContents.removeInsertedCSS(css); } catch {} } }
       })();
       return;
