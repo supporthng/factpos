@@ -91,6 +91,8 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
         <p>{sinConexion ? "Reiniciando el servidor…" : e?.paso ?? "Preparando…"}</p>
         <div className={"actualizando-barra" + (pct == null || sinConexion ? " indeterminada" : "")}><b style={{ width: pct != null && !sinConexion ? `${Math.max(4, pct)}%` : undefined }} /></div>
         <p className="suave pequeno">No apague el equipo. Al terminar, el sistema se abrirá solo y le pedirá su usuario y contraseña.</p>
+        {desde != null && Date.now() - desde >= 45_000 && <button className="boton primario" onClick={() => { alCambiarVersion(); location.reload(); }}>Recargar ahora</button>}
+        <p className="suave pequeno">Servidor: {sinConexion ? "sin respuesta (reiniciando)" : `responde, versión ${vcorta(e?.version)}`}{desde != null ? ` · ${Math.max(0, Math.round((Date.now() - desde) / 1000))} s` : ""}</p>
         {pasados >= 3 && <button className="enlace" onClick={() => setOcultar(true)}>Está tardando demasiado: cerrar este aviso</button>}
       </div>
     </div>
