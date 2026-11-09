@@ -340,7 +340,7 @@ const CODIGO_ARCHIVOS = ['app.cjs', 'preload.cjs', 'actualizando.html'];
 const versionMayor = (a, b) => { const x = String(a || '0').split('.').map(n => parseInt(n, 10) || 0), y = String(b || '0').split('.').map(n => parseInt(n, 10) || 0); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 let sincronizandoCodigo = false;
 async function syncCodigo() {
-  if (sincronizandoCodigo || !server || !global.__factposCarpetaCodigo) return;
+  if (sincronizandoCodigo || !server || !global.__factposCarpetaCodigo || !deMiRed(server.origin)) return;
   sincronizandoCodigo = true;
   try {
     const base = new URL('/escritorio-codigo/', server);
@@ -369,7 +369,7 @@ async function syncCodigo() {
 }
 // Descarga la pantalla de la caja que tiene el servidor si es distinta de la que se está usando. Todo o nada.
 async function syncUi() {
-  if (syncing || !server) return false;
+  if (syncing || !server || !deMiRed(server.origin)) return false; // nunca se baja la pantalla de un servidor de otra red
   syncing = true;
   try {
     const base = new URL('/terminal/', server);
@@ -404,7 +404,7 @@ async function syncUi() {
     }
     const bundled = readOr(path.join(UI_BUNDLED, 'index.html'));
     if (!bundled) throw new Error('sin pantalla base');
-    fs.writeFileSync(path.join(tmp, 'meta.json'), JSON.stringify({ base: sha(bundled), hash: sha(indexBuf), en: new Date().toISOString() }));
+    fs.writeFileSync(path.join(tmp, 'meta.json'), JSON.stringify({ base: sha(bundled), hash: sha(indexBuf), origen: base.origin, en: new Date().toISOString() }));
     const viejo = UI_CACHE + '.viejo';
     fs.rmSync(viejo, { recursive: true, force: true });
     if (fs.existsSync(UI_CACHE)) fs.renameSync(UI_CACHE, viejo);
@@ -450,6 +450,11 @@ async function startCaja() {
   // Antes de abrir la ventana se revisa si el servidor trae una pantalla o un código más nuevo (como mucho 2,5 s: sin servidor se abre igual).
   // Así la caja abre YA con la versión nueva y no hace falta cerrarla y volverla a abrir.
   await Promise.race([asegurarServidor(), new Promise(r => setTimeout(r, 8000))]);
+  // La pantalla guardada de una vez anterior solo vale si vino de un servidor de esta red (si no, p. ej. la de otra sucursal, se descarta)
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(UI_CACHE, 'meta.json'), 'utf8'));
+    if (!m.origen || !deMiRed(m.origen)) fs.rmSync(UI_CACHE, { recursive: true, force: true });
+  } catch { /* sin pantalla guardada */ }
   marca('servidor localizado');
   const revision = await Promise.race([Promise.all([syncUi(), syncCodigo()]), new Promise(r => setTimeout(() => r(null), 2500))]);
   marca('revisión de pantalla y código lista');
@@ -483,6 +488,8 @@ function enMiRed(url) {
   if (ip.length !== 4 || ip.some(Number.isNaN)) return false;
   return redesLocales().some(i => { const a = i.address.split('.').map(Number), m = i.netmask.split('.').map(Number); return a.every((b, k) => (b & m[k]) === (ip[k] & m[k])); });
 }
+// Sin tarjetas de red no se puede saber: se considera de la red (no se bloquea nada).
+const deMiRed = (url) => redesLocales().length === 0 || enMiRed(url);
 async function asegurarServidor() {
   const guardado = server && enMiRed(server.origin);
   if (guardado && await available(server)) {
