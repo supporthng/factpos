@@ -97,7 +97,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
         seg = 5;
         html = '<section class="et"><h2>No encontramos este producto</h2><p class="cod">Código ' + esc(cod) + '</p><p class="nota">Pregunta el precio en caja.</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
       }
-    } catch(e) { html = '<section class="et"><p class="err">Sin conexión con la tienda. Revisa que estés en su WiFi.</p></section>'; seg = 6; }
+    } catch(e) { html = '<section class="et"><p class="err">Sin conexión con la tienda. Revisa tu conexión e inténtalo de nuevo.</p></section>'; seg = 6; }
     $("guia").textContent = ""; $("res").innerHTML = html; $("codigo").value = "";
     clearTimeout(volver);
     volver = setTimeout(function(){ $("res").innerHTML = ""; if (deCamara && camaraOk) camara(); else $("guia").textContent = ""; }, seg * 1000);

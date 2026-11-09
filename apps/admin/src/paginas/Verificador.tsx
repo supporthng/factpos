@@ -68,9 +68,9 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
 function AjustesVerificador() {
-  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; wifi?: string; autoActualizar: boolean; segundosOferta?: number }>("/central/verificador/ajustes");
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; consultaWeb?: boolean; wifi?: string; autoActualizar: boolean; segundosOferta?: number }>("/central/verificador/ajustes");
   const [msg, setMsg] = useState("");
-  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; wifi?: string; autoActualizar?: boolean; segundosOferta?: number }) => {
+  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; consultaWeb?: boolean; wifi?: string; autoActualizar?: boolean; segundosOferta?: number }) => {
     setMsg("");
     try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: cambio }); recargar(); }
     catch (e) { setMsg((e as Error).message); }
@@ -107,6 +107,15 @@ function AjustesVerificador() {
       </label>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
         Muestra en la pantalla del verificador un código QR (abajo al centro) para que el cliente consulte precios desde su celular, conectado al WiFi de la tienda.
+      </p>
+      <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
+        <input type="checkbox" disabled={!datos} checked={datos?.consultaWeb ?? false} onChange={(e) => cambiar({ consultaWeb: e.target.checked })} />
+        {" "}Consulta por internet (enlace web con QR)
+      </label>
+      <p className="suave pequeno" style={{ marginBottom: 0 }}>
+        Permite que el cliente consulte precios desde cualquier celular, aunque no esté en el WiFi de la tienda, con el enlace de la administración web
+        (factpos.app › Verificador › «Consulta desde el celular»). Solo muestra el nombre, el precio y la oferta: nunca costos, existencias ni precios mayoristas.
+        Cada persona tiene un límite de consultas por minuto. Apagado, ese enlace no responde.
       </p>
       <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
         <input type="checkbox" disabled={!datos} checked={datos?.autoActualizar ?? true} onChange={(e) => cambiar({ autoActualizar: e.target.checked })} />
@@ -212,7 +221,7 @@ export function Verificador() {
         </div>
         <p className="suave pequeno">Si el servidor atiende una sola sucursal no hace falta elegirla: la página la detecta sola.</p>
         <Fila k="pagina" titulo="Para equipos con navegador o pantalla web (Android y Windows)" texto={pagina} />
-        <Fila k="movil" titulo="Consulta desde el celular del cliente (genere un QR con esta dirección y péguelo en la tienda; solo funciona dentro del WiFi de la sucursal)" texto={movil} />
+        <Fila k="movil" titulo={esLocal() ? "Consulta desde el celular del cliente (QR en la tienda; solo funciona dentro del WiFi de la sucursal). Para el enlace por internet, ábrala desde factpos.app" : "Consulta desde el celular del cliente por internet (genere un QR con esta dirección; hay que activar «Consulta por internet» arriba)"} texto={movil} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
 
