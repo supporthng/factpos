@@ -18,6 +18,14 @@ interface Envio { tipo: Tipo; activo: boolean; destinatarios: string[]; sucursal
 interface Enviado { id: string; tipo: Tipo; asunto: string | null; destinatarios: string[] | null; estado: "ENVIANDO" | "ENVIADO" | "ERROR"; intentos: number; error: string | null; creadoEn: string; enviadoEn: string | null; proximoIntento: string | null }
 
 /** Ajustes conocidos: el usuario solo elige su proveedor y escribe correo y contraseña. */
+/** Convierte en enlace clicable (pestaña nueva) las direcciones de Google que aparecen en los textos de ayuda. */
+const ENLACE_CLAVE = "myaccount.google.com/apppasswords";
+function conEnlaces(t: string) {
+  const i = t.indexOf(ENLACE_CLAVE);
+  if (i < 0) return t;
+  return <>{t.slice(0, i)}<a href={`https://${ENLACE_CLAVE}`} target="_blank" rel="noopener noreferrer">{ENLACE_CLAVE}</a>{t.slice(i + ENLACE_CLAVE.length)}</>;
+}
+
 const PASOS_CLAVE: Record<string, string[]> = {
   gmail: [
     "Abra myaccount.google.com/apppasswords con la cuenta que enviará los correos (es la vía más directa: en el buscador de la cuenta la opción a veces no aparece).",
@@ -168,11 +176,12 @@ function Conexion({ config, onGuardado }: { config: Config | null; onGuardado: (
           <button key={x.id} type="button" role="radio" aria-checked={prov === x.id} className={"proveedor" + (prov === x.id ? " elegido" : "")} onClick={() => elegir(x.id)}>{x.nombre}</button>
         ))}
       </div>
-      <p className="suave pequeno ayuda-proveedor">{p.ayuda}</p>
+      <p className="suave pequeno ayuda-proveedor">{conEnlaces(p.ayuda)}</p>
       {PASOS_CLAVE[prov] && (
         <details className="pasos-clave">
           <summary>{prov === "resend" ? "Cómo obtener la clave API" : prov === "otro" ? "Cómo obtener los datos de su correo" : prov === "outlook" ? "Cómo habilitar el envío en Microsoft 365" : "Cómo crear la contraseña de aplicación"}</summary>
-          <ol>{PASOS_CLAVE[prov].map((t, i) => <li key={i}>{t}</li>)}</ol>
+          {prov === "gmail" && <p><a className="boton primario" href={`https://${ENLACE_CLAVE}`} target="_blank" rel="noopener noreferrer">Abrir la página para crear la clave</a></p>}
+          <ol>{PASOS_CLAVE[prov].map((t, i) => <li key={i}>{conEnlaces(t)}</li>)}</ol>
           {prov === "gmail" && <p className="suave pequeno">Copie las 16 letras (con o sin espacios) y péguelas en «Contraseña». Se muestra una sola vez; si la pierde, cree otra.</p>}
         </details>
       )}
