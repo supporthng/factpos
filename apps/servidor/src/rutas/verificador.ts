@@ -61,8 +61,12 @@ export async function rutasVerificador(app: FastifyInstance) {
     if (!v || v.hasta < ahora) visitas.set(ip, { n: 1, hasta: ahora + 60_000 });
     else if (++v.n > 40) return rep.code(429).send({ error: "Demasiadas consultas: espere un minuto" });
     if (visitas.size > 5000) for (const [k, x] of visitas) if (x.hasta < ahora) visitas.delete(k);
+    // Cada sucursal tiene sus precios y sus ofertas: por internet el enlace SIEMPRE lleva la sucursal, y la activación es la de su empresa
+    const id = /^\/verificador\/([0-9a-f-]{36})\//i.exec(req.url)?.[1] ?? /[?&]sucursal=([0-9a-f-]{36})/i.exec(req.url)?.[1];
+    if (!id) return rep.code(400).send({ error: "Falta la sucursal en el enlace: genere el enlace desde Verificador eligiendo la sucursal" });
     const r = await pool.query<{ ok: boolean }>(
-      "SELECT COALESCE(bool_or(verificador->>'consultaWeb' = 'true'), false) AS ok FROM configuracion_marca").catch(() => null);
+      `SELECT COALESCE(m.verificador->>'consultaWeb' = 'true', false) AS ok
+         FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id WHERE s.id = $1 AND s.activo`, [id]).catch(() => null);
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
   });
 
