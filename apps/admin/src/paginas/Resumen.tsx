@@ -2,6 +2,7 @@ import { rd, num } from "../api";
 import { Aviso, Encabezado, Kpi, Tabla, useDatos } from "../ui";
 import { Icono } from "../Iconos";
 import { InicioCifras } from "./InicioCifras";
+import { PanelResumen } from "./PanelResumen";
 
 interface FilaSucursal {
   sucursal_id: string; sucursal: string; venta_hoy: string; transacciones_hoy: string;
@@ -80,6 +81,7 @@ export function Resumen() {
       <Encabezado titulo="Resumen" descripcion={`Hoy, ${hoyTexto}, en ${filas.length === 1 ? "la sucursal" : `las ${filas.length} sucursales`}`} />
       <Aviso texto={error} />
       <InicioCifras irA={ir} sinResumen />
+      <PanelResumen irA={ir} />
       <div className="kpis">
         <Kpi icono="inventario" titulo="Inventario al costo" valor={rd(sum("valor_inventario"))} detalle={`${filas.length} sucursal(es)`} />
         <Kpi icono="incidentes" titulo="Para atender" valor={a ? num(puntos.length) : "…"} tono={puntos.some((p) => p.tono === "grave") ? "alerta" : puntos.length ? undefined : "ok"} detalle={a && !puntos.length ? "Todo en orden" : undefined} />

@@ -39,13 +39,13 @@ export function InicioCifras({ irA, sinResumen = false }: { irA: (seccion: strin
     <div className="cifras">
       {sucursales.length > 1 && (
         <div className="cifras-filtro">
-          <SelectorSucursal valor={sucursalValida} onCambio={(v) => { setSucursal(v); try { localStorage.setItem("factpos.inicio.sucursal", v); } catch { /* sin almacenamiento */ } }} />
+          <SelectorSucursal valor={sucursalValida} onCambio={(v) => { setSucursal(v); try { localStorage.setItem("factpos.inicio.sucursal", v); } catch { /* sin almacenamiento */ } window.dispatchEvent(new Event("factpos:inicio-filtro")); }} />
         </div>
       )}
       <div className="cifras-filtro" role="group" aria-label="Periodo">
         {PERIODOS.map((x) => (
           <button key={x.id} type="button" className={"chip-periodo" + (x.id === periodo ? " activo" : "")} aria-pressed={x.id === periodo}
-            onClick={() => { setPeriodo(x.id); try { localStorage.setItem("factpos.inicio.periodo", x.id); } catch { /* sin almacenamiento */ } }}>{x.texto}</button>
+            onClick={() => { setPeriodo(x.id); try { localStorage.setItem("factpos.inicio.periodo", x.id); } catch { /* sin almacenamiento */ } window.dispatchEvent(new Event("factpos:inicio-filtro")); }}>{x.texto}</button>
         ))}
       </div>
       <div className="cifra">

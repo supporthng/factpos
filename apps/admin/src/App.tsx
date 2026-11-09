@@ -21,7 +21,7 @@ import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSes
 const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
 import { Actualizaciones, AvisoActualizacion } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
-import { CatalogoCtx, useCatalogo, type CatalogoAdmin } from "./ui";
+import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
 import { EstadoSistema } from "./paginas/InicioCifras";
 const Inventario = lazy(() => import("./paginas/Inventario").then((m) => ({ default: m.Inventario })));
@@ -389,7 +389,6 @@ function AppInterna() {
           )}
 
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
-            {esLocal() && <AvisoLocal />}
             {!enPortal && actualId !== "actualizaciones" && <AvisoActualizacion irA={() => setSeccion("actualizaciones")} />}
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
 
@@ -608,26 +607,6 @@ function PrimerUso({ servidor, pideClave, onListo }: { servidor: string; pideCla
         </button>
         {msg && <p className="error">{msg}</p>}
       </form>
-    </div>
-  );
-}
-
-/** Administración local (servidor de la tienda): qué se ve aquí y cuánto falta por subir. */
-function AvisoLocal() {
-  const [e, setE] = useState<{ pendientes: number; ultimaSubida: string | null; activa: boolean } | null>(null);
-  useEffect(() => {
-    const cargar = () => api<{ pendientes: number; ultimaSubida: string | null; activa: boolean }>("/sync/estado").then(setE).catch(() => {});
-    cargar();
-    const t = setInterval(cargar, 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const nombre = useCatalogo().sucursales[0]?.nombre;
-  return (
-    <div className="aviso-local">
-      <b>Administración local{nombre ? ` · ${nombre}` : ""}.</b>{" "}
-      Funciona sin internet y muestra solo esta sucursal. Los cambios suben solos a la nube
-      {e?.activa ? (e.pendientes ? `: ${e.pendientes} pendiente(s) por subir.` : " (todo al día).") : " cuando esté conectada."}
-      {" "}Lo que afecta a otras sucursales (traspasos, secuencias e-CF, certificado, correo) se hace en la nube.
     </div>
   );
 }
