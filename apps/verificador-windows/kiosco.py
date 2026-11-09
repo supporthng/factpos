@@ -936,7 +936,12 @@ def main():
         except Exception:
             pass
 
+    motor_anotado = []
+
     def al_cargar():
+        if not motor_anotado:
+            motor_anotado.append(1)
+            _anotar(f"versión {VERSION} · motor de pantalla: {getattr(webview, 'renderer', '?')}")   # edgechromium = bien; mshtml = falta WebView2
         # Esquina ✕ / ⓘ (cerrar y opciones con la clave) en la pantalla del verificador, no en la de configuración
         try:
             url = ventana.get_current_url() or ""

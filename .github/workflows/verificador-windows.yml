@@ -34,6 +34,11 @@ jobs:
       - name: Instalar Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
+      - name: Descargar el instalador de WebView2 (se incluye en el instalador del verificador)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "apps\verificador-windows\MicrosoftEdgeWebview2Setup.exe"
+          if ((Get-Item "apps\verificador-windows\MicrosoftEdgeWebview2Setup.exe").Length -lt 1000000) { throw "Descarga de WebView2 incompleta" }
       - name: Construir instalador
         shell: pwsh
         run: |
