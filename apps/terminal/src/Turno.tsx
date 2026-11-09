@@ -19,7 +19,7 @@ const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleString("es-DO"
 
 interface Reporte {
   turno: { id: string; estado: string; abiertoEn: string; cerradoEn: string | null; fondoInicial: string; cajero: string; cerradoPor: string | null;
-    caja: string; sucursal: string; declarado: Record<string, string> | null; diferencia: string | null; conteo: Record<string, number> | null; notas: string | null };
+    caja: string; sucursal: string; declarado: Record<string, string> | null; diferencia: string | null; conteo: Record<string, number> | null; conteoApertura?: Record<string, number> | null; notas: string | null };
   ventas: { facturas: string; creditoFiscal: string; total: string; itbis: string; descuentos: string; primeraFactura: string | null; ultimaFactura: string | null };
   formasPago: { formaPago: string; monto: string; operaciones: number }[];
   anulaciones: { cantidad: number; monto: string };
@@ -238,6 +238,9 @@ function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar }: { r: Repor
           {r.formasPago.map((f) => <div key={f.formaPago} className="t-fila"><span>{PAGO[f.formaPago] ?? f.formaPago} ({f.operaciones})</span><span>{rd(f.monto)}</span></div>)}
           <div className="t-linea" />
           <div className="t-fila"><span>Fondo inicial</span><span>{rd(r.efectivo.fondo)}</span></div>
+          {r.turno.conteoApertura && Object.keys(r.turno.conteoApertura).length > 0 && Object.entries(r.turno.conteoApertura).sort((a, b) => Number(b[0]) - Number(a[0])).map(([d, n]) => (
+            <div key={"ap" + d} className="t-fila suave"><span>&nbsp;&nbsp;{n} x {rd(d).replace(".00", "")}</span><span>{rd(Number(d) * n)}</span></div>
+          ))}
           {r.resumenMovimientos && (["abonos", "sencillo", "delivery", "retiros", "gastos"] as const).filter((k) => Number(r.resumenMovimientos![k]) > 0).map((k) => (
             <div key={k} className="t-fila"><span>{{ abonos: "Abonos de clientes", sencillo: "Entrada de sencillo", delivery: "Liquidación delivery", retiros: "Retiros", gastos: "Gastos" }[k]}</span>
               <span>{k === "retiros" || k === "gastos" ? "−" : ""}{rd(r.resumenMovimientos![k])}</span></div>

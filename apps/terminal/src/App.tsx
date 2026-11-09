@@ -453,7 +453,7 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, on
   const [consultando, setConsultando] = useState(false);
   const abrir = async () => {
     try {
-      await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno/abrir`, { cuerpo: { usuarioId: usuario.id, fondoInicial: fondo || "0" } });
+      await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno/abrir`, { cuerpo: { usuarioId: usuario.id, fondoInicial: fondo || "0", ...(hayConteo ? { conteoApertura: Object.fromEntries(DENOMINACIONES.map((d) => [String(d), parseInt(cant[d] || "0", 10) || 0]).filter(([, n]) => (n as number) > 0)) } : {}) } });
       onAbierto(fondo || "0");
       recargar();
     } catch (e) {
