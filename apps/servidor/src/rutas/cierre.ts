@@ -29,7 +29,7 @@ export async function reporteTurno(c: Q, turnoId: string) {
   const t = (await c.query(
     `SELECT t.id, t.caja_id AS "cajaId", t.usuario_id AS "usuarioId", t.estado, t.abierto_en AS "abiertoEn", t.cerrado_en AS "cerradoEn",
             t.fondo_inicial::text AS "fondoInicial", t.declarado, t.esperado, t.diferencia::text AS diferencia,
-            t.conteo, t.notas, u.nombre AS cajero, uc.nombre AS "cerradoPor", ca.nombre AS caja, s.nombre AS sucursal,
+            t.conteo, t.conteo_apertura AS "conteoApertura", t.notas, u.nombre AS cajero, uc.nombre AS "cerradoPor", ca.nombre AS caja, s.nombre AS sucursal,
             cu.ventas_efectivo::text AS "ventasEfectivo", cu.entradas::text AS entradas, cu.salidas::text AS salidas
        FROM turnos t JOIN usuarios u ON u.id = t.usuario_id LEFT JOIN usuarios uc ON uc.id = t.cerrado_por
        JOIN cajas ca ON ca.id = t.caja_id JOIN sucursales s ON s.id = t.sucursal_id
