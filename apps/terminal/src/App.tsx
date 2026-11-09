@@ -58,6 +58,21 @@ function AppInterna() {
   const [turno, setTurno] = useState<Turno | null | undefined>(undefined);
   const [error, setError] = useState("");
 
+  // Aplicación de escritorio: la caja solo trabaja con un servidor de SU red local. Si la dirección guardada es de otra red
+  // (p. ej. quedó apuntando al servidor de otra sucursal), se descarta y se vuelve a buscar el servidor de esta red.
+  useEffect(() => {
+    const a = leerAjustes();
+    if (!a?.servidor) return;
+    fetch(`/escritorio.json?servidor=${encodeURIComponent(a.servidor)}`, { signal: AbortSignal.timeout(2000), cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && d.enRed === false) {
+          try { localStorage.removeItem("factpos.terminal"); } catch { /* sin almacenamiento */ }
+          fijarSesionCaja(null); setUsuario(null); setConfig(null); setAjustes(null);
+        }
+      }).catch(() => { /* no es la aplicación de escritorio o no responde: se deja como está */ });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Seguridad de la caja: con el turno abierto, salir de FactPOS necesita la aprobación de un supervisor
   const [saliendo, setSaliendo] = useState(false);
   const [bienvenida, setBienvenida] = useState<{ usuario: string; fondo: string } | null>(null);

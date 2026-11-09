@@ -155,7 +155,10 @@ function startUiServer() {
         const u = new URL(req.url, 'http://127.0.0.1');
         if (u.pathname === '/escritorio.json') {
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-          return res.end(JSON.stringify({ servidor: localUrl }));
+          // La caja solo usa servidores de SU red local. Sin tarjetas de red no se puede saber (null): ahí no se toca nada.
+          const hayRed = redesLocales().length > 0;
+          const pedido = u.searchParams.get('servidor');
+          return res.end(JSON.stringify({ servidor: !hayRed || enMiRed(localUrl) ? localUrl : '', enRed: pedido && hayRed ? enMiRed(pedido) : null }));
         }
         if (u.pathname === '/descubrir-red') {
           if (req.headers.host !== `127.0.0.1:${UI_PORT}`) { res.writeHead(403); return res.end(); }
