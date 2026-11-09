@@ -34,6 +34,8 @@ jobs:
       FACTPOS_REQUIERE_ESCRITORIO: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -90,12 +92,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Notas: los cambios desde la versión anterior (títulos de los PR fusionados)
+          PREV=$(gh api repos/${{ github.repository }}/git/ref/tags/ultima -q .object.sha 2>/dev/null || true)
+          RANGO="${PREV:+$PREV..}$GITHUB_SHA"
+          NOTAS=$(git log $RANGO --first-parent --no-merges --pretty='• %s' -n 25 2>/dev/null | sed -E 's/ \(#[0-9]+\)$//' | grep -v -i '^• Merge' || true)
+          [ -n "$NOTAS" ] || NOTAS="• Mejoras y correcciones"
+          NOTAS="Incluye:
+          $NOTAS"
+          NOTAS=$(printf '%s' "$NOTAS" | sed 's/^ *//')
           git tag -f ultima "$GITHUB_SHA"
           git push -f origin refs/tags/ultima
           if gh release view ultima >/dev/null 2>&1; then
-            gh release edit ultima --title "FactPOS · Última versión" --notes "Instalador Windows con Electron integrado ($GITHUB_SHA)"
+            gh release edit ultima --title "FactPOS · Última versión" --notes "$NOTAS"
           else
-            gh release create ultima --title "FactPOS · Última versión" --notes "Instalador Windows con Electron integrado ($GITHUB_SHA)"
+            gh release create ultima --title "FactPOS · Última versión" --notes "$NOTAS"
           fi
           gh release upload ultima paquete/FactPOS-*Setup-*.exe paquete/FactPOS-Caja-Limpiar-*.exe paquete/FactPOS-Instalador-*.zip --clobber
           # Quitar los archivos de versiones anteriores: el portal solo debe ver la última
