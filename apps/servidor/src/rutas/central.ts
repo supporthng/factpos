@@ -37,6 +37,52 @@ export async function rutasCentral(app: FastifyInstance) {
   });
 
   /**
+   * Panel del Resumen: ventas por hora, formas de pago, más vendidos, cajas abiertas y cuántos productos están agotados.
+   * Mismo periodo y sucursal que las cifras de arriba (hoy, ayer, esta semana, semana pasada, este mes).
+   */
+  app.get("/central/resumen/panel", async (req) => {
+    const { periodo, sucursalId } = z.object({ periodo: z.enum(["hoy", "ayer", "semana", "semanaPasada", "mes"]).default("hoy"), sucursalId: z.string().uuid().optional() }).parse(req.query);
+    const p = [empresaDe(req), sucursalesDe(req), periodo, sucursalId ?? null];
+    // Rango en hora de RD y sucursales permitidas (mismas reglas que /central/resumen/periodo)
+    const rango = `WITH h AS (SELECT (now() AT TIME ZONE 'America/Santo_Domingo')::date AS hoy),
+      r AS (SELECT CASE $3 WHEN 'hoy' THEN hoy WHEN 'ayer' THEN hoy - 1 WHEN 'semana' THEN date_trunc('week', hoy)::date
+                           WHEN 'semanaPasada' THEN date_trunc('week', hoy)::date - 7 ELSE date_trunc('month', hoy)::date END AS desde,
+                   CASE $3 WHEN 'hoy' THEN hoy WHEN 'ayer' THEN hoy - 1 WHEN 'semana' THEN hoy
+                           WHEN 'semanaPasada' THEN date_trunc('week', hoy)::date - 1 ELSE hoy END AS hasta FROM h),
+      s AS (SELECT id FROM sucursales WHERE empresa_id = $1 AND ($2::uuid[] IS NULL OR id = ANY($2)) AND ($4::uuid IS NULL OR id = $4))`;
+    const [hora, pago, top, cajas, agotados] = await Promise.all([
+      pool.query(
+        `${rango}
+         SELECT extract(hour FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int AS hora,
+                COALESCE(SUM(CASE WHEN v.tipo_documento = 'E34' THEN -v.total ELSE v.total END), 0)::text AS total,
+                COUNT(*) FILTER (WHERE v.tipo_documento <> 'E34')::int AS ventas
+           FROM ventas v, r
+          WHERE v.sucursal_id IN (SELECT id FROM s) AND (v.creado_en AT TIME ZONE 'America/Santo_Domingo')::date BETWEEN r.desde AND r.hasta
+          GROUP BY 1 ORDER BY 1`, p),
+      pool.query(
+        `${rango}
+         SELECT f.forma_pago AS forma, COALESCE(SUM(f.monto), 0)::text AS monto
+           FROM rpt_formas_pago f, r WHERE f.sucursal_id IN (SELECT id FROM s) AND f.fecha BETWEEN r.desde AND r.hasta
+          GROUP BY 1 HAVING SUM(f.monto) <> 0 ORDER BY SUM(f.monto) DESC`, p),
+      pool.query(
+        `${rango}
+         SELECT u.nombre, u.sku, SUM(u.unidades)::text AS unidades, SUM(u.venta_neta)::text AS "ventaNeta"
+           FROM rpt_utilidad_producto u, r WHERE u.sucursal_id IN (SELECT id FROM s) AND u.fecha BETWEEN r.desde AND r.hasta
+          GROUP BY u.nombre, u.sku HAVING SUM(u.unidades) > 0 ORDER BY SUM(u.unidades) DESC, u.nombre LIMIT 5`, p),
+      pool.query(
+        `${rango}
+         SELECT t.id, ca.nombre AS caja, su.nombre AS sucursal, us.nombre AS cajero, t.abierto_en AS "abiertoEn",
+                COALESCE((SELECT SUM(CASE WHEN v.tipo_documento = 'E34' THEN -v.total ELSE v.total END) FROM ventas v WHERE v.turno_id = t.id), 0)::text AS ventas
+           FROM turnos t JOIN cajas ca ON ca.id = t.caja_id JOIN sucursales su ON su.id = t.sucursal_id JOIN usuarios us ON us.id = t.usuario_id
+          WHERE t.estado = 'ABIERTO' AND t.sucursal_id IN (SELECT id FROM s) ORDER BY t.abierto_en`, p),
+      pool.query(
+        `${rango}
+         SELECT COUNT(*)::int AS n FROM rpt_sin_stock x WHERE x.sucursal_id IN (SELECT id FROM s)`, p).catch(() => ({ rows: [{ n: null }] })),
+    ]);
+    return { periodo, porHora: hora.rows, formasPago: pago.rows, masVendidos: top.rows, cajasAbiertas: cajas.rows, sinStock: agotados.rows[0].n };
+  });
+
+  /**
    * Lo que pide atención hoy, para el Resumen: servidores caídos, cierres con
    * diferencia, comprobantes rechazados, certificado, secuencias, correos
    * que no salieron. Más la venta de ayer y la del mismo día de la semana pasada.

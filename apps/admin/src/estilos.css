@@ -1323,3 +1323,46 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
   .barra-superior .aviso-acceso { position: static; }
   .barra-superior .aviso-acceso-lista { right: 8px; left: 8px; min-width: 0; max-width: none; width: auto; }
 }
+
+/* Resumen: panel con gráficas (ventas por hora, formas de pago, más vendidos, cajas abiertas, agotados) */
+.pn { display: grid; gap: 16px; margin-bottom: 20px; }
+.pn-fila { display: grid; gap: 16px; }
+.pn-fila-a { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.pn-fila-b { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pn-tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 16px; box-shadow: var(--sombra); padding: 18px 20px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.pn-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pn-cab h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.pn-vacio { margin: 8px 0; }
+.pn-barras { display: flex; gap: 6px; height: 180px; align-items: stretch; }
+.pn-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+.pn-col b { display: block; width: 100%; max-width: 26px; border-radius: 7px 7px 3px 3px; background: color-mix(in srgb, var(--primario) 30%, var(--panel)); min-height: 0; }
+.pn-col b.mejor { background: var(--primario); }
+.pn-col span { font-size: 11px; color: var(--suave); }
+.pn-col { position: relative; }
+.pn-col b { flex: none; }
+.pn-pago { display: flex; align-items: center; gap: 18px; }
+.pn-pago svg { flex: none; }
+.pn-pago ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; flex: 1; min-width: 0; font-size: 13px; }
+.pn-pago li { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; }
+.pn-pago li i { width: 10px; height: 10px; border-radius: 50%; }
+.pn-pago li small { grid-column: 2 / 4; margin-top: -6px; font-size: 11.5px; }
+.pn-top { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.pn-top li > div:first-child { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.pn-top li > div:first-child span { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-meter { background: var(--borde); border-radius: 999px; height: 7px; overflow: hidden; margin-top: 6px; }
+.pn-meter i { display: block; height: 100%; background: var(--primario); border-radius: 999px; }
+.pn-cajas { list-style: none; margin: 0; padding: 0; }
+.pn-cajas li { display: grid; grid-template-columns: 10px 1fr auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--borde); font-size: 13.5px; }
+.pn-cajas li:first-child { border-top: 0; }
+.pn-cajas li div { display: flex; flex-direction: column; min-width: 0; }
+.pn-cajas li div span { font-size: 12px; }
+.pn-punto { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+.pn-agotados { align-items: flex-start; }
+.pn-cifra { font-size: 38px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.pn-cifra.alerta { color: var(--error); }
+@media (max-width: 900px) {
+  .pn-fila-a, .pn-fila-b { grid-template-columns: minmax(0, 1fr); }
+  .pn-barras { height: 140px; gap: 3px; }
+  .pn-col b { max-width: 14px; }
+  .pn-col span { font-size: 9.5px; }
+}
