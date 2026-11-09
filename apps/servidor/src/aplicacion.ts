@@ -168,7 +168,10 @@ export async function crearApp() {
 
     // Caja: toda operación que cambia algo necesita la sesión del cajero en ESA caja
     const esCaja = ruta.startsWith("/cajas/") || ruta.startsWith("/delivery/");
-    if (esCaja && metodo !== "GET" && metodo !== "HEAD" && !/^\/cajas\/[^/]+\/(entrar|cotizar)$/.test(ruta)
+    // Cerrar FactPOS desde la pantalla del PIN (nadie ha entrado todavía): el PIN del supervisor o administrador es la prueba
+    const salirSinSesion = metodo === "POST" && /^\/cajas\/[^/]+\/autorizar$/.test(ruta)
+      && (req.body as { permiso?: unknown } | null | undefined)?.permiso === "caja.salir";
+    if (esCaja && metodo !== "GET" && metodo !== "HEAD" && !/^\/cajas\/[^/]+\/(entrar|cotizar)$/.test(ruta) && !salirSinSesion
       && ruta !== "/cajas/asignar") { // asignar: la primera vez que se enciende una PC todavía no hay cajero ni sesión
       const s = leerToken(req.headers["x-sesion-caja"] as string | undefined);
       if (!s || s.t !== "caja") return rep.code(401).send({ error: "Su sesión en la caja terminó: vuelva a entrar con su PIN", sesion: true });
