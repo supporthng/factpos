@@ -56,9 +56,11 @@ export async function rutasDispositivos(app: FastifyInstance) {
     const ahora = Date.now();
     const lista = (recientes.get(req.ip) ?? []).filter((t) => ahora - t < 3600_000);
     if (lista.length >= 5) throw new ErrorNegocio("Demasiadas solicitudes desde este equipo: espere un rato", 429);
-    const emp = await pool.query<{ id: string }>("SELECT id FROM empresas WHERE activo ORDER BY id LIMIT 2");
-    if (emp.rowCount !== 1) throw new ErrorNegocio("Este servidor atiende varias empresas: no se puede registrar el dispositivo", 409);
-    const pend = await pool.query("SELECT 1 FROM dispositivos_remotos WHERE empresa_id = $1 AND estado = 'PENDIENTE'", [emp.rows[0].id]);
+    // La autorización vale para todo el servidor (se comprueba por credencial, no por empresa): con varias empresas el equipo
+    // se anota en la primera y los administradores de cualquiera de ellas lo ven y lo resuelven.
+    const emp = await pool.query<{ id: string }>("SELECT id FROM empresas WHERE activo ORDER BY id LIMIT 1");
+    if (!emp.rowCount) throw new ErrorNegocio("Este servidor no tiene empresas activas: no se puede registrar el dispositivo", 409);
+    const pend = await pool.query("SELECT 1 FROM dispositivos_remotos WHERE estado = 'PENDIENTE'");
     if ((pend.rowCount ?? 0) >= 30) throw new ErrorNegocio("Hay demasiadas solicitudes pendientes: un administrador debe resolverlas", 429);
     lista.push(ahora); recientes.set(req.ip, lista);
     const id = randomUUID(), secreto = randomBytes(24).toString("base64url");
@@ -77,38 +79,34 @@ export async function rutasDispositivos(app: FastifyInstance) {
   };
   app.get("/central/dispositivos", async (req) => {
     soloAdmin(req);
-    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const r = await pool.query(
       `SELECT d.id, d.nombre, d.plataforma, d.estado, d.ip, d.solicitado_en AS "solicitadoEn", d.resuelto_en AS "resueltoEn", d.ultimo_uso AS "ultimoUso", u.nombre AS "resueltoPor"
          FROM dispositivos_remotos d LEFT JOIN usuarios u ON u.id = d.resuelto_por
-        WHERE d.empresa_id = $1 ORDER BY (d.estado = 'PENDIENTE') DESC, d.solicitado_en DESC LIMIT 200`, [empresaId]);
+        ORDER BY (d.estado = 'PENDIENTE') DESC, d.solicitado_en DESC LIMIT 200`);
     return r.rows;
   });
   /** Solicitudes esperando respuesta (para la campana de avisos del admin; se consulta cada pocos segundos). */
   app.get("/central/dispositivos/pendientes", async (req) => {
     soloAdmin(req);
-    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const r = await pool.query(
       `SELECT id, nombre, plataforma, ip, solicitado_en AS "solicitadoEn" FROM dispositivos_remotos
-        WHERE empresa_id = $1 AND estado = 'PENDIENTE' ORDER BY solicitado_en DESC LIMIT 20`, [empresaId]);
+        WHERE estado = 'PENDIENTE' ORDER BY solicitado_en DESC LIMIT 20`);
     return { pendientes: r.rowCount ?? 0, solicitudes: r.rows };
   });
   app.put("/central/dispositivos/:id", async (req) => {
     soloAdmin(req);
-    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const b = z.object({ estado: z.enum(["AUTORIZADO", "DENEGADO", "REVOCADO"]) }).parse(req.body);
     const r = await pool.query(
-      "UPDATE dispositivos_remotos SET estado = $3, resuelto_en = now(), resuelto_por = $4 WHERE id = $1 AND empresa_id = $2",
-      [id, empresaId, b.estado, z.string().uuid().safeParse(req.headers["x-usuario-id"]).data ?? null]);
+      "UPDATE dispositivos_remotos SET estado = $2, resuelto_en = now(), resuelto_por = $3 WHERE id = $1",
+      [id, b.estado, z.string().uuid().safeParse(req.headers["x-usuario-id"]).data ?? null]);
     if (!r.rowCount) throw new ErrorNegocio("Dispositivo no encontrado", 404);
     return { ok: true };
   });
   app.delete("/central/dispositivos/:id", async (req) => {
     soloAdmin(req);
-    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    await pool.query("DELETE FROM dispositivos_remotos WHERE id = $1 AND empresa_id = $2", [id, empresaId]);
+    await pool.query("DELETE FROM dispositivos_remotos WHERE id = $1", [id]);
     return { ok: true };
   });
 }
