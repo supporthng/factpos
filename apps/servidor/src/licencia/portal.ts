@@ -1103,6 +1103,19 @@ async function rutasPaginas(app: FastifyInstance) {
     if (!(await cliente(slug.toLowerCase()))) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
     return rep.redirect(`/${slug.toLowerCase()}/`);
   });
+  /**
+   * Enlace FIJO de la consulta de precios (el del QR de la tienda): factpos.app/<empresa>/precios?sucursal=<id>.
+   * La dirección directa del servidor (el túnel) cambia al reiniciarse; el portal siempre sabe la vigente y manda ahí.
+   */
+  app.get("/:slug/precios", async (req, rep) => {
+    const { slug } = req.params as { slug: string };
+    const { sucursal } = req.query as { sucursal?: string };
+    const c = await cliente(slug.toLowerCase());
+    if (!c) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
+    if (!c.api_url) return rep.type("text/html; charset=utf-8").send(sinNube(c.nombre));
+    const id = /^[0-9a-f-]{36}$/i.test(sucursal ?? "") ? `?sucursal=${sucursal}` : "";
+    return rep.header("cache-control", "no-store").redirect(`${String(c.api_url).replace(/\/+$/, "")}/verificador/movil${id}`);
+  });
   app.get("/:slug/*", async (req, rep) => {
     const { slug } = req.params as { slug: string };
     const resto = (req.params as { "*": string })["*"] ?? "";

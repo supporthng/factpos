@@ -196,7 +196,10 @@ export function Verificador() {
   const params = [sucursalId ? `sucursal=${sucursalId}` : "", niveles ? "niveles=1" : ""].filter(Boolean).join("&");
   const pagina = `${base}/verificador${params ? `?${params}` : ""}`;
   const api = `${base}/verificador/${sucursalId || "ID_SUCURSAL"}/CODIGO_DE_BARRAS`;
-  const movil = `${base}/verificador/movil${sucursalId ? `?sucursal=${sucursalId}` : ""}`;
+  // Desde factpos.app/<empresa>: enlace FIJO (el portal manda a la dirección vigente del servidor, que cambia al reiniciarlo)
+  const movil = CONFIG.modo === "cliente" && CONFIG.slug
+    ? `${location.origin}/${CONFIG.slug}/precios${sucursalId ? `?sucursal=${sucursalId}` : ""}`
+    : `${base}/verificador/movil${sucursalId ? `?sucursal=${sucursalId}` : ""}`;
   const windows = `msedge --kiosk "${pagina}" --edge-kiosk-type=fullscreen --no-first-run`;
 
   const Fila = ({ k, titulo, texto }: { k: string; titulo: string; texto: string }) => (
@@ -222,7 +225,7 @@ export function Verificador() {
         </div>
         <p className="suave pequeno">Si el servidor atiende una sola sucursal no hace falta elegirla: la página la detecta sola.</p>
         <Fila k="pagina" titulo="Para equipos con navegador o pantalla web (Android y Windows)" texto={pagina} />
-        <Fila k="movil" titulo={esLocal() ? "Consulta desde el celular del cliente (QR en la tienda; solo funciona dentro del WiFi de la sucursal). Para el enlace por internet, ábrala desde factpos.app" : "Consulta desde el celular del cliente por internet (genere un QR con esta dirección; hay que activar «Consulta por internet» arriba)"} texto={movil} />
+        <Fila k="movil" titulo={esLocal() ? "Consulta desde el celular del cliente (QR en la tienda; solo funciona dentro del WiFi de la sucursal). Para el enlace por internet, ábrala desde factpos.app" : "Consulta desde el celular del cliente por internet: enlace fijo, no cambia al reiniciar el servidor (elija la sucursal y genere el QR con esta dirección; hay que activar «Consulta por internet» arriba)"} texto={movil} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
 
