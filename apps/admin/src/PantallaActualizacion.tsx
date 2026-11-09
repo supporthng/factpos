@@ -42,6 +42,9 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
         if (baseVista.current !== base) { baseVista.current = base; inicial.current = null; }
         inicial.current ??= d.version;
         const guardada = leer(base);
+        // El servidor ya corre OTRA versión que la que tenía esta pantalla: la actualización se hizo. Se recarga aunque el servidor
+        // todavía anote pasos finales (antes, en las apps remotas el aviso quedaba tapando la pantalla hasta recargar a mano).
+        if (visto.current && inicial.current && d.version !== inicial.current) { guardar(base, d.version); alCambiarVersion(); location.reload(); return; }
         if (d.actualizando) { if (!visto.current) { visto.current = true; setDesde(Date.now()); setOcultar(false); } proximo = 2500; }
         else if (visto.current) {
           visto.current = false; setDesde(null);
