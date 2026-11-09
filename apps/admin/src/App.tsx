@@ -552,7 +552,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
         <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
         {empresas && <label className="campo"><span>Empresa</span>
           <select value={rnc} onChange={(e) => setRnc(e.target.value)}>
-            {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.nombre}{x.sucursales?.length ? ` · ${x.sucursales.join(", ")}` : ""} · RNC {x.rnc}</option>)}
+            {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.sucursales?.length ? `${x.nombre} · ${x.sucursales.join(", ")}` : `${x.nombre} · RNC ${x.rnc}`}</option>)}
           </select>
         </label>}
         {pedirRnc && !empresas && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
