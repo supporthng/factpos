@@ -184,7 +184,8 @@ export function Verificador() {
   const copiar = async (t: string, k: string) => { try { await navigator.clipboard.writeText(t); setCopiado(k); setTimeout(() => setCopiado(null), 2000); } catch { /* sin portapapeles */ } };
 
   // Abierta en el propio servidor (127.0.0.1 / localhost) la dirección no sirve a otros equipos: se muestra la IP de la red de la tienda
-  const [base, setBase] = useState(location.origin);
+  // En la administración de un cliente (factpos.app/<cliente>) el servidor real es su API, no factpos.app
+  const [base, setBase] = useState(CONFIG.modo === "cliente" && CONFIG.api ? CONFIG.api.replace(/\/$/, "") : location.origin);
   useEffect(() => {
     if (!/^(127\.\d+\.\d+\.\d+|localhost)$/i.test(location.hostname)) return;
     fetch("/descubrir").then((r) => r.json()).then((d: { direcciones?: string[] }) => {
