@@ -42,6 +42,14 @@ export interface Turno { id: string; abiertoEn: string; fondoInicial: string; us
  * Flujo de la terminal: configurar (una sola vez) → elegir usuario → abrir turno → vender.
  */
 const MINUTOS_INACTIVIDAD = 5;
+
+/** Desvincula esta PC del servidor actual: borra lo guardado y vuelve a buscar los servidores de la red para elegir otro. */
+function cambiarServidor() {
+  if (!confirm("¿Cambiar de servidor?\n\nEsta caja se desvinculará del servidor actual y buscará los servidores de la red para que elija uno.")) return;
+  try { localStorage.removeItem("factpos.terminal"); } catch { /* sin almacenamiento */ }
+  fijarSesionCaja(null);
+  location.reload();
+}
 function AppInterna() {
   const [ajustes, setAjustes] = useState<Ajustes | null>(leerAjustes());
   const [config, setConfig] = useState<ConfigCaja | null>(null);
@@ -183,7 +191,7 @@ function AppInterna() {
   if (cerrada) return <Pantalla><h2>Caja cerrada</h2><p className="suave">Ya puede cerrar esta ventana.</p><button className="boton ancho" onClick={() => location.reload()}>Abrir de nuevo</button></Pantalla>;
   if (ajustes && error && !config) {
     // Esta PC ya tiene su caja: un fallo de conexión nunca la desconfigura, solo se reintenta
-    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button></Pantalla>;
+    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button><button className="enlace" onClick={cambiarServidor}>Cambiar de servidor</button></Pantalla>;
   }
   if (!ajustes) {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
@@ -463,6 +471,7 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo, onCerrar }: { ajust
       </div>
       {msg && <p className="error">{msg}</p>}
       {onCerrar && <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>}
+      {onCerrar && <button className="enlace" onClick={cambiarServidor}>Cambiar de servidor</button>}
     </Pantalla>
   );
 }
