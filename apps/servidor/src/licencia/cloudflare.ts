@@ -18,10 +18,13 @@ export const dominioClientes = () => (process.env.FACTPOS_DOMINIO || "factpos.ap
 
 /** El token se pega a veces dos veces o con saltos de línea: se usa solo la primera palabra */
 const tokenCf = () => {
-  // Se pega a veces con comillas, con «Bearer » delante o dos veces: se queda con la palabra que parece el token
-  const palabras = (process.env.CLOUDFLARE_API_TOKEN ?? "").replace(/["'`]/g, " ").split(/\s+/).filter((w) => w && !/^bearer$/i.test(w));
-  return palabras.sort((a, b) => b.length - a.length)[0] ?? "";
+  // Se pega a veces con el nombre de la variable («CLOUDFLARE_API_TOKEN=…»), con comillas, con «Bearer » o dos veces:
+  // el token es la primera cadena larga de letras, números, guiones y guiones bajos (los nombres de variable miden menos de 30)
+  const crudo = process.env.CLOUDFLARE_API_TOKEN ?? "";
+  return crudo.match(/[A-Za-z0-9_-]{30,}/)?.[0] ?? crudo.trim().split(/\s+/)[0] ?? "";
 };
+/** Para el mensaje de error: largo y forma del token, nunca el token (solo un prefijo tipo «cfat_» si lo tiene). */
+const resumenToken = () => { const t = tokenCf(); return `${t.length} caracteres${/^[a-z]{3,5}_/.test(t) ? `, empieza con «${t.split("_")[0]}_»` : ""}`; };
 
 async function cf<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
   const r = await fetch(`${API}${ruta}`, {
@@ -34,7 +37,7 @@ async function cf<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T>
   if (!r.ok || d.success === false) {
     const motivo = d.errors?.map((e) => `${e.message}${(e as { code?: number }).code ? ` [${(e as { code?: number }).code}]` : ""}`).join("; ") || `HTTP ${r.status}`;
     // Un token mal pegado, vencido o sin permisos se reconoce aquí (sin mostrar el token)
-    const pista = r.status === 400 || r.status === 401 || r.status === 403 ? ` · revise CLOUDFLARE_API_TOKEN en Vercel (${tokenCf().length} caracteres; un token válido tiene unos 40, sin «Bearer» ni comillas) y que tenga permisos de Cloudflare Tunnel: Edit y DNS: Edit` : "";
+    const pista = r.status === 400 || r.status === 401 || r.status === 403 ? ` · revise CLOUDFLARE_API_TOKEN en Vercel (el token tiene ${resumenToken()}; pegue solo el valor del token, sin el nombre de la variable, sin «Bearer» ni comillas) y que tenga permisos de Cloudflare Tunnel: Edit y DNS: Edit` : "";
     throw new Error(`Cloudflare: ${motivo} (${metodo} ${ruta.replace(/[0-9a-f]{32}/g, "…")}, status ${r.status})${pista}`);
   }
   return d.result as T;
