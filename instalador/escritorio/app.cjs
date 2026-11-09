@@ -466,20 +466,31 @@ async function startCaja() {
       const antes = localUrl;
       if (await asegurarServidor() && localUrl !== antes && mainWindow && !mainWindow.isDestroyed() && !turnoAbierto) { try { mainWindow.webContents.reloadIgnoringCache(); } catch {} }
     } finally { buscando = false; }
-  }, 60 * 1000).unref();
+  }, 5 * 60 * 1000).unref();
   watchUpdates();
 }
 
 // La caja no depende de una dirección fija: si el servidor no responde (cambió la IP, otro router, equipo nuevo), lo busca en la red.
 // Se adopta el que tenga el mismo nombre de equipo que el último conocido, o el único que haya; si hay varios y ninguno coincide, no adivina.
+// ¿La dirección está en la red de ESTE equipo? (o es el propio equipo). Una dirección de internet, o de otra red, es de otra sucursal.
+function enMiRed(url) {
+  let h; try { h = new URL(url).hostname; } catch { return false; }
+  if (['localhost', '127.0.0.1', '[::1]', 'factpos.local'].includes(h)) return true;
+  const ip = h.split('.').map(Number);
+  if (ip.length !== 4 || ip.some(Number.isNaN)) return false;
+  return redesLocales().some(i => { const a = i.address.split('.').map(Number), m = i.netmask.split('.').map(Number); return a.every((b, k) => (b & m[k]) === (ip[k] & m[k])); });
+}
 async function asegurarServidor() {
-  if (server && await available(server)) {
+  const guardado = server && enMiRed(server.origin);
+  if (guardado && await available(server)) {
     if (!localServer()) probarHttp(server.origin, 1500).then(d => { if (d && d.equipo && d.equipo !== config.servidorEquipo) { config.servidorEquipo = d.equipo; saveConfig(); } });
     return true;
   }
+  // El guardado no está en esta red (p. ej. quedó apuntando a otra sucursal por su dirección de internet) o no responde: se busca en la red local.
   const lista = await descubrirRed().catch(() => []);
+  if (server && lista.some(x => x.url === server.origin)) return true;
   const elegido = lista.find(x => config.servidorEquipo && x.equipo === config.servidorEquipo) ?? (lista.length === 1 ? lista[0] : null);
-  if (!elegido) return false;
+  if (!elegido) return !!(server && await available(server)); // nada nuevo en la red: se queda con el guardado
   try {
     const nuevo = new URL(elegido.url);
     localUrl = nuevo.origin; server = nuevo;
