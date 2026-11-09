@@ -1317,3 +1317,9 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
   .barra-superior .marca-superior img { max-width: 72px; height: auto; max-height: 34px; object-fit: contain; }
   .barra-superior .boton-icono { flex: none; }
 }
+
+/* Celular: la lista de la campana se alinea con el borde de la barra (no con el botón), para no salirse de la pantalla por la izquierda */
+@media (max-width: 900px) {
+  .barra-superior .aviso-acceso { position: static; }
+  .barra-superior .aviso-acceso-lista { right: 8px; left: 8px; min-width: 0; max-width: none; width: auto; }
+}
