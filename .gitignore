@@ -11,3 +11,4 @@ clave-respaldo.key
 
 __pycache__/
 *.pyc
+apps/verificador-windows/MicrosoftEdgeWebview2Setup.exe
