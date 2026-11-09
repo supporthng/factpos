@@ -23,6 +23,12 @@ export function Ofertas() {
     recargar();
   };
 
+  const eliminar = async (o: any) => {
+    if (!window.confirm(`¿Eliminar la oferta «${o.nombre}»?\n\nDeja de aplicarse en todas las cajas y sale de esta lista. Las ventas ya hechas con ella no cambian.`)) return;
+    await api(`/central/ofertas/${o.id}`, { metodo: "PATCH", cuerpo: { eliminar: true } });
+    recargar();
+  };
+
   const mostrarEnVerificador = async (id: string, mostrar: boolean) => {
     await api(`/central/ofertas/${id}`, { metodo: "PATCH", cuerpo: { mostrarEnVerificador: mostrar } });
     recargar();
@@ -64,7 +70,7 @@ export function Ofertas() {
           { titulo: "Descuento dado", valor: (o) => rd(o.descuentoOtorgado), der: true },
           { titulo: "Activa", valor: (o) => <input type="checkbox" checked={o.activo} onChange={(e) => alternar(o.id, e.target.checked)} /> },
           { titulo: "En el verificador", valor: (o) => <input type="checkbox" title="Mostrar esta oferta en la pantalla del verificador de precios" checked={o.mostrarEnVerificador} onChange={(e) => mostrarEnVerificador(o.id, e.target.checked)} /> },
-          { titulo: "", valor: (o) => <button className="boton chico" onClick={() => setEditando(o)}>Editar</button> },
+          { titulo: "", valor: (o) => <><button className="boton chico" onClick={() => setEditando(o)}>Editar</button>{" "}<button className="boton chico peligro" onClick={() => eliminar(o)}>Eliminar</button></> },
         ]}
       />
       {nueva && <NuevaOferta onCerrar={() => setNueva(false)} onCreada={() => { setNueva(false); recargar(); }} />}
