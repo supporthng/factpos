@@ -5,7 +5,8 @@ import { aplicarCambioLocal, esCambioLocal } from "../sync/subida-local.js";
 import { licenciaParaSucursal } from "../licencia/cliente.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { huellaConexion } from "./sesion.js";
+import { huellaConexion, crearToken } from "./sesion.js";
+import { soloEnLaNube } from "../solo-en-la-nube.js";
 import { avisarPendientes, canales, cerrarSinComunicacion } from "../incidentes.js";
 import { z } from "zod";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
@@ -213,6 +214,32 @@ export async function rutasCentralSync(app: FastifyInstance) {
       [b.sucursalId, b.equipo ?? null, b.appVersion ?? null, JSON.stringify(b.verificadores)]);
     if (b.correoPropio !== undefined) await pool.query("UPDATE sync_sucursales SET correo_propio = $2 WHERE sucursal_id = $1", [b.sucursalId, b.correoPropio]).catch(() => null);
     return { ok: true };
+  });
+
+  /**
+   * Administración local → nube: el servidor de una sucursal pide que se haga aquí un cambio que solo
+   * la nube puede hacer. Se acepta solo con la clave de conexión de esa sucursal, solo para las rutas
+   * que la administración local reenvía, y con los permisos del usuario que lo pidió.
+   */
+  app.post("/central/sync/admin", async (req, rep) => {
+    const b = z.object({
+      sucursalId: uuid, usuarioId: uuid, metodo: z.enum(["POST", "PUT", "PATCH", "DELETE"]),
+      ruta: z.string().max(500).startsWith("/central/"), cuerpo: z.unknown().optional(),
+    }).parse(req.body);
+    await verificarConexion(req, b.sucursalId);
+    if (b.ruta.startsWith("/central/sync/") || !soloEnLaNube(b.metodo, b.ruta.split("?")[0])) throw new ErrorNegocio("Esta acción no se puede pedir desde una sucursal", 403);
+    const f = await pool.query<{ empresa_id: string; nombre: string; activo: boolean }>(
+      `SELECT s.empresa_id, u.nombre, u.activo FROM sucursales s JOIN usuarios u ON u.empresa_id = s.empresa_id AND u.id = $2 WHERE s.id = $1`, [b.sucursalId, b.usuarioId]);
+    if (!f.rows[0]?.activo) throw new ErrorNegocio("El usuario no existe o está desactivado en la nube", 403);
+    const token = crearToken({ t: "admin", u: b.usuarioId, e: f.rows[0].empresa_id, n: f.rows[0].nombre, p: [] }, 0.05);
+    const r = await app.inject({
+      method: b.metodo, url: b.ruta,
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      payload: b.cuerpo === undefined || b.cuerpo === null ? undefined : JSON.stringify(b.cuerpo),
+    });
+    let cuerpo: unknown = null;
+    try { cuerpo = JSON.parse(r.body); } catch { cuerpo = r.body ? { error: r.body.slice(0, 300) } : null; }
+    return rep.code(r.statusCode).send(cuerpo);
   });
 
   /** Versiones de los equipos: servidores de las sucursales y apps del verificador, y cuáles están desactualizados. */
