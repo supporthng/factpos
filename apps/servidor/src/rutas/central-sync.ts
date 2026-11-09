@@ -204,12 +204,14 @@ export async function rutasCentralSync(app: FastifyInstance) {
     const b = z.object({
       sucursalId: uuid, equipo: z.string().max(80).optional(), appVersion: z.string().max(20).optional(),
       verificadores: z.array(z.object({ id: z.string().max(64), so: z.string().max(10), equipo: z.string().max(60), build: z.number().int(), ultimoContacto: z.string().max(40) })).max(200).default([]),
+      correoPropio: z.boolean().optional(),
     }).parse(req.body);
     await verificarConexion(req, b.sucursalId);
     await pool.query(
       `INSERT INTO sync_sucursales (sucursal_id, equipo, app_version, verificadores) VALUES ($1, $2, $3, $4::jsonb)
        ON CONFLICT (sucursal_id) DO UPDATE SET equipo = COALESCE($2, sync_sucursales.equipo), app_version = COALESCE($3, sync_sucursales.app_version), verificadores = $4::jsonb`,
       [b.sucursalId, b.equipo ?? null, b.appVersion ?? null, JSON.stringify(b.verificadores)]);
+    if (b.correoPropio !== undefined) await pool.query("UPDATE sync_sucursales SET correo_propio = $2 WHERE sucursal_id = $1", [b.sucursalId, b.correoPropio]).catch(() => null);
     return { ok: true };
   });
 
