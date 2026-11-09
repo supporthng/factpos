@@ -30,7 +30,7 @@ export function FranjaEmpresa() {
   if (!activa) return null;
   const color = colorEmpresa(activa.id);
   return (
-    <span title="Empresa en la que está trabajando" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, border: `1px solid ${color}`, color, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+    <span className="franja-empresa" title="Empresa en la que está trabajando" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, border: `1px solid ${color}`, color, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
       <span style={{ width: 9, height: 9, borderRadius: 999, background: color, display: "inline-block" }} />
       {activa.nombre} · RNC {activa.rnc}
     </span>
@@ -65,7 +65,7 @@ export function SelectorEmpresa() {
   const { datos } = useDatos<EmpresaGrupo[]>("/central/empresas");
   if (!datos || datos.length < 2) return null;
   return (
-    <select aria-label="Empresa" title="Cambiar de empresa" value={datos.find((e) => e.actual)?.id} style={{ maxWidth: 190 }}
+    <select className="selector-empresa" aria-label="Empresa" title="Cambiar de empresa" value={datos.find((e) => e.actual)?.id} style={{ maxWidth: 190 }}
       onChange={(e) => pasarA(e.target.value).catch((x) => alert((x as Error).message))}>
       {datos.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
     </select>
