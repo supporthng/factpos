@@ -70,14 +70,25 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   async function camara(){
     clearTimeout(volver); $("res").innerHTML = "";
     try {
-      detector = detector || new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"] });
+      if (!detector) {
+        // Cada teléfono acepta unos formatos: se piden solo los que soporta (si uno no existe, el lector no se crea)
+        var quiero = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"], hay = quiero;
+        try { var sop = await BarcodeDetector.getSupportedFormats(); hay = quiero.filter(function(f){ return sop.indexOf(f) >= 0; }); } catch(e0) {}
+        detector = new BarcodeDetector(hay.length ? { formats: hay } : undefined);
+      }
       flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
       var v = $("video"); v.srcObject = flujo; await v.play();
       $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
       timer = setInterval(async function(){
         try { var r = await detector.detect(v); if (r.length) { parar(); if (navigator.vibrate) navigator.vibrate(60); consultar(r[0].rawValue, true); } } catch(e){}
       }, 250);
-    } catch(e) { parar(); $("guia").innerHTML = '<span class="err">No se pudo abrir la cámara. Puedes escribir el código.</span>'; }
+    } catch(e) {
+      parar();
+      var negada = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+      $("guia").innerHTML = '<span class="err">' + (negada
+        ? 'La cámara está bloqueada para esta página. Actívala en los ajustes del navegador (Permisos › Cámara) o escribe el código.'
+        : 'No se pudo usar la cámara de este teléfono. Puedes escribir el código.') + '</span>';
+    }
   }
   $("bcam").onclick = camara;
 
