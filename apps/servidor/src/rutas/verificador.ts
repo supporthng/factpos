@@ -11,6 +11,15 @@ import QRCode from "qrcode";
 import { PAGINA_CONSULTA_MOVIL } from "../consulta-movil-pagina.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 import { direccionesLocales } from "../red.js";
+import { config } from "../config.js";
+
+/** Rutas de la consulta de precios desde el celular del cliente (la página, su configuración y la consulta de un código). */
+export function rutaConsultaMovil(url: string) {
+  const [ruta, consulta = ""] = url.split("?");
+  if (ruta === "/verificador/movil" || ruta === "/verificador/config") return true;
+  return /^\/verificador\/[0-9a-f-]{36}\/[^/]+$/i.test(ruta) && /(^|&)canal=movil(&|$)/.test(consulta);
+}
+const visitas = new Map<string, { n: number; hasta: number }>();
 
 /**
  * Verificador de precios.
@@ -39,6 +48,24 @@ export async function buildVigenteVerificador(so: "android" | "windows"): Promis
 }
 
 export async function rutasVerificador(app: FastifyInstance) {
+  /**
+   * Por internet (servidor web de la empresa, no el de la tienda): la consulta del celular solo responde si el
+   * dueño la activó en Verificador › «Consulta por internet», y con un límite de consultas por persona.
+   */
+  app.addHook("onRequest", async (req, rep) => {
+    const deInternet = typeof req.headers["cf-connecting-ip"] === "string" || !!process.env.VERCEL;
+    if (config.modo === "sucursal" || !deInternet || !rutaConsultaMovil(req.url)) return;
+    const ahora = Date.now();
+    const ip = String(req.headers["cf-connecting-ip"] ?? req.ip);
+    const v = visitas.get(ip);
+    if (!v || v.hasta < ahora) visitas.set(ip, { n: 1, hasta: ahora + 60_000 });
+    else if (++v.n > 40) return rep.code(429).send({ error: "Demasiadas consultas: espere un minuto" });
+    if (visitas.size > 5000) for (const [k, x] of visitas) if (x.hasta < ahora) visitas.delete(k);
+    const r = await pool.query<{ ok: boolean }>(
+      "SELECT COALESCE(bool_or(verificador->>'consultaWeb' = 'true'), false) AS ok FROM configuracion_marca").catch(() => null);
+    if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
+  });
+
   /** Consulta desde el celular del cliente (QR en la tienda, dentro del WiFi de la sucursal). */
   app.get("/verificador/movil", async (_req, rep) => {
     rep.type("text/html; charset=utf-8");
@@ -237,13 +264,13 @@ export async function rutasVerificador(app: FastifyInstance) {
   app.get("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const r = await pool.query<{ o: unknown; q: unknown; w: string | null; a: unknown; s: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
-    return { mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
+    const r = await pool.query<{ o: unknown; q: unknown; cw: unknown; w: string | null; a: unknown; s: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'consultaWeb' AS cw, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    return { consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional(), segundosOferta: z.number().int().min(3).max(120).optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
+    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional(), consultaWeb: z.boolean().optional(), segundosOferta: z.number().int().min(3).max(120).optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
     await pool.query(
       `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, $2::jsonb)
        ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || $2::jsonb`,
@@ -356,7 +383,7 @@ export async function rutasVerificador(app: FastifyInstance) {
     return {
       codigo,
       descripcion: `${p.nombre} ${p.presentacion}`.trim(),
-      sku: p.sku,
+      sku: canal === "movil" ? null : p.sku,
       precio: p.precio,
       precioTexto: formatoRD(p.precio),
       itbisIncluido: p.precioIncluyeItbis,
@@ -364,8 +391,9 @@ export async function rutasVerificador(app: FastifyInstance) {
       peso,
       importe: peso !== null ? formatoRD(Number(p.precio) * peso) : null,
       promocion,
-      niveles: [...porNivel.entries()].map(([nivel, v]) => ({ nivel, lista: v.lista, precio: v.precio })),
-      disponible: Number(p.existencia) > 0,
+      // Al celular del cliente nunca van los precios por nivel (mayoristas) ni la existencia
+      niveles: canal === "movil" ? [] : [...porNivel.entries()].map(([nivel, v]) => ({ nivel, lista: v.lista, precio: v.precio })),
+      disponible: canal === "movil" ? true : Number(p.existencia) > 0,
     };
   });
 }

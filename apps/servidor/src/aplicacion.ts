@@ -1,4 +1,5 @@
 import { contextoCaja } from "./contexto.js";
+import { rutaConsultaMovil } from "./rutas/verificador.js";
 import { soloEnLaNube } from "./solo-en-la-nube.js";
 import { rutasActualizacion } from "./actualizacion.js";
 import { permitidoPorTunel, tunelActivo, vieneDelTunel } from "./tunel.js";
@@ -98,7 +99,7 @@ export async function crearApp() {
     const esperada = huella(clave);
     app.addHook("onRequest", async (req, rep) => {
       const ruta = req.url.split("?")[0];
-      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/verificador/descarga/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/escritorio-codigo/") || ruta.startsWith("/fe/") || ruta.startsWith("/central/")) return;
+      if (ruta === "/salud" || ruta === "/actualizacion/estado" || ruta === "/descubrir" || ruta === "/alta" || ruta === "/alta.json" || ruta === "/licencia/estado" || ruta.startsWith("/licencias/") || ruta.startsWith("/verificador/descarga/") || ruta.startsWith("/admin") || ruta.startsWith("/imagenes/") || ruta.startsWith("/terminal") || ruta.startsWith("/escritorio-codigo/") || ruta.startsWith("/fe/") || ruta.startsWith("/central/") || rutaConsultaMovil(req.url)) return;
       const dada = req.headers["x-clave-acceso"];
       if (typeof dada !== "string" || !timingSafeEqual(huella(dada), esperada)) {
         return rep.code(401).send({ error: "Clave de acceso incorrecta" });
@@ -111,6 +112,7 @@ export async function crearApp() {
     app.addHook("onRequest", async (req, rep) => {
       if (!vieneDelTunel(req.headers)) return;
       const ruta = req.url.split("?")[0];
+      if (rutaConsultaMovil(req.url)) return; // consulta de precios del celular (la activa el dueño; límite de consultas)
       if (ruta.startsWith("/fe/")) return; // la DGII llama aquí (recepción, aprobación comercial y autenticación)
       if (!permitidoPorTunel(ruta) || ruta === "/central/inicio") return rep.code(404).send({ error: "No disponible desde internet" });
       if (ruta !== "/salud" && !(await accesoWebPermitido())) return rep.code(403).send({ error: "El acceso web está desactivado. Un administrador puede activarlo en Sistema › Acceso remoto, desde la red local." });
