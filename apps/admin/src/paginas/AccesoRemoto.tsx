@@ -15,7 +15,7 @@ interface Dispositivo {
 }
 interface Estado {
   activada: boolean; local?: boolean; web?: string | null; codigo?: string | null;
-  tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null } | null;
+  tunel?: { activo: boolean; url: string | null; error: string | null; reportado: string | null; fijoMotivo?: string | null } | null;
 }
 const fecha = (v: string | null) => (v ? new Date(v).toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" }) : "—");
 const ETIQUETA: Record<Dispositivo["estado"], string> = { PENDIENTE: "Pendiente", AUTORIZADO: "Autorizado", DENEGADO: "Denegado", REVOCADO: "Revocado" };
@@ -193,6 +193,7 @@ export function AccesoRemoto() {
             Estado del túnel: {d.tunel?.activo ? <b className="texto-ok">abierto</b> : <b>cerrado</b>}{d.tunel?.error ? ` · ${d.tunel.error}` : ""}
             {web && !web.habilitada ? " · el acceso web está desactivado" : ""}
           </p>
+          {d.tunel?.fijoMotivo && <p className="suave pequeno" style={{ marginBottom: 0 }}>Dirección fija: todavía no disponible. Motivo: {d.tunel.fijoMotivo}</p>}
         </div>
       )}
 
