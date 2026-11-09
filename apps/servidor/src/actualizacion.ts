@@ -241,8 +241,12 @@ export function seguirAlPrincipal(versionPrincipal: string | undefined, log: (m:
   pendienteSeguir = versionPrincipal;
   log(`Actualización: el servidor principal ya tiene la versión ${versionPrincipal}; esta sucursal se actualiza en el próximo momento sin ventas`);
   const intentar = async () => {
-    const r = await pool.query<{ n: number }>("SELECT COUNT(*)::int AS n FROM ventas WHERE creado_en > now() - interval '5 minutes'").catch(() => ({ rows: [{ n: 1 }] }));
-    if (r.rows[0].n > 0) { setTimeout(intentar, 60_000).unref(); return; }
+    // Con una caja abierta (turno de las últimas 18 h) no se actualiza: el servidor se reinicia y la caja de ese equipo se detendría.
+    // Se espera al cierre de caja; el límite de 18 h evita que un turno olvidado abierto bloquee la actualización para siempre.
+    const r = await pool.query<{ n: number }>(
+      `SELECT (SELECT COUNT(*) FROM ventas WHERE creado_en > now() - interval '5 minutes')
+            + (SELECT COUNT(*) FROM turnos WHERE estado = 'ABIERTO' AND abierto_en > now() - interval '18 hours') AS n`).then((x) => ({ rows: [{ n: Number(x.rows[0].n) }] })).catch(() => ({ rows: [{ n: 1 }] }));
+    if (r.rows[0].n > 0) { setTimeout(intentar, 5 * 60_000).unref(); return; }
     instalarVersion(versionPrincipal, log).catch((e) => { log(`Actualización: ${(e as Error).message}; se reintenta en 30 min`); pendienteSeguir = null; });
   };
   setTimeout(intentar, 30_000).unref();
