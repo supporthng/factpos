@@ -56,7 +56,7 @@ export function PanelResumen({ irA }: { irA: (seccion: string) => void }) {
   });
 
   return (
-    <div className="pn">
+    <div className="pn-panel">
       <div className="pn-fila pn-fila-a">
         <section className="pn-tarjeta" aria-label="Ventas por hora">
           <div className="pn-cab"><h2>Ventas por hora</h2>{mejor.total > 0 && <span className="suave">Hora más fuerte: <b>{horaTexto(mejor.hora)}</b></span>}</div>

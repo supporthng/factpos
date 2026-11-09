@@ -1324,7 +1324,7 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 }
 
 /* Resumen: panel con gráficas (ventas por hora, formas de pago, más vendidos, cajas abiertas, agotados) */
-.pn { display: grid; gap: 16px; margin-bottom: 20px; }
+.pn-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 0 0 20px; }
 .pn-fila { display: grid; gap: 16px; }
 .pn-fila-a { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 .pn-fila-b { grid-template-columns: repeat(3, minmax(0, 1fr)); }
