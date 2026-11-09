@@ -1272,3 +1272,9 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .desglose-fila input { min-width: 0; width: 100%; height: 38px; text-align: center; font-size: 18px; font-weight: 700; border: 1px solid var(--borde, #d6dbe3); border-radius: 8px; }
 .desglose-fila .boton { height: 38px; padding: 0; font-size: 20px; }
 .desglose-total { margin-top: 8px; text-align: right; font-size: 15px; }
+
+/* Aviso de versión nueva: no interrumpe la venta; se actualiza al confirmar o al abrir la caja de nuevo */
+.aviso-version { position: fixed; right: 14px; bottom: 14px; z-index: 900; width: 360px; max-width: calc(100vw / var(--escala, 1) - 28px); display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--panel, #fff); color: var(--texto, #10202e); border: 1px solid var(--borde, #cfd8e0); box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 13px; }
+.aviso-version b { font-size: 15px; }
+.aviso-version > div { display: flex; gap: 8px; margin-top: 4px; }
+.aviso-version .boton { flex: 1; }
