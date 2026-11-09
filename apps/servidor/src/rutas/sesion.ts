@@ -90,7 +90,12 @@ export async function rutasSesionCentral(app: FastifyInstance) {
       const buenas: typeof r.rows = [];
       for (const f of r.rows) if (await verificarClave(b.clave, f.clave_hash)) buenas.push(f);
       if (!buenas.length) { fallo(llave); fallo(ip, 15); throw new ErrorNegocio("Usuario o contraseña incorrectos", 401); }
-      if (buenas.length > 1) return { elegirEmpresa: true, empresas: buenas.map((f) => ({ rnc: f.rnc, nombre: f.empresa })) };
+      if (buenas.length > 1) {
+        // Con la contraseña ya comprobada: el nombre de las sucursales ayuda a distinguir empresas que se llaman igual
+        const sucs = await pool.query<{ empresa_id: string; nombre: string }>(
+          "SELECT empresa_id, nombre FROM sucursales WHERE activo AND empresa_id = ANY($1::uuid[]) ORDER BY nombre", [buenas.map((f) => f.empresa_id)]).catch(() => ({ rows: [] as { empresa_id: string; nombre: string }[] }));
+        return { elegirEmpresa: true, empresas: buenas.map((f) => ({ rnc: f.rnc, nombre: f.empresa, sucursales: sucs.rows.filter((x) => x.empresa_id === f.empresa_id).map((x) => x.nombre) })) };
+      }
       u = buenas[0];
     }
     if (!u || !(await verificarClave(b.clave, u.clave_hash))) {
