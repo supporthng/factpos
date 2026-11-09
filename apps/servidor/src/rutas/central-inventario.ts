@@ -626,7 +626,7 @@ export async function rutasCentralInventario(app: FastifyInstance) {
       const v = await pool.query(
         `SELECT ${periodo} AS periodo, sku, nombre, SUM(unidades) AS unidades, SUM(venta_neta) AS venta_neta
            FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
-          GROUP BY 1, 2, 3 ORDER BY 1 DESC, SUM(unidades) DESC, 3 LIMIT 20000`,
+          GROUP BY 1, 2, 3 HAVING SUM(unidades) <> 0 ORDER BY 1 DESC, SUM(unidades) DESC, 3 LIMIT 20000`,
         params,
       );
       return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
