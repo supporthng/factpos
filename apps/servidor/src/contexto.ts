@@ -1,5 +1,9 @@
 import type { PoolClient } from "pg";
 import { pool, ErrorNegocio } from "./db.js";
+import { config } from "./config.js";
+
+/** En un servidor de sucursal: el id de SU sucursal (sus cajas son solo las de ella aunque la nube le baje las de todas). En la nube: null. */
+export const sucursalPropia = (): string | null => (config.modo === "sucursal" ? process.env.SUCURSAL_ID || null : null);
 
 export interface ContextoCaja {
   cajaId: string;
@@ -17,6 +21,8 @@ export async function contextoCaja(cajaId: string, c: Pick<PoolClient, "query"> 
     [cajaId],
   );
   if (!r.rowCount) throw new ErrorNegocio("Caja no encontrada o inactiva", 404);
+  const propia = sucursalPropia();
+  if (propia && r.rows[0].sucursalId !== propia) throw new ErrorNegocio("Esa caja es de otra sucursal: esta PC está conectada al servidor equivocado. Cierre FactPOS y ábralo de nuevo para que busque el servidor de su sucursal.", 409);
   return r.rows[0];
 }
 

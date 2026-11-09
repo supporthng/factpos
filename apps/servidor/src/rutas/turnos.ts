@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidv7, rncValido, cedulaValida, formatoRD } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
-import { contextoCaja } from "../contexto.js";
+import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { encolarFilas } from "../sync/outbox.js";
 import { funcionHabilitada } from "./central-seguridad.js";
@@ -14,7 +14,8 @@ export async function rutasTurnos(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT ca.id, ca.numero, ca.nombre, s.nombre AS sucursal
          FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
-        WHERE ca.activo ORDER BY s.nombre, ca.numero`,
+        WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) ORDER BY s.nombre, ca.numero`,
+      [sucursalPropia()],
     );
     return r.rows;
   });
@@ -29,12 +30,12 @@ export async function rutasTurnos(app: FastifyInstance) {
       await c.query("SELECT pg_advisory_xact_lock(hashtext('cajas_equipos'))");
       const ya = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas_equipos ce JOIN cajas ca ON ca.id = ce.caja_id JOIN sucursales s ON s.id = ca.sucursal_id
-          WHERE ce.equipo_id = $1 AND ca.activo`, [equipoId])).rows[0];
+          WHERE ce.equipo_id = $1 AND ca.activo AND ($2::uuid IS NULL OR ca.sucursal_id = $2)`, [equipoId, sucursalPropia()])).rows[0];
       if (ya) return ya;
       const libre = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
-          WHERE ca.activo AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
-          ORDER BY s.nombre, ca.numero LIMIT 1`)).rows[0];
+          WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
+          ORDER BY s.nombre, ca.numero LIMIT 1`, [sucursalPropia()])).rows[0];
       if (!libre) throw new ErrorNegocio("Todas las cajas de este servidor ya están asignadas a otra PC. Pida al administrador que libere una (Sucursales y terminales) o que agregue una terminal.", 409);
       await c.query("DELETE FROM cajas_equipos WHERE equipo_id = $1", [equipoId]);
       await c.query("INSERT INTO cajas_equipos (caja_id, equipo_id) VALUES ($1,$2)", [libre.id, equipoId]);
@@ -63,6 +64,8 @@ export async function rutasTurnos(app: FastifyInstance) {
     );
     if (!r.rowCount) throw new ErrorNegocio("Caja no encontrada", 404);
     const c = r.rows[0];
+    const propia = sucursalPropia();
+    if (propia && c.sucursalId !== propia) throw new ErrorNegocio("Esa caja es de otra sucursal: esta PC está conectada al servidor equivocado.", 409);
     // La pantalla del cliente también presenta las ofertas creadas en Ofertas (las vigentes de esta sucursal), tras las que armó a mano
     const creadas = await pool.query(
       `SELECT o.id, o.nombre, o.tipo, o.valor::text, o.lleva, o.paga, o.cantidad_minima::text AS "cantidadMinima",
