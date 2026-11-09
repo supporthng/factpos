@@ -904,11 +904,80 @@ def _bucle_actualizar():
         time.sleep(INTERVALO_ACTUALIZAR)
 
 
+# --------------------------------------------------------------------------- modo navegador (si la app no puede abrirse)
+_CLAVE_WEBVIEW2 = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
+def _webview2_instalado():
+    """¿Está el motor Microsoft Edge WebView2? Sin él pywebview cae al motor viejo (mshtml) y las pantallas no funcionan."""
+    for raiz, sub in ((winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\" + _CLAVE_WEBVIEW2),
+                      (winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + _CLAVE_WEBVIEW2),
+                      (winreg.HKEY_CURRENT_USER, "Software\\" + _CLAVE_WEBVIEW2)):
+        try:
+            with winreg.OpenKey(raiz, sub) as k:
+                v = str(winreg.QueryValueEx(k, "pv")[0] or "")
+            if v and v != "0.0.0.0":
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _navegador():
+    """Ruta de Microsoft Edge (o Chrome) para abrir el verificador como página web."""
+    import shutil
+    for exe, rel in (("msedge.exe", r"Microsoft\Edge\Application\msedge.exe"), ("chrome.exe", r"Google\Chrome\Application\chrome.exe")):
+        for var in ("ProgramFiles(x86)", "ProgramFiles", "LocalAppData"):
+            ruta = os.path.join(os.environ.get(var, ""), rel)
+            if os.path.isfile(ruta):
+                return ruta
+        if shutil.which(exe):
+            return shutil.which(exe)
+    return None
+
+
+def _modo_navegador(api, motivo):
+    """Si la app no puede mostrar sus pantallas, el verificador se abre como página web en pantalla completa (Edge en modo
+    quiosco). Usa el servidor guardado o lo busca en la red; no hace falta escribir nada."""
+    _anotar(f"modo navegador: {motivo}")
+    sv = leer_config().get("servidor") or ""
+    for _ in range(36):                       # unos 6 minutos buscando (el servidor puede estar arrancando)
+        try:
+            if sv and _servidor_responde(sv):
+                break
+            nuevo = _buscar_servidor(api, sv or "http://factpos.local:3000", None)
+            if nuevo:
+                u = urllib.parse.urlparse(sv) if sv else None
+                sv = nuevo + ((u.path or "/verificador") + (("?" + u.query) if u.query else "") if u else "/verificador")
+                c = leer_config()
+                c["servidor"] = sv
+                guardar_config(c)
+                _anotar(f"servidor encontrado: {sv}")
+                break
+        except Exception as e:
+            _anotar(f"búsqueda del servidor: {e}")
+        time.sleep(10)
+    else:
+        ctypes.windll.user32.MessageBoxW(0, "No se encontró el servidor de la tienda en la red.\nRevise que esté encendido y vuelva a abrir el verificador.", "Verificador FactPOS", 0x10)
+        return
+    exe = _navegador()
+    if not exe:
+        ctypes.windll.user32.MessageBoxW(0, "No se encontró Microsoft Edge ni Chrome para abrir el verificador.", "Verificador FactPOS", 0x10)
+        return
+    perfil = os.path.join(DATOS, "navegador-quiosco")
+    subprocess.Popen([exe, "--kiosk", sv, "--edge-kiosk-type=fullscreen", "--no-first-run", "--no-default-browser-check",
+                      f"--user-data-dir={perfil}"])
+    _anotar(f"abierto en el navegador: {exe}")
+
+
 def main():
     if ya_abierta():
         sys.exit(0)
     os.makedirs(WEBVIEW, exist_ok=True)
     api = Kiosco()
+    if not _webview2_instalado():
+        _modo_navegador(api, "falta Microsoft Edge WebView2")
+        sys.exit(0)
     threading.Thread(target=_bucle_actualizar, name="actualizar", daemon=True).start()
     # Si el equipo arranca y el servidor no responde, se abre de una vez la copia guardada (si no, quedaba una pantalla
     # azul vacía y luego la página de error del navegador)
@@ -960,13 +1029,18 @@ def main():
     escudo.iniciar()
     import atexit
     atexit.register(barra.mostrar)      # pase lo que pase, la barra de tareas vuelve al salir
+    fallo_motor = None
     try:
         webview.start(gui="edgechromium", private_mode=False, storage_path=WEBVIEW, debug=False)
+    except Exception as e:
+        fallo_motor = repr(e)
     finally:
         escudo.detener()
         restaurar_avisos(avisos_previos)
         teclado.quitar()
         barra.mostrar()
+    if fallo_motor:
+        _modo_navegador(api, f"la app no pudo abrirse ({fallo_motor})")
 
 
 if __name__ == "__main__":
