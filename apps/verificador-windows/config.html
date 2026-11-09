@@ -112,14 +112,16 @@
     buscar();
   }
   $("botones").onclick = () => llamar("bloquearBotones");
+  let forzar = false;   // tras un aviso de «no conecta», el segundo toque guarda la dirección igual
   $("f").onsubmit = async (ev) => {
     ev.preventDefault();
     error("");
     let url;
     try { url = ($("srv").value.trim() ? normalizar($("srv").value) : elegido) || normalizar($("srv").value); } catch { return error("Escriba una dirección válida, por ejemplo 192.168.1.10:3000"); }
     try {
-      const r = await llamar("guardar", url);
-      if (r) error(r);   // "" = guardado: la app abre el verificador sola
+      error("Conectando con el servidor…");
+      const r = await llamar("guardar", url, forzar);
+      if (r) { error(r); forzar = r.indexOf("NO_CONECTA") === 0; if (forzar) error(r.replace("NO_CONECTA: ", "")); }   // "" = guardado: la app abre el verificador sola
     } catch (e) { error(e.message || "No se pudo guardar"); }
   };
   // Teclado numérico en pantalla (Windows): el verificador no tiene teclado y el de Windows no sale en pantalla completa.

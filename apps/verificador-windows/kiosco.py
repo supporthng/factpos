@@ -429,6 +429,16 @@ def escribir_copia(nombre, texto):
     os.replace(ruta + ".tmp", ruta)
 
 
+def _anotar(texto):
+    """Registro de diagnóstico en %LOCALAPPDATA%\\FactPOS Verificador\\verificador.log (solo texto, sin datos del negocio)."""
+    try:
+        os.makedirs(DATOS, exist_ok=True)
+        with open(os.path.join(DATOS, "verificador.log"), "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + texto + "\n")
+    except Exception:
+        pass
+
+
 def _servidor_responde(servidor):
     """Cualquier respuesta HTTP (aunque sea un error) significa que el servidor está vivo."""
     try:
@@ -764,13 +774,28 @@ class Kiosco:
     def verificarClave(self, pin):
         return self._comprobar_pin(pin)
 
-    def guardar(self, url):
-        """Guarda la dirección del servidor. Solo mientras no haya uno (para cambiarlo: ⓘ › Cambiar de servidor, con PIN)."""
+    def guardar(self, url, forzar=False):
+        """Guarda la dirección del servidor. Solo mientras no haya uno (para cambiarlo: ⓘ › Cambiar de servidor, con PIN).
+        Antes comprueba, desde la propia app, que el servidor responde y dice el motivo si no (firewall, red, dirección)."""
         v = (url or "").strip()
         if not re.match(r"^https?://[^\s/]+(/\S*)?$", v):
             return "Escriba una dirección válida, por ejemplo http://192.168.1.10:3000/verificador"
         if leer_config().get("servidor"):
             return "Este equipo ya tiene un servidor: para cambiarlo use ⓘ › Cambiar de servidor."
+        if not forzar:
+            u = urllib.parse.urlparse(v)
+            base = f"{u.scheme}://{u.netloc}"
+            try:
+                with urllib.request.urlopen(base + "/descubrir", timeout=6) as r:
+                    r.read(2000)
+            except urllib.error.HTTPError as e:
+                _anotar(f"guardar {base}: responde con HTTP {e.code}")      # el servidor está vivo; se sigue
+            except Exception as e:
+                motivo = f"{type(e).__name__}: {getattr(e, 'reason', None) or e}"
+                _anotar(f"guardar {base}: la app no pudo conectar ({motivo})")
+                return ("NO_CONECTA: la app no pudo conectar con " + u.netloc + " (" + motivo + "). "
+                        "Si en Edge sí abre, es el Firewall de Windows o un proxy que bloquea a esta app. "
+                        "Toque «Conectar» otra vez para guardar la dirección de todos modos.")
         c = leer_config()
         c["servidor"] = v
         guardar_config(c)
