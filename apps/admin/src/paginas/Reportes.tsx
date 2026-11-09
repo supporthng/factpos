@@ -2,11 +2,12 @@ import { useState } from "react";
 import { descargarCsv, rd, num, hoy } from "../api";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
-type Rep = { id: string; titulo: string; grupo: string; desc: string; fechas?: boolean };
+type Rep = { id: string; titulo: string; grupo: string; desc: string; fechas?: boolean; porProducto?: boolean };
 const REPORTES: Rep[] = [
   { id: "ventas-sucursal", titulo: "Ventas por sucursal", grupo: "Ventas", fechas: true, desc: "Cuánto vendió cada sucursal en el período: facturas, descuentos, ITBIS y total." },
   { id: "ventas-comprobante", titulo: "Ventas por tipo de comprobante", grupo: "Ventas", fechas: true, desc: "Separa lo facturado con e-CF (E), NCF serie B y facturas internas (FI-)." },
   { id: "ventas-diarias", titulo: "Ventas por día y caja", grupo: "Ventas", fechas: true, desc: "Día a día, cuánto vendió cada caja." },
+  { id: "ventas-producto", titulo: "Ventas por producto (día o mes)", grupo: "Ventas", fechas: true, porProducto: true, desc: "Cuántas unidades se vendieron de cada producto, por día o por mes. Escriba el nombre o el SKU para ver uno solo. Las cajas y paquetes cuentan por unidad; las devoluciones restan." },
   { id: "utilidad-productos", titulo: "Utilidad por producto", grupo: "Ventas", fechas: true, desc: "Qué productos dejan más ganancia: venta menos costo." },
   { id: "formas-pago", titulo: "Formas de pago", grupo: "Ventas", fechas: true, desc: "Cuánto entró en efectivo, tarjeta, transferencia y crédito." },
   { id: "niveles-precio", titulo: "Ventas por nivel de precio", grupo: "Ventas", fechas: true, desc: "Cuánto se vendió con el precio 1, 2 y 3." },
@@ -65,10 +66,13 @@ export function Reportes() {
   const [r0, r1] = rango("mes");
   const [desde, setDesde] = useState(r0);
   const [hasta, setHasta] = useState(r1);
+  const [producto, setProducto] = useState("");
+  const [agrupar, setAgrupar] = useState<"dia" | "mes">("dia");
   const def = REPORTES.find((r) => r.id === rep)!;
   const params = new URLSearchParams({
     ...(sucursalId ? { sucursalId } : {}),
     ...(def.fechas ? { desde, hasta } : {}),
+    ...(def.porProducto ? { agrupar, ...(producto.trim() ? { producto: producto.trim() } : {}) } : {}),
   });
   const ruta = `/central/reportes/${rep}?${params}`;
   const { datos, error, cargando } = useDatos<Record<string, any>[]>(ruta);
@@ -84,7 +88,7 @@ export function Reportes() {
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return new Date(`${v}T12:00:00`).toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit", year: "numeric" });
     return String(v);
   };
-  const totales = cols.filter((c) => DINERO.test(c) && filas.every((f) => f[c] === null || /^-?\d+(\.\d+)?$/.test(String(f[c]))) && !/costo_unitario|precio|promedio|limite/.test(c));
+  const totales = cols.filter((c) => (DINERO.test(c) || c === "unidades") && filas.every((f) => f[c] === null || /^-?\d+(\.\d+)?$/.test(String(f[c]))) && !/costo_unitario|precio|promedio|limite/.test(c));
 
   const q = buscarFila.trim().toLowerCase();
   const visibles = q ? filas.filter((f) => cols.some((c) => formato(c, f[c]).toLowerCase().includes(q))) : filas;
@@ -133,13 +137,22 @@ export function Reportes() {
               <label className="rp-campo"><span>Desde</span><input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} /></label>
               <label className="rp-campo"><span>Hasta</span><input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} /></label>
             </>}
+            {def.porProducto && <>
+              <label className="rp-campo"><span>Producto (nombre o SKU)</span><input type="search" placeholder="Todos los productos" value={producto} onChange={(e) => setProducto(e.target.value)} /></label>
+              <div className="rp-campo"><span>Agrupar por</span>
+                <div className="rp-chips rp-rangos">
+                  <button className={agrupar === "dia" ? "activo" : ""} onClick={() => setAgrupar("dia")}>Día</button>
+                  <button className={agrupar === "mes" ? "activo" : ""} onClick={() => setAgrupar("mes")}>Mes</button>
+                </div>
+              </div>
+            </>}
             {cargando && <span className="suave rp-cargando">Cargando…</span>}
           </div>
           <Aviso texto={error} />
           {totales.length > 0 && (
             <div className="kpis">
               {totales.slice(0, 4).map((c) => (
-                <div key={c} className="kpi"><span className="suave">{etiqueta(c)}</span><b>{rd(visibles.reduce((a, f) => a + Number(f[c] ?? 0), 0))}</b></div>
+                <div key={c} className="kpi"><span className="suave">{etiqueta(c)}</span><b>{c === "unidades" ? num(visibles.reduce((a, f) => a + Number(f[c] ?? 0), 0), 0) : rd(visibles.reduce((a, f) => a + Number(f[c] ?? 0), 0))}</b></div>
               ))}
             </div>
           )}

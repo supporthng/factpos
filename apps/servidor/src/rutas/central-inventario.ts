@@ -84,6 +84,8 @@ async function crearAjuste(
 const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: boolean; orden?: string }> = {
   "ventas-diarias": { vista: "rpt_ventas_diarias", fecha: true, sucursal: true, orden: "fecha DESC" },
   "utilidad-productos": { vista: "rpt_utilidad_producto", fecha: true, sucursal: true, orden: "utilidad DESC" },
+  // Unidades vendidas de cada producto por día o por mes (la consulta propia está en el manejador de abajo)
+  "ventas-producto": { vista: "rpt_utilidad_producto", fecha: true, sucursal: true },
   "formas-pago": { vista: "rpt_formas_pago", fecha: true, sucursal: true, orden: "fecha DESC" },
   "niveles-precio": { vista: "rpt_ventas_nivel_precio", fecha: true, sucursal: true, orden: "fecha DESC, nivel" },
   "valorizacion": { vista: "rpt_valorizacion_inventario", sucursal: true, orden: "valor DESC" },
@@ -580,7 +582,8 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     const def = REPORTES[nombre];
     if (!def) throw new ErrorNegocio("Reporte no existe", 404);
     const f = z
-      .object({ sucursalId: uuid.optional(), desde: fecha.optional(), hasta: fecha.optional(), formato: z.enum(["json", "csv"]).default("json") })
+      .object({ sucursalId: uuid.optional(), desde: fecha.optional(), hasta: fecha.optional(), formato: z.enum(["json", "csv"]).default("json"),
+        producto: z.string().trim().max(80).optional(), agrupar: z.enum(["dia", "mes"]).default("dia") })
       .parse(req.query);
 
     const cond: string[] = [];
@@ -601,6 +604,20 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     if (def.fecha && f.desde) { params.push(f.desde); cond.push(`fecha >= $${params.length}::date`); }
     if (def.fecha && f.hasta) { params.push(f.hasta); cond.push(`fecha <= $${params.length}::date`); }
 
+    if (nombre === "ventas-producto") {
+      if (f.producto) {
+        params.push(`%${f.producto.replace(/[%_\\]/g, (c) => "\\" + c)}%`);
+        cond.push(`(nombre ILIKE $${params.length} OR sku ILIKE $${params.length})`);
+      }
+      const periodo = f.agrupar === "mes" ? "to_char(fecha, 'YYYY-MM')" : "fecha";
+      const v = await pool.query(
+        `SELECT ${periodo} AS periodo, sku, nombre, SUM(unidades) AS unidades, SUM(venta_neta) AS venta_neta
+           FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
+          GROUP BY 1, 2, 3 ORDER BY 1 DESC, SUM(unidades) DESC, 3 LIMIT 20000`,
+        params,
+      );
+      return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
+    }
     const r = await pool.query(
       `SELECT * FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""} ORDER BY ${def.orden ?? "1"} LIMIT 20000`,
       params,
