@@ -16,13 +16,13 @@ const pinValido = z.string().regex(/^\d{4,6}$/, "El PIN debe tener de 4 a 6 núm
 
 /** Freno a quien prueba contraseñas: 5 intentos fallidos y espera 5 minutos. */
 const fallos = new Map<string, { n: number; hasta: number }>();
-function frenar(clave: string, max = 5) {
+export function frenar(clave: string, max = 5) {
   const f = fallos.get(clave);
   if (f && f.n >= max && f.hasta > Date.now()) {
     throw new ErrorNegocio(`Demasiados intentos. Espere ${Math.ceil((f.hasta - Date.now()) / 60000)} minuto(s)`, 429);
   }
 }
-function fallo(clave: string, minutos = 5) {
+export function fallo(clave: string, minutos = 5) {
   const f = fallos.get(clave);
   const n = f && f.hasta > Date.now() ? f.n + 1 : 1;
   fallos.set(clave, { n, hasta: Date.now() + minutos * 60_000 });

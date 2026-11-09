@@ -5,6 +5,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
 import { autorizarConPin, autorizacionDirecta, verificarAutorizacion } from "../autorizacion.js";
+import { frenar, fallo } from "./sesion.js";
 import { emitirEcfVenta } from "../fiscal/emitir.js";
 
 const uuid = z.string().uuid();
@@ -151,8 +152,17 @@ export async function rutasFacturas(app: FastifyInstance) {
   app.post("/cajas/:cajaId/autorizar", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
     const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.precio", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "venta.credito"]) }).parse(req.body);
+    // Sin sesión de cajero (cerrar FactPOS desde la pantalla del PIN) se limitan los intentos, igual que al entrar
+    const sinSesion = !(req as typeof req & { sesionCaja?: unknown }).sesionCaja;
+    const llave = `autorizar:${cajaId}`;
+    if (sinSesion) frenar(llave);
     const ctx = await contextoCaja(cajaId);
-    return autorizarConPin(pool, ctx.empresaId, cajaId, b.pin, b.permiso);
+    try {
+      return await autorizarConPin(pool, ctx.empresaId, cajaId, b.pin, b.permiso);
+    } catch (e) {
+      if (sinSesion) fallo(llave, 1);
+      throw e;
+    }
   });
 
   /**
