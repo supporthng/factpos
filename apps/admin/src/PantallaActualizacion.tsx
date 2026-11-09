@@ -26,6 +26,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
   const visto = useRef(false);
   const inicial = useRef<string | null>(null);
   const baseVista = useRef<string | null>(null);
+  const sinRespuestaDesde = useRef<number | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -38,7 +39,7 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
         if (!r.ok) throw new Error(String(r.status));
         const d = (await r.json()) as Estado;
         if (!vivo) return;
-        setSinConexion(false); setE(d);
+        setSinConexion(false); setE(d); sinRespuestaDesde.current = null;
         if (baseVista.current !== base) { baseVista.current = base; inicial.current = null; }
         inicial.current ??= d.version;
         const guardada = leer(base);
@@ -55,7 +56,19 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
           guardar(base, d.version); alCambiarVersion(); location.reload(); return;
         } else if (!guardada) guardar(base, d.version);
       } catch {
-        if (vivo && visto.current) { setSinConexion(true); proximo = 2500; }
+        if (vivo && visto.current) {
+          setSinConexion(true); proximo = 2500;
+          // Sin respuesta por más de 90 s: la dirección guardada pudo cambiar al reiniciar (túnel rápido) o la pantalla quedó con código viejo.
+          // Recargar la vuelve a buscar. Como mucho una vez cada 5 minutos para no entrar en un ciclo.
+          sinRespuestaDesde.current ??= Date.now();
+          if (Date.now() - sinRespuestaDesde.current > 90_000) {
+            let ultima = 0; try { ultima = Number(sessionStorage.getItem("factpos.recarga-actualizacion") ?? 0); } catch { /* sin almacenamiento */ }
+            if (Date.now() - ultima > 5 * 60_000) {
+              try { sessionStorage.setItem("factpos.recarga-actualizacion", String(Date.now())); } catch { /* sin almacenamiento */ }
+              location.reload(); return;
+            }
+          }
+        }
       }
       if (vivo) t = setTimeout(consultar, proximo);
     };
