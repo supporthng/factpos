@@ -446,6 +446,8 @@ async function startCaja() {
   if (server && localServer()) { available(server).then(ok => { if (!ok) startInstalledServer(); }); }
   // Antes de abrir la ventana se revisa si el servidor trae una pantalla o un código más nuevo (como mucho 2,5 s: sin servidor se abre igual).
   // Así la caja abre YA con la versión nueva y no hace falta cerrarla y volverla a abrir.
+  await Promise.race([asegurarServidor(), new Promise(r => setTimeout(r, 8000))]);
+  marca('servidor localizado');
   const revision = await Promise.race([Promise.all([syncUi(), syncCodigo()]), new Promise(r => setTimeout(() => r(null), 2500))]);
   marca('revisión de pantalla y código lista');
   if (revision && revision[1] === true && !args.includes('--codigo-nuevo')) {
@@ -456,9 +458,37 @@ async function startCaja() {
   // Con la caja abierta: si llega una pantalla nueva y no hay un turno en curso, se recarga sola (con turno abierto espera al próximo arranque)
   setInterval(async () => { if (await syncUi() && mainWindow && !mainWindow.isDestroyed() && !turnoAbierto) { try { mainWindow.webContents.reloadIgnoringCache(); } catch {} } }, 5 * 60 * 1000).unref();
   setInterval(syncCodigo, 30 * 60 * 1000).unref();
+  // Si el servidor deja de responder (por ejemplo cambió su IP), se vuelve a buscar en la red y la pantalla se recarga con la dirección nueva
+  let buscando = false;
+  setInterval(async () => {
+    if (buscando || (server && localServer())) return; buscando = true;
+    try {
+      const antes = localUrl;
+      if (await asegurarServidor() && localUrl !== antes && mainWindow && !mainWindow.isDestroyed() && !turnoAbierto) { try { mainWindow.webContents.reloadIgnoringCache(); } catch {} }
+    } finally { buscando = false; }
+  }, 60 * 1000).unref();
   watchUpdates();
 }
 
+// La caja no depende de una dirección fija: si el servidor no responde (cambió la IP, otro router, equipo nuevo), lo busca en la red.
+// Se adopta el que tenga el mismo nombre de equipo que el último conocido, o el único que haya; si hay varios y ninguno coincide, no adivina.
+async function asegurarServidor() {
+  if (server && await available(server)) {
+    if (!localServer()) probarHttp(server.origin, 1500).then(d => { if (d && d.equipo && d.equipo !== config.servidorEquipo) { config.servidorEquipo = d.equipo; saveConfig(); } });
+    return true;
+  }
+  const lista = await descubrirRed().catch(() => []);
+  const elegido = lista.find(x => config.servidorEquipo && x.equipo === config.servidorEquipo) ?? (lista.length === 1 ? lista[0] : null);
+  if (!elegido) return false;
+  try {
+    const nuevo = new URL(elegido.url);
+    localUrl = nuevo.origin; server = nuevo;
+    config.servidor = nuevo.origin; if (config.apuntado) config.apuntado = nuevo.origin;
+    if (elegido.equipo) config.servidorEquipo = elegido.equipo;
+    saveConfig();
+    return true;
+  } catch { return false; }
+}
 function available(url) {
   return new Promise(resolve => {
     const transport = url.protocol === 'https:' ? require('node:https') : http;
