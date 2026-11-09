@@ -86,6 +86,9 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "utilidad-productos": { vista: "rpt_utilidad_producto", fecha: true, sucursal: true, orden: "utilidad DESC" },
   // Unidades vendidas de cada producto por día o por mes (la consulta propia está en el manejador de abajo)
   "ventas-producto": { vista: "rpt_utilidad_producto", fecha: true, sucursal: true },
+  // Los más vendidos del período (ranking por unidades) y lo que está en cero en el almacén principal
+  "mas-vendidos": { vista: "rpt_utilidad_producto", fecha: true, sucursal: true },
+  "sin-stock": { vista: "rpt_sin_stock", sucursal: true, orden: "vendido_30d DESC, nombre" },
   "formas-pago": { vista: "rpt_formas_pago", fecha: true, sucursal: true, orden: "fecha DESC" },
   "niveles-precio": { vista: "rpt_ventas_nivel_precio", fecha: true, sucursal: true, orden: "fecha DESC, nivel" },
   "valorizacion": { vista: "rpt_valorizacion_inventario", sucursal: true, orden: "valor DESC" },
@@ -604,6 +607,16 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     if (def.fecha && f.desde) { params.push(f.desde); cond.push(`fecha >= $${params.length}::date`); }
     if (def.fecha && f.hasta) { params.push(f.hasta); cond.push(`fecha <= $${params.length}::date`); }
 
+    if (nombre === "mas-vendidos") {
+      const v = await pool.query(
+        `SELECT ROW_NUMBER() OVER (ORDER BY SUM(unidades) DESC, nombre)::int AS puesto, sku, nombre,
+                SUM(unidades) AS unidades, SUM(venta_neta) AS venta_neta
+           FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
+          GROUP BY sku, nombre HAVING SUM(unidades) > 0 ORDER BY 1 LIMIT 200`,
+        params,
+      );
+      return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
+    }
     if (nombre === "ventas-producto") {
       if (f.producto) {
         params.push(`%${f.producto.replace(/[%_\\]/g, (c) => "\\" + c)}%`);
