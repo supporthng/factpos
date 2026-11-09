@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { api, fijarSesion, sesionActual } from "../api";
 import { Aviso, useDatos } from "../ui";
 
-interface EmpresaGrupo { id: string; rnc: string; razonSocial: string; nombre: string; actual: boolean }
+interface EmpresaGrupo { id: string; rnc: string; razonSocial: string; nombre: string; actual: boolean; sucursales?: string[] }
 
 async function pasarA(id: string) {
   const r = await api<{ token: string; usuario: { id: string; nombre: string; permisos: string[] }; empresa: { id: string; nombre: string } }>("/central/empresas/cambiar", { cuerpo: { empresaId: id } });
@@ -67,7 +67,7 @@ export function SelectorEmpresa() {
   return (
     <select className="selector-empresa" aria-label="Empresa" title="Cambiar de empresa" value={datos.find((e) => e.actual)?.id} style={{ maxWidth: 190 }}
       onChange={(e) => pasarA(e.target.value).catch((x) => alert((x as Error).message))}>
-      {datos.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+      {datos.map((e) => <option key={e.id} value={e.id}>{e.sucursales?.length ? `${e.nombre} · ${e.sucursales.join(", ")}` : `${e.nombre} · RNC ${e.rnc}`}</option>)}
     </select>
   );
 }

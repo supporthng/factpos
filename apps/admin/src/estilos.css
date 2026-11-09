@@ -1312,7 +1312,7 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 @media (max-width: 900px) {
   .barra-superior { gap: 8px; }
   .barra-superior .franja-empresa { display: none !important; }
-  .barra-superior .selector-empresa { flex: 0 1 112px; width: 112px; min-width: 0; max-width: 112px; font-size: 13px; padding: 6px 4px; text-overflow: ellipsis; }
+  .barra-superior .selector-empresa { flex: 0 1 190px; width: 190px; min-width: 0; max-width: 190px; font-size: 13px; padding: 6px 4px; text-overflow: ellipsis; }
   .barra-superior .marca-superior img { max-width: 72px; height: auto; max-height: 34px; object-fit: contain; }
   .barra-superior .boton-icono { flex: none; }
 }

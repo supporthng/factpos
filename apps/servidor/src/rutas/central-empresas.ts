@@ -22,7 +22,8 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
     const s = sesionAdmin(req);
     const g = await grupoDe(s.e);
     const r = await pool.query(
-      `SELECT id, rnc, razon_social AS "razonSocial", COALESCE(nombre_comercial, razon_social) AS nombre, id = $2 AS actual
+      `SELECT id, rnc, razon_social AS "razonSocial", COALESCE(nombre_comercial, razon_social) AS nombre, id = $2 AS actual,
+            COALESCE((SELECT array_agg(su.nombre ORDER BY su.nombre) FROM sucursales su WHERE su.empresa_id = empresas.id AND su.activo), '{}') AS sucursales
          FROM empresas WHERE COALESCE(grupo_id, id) = $1 AND activo ORDER BY (id = $2) DESC, nombre_comercial`, [g, s.e]);
     return r.rows;
   });
