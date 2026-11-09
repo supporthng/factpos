@@ -634,6 +634,8 @@ function openMain(onShown) {
   // La pantalla de entrada del admin es solo el cuadro pequeño; al entrar la ventana vuelve a su tamaño normal
   win.webContents.on('ipc-message', (_e, canal, modo) => {
     if (canal === 'factpos:turno') { turnoAbierto = !!modo; return; }
+    // «Actualizar ahora» de la pantalla: primero se trae la pantalla nueva del servidor y luego se recarga
+    if (canal === 'factpos:actualizar') { (async () => { try { await syncUi(); } catch {} if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.reloadIgnoringCache(); } catch {} } })(); return; }
     if (canal === 'factpos:cerrar') { app.quit(); return; }
     if (canal === 'factpos:imprimir') {
       // Impresión directa por la impresora elegida en Configuración (o la predeterminada de Windows), sin el cuadro de imprimir.
@@ -930,6 +932,9 @@ function finishUpdate(ok, text) {
 function watchUpdates() {
   if (selected === 'admin' && config.empresa) return; // administración en la nube: la actualiza el portal
   if (!server) return;
+  // Caja en OTRO equipo que el servidor: no se cierra ni se reinicia sola cuando el servidor se actualiza (podría haber una venta en curso).
+  // La pantalla de la caja avisa de la versión nueva y el cajero decide: «Actualizar ahora» o «Más tarde» (si no, se aplica al abrir la caja de nuevo).
+  if (selected === 'caja' && !localServer()) return;
   let busy = false, versionConocida = null, sinRespuesta = 0;
   const timer = setInterval(async () => {
     if (busy) return; busy = true;
