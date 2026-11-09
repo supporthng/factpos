@@ -255,7 +255,7 @@ async function probar(url: string, ms = 800): Promise<Encontrado | null> {
  *  2. El nombre factpos.local (el servidor lo anuncia en la red).
  *  3. Recorre las redes locales más comunes buscando quién responde.
  */
-async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e: Encontrado) => void) {
+async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e: Encontrado) => void, todos = false) {
   const vistos = new Set<string>();
   const anotar = (e: Encontrado | null) => { if (e && !vistos.has(e.url)) { vistos.add(e.url); alEncontrar(e); } };
   // Aplicación de escritorio: ella indica el servidor con el que se instaló esta caja
@@ -265,13 +265,13 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
     if (d?.servidor) {
       avance("Conectando con el servidor…");
       const e = await probar(String(d.servidor).replace(/\/$/, ""), 3000);
-      if (e) return anotar(e);
+      if (e) { anotar(e); if (!todos) return; }
     }
   } catch { /* no es la aplicación de escritorio */ }
   if (location.pathname.startsWith("/terminal")) {
     avance("Conectando con el servidor…");
     const e = await probar(location.origin, 3000);
-    if (e) return anotar(e);
+    if (e) { anotar(e); if (!todos) return; }
   }
   // La aplicación de escritorio busca por UDP en la red (como el instalador) y, si hace falta, barre las redes de este equipo;
   // al mismo tiempo se prueba el nombre factpos.local. En un navegador /descubrir-red no existe y se sigue con lo demás.
@@ -280,7 +280,8 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
     .then((r) => (r.ok ? r.json() : [])).then((l) => (Array.isArray(l) ? (l as Encontrado[]) : [])).catch(() => [] as Encontrado[]);
   const [porNombre, lista] = await Promise.all([probar("http://factpos.local:3000", 1500), delEscritorio]);
   if (lista.length) lista.forEach(anotar); else anotar(porNombre); // el mismo servidor por IP y por nombre no se ofrece dos veces
-  if (vistos.size) return;
+  if (vistos.size && !todos) return;
+  if (todos && lista.length) return; // el escritorio ya buscó en toda la red
 
   // Redes locales: la de esta misma pantalla (si se abrió por IP) y las de los routers más usados
   const redes = new Set<string>();
@@ -297,6 +298,8 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
   }
 }
 
+interface CajaElegible { id: string; numero: number; nombre: string; sucursal: string; libre?: boolean; mia?: boolean }
+
 function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; error: string; onListo: (a: Ajustes) => void }) {
   const [servidor, setServidor] = useState(inicial?.servidor ?? "");
   const [msg, setMsg] = useState(error);
@@ -304,13 +307,25 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
   const [avance, setAvance] = useState("");
   const [encontrados, setEncontrados] = useState<Encontrado[]>([]);
   const [manual, setManual] = useState(false);
+  const [cajas, setCajas] = useState<{ url: string; lista: CajaElegible[] } | null>(null);
 
-  const conectar = async (url: string) => {
+  // Nada se asigna solo: primero se elige el servidor y luego la caja de esa sucursal
+  const elegirServidor = async (url: string) => {
     setMsg("");
     setServidor(url);
     try {
-      // La primera vez, el servidor le asigna a esta PC su caja y queda definitiva: no se pregunta
-      const c = await api<{ id: string }>(url, "/cajas/asignar", { cuerpo: { equipoId: equipoId() } });
+      const lista = await api<CajaElegible[]>(url, `/cajas?equipo=${encodeURIComponent(equipoId())}`);
+      const mia = lista.find((c) => c.mia);
+      if (mia) { onListo({ servidor: url, cajaId: mia.id }); return; } // esta PC ya tiene su caja en ese servidor
+      setCajas({ url, lista });
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+  const asignar = async (url: string, cajaId: string) => {
+    setMsg("");
+    try {
+      const c = await api<{ id: string }>(url, "/cajas/asignar", { cuerpo: { equipoId: equipoId(), cajaId } });
       onListo({ servidor: url, cajaId: c.id });
     } catch (e) {
       setMsg((e as Error).message);
@@ -320,25 +335,43 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
   const buscar = async () => {
     setBuscando(true);
     setEncontrados([]);
+    setCajas(null);
     setMsg("");
     const hallados: Encontrado[] = [];
-    await buscarServidores(setAvance, (e) => { hallados.push(e); setEncontrados([...hallados]); });
+    await buscarServidores(setAvance, (e) => { hallados.push(e); setEncontrados([...hallados]); }, true);
     setBuscando(false);
-    // Un solo servidor: se conecta directo
-    if (hallados.length === 1) conectar(hallados[0].url);
-    else if (!hallados.length) { setMsg("No se encontró el servidor en la red. Revise que esté encendido y en la misma red, o escriba su dirección."); setManual(true); }
+    if (!hallados.length) { setMsg("No se encontró el servidor en la red. Revise que esté encendido y en la misma red, o escriba su dirección."); setManual(true); }
   };
   useEffect(() => { buscar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (cajas) {
+    return (
+      <Pantalla>
+        <h2>¿Qué caja es esta PC?</h2>
+        <p className="suave">{cajas.lista[0]?.sucursal ?? "Servidor"} · {cajas.url.replace("http://", "")}</p>
+        <div className="lista-opciones">
+          {cajas.lista.map((c) => (
+            <button key={c.id} className="opcion" disabled={c.libre === false} onClick={() => asignar(cajas.url, c.id)}>
+              <b>{c.nombre}</b> <span className="suave">{c.libre === false ? "en uso por otra PC" : "libre"}</span>
+            </button>
+          ))}
+          {!cajas.lista.length && <p className="suave">Ese servidor no tiene cajas activas.</p>}
+        </div>
+        {msg && <p className="error">{msg}</p>}
+        <button className="enlace" onClick={() => setCajas(null)}>Elegir otro servidor</button>
+      </Pantalla>
+    );
+  }
 
   return (
     <Pantalla>
       <h2>Preparando esta caja</h2>
       {buscando && <p className="buscando"><span className="girando" aria-hidden="true" />{avance}</p>}
-      {encontrados.length > 1 && (
+      {encontrados.length > 0 && (
         <div className="lista-opciones">
-          <p className="suave">Se encontraron varios servidores. ¿Cuál es el de esta sucursal?</p>
+          <p className="suave">{encontrados.length > 1 ? "Se encontraron varios servidores. ¿Cuál es el de esta sucursal?" : "Se encontró este servidor. Tóquelo para conectar esta caja."}</p>
           {encontrados.map((e) => (
-            <button key={e.url} className="opcion" onClick={() => conectar(e.url)}>
+            <button key={e.url} className="opcion" onClick={() => elegirServidor(e.url)}>
               <b>{e.empresa ?? "FactPOS"}</b> <span className="suave">{e.sucursales.join(", ")} · {e.url.replace("http://", "")}</span>
             </button>
           ))}
@@ -350,11 +383,11 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
           <>
             <label className="campo">
               <span>Dirección del servidor de la sucursal</span>
-              <input value={servidor} placeholder="http://192.168.1.10:3000" onChange={(e) => setServidor(e.target.value)} onKeyDown={(e) => e.key === "Enter" && conectar(servidor)} />
+              <input value={servidor} placeholder="http://192.168.1.10:3000" onChange={(e) => setServidor(e.target.value)} onKeyDown={(e) => e.key === "Enter" && elegirServidor(servidor.replace(/\/$/, ""))} />
             </label>
             <div className="dos-columnas">
               <button className="boton fantasma" onClick={buscar}>Buscar de nuevo</button>
-              <button className="boton primario" onClick={() => conectar(servidor.replace(/\/$/, ""))}>Conectar</button>
+              <button className="boton primario" onClick={() => elegirServidor(servidor.replace(/\/$/, ""))}>Conectar</button>
             </div>
           </>
         )

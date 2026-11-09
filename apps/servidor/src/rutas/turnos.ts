@@ -10,12 +10,16 @@ import { funcionHabilitada } from "./central-seguridad.js";
 const decimal2 = z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido");
 
 export async function rutasTurnos(app: FastifyInstance) {
-  app.get("/cajas", async () => {
+  /** Cajas de esta sucursal. Con ?equipo=<id de la PC>: cuáles están libres y cuál es la de esa PC (para elegirla al instalar). */
+  app.get("/cajas", async (req) => {
+    const equipo = String((req.query as { equipo?: string }).equipo ?? "").slice(0, 80) || null;
     const r = await pool.query(
-      `SELECT ca.id, ca.numero, ca.nombre, s.nombre AS sucursal
+      `SELECT ca.id, ca.numero, ca.nombre, s.nombre AS sucursal,
+              NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id) AS libre,
+              EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id AND ce.equipo_id = $2) AS mia
          FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
         WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) ORDER BY s.nombre, ca.numero`,
-      [sucursalPropia()],
+      [sucursalPropia(), equipo],
     );
     return r.rows;
   });
@@ -25,13 +29,23 @@ export async function rutasTurnos(app: FastifyInstance) {
    * de forma definitiva (si vuelve a preguntar, recibe la misma caja). El administrador puede liberarla.
    */
   app.post("/cajas/asignar", async (req) => {
-    const { equipoId } = z.object({ equipoId: z.string().min(8).max(80) }).parse(req.body);
+    const { equipoId, cajaId } = z.object({ equipoId: z.string().min(8).max(80), cajaId: z.string().uuid().optional() }).parse(req.body);
     return enTransaccion(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(hashtext('cajas_equipos'))");
       const ya = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas_equipos ce JOIN cajas ca ON ca.id = ce.caja_id JOIN sucursales s ON s.id = ca.sucursal_id
           WHERE ce.equipo_id = $1 AND ca.activo AND ($2::uuid IS NULL OR ca.sucursal_id = $2)`, [equipoId, sucursalPropia()])).rows[0];
       if (ya) return ya;
+      if (cajaId) {
+        // La persona eligió la caja: debe ser de esta sucursal y estar libre
+        const elegida = (await c.query(
+          `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
+            WHERE ca.id = $1 AND ca.activo AND ($2::uuid IS NULL OR ca.sucursal_id = $2) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)`, [cajaId, sucursalPropia()])).rows[0];
+        if (!elegida) throw new ErrorNegocio("Esa caja ya está en uso por otra PC o no es de esta sucursal.", 409);
+        await c.query("DELETE FROM cajas_equipos WHERE equipo_id = $1", [equipoId]);
+        await c.query("INSERT INTO cajas_equipos (caja_id, equipo_id) VALUES ($1,$2)", [elegida.id, equipoId]);
+        return elegida;
+      }
       const libre = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
           WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
