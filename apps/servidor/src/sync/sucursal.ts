@@ -152,7 +152,11 @@ async function avisarEquipo() {
   const verificadores = (await pool.query(
     `SELECT id, so, equipo, build, ultimo_contacto AS "ultimoContacto" FROM verificador_equipos WHERE ultimo_contacto > now() - interval '30 days' ORDER BY ultimo_contacto DESC LIMIT 100`)
     .catch(() => ({ rows: [] }))).rows.map((v: { ultimoContacto: Date | string }) => ({ ...v, ultimoContacto: new Date(v.ultimoContacto).toISOString() }));
-  await pedir("/central/sync/equipo", { method: "POST", body: JSON.stringify({ sucursalId: configSync().sucursalId, equipo: hostname().slice(0, 80), appVersion: versionActual().slice(0, 20), verificadores }) });
+  // ¿Esta sucursal envía sus cierres con su propia cuenta de correo? (la nube entonces no los manda)
+  const correoPropio = !!(await pool.query(
+    `SELECT 1 FROM envios_correo e JOIN configuracion_correo c ON c.empresa_id = e.empresa_id
+      WHERE e.tipo = 'CIERRE_CAJA' AND e.activo AND cardinality(e.destinatarios) > 0 AND c.clave_cifrada IS NOT NULL LIMIT 1`).catch(() => null))?.rowCount;
+  await pedir("/central/sync/equipo", { method: "POST", body: JSON.stringify({ sucursalId: configSync().sucursalId, equipo: hostname().slice(0, 80), appVersion: versionActual().slice(0, 20), verificadores, correoPropio }) });
 }
 
 // ---------------------------------------------------------------- BAJADA

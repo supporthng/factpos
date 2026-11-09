@@ -137,6 +137,7 @@ async function vuelta(log: (m: string) => void) {
           WHERE s.empresa_id = $1 AND t.estado = 'CERRADO'
             AND t.cerrado_en > GREATEST(COALESCE($2::timestamptz, now()), now() - interval '3 days') - interval '1 minute'
             AND ($3::uuid[] IS NULL OR t.sucursal_id = ANY($3::uuid[]))
+            AND NOT EXISTS (SELECT 1 FROM sync_sucursales ss WHERE ss.sucursal_id = t.sucursal_id AND ss.correo_propio)
             AND (NOT $4 OR abs(COALESCE(t.diferencia, 0)) >= 0.005)
             AND NOT EXISTS (SELECT 1 FROM correos_enviados c WHERE c.empresa_id = $1 AND c.tipo = 'CIERRE_CAJA' AND c.clave = t.id::text)
           ORDER BY t.cerrado_en LIMIT 25`,
