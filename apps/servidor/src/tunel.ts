@@ -26,6 +26,8 @@ import { config } from "./config.js";
  */
 export interface EstadoTunel {
   activo: boolean; tipo: "fijo" | "rapido" | null; url: string | null; desde: string | null; error: string | null; reportado: string | null;
+  /** Por qué todavía no hay dirección fija (null = no hay problema o ya la tiene) */
+  fijoMotivo?: string | null;
 }
 let estado: EstadoTunel = { activo: false, tipo: null, url: null, desde: null, error: null, reportado: null };
 export const estadoTunel = () => estado;
@@ -128,7 +130,7 @@ async function credenciales() {
 export async function pedirTunelFijo(portal: string, guardar: (v: Record<string, string>) => void, log?: (m: string) => void) {
   if (!tunelActivo() || process.env.TUNEL_TOKEN) return false;
   const c = await credenciales();
-  if (!c) return false;
+  if (!c) { estado = { ...estado, fijoMotivo: "Esta instalación no tiene la licencia activada en este servidor" }; return false; }
   try {
     const r = await fetch(`${portal}/licencias/tunel/fijo`, {
       method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(60_000),
@@ -136,11 +138,13 @@ export async function pedirTunelFijo(portal: string, guardar: (v: Record<string,
     });
     const d = (await r.json().catch(() => ({}))) as { token?: string; url?: string; error?: string };
     if (!r.ok || !d.token || !d.url) throw new Error(d.error ?? `HTTP ${r.status}`);
+    estado = { ...estado, fijoMotivo: null };
     guardar({ TUNEL_TOKEN: d.token, TUNEL_URL: d.url });
     log?.(`Túnel: el portal asignó la dirección fija ${d.url}`);
     reiniciarTunel();
     return true;
   } catch (e) {
+    estado = { ...estado, fijoMotivo: (e as Error).message.slice(0, 300) };
     log?.(`Túnel fijo todavía no disponible (${(e as Error).message}); se sigue con el túnel rápido`);
     return false;
   }
