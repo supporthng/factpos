@@ -1304,3 +1304,6 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .pin-pad-teclas button { height: 42px; font-size: 18px; font-weight: 700; border: 1px solid var(--borde-fuerte); border-radius: 10px; background: var(--panel); color: var(--texto); }
 .pin-pad-teclas button:active { background: var(--primario-suave); }
 .pin-pad-teclas .aux { font-size: 12px; font-weight: 600; }
+
+.boton.peligro { color: #b42318; border-color: #f0b9b4; }
+.boton.peligro:hover:not(:disabled) { background: #fef3f2; }

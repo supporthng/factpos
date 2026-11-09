@@ -355,7 +355,7 @@ export async function rutasCentral(app: FastifyInstance) {
               (SELECT COALESCE(jsonb_agg(jsonb_build_object('sucursal', s.nombre, 'vendidas', vv.unidades::text) ORDER BY s.nombre), '[]')
                  FROM v_oferta_vendidas vv JOIN sucursales s ON s.id = vv.sucursal_id WHERE vv.oferta_id = o.id) AS "vendidasPorSucursal"
          FROM ofertas o LEFT JOIN listas_precio lp ON lp.id = o.lista_precio_id
-        WHERE o.empresa_id = $1
+        WHERE o.empresa_id = $1 AND NOT o.eliminada
           AND ($2::uuid IS NULL OR o.sucursales IS NULL OR $2 = ANY(o.sucursales))
           AND ($3::boolean IS NOT TRUE OR (o.activo AND now() BETWEEN o.inicia_en AND o.termina_en))
         ORDER BY o.inicia_en DESC`,
@@ -433,13 +433,15 @@ export async function rutasCentral(app: FastifyInstance) {
   /** Activar/desactivar una oferta, mostrarla u ocultarla en el verificador o cambiar sus sucursales. */
   app.patch("/central/ofertas/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const b = z.object({ activo: z.boolean().optional(), mostrarEnVerificador: z.boolean().optional(), sucursales: z.array(uuid).min(1).nullable().optional() }).parse(req.body);
+    const b = z.object({ activo: z.boolean().optional(), mostrarEnVerificador: z.boolean().optional(), sucursales: z.array(uuid).min(1).nullable().optional(), eliminar: z.literal(true).optional() }).parse(req.body);
+    // Eliminar = dejar de aplicarla y de mostrarla (la fila se conserva por las ventas y reportes que la usan; así también baja a las sucursales)
     const r = await pool.query(
-      `UPDATE ofertas SET activo = COALESCE($2, activo),
-              mostrar_en_verificador = COALESCE($6, mostrar_en_verificador),
+      `UPDATE ofertas SET activo = CASE WHEN $7 THEN false ELSE COALESCE($2, activo) END,
+              mostrar_en_verificador = CASE WHEN $7 THEN false ELSE COALESCE($6, mostrar_en_verificador) END,
+              eliminada = eliminada OR $7,
               sucursales = CASE WHEN $4 THEN $3::uuid[] ELSE sucursales END
         WHERE id = $1 AND empresa_id = $5 RETURNING id, activo, sucursales, mostrar_en_verificador AS "mostrarEnVerificador"`,
-      [id, b.activo ?? null, b.sucursales ?? null, b.sucursales !== undefined, empresaDe(req), b.mostrarEnVerificador ?? null],
+      [id, b.activo ?? null, b.sucursales ?? null, b.sucursales !== undefined, empresaDe(req), b.mostrarEnVerificador ?? null, b.eliminar === true],
     );
     if (!r.rowCount) throw new ErrorNegocio("Oferta no encontrada", 404);
     return r.rows[0];
