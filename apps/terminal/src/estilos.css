@@ -345,9 +345,9 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 
 
 /* ---------- Ajuste a la resolución de la pantalla ----------
    Todo se diseña a 1366 × 768 y se escala en proporción con --escala. */
-#root { zoom: var(--escala, 1); height: calc(100vh / var(--escala, 1)); overflow: hidden; }
-.pantalla-centro { min-height: calc(100vh / var(--escala, 1)); }
-.fondo-modal { width: calc(100vw / var(--escala, 1)); height: calc(100vh / var(--escala, 1)); }
+#root { zoom: var(--escala, 1); height: calc(100vh / var(--escala, 1)); height: var(--alto-ventana, calc(100vh / var(--escala, 1))); overflow: hidden; }
+.pantalla-centro { min-height: calc(100vh / var(--escala, 1)); min-height: var(--alto-ventana, calc(100vh / var(--escala, 1))); }
+.fondo-modal { width: calc(100vw / var(--escala, 1)); height: calc(100vh / var(--escala, 1)); width: var(--ancho-ventana, calc(100vw / var(--escala, 1))); height: var(--alto-ventana, calc(100vh / var(--escala, 1))); }
 .tamano-pantalla { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--borde); flex-wrap: wrap; }
 
 /* El modo Catálogo en pantallas angostas: el carrito baja a 40 % */
