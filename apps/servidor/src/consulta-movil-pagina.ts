@@ -62,25 +62,61 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     if (c.logo) { $("logo").src = c.logo; $("logo").hidden = false; }
   }).catch(function(){ $("guia").innerHTML = '<span class="err">No se pudo conectar con la tienda. Verifica que estés en su WiFi.</span>'; });
 
-  var camaraOk = window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && "BarcodeDetector" in window;
+  // La cámara se ofrece si el navegador la permite (en HTTPS). Si el teléfono no trae lector de códigos propio
+  // (por ejemplo algunos iPhone), se usa uno de respaldo que se descarga la primera vez que se pulsa el botón.
+  var camaraOk = window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
   if (camaraOk) $("bcam").hidden = false;
   else $("guia").textContent = "Escribe el número que aparece bajo el código de barras.";
 
-  function parar(){ if (timer) clearInterval(timer); timer = null; if (flujo) flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null; $("visor").style.display = "none"; }
+  var lectorZx = null;
+  function cargarZx(){
+    return new Promise(function(ok, mal){
+      if (window.ZXing) return ok();
+      var sc = document.createElement("script");
+      sc.src = "https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js";
+      sc.onload = ok; sc.onerror = function(){ mal(new Error("zxing")); };
+      document.head.appendChild(sc);
+    });
+  }
+  function parar(){
+    if (timer) clearInterval(timer); timer = null;
+    if (lectorZx) { try { lectorZx.reset(); } catch(e) {} lectorZx = null; }
+    if (flujo) flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null;
+    $("visor").style.display = "none";
+  }
+  function leido(texto){ parar(); if (navigator.vibrate) navigator.vibrate(60); consultar(texto, true); }
+  async function conRespaldo(){
+    await cargarZx();
+    var Z = window.ZXing, hints = new Map();
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.ITF]);
+    hints.set(Z.DecodeHintType.TRY_HARDER, true);
+    lectorZx = new Z.BrowserMultiFormatReader(hints, 250);
+    $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
+    await lectorZx.decodeFromConstraints({ video: { facingMode: { ideal: "environment" } }, audio: false }, "video", function(r){ if (r) leido(r.getText()); });
+  }
   async function camara(){
     clearTimeout(volver); $("res").innerHTML = "";
     try {
-      if (!detector) {
-        // Cada teléfono acepta unos formatos: se piden solo los que soporta (si uno no existe, el lector no se crea)
-        var quiero = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"], hay = quiero;
-        try { var sop = await BarcodeDetector.getSupportedFormats(); hay = quiero.filter(function(f){ return sop.indexOf(f) >= 0; }); } catch(e0) {}
-        detector = new BarcodeDetector(hay.length ? { formats: hay } : undefined);
+      var nativo = false;
+      if ("BarcodeDetector" in window) {
+        try {
+          if (!detector) {
+            // Cada teléfono acepta unos formatos: se piden solo los que soporta (si uno no existe, el lector no se crea)
+            var quiero = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"], hay = quiero;
+            try { var sop = await BarcodeDetector.getSupportedFormats(); hay = quiero.filter(function(f){ return sop.indexOf(f) >= 0; }); } catch(e0) {}
+            detector = new BarcodeDetector(hay.length ? { formats: hay } : undefined);
+          }
+          nativo = true;
+        } catch(e1) { detector = null; }
       }
+      if (!nativo) { await conRespaldo(); return; }
       flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
       var v = $("video"); v.srcObject = flujo; await v.play();
       $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
+      var fallos = 0;
       timer = setInterval(async function(){
-        try { var r = await detector.detect(v); if (r.length) { parar(); if (navigator.vibrate) navigator.vibrate(60); consultar(r[0].rawValue, true); } } catch(e){}
+        try { var r = await detector.detect(v); if (r.length) leido(r[0].rawValue); }
+        catch(e2) { if (++fallos >= 4) { parar(); detector = null; try { await conRespaldo(); } catch(e3) { $("guia").innerHTML = '<span class="err">No se pudo usar la cámara de este teléfono. Puedes escribir el código.</span>'; } } }
       }, 250);
     } catch(e) {
       parar();
