@@ -21,6 +21,9 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
   const [aviso, setAviso] = useState<string | null>(null);
   const [desde, setDesde] = useState<number | null>(null);
   const [ocultar, setOcultar] = useState(false);
+  /** Versión nueva ya instalada en el servidor: la caja NO se reinicia sola; avisa y espera la confirmación (o el próximo inicio) */
+  const [pendiente, setPendiente] = useState<string | null>(null);
+  const [masTarde, setMasTarde] = useState(false);
   const visto = useRef(false);
   const inicial = useRef<string | null>(null);
 
@@ -40,11 +43,11 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
         if (d.actualizando) { if (!visto.current) { visto.current = true; setDesde(Date.now()); setOcultar(false); } proximo = 2500; }
         else if (visto.current) {
           visto.current = false; setDesde(null);
-          if (d.version !== inicial.current || (guardada && guardada !== d.version)) { guardar(d.version); alCambiarVersion(); location.reload(); return; }
+          if (d.version !== inicial.current || (guardada && guardada !== d.version)) setPendiente(d.version);
           if (d.resultado?.estado === "ERROR") setAviso(d.resultado.mensaje ?? "No se pudo actualizar; se conservó la versión anterior.");
         } else if (guardada && guardada !== d.version) {
-          // Se actualizó mientras esta pantalla estaba cerrada o apagada: nueva versión, nueva sesión
-          guardar(d.version); alCambiarVersion(); location.reload(); return;
+          // Se actualizó mientras esta pantalla estaba en uso: se avisa, sin interrumpir la venta
+          setPendiente(d.version);
         } else if (!guardada) guardar(d.version);
       } catch {
         if (vivo && visto.current) { setSinConexion(true); proximo = 2500; }
@@ -55,9 +58,20 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
     return () => { vivo = false; clearTimeout(t); };
   }, [servidor, alCambiarVersion]);
 
+  const aplicarAhora = () => { if (!pendiente) return; guardar(pendiente); alCambiarVersion(); location.reload(); };
   const activa = (e?.actualizando || (visto.current && sinConexion)) && !ocultar;
   const pasados = desde ? Math.floor((Date.now() - desde) / 60_000) : 0;
-  if (!activa && !aviso) return null;
+  const avisoVersion = pendiente && !masTarde && !activa ? (
+    <div className="aviso-version" role="alertdialog">
+      <b>Hay una versión nueva de FactPOS{pendiente ? ` (${vcorta(pendiente)})` : ""}</b>
+      <span>Al actualizar se cierra la sesión y se recarga la caja: termine antes la venta en curso. Las ventas en pausa se conservan. Si prefiere, se actualiza sola la próxima vez que abra la caja.</span>
+      <div>
+        <button className="boton primario" onClick={aplicarAhora}>Actualizar ahora</button>
+        <button className="boton" onClick={() => setMasTarde(true)}>Más tarde</button>
+      </div>
+    </div>
+  ) : null;
+  if (!activa && !aviso) return avisoVersion;
   if (!activa && aviso) {
     return (
       <div className="actualizando-fondo" role="alertdialog">
