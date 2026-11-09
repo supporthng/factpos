@@ -85,6 +85,10 @@ if (aplicar) {
     return j;
   };
   const ses = await api("/central/entrar", "POST", { usuario: String(o.usuario), clave: String(o.clave), ...(o.rnc ? { rnc: String(o.rnc) } : {}), ...(o.codigo ? { codigo: String(o.codigo) } : {}) });
+  if (ses.elegirEmpresa) {
+    const lista = (ses.empresas ?? []).map((e) => `${e.nombre}${e.sucursales?.length ? ` (${e.sucursales.join(", ")})` : ""}: RNC ${e.rnc}`).join("\n  • ");
+    throw new Error(`Ese usuario existe en varias empresas. Escriba el RNC de la empresa en «Más opciones» (RNC de la empresa) y vuelva a procesar:\n  • ${lista}`);
+  }
   if (ses.requiere2fa) { throw new Error("Ese usuario tiene verificación en dos pasos: agregue --codigo."); }
   token = ses.token;
   log(`Conectado a ${ses.empresa.nombre} como ${ses.usuario.nombre}.`);
