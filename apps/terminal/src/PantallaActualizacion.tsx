@@ -58,7 +58,13 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
     return () => { vivo = false; clearTimeout(t); };
   }, [servidor, alCambiarVersion]);
 
-  const aplicarAhora = () => { if (!pendiente) return; guardar(pendiente); alCambiarVersion(); location.reload(); };
+  const aplicarAhora = () => {
+    if (!pendiente) return;
+    guardar(pendiente); alCambiarVersion();
+    // En la caja de escritorio primero se trae la pantalla nueva del servidor y luego se recarga
+    const puente = (window as unknown as { factpos?: { actualizar?: () => void } }).factpos;
+    if (puente?.actualizar) puente.actualizar(); else location.reload();
+  };
   const activa = (e?.actualizando || (visto.current && sinConexion)) && !ocultar;
   const pasados = desde ? Math.floor((Date.now() - desde) / 60_000) : 0;
   const avisoVersion = pendiente && !masTarde && !activa ? (
