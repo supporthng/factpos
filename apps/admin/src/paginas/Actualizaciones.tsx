@@ -8,6 +8,25 @@ interface Estado {
   proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string } | null;
 }
 
+/**
+ * Después de pedir la instalación, esta ventana espera a que el servidor termine (se reinicia) y se recarga sola con la
+ * versión nueva. Pregunta al mismo servidor al que está conectada esta administración (también en las apps remotas, celular
+ * o Windows), así no depende de que alcance a ver el aviso «Actualizando» mientras el servidor se reinicia.
+ */
+async function recargarAlTerminar(antes: string, avisar: (t: string, tipo: "ok" | "error" | "info") => void) {
+  const inicio = Date.now();
+  avisar("Actualizando… no cierre esta ventana: cuando termine se recarga sola.", "info");
+  while (Date.now() - inicio < 20 * 60_000) {
+    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      const d = await api<Estado>(`/central/actualizacion?t=${Date.now()}`);
+      if (d.proceso?.estado === "ERROR") { avisar(`La actualización falló: ${d.proceso.mensaje ?? "error desconocido"}. Se conservó la versión anterior.`, "error"); return; }
+      if (d.actual !== antes && !d.proceso) { avisar("Actualización lista. Recargando…", "ok"); setTimeout(() => location.reload(), 600); return; }
+    } catch { /* el servidor se está reiniciando: se vuelve a intentar */ }
+  }
+  avisar("La actualización tarda más de lo normal. Recargue esta página en unos minutos.", "info");
+}
+
 export function Actualizaciones() {
   const [ruta, setRuta] = useState("/central/actualizacion");
   const { datos: d, error, recargar } = useDatos<Estado>(ruta);
@@ -18,10 +37,13 @@ export function Actualizaciones() {
     if (!confirm(`¿Instalar FactPOS ${d?.disponible}? El servidor se reinicia (1 a 3 minutos). Las cajas siguen vendiendo mientras tanto.`)) return;
     setTrabajando(true); setMsg(null);
     try {
+      const antes = d?.actual ?? "";
       await api("/central/actualizacion/instalar", { cuerpo: {} });
-      setMsg({ t: "Instalando… el servidor se reinicia. Recargue esta página en 2 minutos.", tipo: "info" });
+      setMsg({ t: "Instalando… el servidor se reinicia.", tipo: "info" });
+      void recargarAlTerminar(antes, (t, tipo) => setMsg({ t, tipo })).finally(() => setTrabajando(false));
+      return;
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
-    finally { setTrabajando(false); }
+    setTrabajando(false);
   };
 
   const sinPermiso = d ? d.licenciaActiva === false && !d.pruebaActualiza : false;
@@ -91,9 +113,14 @@ export function AvisoActualizacion({ irA }: { irA: () => void }) {
   const instalar = async () => {
     if (!confirm(`¿Instalar FactPOS ${versionNueva(d.disponible, d.actual)}? El servidor se reinicia (1 a 3 minutos). Las cajas siguen vendiendo mientras tanto.`)) return;
     setTrabajando(true); setMsg("");
-    try { await api("/central/actualizacion/instalar", { cuerpo: {} }); setMsg("Instalando… el sistema se reinicia y se vuelve a abrir solo."); }
-    catch (e) { setMsg((e as Error).message); }
-    finally { setTrabajando(false); }
+    try {
+      const antes = d.actual;
+      await api("/central/actualizacion/instalar", { cuerpo: {} });
+      setMsg("Instalando… no cierre esta ventana: se recarga sola al terminar.");
+      void recargarAlTerminar(antes, (t) => setMsg(t)).finally(() => setTrabajando(false));
+      return;
+    } catch (e) { setMsg((e as Error).message); }
+    setTrabajando(false);
   };
   return (
     <div className="aviso-licencia">
