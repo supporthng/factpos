@@ -73,9 +73,10 @@ export async function rutasVerificador(app: FastifyInstance) {
     if (!id) return rep.code(400).send({ error: "Falta la sucursal en el enlace: genere el enlace desde Verificador eligiendo la sucursal" });
     const r = await pool.query<{ ok: boolean; lat: string | null; lng: string | null; radio: string | null }>(
       `SELECT COALESCE(m.verificador->>'consultaWeb' = 'true', false) AS ok,
-              m.verificador->'ubicaciones'->$2::text->>'lat' AS lat, m.verificador->'ubicaciones'->$2::text->>'lng' AS lng,
+              CASE WHEN cs.ubicacion_tienda IS NOT NULL THEN cs.ubicacion_tienda->>'lat' ELSE m.verificador->'ubicaciones'->$2::text->>'lat' END AS lat, CASE WHEN cs.ubicacion_tienda IS NOT NULL THEN cs.ubicacion_tienda->>'lng' ELSE m.verificador->'ubicaciones'->$2::text->>'lng' END AS lng,
               m.verificador->>'radioM' AS radio
-         FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id WHERE s.id = $1::uuid AND s.activo`, [id, id]).catch((e) => { console.error("[consulta móvil]", (e as Error).message); return null; });
+         FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id
+         LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id WHERE s.id = $1::uuid AND s.activo`, [id, id]).catch((e) => { console.error("[consulta móvil]", (e as Error).message); return null; });
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
     // Solo el precio de un producto exige estar en la tienda (la página, su configuración y el QR cargan desde cualquier lugar)
     if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url)) {
@@ -252,8 +253,9 @@ export async function rutasVerificador(app: FastifyInstance) {
       `SELECT s.id AS "sucursalId", s.nombre, COALESCE(e.nombre_comercial, e.razon_social) AS empresa, m.logo,
               COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario,
               COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr", COALESCE(m.verificador->>'wifi', '') AS wifi, COALESCE((m.verificador->>'segundosOferta')::int, 7) AS "segundosOferta", $2::text AS arranque,
-              (m.verificador->'ubicaciones'->(s.id::text)->>'lat') IS NOT NULL AND (m.verificador->'ubicaciones'->(s.id::text)->>'lng') IS NOT NULL AS "ubicacionLista"
+              (CASE WHEN cs.ubicacion_tienda IS NOT NULL THEN cs.ubicacion_tienda->>'lat' ELSE m.verificador->'ubicaciones'->(s.id::text)->>'lat' END) IS NOT NULL AND (CASE WHEN cs.ubicacion_tienda IS NOT NULL THEN cs.ubicacion_tienda->>'lng' ELSE m.verificador->'ubicaciones'->(s.id::text)->>'lng' END) IS NOT NULL AS "ubicacionLista"
          FROM sucursales s JOIN empresas e ON e.id = s.empresa_id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
+         LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id
         WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null, ARRANQUE]);
     if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
     // Con varias sucursales y sin indicar cuál, no se adivina
@@ -302,7 +304,11 @@ export async function rutasVerificador(app: FastifyInstance) {
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const r = await pool.query<{ o: unknown; q: unknown; cw: unknown; w: string | null; a: unknown; s: unknown; u: unknown; rm: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'consultaWeb' AS cw, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s, verificador->'ubicaciones' AS u, verificador->'radioM' AS rm FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
     const empresaCorta = (process.env.FACTPOS_EMPRESA ?? "").trim().toLowerCase();
-    return { enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones: (r.rows[0]?.u && typeof r.rows[0].u === "object" ? r.rows[0].u : {}) as Record<string, { lat: number; lng: number }>, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
+    const ubicaciones = { ...(r.rows[0]?.u && typeof r.rows[0].u === "object" ? r.rows[0].u : {}) } as Record<string, { lat: number; lng: number }>;
+    const propias = await pool.query<{ id: string; u: { lat: number; lng: number } }>(
+      "SELECT cs.sucursal_id AS id, cs.ubicacion_tienda AS u FROM configuracion_sucursal cs JOIN sucursales s ON s.id = cs.sucursal_id WHERE s.empresa_id = $1 AND cs.ubicacion_tienda IS NOT NULL", [empresaId]);
+    for (const f of propias.rows) { if (typeof f.u?.lat === "number" && typeof f.u?.lng === "number") ubicaciones[f.id] = f.u; else delete ubicaciones[f.id]; }
+    return { enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
@@ -322,15 +328,11 @@ export async function rutasVerificador(app: FastifyInstance) {
     const b = z.object({ sucursalId: z.string().uuid(), lat: z.number().min(-90).max(90).nullable(), lng: z.number().min(-180).max(180).nullable() }).parse(req.body);
     const s = await pool.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, empresaId]);
     if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    // Se guarda en el registro de la propia sucursal (sube a la central sin pisar a las demás); borrar la ubicación guarda un registro vacío (así no vuelve a valer la copia antigua de la empresa)
+    const u = b.lat === null || b.lng === null ? "{}" : JSON.stringify({ lat: b.lat, lng: b.lng });
     await pool.query(
-      `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, '{}'::jsonb) ON CONFLICT (empresa_id) DO NOTHING`, [empresaId]);
-    if (b.lat === null || b.lng === null) {
-      await pool.query(`UPDATE configuracion_marca SET verificador = jsonb_set(verificador, '{ubicaciones}', COALESCE(verificador->'ubicaciones', '{}'::jsonb) - $2::text, true) WHERE empresa_id = $1`, [empresaId, b.sucursalId]);
-    } else {
-      await pool.query(
-        `UPDATE configuracion_marca SET verificador = jsonb_set(verificador, '{ubicaciones}', COALESCE(verificador->'ubicaciones', '{}'::jsonb) || jsonb_build_object($2::text, jsonb_build_object('lat', $3::float8, 'lng', $4::float8)), true) WHERE empresa_id = $1`,
-        [empresaId, b.sucursalId, b.lat, b.lng]);
-    }
+      `INSERT INTO configuracion_sucursal (sucursal_id, ubicacion_tienda) VALUES ($1, $2::jsonb)
+       ON CONFLICT (sucursal_id) DO UPDATE SET ubicacion_tienda = EXCLUDED.ubicacion_tienda`, [b.sucursalId, u]);
     return { ok: true };
   });
 
