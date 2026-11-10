@@ -251,13 +251,16 @@ export async function rutasVerificador(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT s.id AS "sucursalId", s.nombre, COALESCE(e.nombre_comercial, e.razon_social) AS empresa, m.logo,
               COALESCE(m.color_primario, '#c0362c') AS primario, CASE WHEN m.empresa_id IS NULL THEN '#10202e' ELSE m.color_secundario END AS secundario,
-              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr", COALESCE(m.verificador->>'wifi', '') AS wifi, COALESCE((m.verificador->>'segundosOferta')::int, 7) AS "segundosOferta", $2::text AS arranque
+              COALESCE(m.verificador->'mostrarQr', 'true'::jsonb) <> 'false'::jsonb AS "mostrarQr", COALESCE(m.verificador->>'wifi', '') AS wifi, COALESCE((m.verificador->>'segundosOferta')::int, 7) AS "segundosOferta", $2::text AS arranque,
+              (m.verificador->'ubicaciones'->(s.id::text)->>'lat') IS NOT NULL AND (m.verificador->'ubicaciones'->(s.id::text)->>'lng') IS NOT NULL AS "ubicacionLista"
          FROM sucursales s JOIN empresas e ON e.id = s.empresa_id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
         WHERE s.activo AND ($1::uuid IS NULL OR s.id = $1) ORDER BY s.nombre LIMIT 2`, [sucursal ?? null, ARRANQUE]);
     if (!r.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
     // Con varias sucursales y sin indicar cuál, no se adivina
     if (!sucursal && r.rowCount > 1) throw new ErrorNegocio("Este servidor atiende varias sucursales: abra el verificador con ?sucursal=ID", 409);
-    return r.rows[0];
+    // Por internet el precio exige la ubicación de la tienda: la página avisa desde el inicio si aún no se configuró
+    const deInternet = typeof req.headers["cf-connecting-ip"] === "string" || !!process.env.VERCEL;
+    return { ...r.rows[0], exigeUbicacion: deInternet && config.modo !== "sucursal" };
   });
 
   /**
