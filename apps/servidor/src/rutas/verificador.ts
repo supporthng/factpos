@@ -88,7 +88,7 @@ export async function rutasVerificador(app: FastifyInstance) {
       }
       const radioM = Number(radio) > 0 ? Number(radio) : RADIO_CONSULTA_M;
       const d = distanciaM(mLat, mLng, Number(lat), Number(lng));
-      if (d - pre > radioM) return rep.code(403).send({ codigo: "FUERA_DE_TIENDA", error: `Solo se puede consultar estando en la tienda (estás a unos ${Math.round(d / 10) * 10} m).` });
+      if (d - pre > radioM) return rep.code(403).send({ codigo: "FUERA_DE_TIENDA", distanciaM: Math.round(d / 10) * 10, radioM, error: `Solo se puede consultar estando en la tienda (estás a unos ${Math.round(d / 10) * 10} m).` });
     }
   });
 
