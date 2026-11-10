@@ -359,11 +359,45 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
       + '<button class="boton" id="breint">Ya la activé, reintentar</button></section>';
     $("breint").onclick = function(){ ubicacion().then(function(u){ if (u) $("permiso").innerHTML = ""; else if (!ubicNegada) $("permiso").innerHTML = ""; }); };
   }
+  // Tarjeta roja de error de la consulta (fuera de la tienda, sin ubicación, no disponible); con seg lleva la cuenta regresiva
+  function tarjetaError(d, seg){
+    var dist = function(m){ return m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m"; };
+    var cuenta = seg ? '<div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div>' : '';
+    if (d.codigo === "FUERA_DE_TIENDA") {
+      return '<section class="et aviso"><div class="ico">&#9888;</div><h2>Estás fuera de la tienda</h2><div class="grande">a ' + dist(d.distanciaM || 0) + '</div>'
+        + '<p>Los precios solo se consultan <b>dentro de la tienda</b> (a menos de ' + dist(d.radioM || 150) + ').</p>' + cuenta + '</section>';
+    }
+    if (d.codigo === "UBICACION_REQUERIDA") {
+      return '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
+        + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono.</p><p>' + PASOS_UBICACION + '</p>' + cuenta + '</section>';
+    }
+    return '<section class="et aviso"><div class="ico">&#9888;</div><h2>No disponible</h2><p>' + esc(d.error || "No se pudo consultar") + '</p>' + cuenta + '</section>';
+  }
   // Al entrar: primero se pide la ubicación (el teléfono pregunta solo) y enseguida se abre la cámara
+  function controles(ver){
+    var d = ver ? "" : "none";
+    $("bcam").style.display = d; $("bfoto").style.display = d; $("form").style.display = d; $("bienvenida").style.display = d;
+  }
+  // Al abrir la pantalla se comprueba la distancia a la tienda: si está fuera, se avisa y NO se abre el lector
+  function comprobar(){
+    return ubicacion().then(function(u){
+      if (!u) { if (ubicNegada) avisoPermiso(); return true; }
+      return fetch("/verificador/ubicacion?sucursal=" + encodeURIComponent(sucursal) + "&lat=" + u.lat + "&lng=" + u.lng + "&pre=" + Math.round(u.pre))
+        .then(function(r){ return r.ok ? { ok: true } : r.json().then(function(d){ return { ok: false, d: d }; }); })
+        .catch(function(){ return { ok: true }; })
+        .then(function(x){
+          if (x.ok) { $("permiso").innerHTML = ""; controles(true); return true; }
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+          controles(false); $("guia").textContent = "";
+          $("permiso").innerHTML = tarjetaError(x.d, 0) + '<button class="boton" id="brev">Volver a comprobar</button>';
+          $("brev").onclick = function(){ $("permiso").innerHTML = ""; comprobar().then(function(ok){ if (ok) arranque(); }); };
+          return false;
+        });
+    });
+  }
   function arranque(){
-    ubicacion().then(function(u){
-      if (!u && ubicNegada) avisoPermiso();
-      if (window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) camara();
+    comprobar().then(function(dentro){
+      if (dentro && window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) camara();
     });
   }
   async function consultar(cod, deCamara){
@@ -382,16 +416,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
       } else if (r.status === 403 || r.status === 429) {
         seg = 12;
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-        var dist = function(m){ return m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m"; };
-        if (d.codigo === "FUERA_DE_TIENDA") {
-          html = '<section class="et aviso"><div class="ico">&#9888;</div><h2>Estás fuera de la tienda</h2><div class="grande">a ' + dist(d.distanciaM || 0) + '</div>'
-            + '<p>Los precios solo se consultan <b>dentro de la tienda</b> (a menos de ' + dist(d.radioM || 150) + ').</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
-        } else if (d.codigo === "UBICACION_REQUERIDA") {
-          html = '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
-            + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono.</p><p>' + PASOS_UBICACION + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
-        } else {
-          html = '<section class="et aviso"><div class="ico">&#9888;</div><h2>No disponible</h2><p>' + esc(d.error || "No se pudo consultar") + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
-        }
+        html = tarjetaError(d, seg);
       } else {
         seg = 5;
         html = '<section class="et"><h2>No encontramos este producto</h2><p class="cod">Código ' + esc(cod) + '</p><p class="nota">Pregunta el precio en caja.</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
