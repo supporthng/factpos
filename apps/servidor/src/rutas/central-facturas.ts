@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, datosTicket } from "./facturas.js";
 import { registrarVenta, cotizar, resumen, exigirSinComprobante } from "./ventas.js";
-import { contextoCaja } from "../contexto.js";
+import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
 
@@ -158,8 +158,9 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       notas: z.string().trim().max(300).nullable().optional(),
     }).parse(req.body);
     if (!tienePermiso(permisos(req), "venta.anular")) throw new ErrorNegocio("Corregir una factura requiere permiso de supervisor", 403);
-    if (config.modo !== "sucursal") throw new ErrorNegocio("La corrección se hace en la administración de la sucursal (su servidor): allí están la caja y el inventario de esa factura.", 409);
     const v = await cargar(req, id);
+    // El servidor principal que además atiende las cajas de una tienda (SUCURSAL_LOCAL) opera las facturas de ESA sucursal
+    if (config.modo !== "sucursal" && v.sucursal_id !== sucursalPropia()) throw new ErrorNegocio("La corrección se hace en la administración de la sucursal (su servidor): allí están la caja y el inventario de esa factura.", 409);
     if (v.tipo_documento !== "SIN") throw new ErrorNegocio("Solo se corrigen las facturas sin comprobante. Las fiscales se anulan y se emite una nueva.", 409);
     const usuarioId = usuarioDe(req);
     return enTransaccion(async (c) => {
@@ -197,10 +198,10 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = z.object({ motivo: z.string().trim().min(10, "Explique el motivo (mínimo 10 caracteres)").max(200) }).parse(req.body);
     if (!tienePermiso(permisos(req), "venta.anular")) throw new ErrorNegocio("Anular una factura requiere permiso de supervisor", 403);
-    if (config.modo !== "sucursal") {
+    const v = await cargar(req, id);
+    if (config.modo !== "sucursal" && v.sucursal_id !== sucursalPropia()) {
       throw new ErrorNegocio("La anulación se hace en la administración de la sucursal (su servidor): allí están la caja y el inventario de esa factura.", 409);
     }
-    const v = await cargar(req, id);
     const usuarioId = usuarioDe(req);
     return enTransaccion(async (c) => {
       // La devolución del dinero se registra en un turno abierto: el de la caja de la factura o, si no, el de otra caja de la sucursal
@@ -216,7 +217,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
   // ================= Crear facturas desde la administración =================
   // Se factura contra una caja con el turno abierto (ahí entran el dinero y el cuadre); el inventario sale de su almacén.
   const soloSucursal = () => {
-    if (config.modo !== "sucursal") throw new ErrorNegocio("Las facturas se crean en la administración de la sucursal (su servidor): allí están la caja, el inventario y la firma del e-CF.", 409);
+    if (config.modo !== "sucursal" && !sucursalPropia()) throw new ErrorNegocio("Las facturas se crean en la administración de la sucursal (su servidor): allí están la caja, el inventario y la firma del e-CF.", 409);
   };
   /** La caja debe ser de esta empresa y de una sucursal permitida al usuario */
   const cajaPermitida = async (req: { headers: Record<string, unknown> }, cajaId: string) => {
