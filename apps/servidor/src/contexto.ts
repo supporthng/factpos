@@ -2,8 +2,26 @@ import type { PoolClient } from "pg";
 import { pool, ErrorNegocio } from "./db.js";
 import { config } from "./config.js";
 
-/** En un servidor de sucursal: el id de SU sucursal (sus cajas son solo las de ella aunque la nube le baje las de todas). En la nube: null. */
-export const sucursalPropia = (): string | null => (config.modo === "sucursal" ? process.env.SUCURSAL_ID || null : null);
+let localResuelta: string | null = null;
+
+/** En un servidor de sucursal: el id de SU sucursal (sus cajas son solo las de ella aunque la nube le baje las de todas).
+ *  En el servidor principal (modo central) que también atiende cajas de una tienda: la de SUCURSAL_LOCAL (nombre, código o id). Si no, null. */
+export const sucursalPropia = (): string | null => (config.modo === "sucursal" ? process.env.SUCURSAL_ID || null : localResuelta);
+
+/** Busca la sucursal de SUCURSAL_LOCAL (solo modo central). Se llama al arrancar. */
+export async function resolverSucursalLocal(log: (m: string) => void = () => {}): Promise<void> {
+  localResuelta = null;
+  const v = (process.env.SUCURSAL_LOCAL ?? "").trim();
+  if (config.modo === "sucursal" || !v) return;
+  try {
+    const r = await pool.query(
+      `SELECT id FROM sucursales WHERE activo AND (id::text = $1 OR lower(codigo) = lower($1) OR lower(nombre) = lower($1)) ORDER BY codigo LIMIT 2`,
+      [v],
+    );
+    if (r.rowCount === 1) { localResuelta = r.rows[0].id; log(`Sucursal local de este servidor: ${v}`); }
+    else log(`SUCURSAL_LOCAL=${v}: ${r.rowCount ? "hay más de una sucursal con ese nombre" : "no existe una sucursal activa con ese nombre"}; se ignora.`);
+  } catch { /* la base aún no responde */ }
+}
 
 export interface ContextoCaja {
   cajaId: string;

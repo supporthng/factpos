@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { crearApp } from "./aplicacion.js";
 import { config } from "./config.js";
 import { migrar } from "./migrar.js";
+import { resolverSucursalLocal } from "./contexto.js";
 import { iniciarCola } from "./fiscal/cola.js";
 import { certificado } from "./fiscal/firma.js";
 import { cargarCertificadoGuardado } from "./fiscal/certificado-guardado.js";
@@ -26,6 +27,7 @@ import { iniciarRespaldos } from "./respaldo/respaldo.js";
 const enVercel = !!process.env.VERCEL;
 
 if (!enVercel) await migrar((m) => console.log(`[migraciones] ${m}`));
+if (!enVercel) await resolverSucursalLocal((m) => console.log(`[sucursal] ${m}`));
 // Sucursal que conoce a su empresa pero no la dirección de su servidor principal: se la pide al portal
 if (!enVercel && config.modo === "sucursal" && !process.env.CENTRAL_URL && process.env.FACTPOS_EMPRESA) {
   await resolverCentral((m) => console.log(`[sincronización] ${m}`));
