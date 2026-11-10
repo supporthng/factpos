@@ -18,8 +18,9 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
               COALESCE((SELECT jsonb_agg(jsonb_build_object('id', c.id, 'numero', c.numero, 'nombre', c.nombre, 'activo', c.activo,
                                   'almacen', (SELECT nombre FROM almacenes WHERE id = c.almacen_id),
                                   'turnoAbierto', EXISTS (SELECT 1 FROM turnos t WHERE t.caja_id = c.id AND t.estado = 'ABIERTO'),
-                                  'ultimaVenta', (SELECT MAX(creado_en) FROM ventas v WHERE v.caja_id = c.id)) ORDER BY c.numero)
-                          FROM cajas c WHERE c.sucursal_id = s.id), '[]') AS terminales
+                                  'ultimaVenta', (SELECT MAX(creado_en) FROM ventas v WHERE v.caja_id = c.id),
+                                  'conPc', EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = c.id)) ORDER BY c.numero)
+                          FROM cajas c WHERE c.sucursal_id = s.id AND NOT c.eliminada), '[]') AS terminales
          FROM sucursales s WHERE s.empresa_id = $1 ORDER BY s.codigo`,
       [empresaDe(req)],
     );
@@ -89,6 +90,21 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
       `DELETE FROM cajas_equipos ce USING cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
         WHERE ce.caja_id = ca.id AND ca.id = $1 AND s.empresa_id = $2`, [id, empresaDe(req)]);
     return { liberada: (r.rowCount ?? 0) > 0 };
+  });
+
+  /** Elimina (oculta) una terminal: no puede tener el turno abierto. Sus ventas y turnos se conservan. */
+  app.delete("/central/terminales/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return enTransaccion(async (c) => {
+      const caja = (await c.query(
+        `SELECT ca.id, EXISTS (SELECT 1 FROM turnos t WHERE t.caja_id = ca.id AND t.estado = 'ABIERTO') AS abierto
+           FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id WHERE ca.id = $1 AND s.empresa_id = $2 FOR UPDATE OF ca`, [id, empresaDe(req)])).rows[0];
+      if (!caja) throw new ErrorNegocio("Terminal no encontrada", 404);
+      if (caja.abierto) throw new ErrorNegocio("Esa terminal tiene el turno abierto: ciérrelo antes de eliminarla.", 409);
+      await c.query("DELETE FROM cajas_equipos WHERE caja_id = $1", [id]);
+      await c.query("UPDATE cajas SET activo = false, eliminada = true WHERE id = $1", [id]);
+      return { eliminada: true };
+    });
   });
 
   /** Nueva terminal de venta en una sucursal. */
