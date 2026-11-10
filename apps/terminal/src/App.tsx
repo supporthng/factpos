@@ -214,12 +214,12 @@ function AppInterna() {
   if (cerrada) return <Pantalla><h2>Caja cerrada</h2><p className="suave">Ya puede cerrar esta ventana.</p><button className="boton ancho" onClick={() => location.reload()}>Abrir de nuevo</button></Pantalla>;
   if (ajustes && error && !config) {
     // Esta PC ya tiene su caja: un fallo de conexión nunca la desconfigura, solo se reintenta
-    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button></Pantalla>;
+    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button><button className="enlace" onClick={aprobadoSalir}>Cerrar FactPOS</button></Pantalla>;
   }
   if (!ajustes) {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} onCerrar={() => { window.dispatchEvent(new Event("factpos:antes-salir")); setTimeout(cerrarTodo, 200); }} />;
   }
-  if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
+  if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p><button className="enlace" onClick={aprobadoSalir}>Cerrar FactPOS</button></Pantalla>;
   if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} onCerrar={() => setSaliendo(true)} onCambiar={() => setCambiando(true)} />{ventanaSalir}{ventanaCambiar}{ventanaMin}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <><AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onSalir={salir} onCerrarSistema={() => setSaliendo(true)} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />{ventanaSalir}</>;
@@ -398,6 +398,7 @@ function Configurar({ inicial, error, onListo, onCerrar }: { inicial: Ajustes | 
         </div>
         {msg && <p className="error">{msg}</p>}
         <button className="enlace" onClick={() => setCajas(null)}>Elegir otro servidor</button>
+        <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>
       </Pantalla>
     );
   }
