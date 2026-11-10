@@ -159,8 +159,8 @@ function AppInterna() {
   // En la pantalla del PIN (nadie ha entrado) no hay turno de nadie que proteger, pero cerrar la caja sí pide a un supervisor o administrador
   const ventanaCambiar = cambiando && ajustes ? (
     <Modal titulo="Cambiar de servidor" onCerrar={() => setCambiando(false)}>
-      <p>Esta PC quedó asignada a su caja y solo un supervisor o administrador puede cambiarla. Escriba su PIN para desvincularla y elegir otro servidor.</p>
-      <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cambiar de servidor" enfocar onAprobado={cambiarServidor} />
+      <p>Esta PC quedó asignada a su caja y solo un administrador puede cambiarla. Escriba su PIN para desvincularla y elegir otro servidor.</p>
+      <PinSupervisor ajustes={ajustes} permiso="caja.cambiar_servidor" textoBoton="Autorizar y cambiar de servidor" enfocar onAprobado={cambiarServidor} />
       <p className="suave" style={{ marginTop: 8 }}>Después, el administrador debe liberar esta PC en el servidor anterior (Sucursales y terminales › Liberar PC) para que pueda tomar otra caja.</p>
       <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setCambiando(false)}>Volver</button>
     </Modal>

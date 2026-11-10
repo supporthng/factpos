@@ -151,7 +151,7 @@ export async function rutasFacturas(app: FastifyInstance) {
   /** El supervisor teclea su PIN y obtiene una aprobación para una acción concreta. */
   app.post("/cajas/:cajaId/autorizar", async (req) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
-    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.precio", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "venta.credito"]) }).parse(req.body);
+    const b = z.object({ pin: z.string().regex(/^\d{4,8}$/, "PIN de 4 a 8 dígitos"), permiso: z.enum(["venta.descuento", "venta.precio", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto", "caja.salir", "caja.cambiar_servidor", "venta.credito"]) }).parse(req.body);
     // Sin sesión de cajero (cerrar FactPOS desde la pantalla del PIN) se limitan los intentos, igual que al entrar
     const sinSesion = !(req as typeof req & { sesionCaja?: unknown }).sesionCaja;
     const llave = `autorizar:${cajaId}`;
