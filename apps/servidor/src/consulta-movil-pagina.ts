@@ -19,6 +19,7 @@ main{max-width:520px;margin:0 auto;padding:16px}
 .visor{position:relative;background:#000;border-radius:16px;overflow:hidden;aspect-ratio:4/3;display:none}
 .visor video{width:100%;height:100%;object-fit:cover}
 .visor i{position:absolute;left:8%;right:8%;top:50%;height:2px;background:#ff4d4d;box-shadow:0 0 8px #f00}
+.visor .linterna{position:absolute;right:10px;top:10px;border:0;border-radius:999px;padding:8px 12px;font-size:14px;font-weight:700;background:rgba(0,0,0,.55);color:#fff}.visor .linterna.encendida{background:#ffd54a;color:#10202e}
 .guia{text-align:center;color:#5b6b7a;margin:10px 0;min-height:20px;font-size:14px}
 .boton{display:block;width:100%;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:700;background:var(--m);color:#fff;margin:10px 0}
 .boton.claro{background:#fff;color:#10202e;border:1px solid #cfd6dd}
@@ -70,51 +71,194 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   if (camaraOk) $("bcam").hidden = false;
   else $("guia").textContent = "Escribe el número que aparece bajo el código de barras.";
 
-  var lectorZx = null;
-  function cargarZx(){
+  // Lector de códigos de barras (el mismo que ya funciona en Prezio): el del navegador (Chrome de Android) o, si no hay,
+  // ZXing-C++ de la librería barcode-detector (versión fija). Solo se aceptan lecturas seguras: dígito verificador correcto,
+  // código sobre la línea roja y el mismo código en 3 imágenes seguidas.
+  var LECTOR_URL = "https://cdn.jsdelivr.net/npm/barcode-detector@3.1.3/dist/iife/ponyfill.js";
+  var FORMATOS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"];
+  var CONFIRMACIONES = 3, ESPERA_INICIAL = 1000;
+  var detectorListo = null, lector = null;
+  function cargarScript(src){
     return new Promise(function(ok, mal){
-      if (window.ZXing) return ok();
       var sc = document.createElement("script");
-      sc.src = "https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js";
-      sc.onload = ok; sc.onerror = function(){ mal(new Error("zxing")); };
+      sc.src = src; sc.async = true; sc.crossOrigin = "anonymous";
+      sc.onload = function(){ ok(); }; sc.onerror = function(){ mal(new Error("lector")); };
       document.head.appendChild(sc);
     });
   }
-  function parar(){
-    if (timer) clearInterval(timer); timer = null;
-    if (lectorZx) { try { lectorZx.reset(); } catch(e) {} lectorZx = null; }
-    if (flujo) flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null;
-    $("visor").style.display = "none";
+  async function obtenerDetector(){
+    if (window.BarcodeDetector) {
+      try {
+        var sop = (await window.BarcodeDetector.getSupportedFormats()) || [];
+        var f = FORMATOS.filter(function(x){ return sop.indexOf(x) >= 0; });
+        if (f.length) return new window.BarcodeDetector({ formats: f });
+      } catch(e) { /* se usa la versión compatible */ }
+    }
+    if (!(window.BarcodeDetectionAPI && window.BarcodeDetectionAPI.BarcodeDetector)) await cargarScript(LECTOR_URL);
+    if (!(window.BarcodeDetectionAPI && window.BarcodeDetectionAPI.BarcodeDetector)) throw new Error("lector");
+    return new window.BarcodeDetectionAPI.BarcodeDetector({ formats: FORMATOS });
   }
-  // Pitido de lector de códigos: el audio se activa al pulsar el botón de la cámara (los teléfonos no dejan sonar antes de un toque)
-  var audio = null;
+  function pedirDetector(){
+    if (!detectorListo) detectorListo = obtenerDetector().catch(function(e){ detectorListo = null; throw e; });
+    return detectorListo;
+  }
+  /** Dígito verificador de EAN-13, EAN-8 y UPC-A (descarta lecturas equivocadas). */
+  function digitoValido(valor, formato){
+    if (["ean_13", "ean_8", "upc_a"].indexOf(formato || "") < 0) return true;
+    if (!/^[0-9]+$/.test(valor) || [8, 12, 13].indexOf(valor.length) < 0) return false;
+    var d = valor.split("").map(Number), control = d.pop(), suma = 0;
+    d.reverse().forEach(function(x, k){ suma += x * (k % 2 === 0 ? 3 : 1); });
+    return (10 - (suma % 10)) % 10 === control;
+  }
+  /** Los UPC-E a veces llegan expandidos: se devuelven como están impresos (8 dígitos). */
+  function upceImpreso(valor, formato){
+    if (formato !== "upc_e" || !/^[0-9]+$/.test(valor) || valor.length === 8) return valor;
+    var a = valor;
+    if (a.length === 13 && a[0] === "0") a = a.slice(1);
+    if (a.length !== 12 || "01".indexOf(a[0]) < 0) return valor;
+    var ns = a[0], f = a.slice(1, 6), p = a.slice(6, 11), c = a[11], d = null;
+    if ("012".indexOf(f[2]) >= 0 && f.slice(3) === "00" && p.slice(0, 2) === "00") d = f.slice(0, 2) + p.slice(2, 5) + f[2];
+    else if (f.slice(3) === "00" && p.slice(0, 3) === "000") d = f.slice(0, 3) + p.slice(3, 5) + "3";
+    else if (f[4] === "0" && p.slice(0, 4) === "0000") d = f.slice(0, 4) + p[4] + "4";
+    else if (p.slice(0, 4) === "0000" && "56789".indexOf(p[4]) >= 0) d = f + p[4];
+    return d ? ns + d + c : valor;
+  }
+
+  // Pitido de lector (un audio corto: suena también con el iPhone en silencio, después de un primer toque en la pantalla)
+  function crearWav(segundos, conTono){
+    var sr = 22050, n = Math.floor(sr * segundos), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    function txt(o, t){ for (var k = 0; k < t.length; k++) v.setUint8(o + k, t.charCodeAt(k)); }
+    txt(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); txt(8, "WAVE"); txt(12, "fmt ");
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    txt(36, "data"); v.setUint32(40, n * 2, true);
+    for (var k = 0; conTono && k < n; k++) {
+      var env = Math.min(1, k / 150, (n - k) / 300);
+      var onda = Math.sin((2 * Math.PI * 2700 * k) / sr) >= 0 ? 1 : -1;
+      v.setInt16(44 + k * 2, Math.round(onda * env * 0.55 * 32767), true);
+    }
+    return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  }
+  var sonido = null;
   function activarAudio(){
-    try { var AC = window.AudioContext || window.webkitAudioContext; if (!audio && AC) audio = new AC(); if (audio && audio.state === "suspended") audio.resume(); } catch(e) {}
+    try {
+      if (!sonido) { var tono = crearWav(0.12, true); sonido = { bip: new Audio(tono), tono: tono, silencio: crearWav(0.05, false), listo: false }; }
+      if (sonido.listo) return;
+      var s = sonido;
+      s.bip.src = s.silencio;
+      s.bip.play().then(function(){ s.listo = true; s.bip.pause(); s.bip.src = s.tono; s.bip.load(); }).catch(function(){ s.bip.src = s.tono; });
+    } catch(e) {}
   }
   function pitido(){
+    if (!sonido) return;
+    try { sonido.bip.currentTime = 0; } catch(e) {}
+    try { sonido.bip.play().catch(function(){}); } catch(e) {}
+  }
+
+  function parar(){
+    if (lector) { lector.detener(); lector = null; }
+    $("visor").style.display = "none";
+  }
+  function leido(texto){ parar(); if (navigator.vibrate) navigator.vibrate(60); consultar(texto, true); }
+
+  /** Abre la cámara en el visor y llama alLeer(código) con una lectura segura. avisar recibe las guías. */
+  async function abrirLector(caja, video, alLeer, avisar){
+    var stream = null, abierto = 0, activo = true, candidato = null, guia = "", guiaT = 0, lienzo = document.createElement("canvas");
+    var GUIA = ["Pon el código sobre la línea roja", "Acerca un poco el teléfono", "Aleja un poco el teléfono", "Mantén el teléfono quieto un momento"];
+    var guias = setInterval(function(){
+      if (!abierto) return;
+      var seg = (Date.now() - abierto) / 1000, reciente = Date.now() - guiaT < 700;
+      if (reciente && guia === "enfocando") avisar("Enfocando… mantén el teléfono quieto");
+      else if (reciente && guia === "acercar") avisar("Acerca el código: se ve muy pequeño");
+      else if (reciente && guia === "centrar") avisar("Pon el código sobre la línea roja");
+      else avisar(seg < 2.5 ? "Distancia ideal: 15 a 20 cm del código" : GUIA[Math.floor((seg - 2.5) / 2.2) % GUIA.length]);
+    }, 500);
+    function detener(){
+      activo = false; clearInterval(guias);
+      if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+      video.srcObject = null;
+      var b = caja.querySelectorAll(".linterna"); for (var k = 0; k < b.length; k++) b[k].remove();
+    }
     try {
-      if (!audio) return;
-      var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
-      o.type = "square"; o.frequency.value = 1800;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + 0.17);
-    } catch(e) {}
+      avisar("Abriendo la cámara…");
+      var detectorPedido = pedirDetector();
+      detectorPedido.catch(function(){});
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      video.setAttribute("playsinline", ""); video.muted = true; video.autoplay = true; video.srcObject = stream;
+      await video.play().catch(function(){});
+      var pista = stream.getVideoTracks()[0];
+      try {
+        var cap = (pista.getCapabilities ? pista.getCapabilities() : {}) || {};
+        if (cap.focusMode && cap.focusMode.indexOf("continuous") >= 0) await pista.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+        if (cap.torch) {
+          var encendida = false, bl = document.createElement("button");
+          bl.type = "button"; bl.className = "linterna"; bl.textContent = "Luz"; bl.setAttribute("aria-label", "Encender linterna");
+          bl.addEventListener("click", async function(ev){
+            ev.stopPropagation();
+            try { encendida = !encendida; await pista.applyConstraints({ advanced: [{ torch: encendida }] }); bl.classList.toggle("encendida", encendida); }
+            catch(e) { bl.remove(); }
+          });
+          caja.appendChild(bl);
+        }
+      } catch(e) { /* sin enfoque ni linterna: igual lee */ }
+      var detector = await detectorPedido;
+      abierto = Date.now();
+      var ciclo = async function(){
+        if (!activo) return;
+        try {
+          if (video.readyState >= 2 && video.videoWidth) {
+            var escala = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+            var w = (lienzo.width = Math.round(video.videoWidth * escala)), h = (lienzo.height = Math.round(video.videoHeight * escala));
+            lienzo.getContext("2d", { willReadFrequently: true }).drawImage(video, 0, 0, w, h);
+            var r = (await detector.detect(lienzo)) || [];
+            if (!activo) return;
+            var ahora = Date.now(), elegido = null, motivo = null;
+            for (var q = 0; q < r.length; q++) {
+              var c = r[q], valor = upceImpreso(String(c.rawValue == null ? "" : c.rawValue).trim(), c.format);
+              if (!valor || !digitoValido(valor, c.format)) continue;
+              var b = c.boundingBox, pos = "ok";
+              if (b && b.width) {
+                var cy = h / 2, cx = b.x + b.width / 2;
+                if (Math.max(b.width, b.height) < 0.12 * Math.min(w, h)) pos = "acercar";
+                else if (!(b.y <= cy + 0.12 * h && b.y + b.height >= cy - 0.12 * h) || cx < 0.15 * w || cx > 0.85 * w) pos = "centrar";
+              }
+              if (pos === "ok") { elegido = valor; break; }
+              if (!motivo) motivo = pos;
+            }
+            if (elegido && ahora - abierto >= ESPERA_INICIAL) {
+              if (candidato && candidato.valor === elegido && ahora - candidato.t < 800) { candidato.veces++; candidato.t = ahora; }
+              else candidato = { valor: elegido, veces: 1, t: ahora };
+              if (candidato.veces >= CONFIRMACIONES) { pitido(); detener(); alLeer(elegido); return; }
+              guia = "enfocando"; guiaT = ahora;
+            } else if (motivo) { guia = motivo; guiaT = ahora; }
+            if (candidato && ahora - candidato.t > 800) candidato = null;
+          }
+        } catch(e) { /* una imagen mala no detiene el lector */ }
+        setTimeout(ciclo, 110);
+      };
+      ciclo();
+    } catch(e) { detener(); throw e; }
+    return { detener: detener };
   }
-  function leido(texto){ parar(); pitido(); if (navigator.vibrate) navigator.vibrate(60); consultar(texto, true); }
-  // Enfoque continuo (si el teléfono lo permite): sin enfoque nítido el código de barras no se lee
-  function enfocar(){
+  async function camara(){
+    activarAudio();
+    clearTimeout(volver); $("res").innerHTML = ""; parar();
+    $("visor").style.display = "block"; $("guia").textContent = "Abriendo la cámara…";
     try {
-      var src = $("video").srcObject, t = src && src.getVideoTracks()[0];
-      if (t && t.applyConstraints) t.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(function(){});
-    } catch(e) {}
+      lector = await abrirLector($("visor"), $("video"), function(cod){ lector = null; leido(cod); }, function(t){ $("guia").textContent = t; });
+    } catch(e) {
+      parar();
+      var negada = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+      var sinLector = e && e.message === "lector";
+      $("guia").innerHTML = '<span class="err">' + (negada
+        ? 'La cámara está bloqueada para esta página. Actívala en los ajustes del navegador (Permisos › Cámara) o escribe el código.'
+        : sinLector ? 'No se pudo cargar el lector de códigos. Revisa tu conexión o escribe el código.'
+        : 'No se pudo usar la cámara de este teléfono. Puedes escribir el código.') + '</span>';
+    }
   }
-  function hintsZx(){
-    var Z = window.ZXing, hints = new Map();
-    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.ITF]);
-    hints.set(Z.DecodeHintType.TRY_HARDER, true);
-    return hints;
-  }
-  // Foto con la cámara normal del teléfono (enfoca y tiene más resolución que la imagen en vivo): se lee el código de la foto
+  $("bcam").onclick = camara;
+
+  // Foto con la cámara normal del teléfono (enfoca y tiene más resolución): se lee el código de la foto con el mismo lector
   function cargarImagen(url){
     return new Promise(function(ok, mal){ var i = new Image(); i.onload = function(){ ok(i); }; i.onerror = function(){ mal(new Error("imagen")); }; i.src = url; });
   }
@@ -124,64 +268,25 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     parar(); clearTimeout(volver); $("res").innerHTML = ""; $("guia").textContent = "Leyendo la foto…";
     var url = null;
     try {
-      await cargarZx();
-      var lector = new window.ZXing.BrowserMultiFormatReader(hintsZx());
+      var det = await pedirDetector();
       url = URL.createObjectURL(f);
-      var img = await cargarImagen(url), texto = null, lados = [2000, 1400, 900];
+      var img = await cargarImagen(url), texto = null, lados = [1800, 1200, 800];
       for (var k = 0; k < lados.length && !texto; k++) {
         var esc = Math.min(1, lados[k] / Math.max(img.naturalWidth, img.naturalHeight));
-        var c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.naturalWidth * esc)); c.height = Math.max(1, Math.round(img.naturalHeight * esc));
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        try { var r = await lector.decodeFromImageElement(await cargarImagen(c.toDataURL("image/jpeg", 0.92))); texto = r.getText(); } catch(e0) {}
+        var cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(img.naturalWidth * esc)); cv.height = Math.max(1, Math.round(img.naturalHeight * esc));
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        var rs = (await det.detect(cv)) || [];
+        for (var q = 0; q < rs.length && !texto; q++) {
+          var v = upceImpreso(String(rs[q].rawValue == null ? "" : rs[q].rawValue).trim(), rs[q].format);
+          if (v && digitoValido(v, rs[q].format)) texto = v;
+        }
       }
       if (texto) { pitido(); if (navigator.vibrate) navigator.vibrate(60); $("guia").textContent = ""; consultar(texto, false); }
-      else $("guia").innerHTML = '<span class="err">No se pudo leer el código en la foto. Toma la foto con el código de frente, bien enfocado y sin reflejo, o escríbelo.</span>';
+      else $("guia").innerHTML = '<span class="err">No se pudo leer el código en la foto. Tómala con el código de frente, enfocado y sin reflejo, o escríbelo.</span>';
     } catch(e) {
-      $("guia").innerHTML = '<span class="err">No se pudo leer la foto. Escribe el código.</span>';
+      $("guia").innerHTML = '<span class="err">No se pudo leer la foto. Revisa tu conexión o escribe el código.</span>';
     } finally { if (url) URL.revokeObjectURL(url); }
   };
-  async function conRespaldo(){
-    await cargarZx();
-    var Z = window.ZXing;
-    lectorZx = new Z.BrowserMultiFormatReader(hintsZx(), 250);
-    $("visor").style.display = "block"; $("guia").textContent = "Apunta al código y aleja un poco el teléfono hasta que enfoque";
-    await lectorZx.decodeFromConstraints({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }, "video", function(r){ if (r) leido(r.getText()); });
-    enfocar();
-  }
-  async function camara(){
-    activarAudio();
-    clearTimeout(volver); $("res").innerHTML = "";
-    try {
-      var nativo = false;
-      if ("BarcodeDetector" in window) {
-        try {
-          if (!detector) {
-            // Cada teléfono acepta unos formatos: se piden solo los que soporta (si uno no existe, el lector no se crea)
-            var quiero = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"], hay = quiero;
-            try { var sop = await BarcodeDetector.getSupportedFormats(); hay = quiero.filter(function(f){ return sop.indexOf(f) >= 0; }); } catch(e0) {}
-            detector = new BarcodeDetector(hay.length ? { formats: hay } : undefined);
-          }
-          nativo = true;
-        } catch(e1) { detector = null; }
-      }
-      if (!nativo) { await conRespaldo(); return; }
-      flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-      var v = $("video"); v.srcObject = flujo; await v.play(); enfocar();
-      $("visor").style.display = "block"; $("guia").textContent = "Apunta al código y aleja un poco el teléfono hasta que enfoque";
-      var fallos = 0;
-      timer = setInterval(async function(){
-        try { var r = await detector.detect(v); if (r.length) leido(r[0].rawValue); }
-        catch(e2) { if (++fallos >= 4) { parar(); detector = null; try { await conRespaldo(); } catch(e3) { $("guia").innerHTML = '<span class="err">No se pudo usar la cámara de este teléfono. Puedes escribir el código.</span>'; } } }
-      }, 250);
-    } catch(e) {
-      parar();
-      var negada = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
-      $("guia").innerHTML = '<span class="err">' + (negada
-        ? 'La cámara está bloqueada para esta página. Actívala en los ajustes del navegador (Permisos › Cámara) o escribe el código.'
-        : 'No se pudo usar la cámara de este teléfono. Puedes escribir el código.') + '</span>';
-    }
-  }
-  $("bcam").onclick = camara;
 
   // Ubicación del teléfono: por internet el servidor solo responde a quien está en la tienda (en el WiFi de la tienda no hace falta)
   function ubicacion(){
