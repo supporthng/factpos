@@ -84,7 +84,28 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     if (flujo) flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null;
     $("visor").style.display = "none";
   }
-  function leido(texto){ parar(); if (navigator.vibrate) navigator.vibrate(60); consultar(texto, true); }
+  // Pitido de lector de códigos: el audio se activa al pulsar el botón de la cámara (los teléfonos no dejan sonar antes de un toque)
+  var audio = null;
+  function activarAudio(){
+    try { var AC = window.AudioContext || window.webkitAudioContext; if (!audio && AC) audio = new AC(); if (audio && audio.state === "suspended") audio.resume(); } catch(e) {}
+  }
+  function pitido(){
+    try {
+      if (!audio) return;
+      var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+      o.type = "square"; o.frequency.value = 1800;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + 0.17);
+    } catch(e) {}
+  }
+  function leido(texto){ parar(); pitido(); if (navigator.vibrate) navigator.vibrate(60); consultar(texto, true); }
+  // Enfoque continuo (si el teléfono lo permite): sin enfoque nítido el código de barras no se lee
+  function enfocar(){
+    try {
+      var src = $("video").srcObject, t = src && src.getVideoTracks()[0];
+      if (t && t.applyConstraints) t.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(function(){});
+    } catch(e) {}
+  }
   async function conRespaldo(){
     await cargarZx();
     var Z = window.ZXing, hints = new Map();
@@ -92,9 +113,11 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     hints.set(Z.DecodeHintType.TRY_HARDER, true);
     lectorZx = new Z.BrowserMultiFormatReader(hints, 250);
     $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
-    await lectorZx.decodeFromConstraints({ video: { facingMode: { ideal: "environment" } }, audio: false }, "video", function(r){ if (r) leido(r.getText()); });
+    await lectorZx.decodeFromConstraints({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }, "video", function(r){ if (r) leido(r.getText()); });
+    enfocar();
   }
   async function camara(){
+    activarAudio();
     clearTimeout(volver); $("res").innerHTML = "";
     try {
       var nativo = false;
@@ -110,8 +133,8 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
         } catch(e1) { detector = null; }
       }
       if (!nativo) { await conRespaldo(); return; }
-      flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-      var v = $("video"); v.srcObject = flujo; await v.play();
+      flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      var v = $("video"); v.srcObject = flujo; await v.play(); enfocar();
       $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
       var fallos = 0;
       timer = setInterval(async function(){
