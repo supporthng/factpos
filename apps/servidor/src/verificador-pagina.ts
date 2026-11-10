@@ -352,7 +352,7 @@ export const PAGINA_VERIFICADOR = /* html */ `<!doctype html>
   let qrActivo = true;   // lo decide el interruptor de Administración › Verificador
   function qrMovil() {
     if (!qrActivo) return "";
-    return '<div class="qrmovil"><img src="/verificador/movil/qr.svg' + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "") + '" alt=""><div><b>Consulta desde tu celular</b><small>Conéctate al WiFi' + (wifiTienda ? ' «' + esc(wifiTienda) + '»' : ' de la tienda') + '<br>y escanea este código</small></div></div>';
+    return '<div class="qrmovil"><img src="/verificador/movil/qr.svg' + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "") + '" alt=""><div><b>Consulta desde tu celular</b><small>Escanea este código<br>con la cámara de tu celular</small></div></div>';
   }
   function espera() {
     clearTimeout(inactivo); clearTimeout(temporizador);

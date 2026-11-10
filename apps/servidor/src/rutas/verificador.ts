@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { leerCodigoBalanza, mejorOferta, formatoRD, variantesCodigoBarra } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
-import { SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
+import { SQL_PRESENTACION, sucursalPropia, type PresentacionVenta } from "../contexto.js";
 import { tienePermiso, type SesionAdmin } from "../sesion.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
 import { supervisorPorPin } from "../autorizacion.js";
@@ -107,7 +107,14 @@ export async function rutasVerificador(app: FastifyInstance) {
     const [nombreHost, puertoHost] = host.split(/:(?=\d+$)/);
     const ip = /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])$/i.test(nombreHost) ? direccionesLocales()[0] : undefined;
     const destino = ip ? `${ip}${puertoHost ? ":" + puertoHost : ""}` : host;
-    const url = `http://${destino}/verificador/movil${sucursal ? `?sucursal=${sucursal}` : ""}`;
+    // Solo se usa el enlace de INTERNET de la empresa (fijo; el cliente no necesita el WiFi y la ubicación limita el uso a la tienda).
+    // Sin nombre de empresa configurado queda la dirección local de siempre.
+    const empresaCorta = (process.env.FACTPOS_EMPRESA ?? "").trim().toLowerCase();
+    let suc = sucursal ?? sucursalPropia() ?? undefined;
+    if (!suc) { const u = await pool.query<{ id: string }>("SELECT id FROM sucursales WHERE activo LIMIT 2"); if (u.rowCount === 1) suc = u.rows[0].id; }
+    const url = empresaCorta && suc
+      ? `${PORTAL_URL()}/${empresaCorta}/precios?sucursal=${suc}`
+      : `http://${destino}/verificador/movil${sucursal ? `?sucursal=${sucursal}` : ""}`;
     rep.type("image/svg+xml").header("cache-control", "public, max-age=60");
     return QRCode.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
   });
