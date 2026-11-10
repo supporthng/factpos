@@ -487,6 +487,12 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   # Usuario factpos + base factpos + comprobación de que entra con la clave que se va a guardar
   $r = Bd preparar $urlAdmin $claveBD
   if ($script:CodigoBd -ne 0) { throw "No se pudo preparar el usuario y la base factpos en localhost:$($PuertoPostgres): $r. No se escribió el .env." }
+  # El PIN_SECRETO firma los PIN de los usuarios: si se pierde el .env (reinstalación), se recupera el guardado en respaldos\
+  $copiaPin = Join-Path $Carpeta 'respaldos\pin-secreto.txt'
+  if (-not $PinSecreto -and (Test-Path $copiaPin)) {
+    $v = (Get-Content $copiaPin -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($v -and $v.Trim().Length -ge 16) { $PinSecreto = $v.Trim(); Listo "Se recuperó el PIN_SECRETO anterior: los PIN de los usuarios siguen valiendo" }
+  }
   if (-not $PinSecreto -and ($Alta -or $Master)) { $PinSecreto = Clave 32 }   # sucursal: lo reemplaza el del principal al darse de alta
   if (-not $PinSecreto) { $PinSecreto = Clave 32; Write-Host "   OJO: se generó un PIN_SECRETO nuevo. Si ya tiene central u otras sucursales, cópielo de allá al archivo .env" -ForegroundColor Yellow }
   @"
@@ -519,6 +525,17 @@ CERT_P12_CLAVE=
 Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 
 }
+
+# Copia del PIN_SECRETO junto a los respaldos (el desinstalador nunca los borra): con otro secreto todos los PIN dejan de servir
+try {
+  $m = Select-String -Path $envArchivo -Pattern '^PIN_SECRETO=(.+)$' | Select-Object -First 1
+  if ($m) {
+    $dirResp = Join-Path $Carpeta 'respaldos'
+    New-Item -ItemType Directory -Force -Path $dirResp | Out-Null
+    Set-Content -Path (Join-Path $dirResp 'pin-secreto.txt') -Value $m.Matches[0].Groups[1].Value.Trim() -Encoding ASCII
+    icacls $dirResp /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" 2>$null | Out-Null
+  }
+} catch { }
 # Antes de una reparacion, guardar una copia consistente de la base de datos.
 if ($esReparacion) {
   # Si otro PostgreSQL (HikCentral, WilPOS...) ocupa el puerto del PostgreSQL de FactPOS, se mueve
