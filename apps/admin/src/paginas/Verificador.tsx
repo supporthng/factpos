@@ -77,11 +77,19 @@ function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubica
     try { await api("/central/verificador/ubicacion", { metodo: "PUT", cuerpo: { sucursalId, lat, lng } }); setOk(lat === null ? "Ubicación quitada." : "Ubicación guardada."); onGuardado(); }
     catch (e) { setMsg((e as Error).message); }
   };
+  const [pegado, setPegado] = useState("");
+  // Coordenadas copiadas de Google Maps (clic derecho en la tienda › se copian «18.48, -69.93»)
+  const guardarPegado = () => {
+    const m = pegado.replace(/[()°]/g, " ").match(/(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
+    const lat = m ? Number(m[1]) : NaN, lng = m ? Number(m[2]) : NaN;
+    if (!m || Math.abs(lat) > 90 || Math.abs(lng) > 180) { setOk(""); setMsg("Escribe las coordenadas como en Google Maps, por ejemplo: 18.486100, -69.931200"); return; }
+    void guardar(Number(lat.toFixed(6)), Number(lng.toFixed(6)));
+  };
   const usarMia = () => {
     setMsg(""); setOk("");
     if (!navigator.geolocation) { setMsg("Este navegador no permite leer la ubicación."); return; }
     navigator.geolocation.getCurrentPosition((p) => { void guardar(Number(p.coords.latitude.toFixed(6)), Number(p.coords.longitude.toFixed(6))); },
-      () => setMsg("No se pudo leer la ubicación. Permítela en el navegador y vuelve a intentar."), { enableHighAccuracy: true, timeout: 15000 });
+      () => setMsg("No se pudo leer la ubicación (la app de escritorio y las PC sin GPS suelen no poder). Usa el campo de coordenadas de abajo."), { enableHighAccuracy: true, timeout: 15000 });
   };
   return (
     <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--borde, #d9e1e6)" }}>
@@ -99,6 +107,13 @@ function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubica
       <div className="fila-acciones">
         <button className="boton primario" disabled={!sucursalId} onClick={usarMia}>Usar mi ubicación actual</button>
         {actual && <button className="boton" onClick={() => guardar(null, null)}>Quitar ubicación</button>}
+      </div>
+      <label className="campo" style={{ marginTop: 10, maxWidth: 360 }}>
+        <span>O pega las coordenadas de la tienda (Google Maps: clic derecho sobre la tienda y toca los números para copiarlos)</span>
+        <input value={pegado} placeholder="18.486100, -69.931200" disabled={!sucursalId} onChange={(e) => setPegado(e.target.value)} onKeyDown={(e) => e.key === "Enter" && guardarPegado()} />
+      </label>
+      <div className="fila-acciones" style={{ marginTop: 6 }}>
+        <button className="boton" disabled={!sucursalId || !pegado.trim()} onClick={guardarPegado}>Guardar coordenadas</button>
       </div>
       <label className="campo" style={{ marginTop: 10, maxWidth: 260 }}>
         <span>Distancia máxima a la tienda (metros)</span>
