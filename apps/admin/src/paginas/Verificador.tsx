@@ -11,19 +11,11 @@ interface Consultas {
   sinPrecioLista: { codigo: string; veces: number; ultima: string }[];
 }
 
-/** QR para que el cliente consulte precios desde su celular (dentro del WiFi de la tienda). Se puede imprimir o descargar. */
+/** QR para que el cliente consulte precios desde su celular (por internet, solo estando en la tienda). Se puede imprimir o descargar. */
 function QrConsultaMovil({ inicial, sucursalId }: { inicial: string; sucursalId: string }) {
   const [url, setUrl] = useState(inicial);
   const [img, setImg] = useState("");
-  const { datos: ajustes, recargar } = useDatos<{ wifi?: string; enlaceInternet?: string | null }>("/central/verificador/ajustes");
-  const [wifi, setWifi] = useState("");
-  const [msgWifi, setMsgWifi] = useState("");
-  useEffect(() => { if (ajustes) setWifi(ajustes.wifi ?? ""); }, [ajustes]);
-  const guardarWifi = async () => {
-    setMsgWifi("");
-    try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: { wifi } }); recargar(); setMsgWifi("Guardado"); setTimeout(() => setMsgWifi(""), 2000); }
-    catch (e) { setMsgWifi((e as Error).message); }
-  };
+  const { datos: ajustes } = useDatos<{ enlaceInternet?: string | null }>("/central/verificador/ajustes");
   // El QR del cartel abre el enlace de INTERNET de la empresa (fijo, no cambia al reiniciar el servidor): el cliente no necesita el WiFi,
   // y la consulta solo responde dentro de la tienda por la ubicación. La dirección se puede cambiar a mano en el campo.
   const internet = ajustes?.enlaceInternet ? `${ajustes.enlaceInternet}${sucursalId ? `?sucursal=${sucursalId}` : ""}` : "";
@@ -35,32 +27,21 @@ function QrConsultaMovil({ inicial, sucursalId }: { inicial: string; sucursalId:
   }, [url]);
   const imprimir = () => {
     const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-    const porInternet = url.startsWith("https://");
-    const pasos = porInternet
-      ? ["Escanea este código con la cámara del celular", "Permite la ubicación cuando el celular lo pida", "Escanea el código de barras del producto y mira su precio"]
-      : [
-        wifi.trim() ? `Conéctate al WiFi «${wifi.trim()}» de la tienda` : "Conéctate al WiFi de la tienda",
-        "Escanea este código con la cámara del celular",
-        "Escanea o escribe el código de barras del producto y mira su precio",
-      ];
+    const pasos = ["Escanea este código con la cámara del celular", "Permite la ubicación cuando el celular lo pida", "Escanea el código de barras del producto y mira su precio"];
     void imprimirHtml(`<!doctype html><meta charset="utf-8"><title>Consulta de precios</title>
 <body style="font-family:system-ui,sans-serif;text-align:center;padding:36px;color:#10202e">
 <h1>Consulta el precio desde tu celular</h1>
 <ol style="display:inline-block;text-align:left;font-size:22px;line-height:1.5;margin:10px 0 0;padding-left:30px">${pasos.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
 <img src="${img}" style="width:340px;margin:10px auto;display:block" alt="">
-<p style="font-size:18px;color:#5b6b7a">${porInternet ? "Funciona estando dentro de la tienda." : "Solo funciona dentro del WiFi de la tienda: no uses datos móviles."}</p></body>`);
+<p style="font-size:18px;color:#5b6b7a">Funciona estando dentro de la tienda.</p></body>`);
   };
   return (
     <div className="panel" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>QR para consultar desde el celular</h3>
-      <p className="suave pequeno">El cliente escanea este QR con la cámara del celular y consulta el precio de cualquier producto. El QR abre el enlace de internet de tu empresa: no necesita el WiFi y solo muestra precios estando dentro de la tienda (la ubicación de cada sucursal se guarda en «Configuración del verificador»). Elige la sucursal arriba para que el enlace lleve la suya, imprime el cartel y pégalo en el local. Si prefieres el QR solo para el WiFi de la tienda, cambia la dirección abajo por la del servidor (por ejemplo http://192.168.1.10:3000/verificador/movil).</p>
+      <p className="suave pequeno">El cliente escanea este QR con la cámara del celular y consulta el precio de cualquier producto. Es el enlace de internet de tu empresa: no necesita WiFi y solo muestra precios estando dentro de la tienda (la ubicación de cada sucursal se guarda en «Configuración del verificador»). Elige la sucursal arriba para que el enlace lleve la suya, imprime el cartel y pégalo en el local.</p>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
         {img ? <img src={img} alt="QR de la consulta de precios" width={200} height={200} style={{ border: "1px solid #dde3e8", borderRadius: 8 }} /> : <div style={{ width: 200, height: 200 }} />}
         <div style={{ flex: 1, minWidth: 240 }}>
-          <label className="campo"><span>Nombre del WiFi de la tienda (sale en el cartel impreso)</span>
-            <input value={wifi} maxLength={40} placeholder="Ej.: Tienda_Clientes" onChange={(e) => setWifi(e.target.value)} onBlur={() => { if (ajustes && wifi !== (ajustes.wifi ?? "")) void guardarWifi(); }} />
-          </label>
-          {msgWifi && <p className="suave pequeno" style={{ margin: "4px 0" }}>{msgWifi}</p>}
           <label className="campo"><span>Dirección que abre el QR</span><input value={url} onChange={(e) => setUrl(e.target.value)} /></label>
           <div className="fila-acciones" style={{ marginTop: 10 }}>
             <button className="boton" disabled={!img} onClick={imprimir}>Imprimir</button>
@@ -196,14 +177,14 @@ function AjustesVerificador() {
         {" "}Mostrar el QR para consultar desde el celular
       </label>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
-        Muestra en la pantalla del verificador un código QR (abajo al centro) para que el cliente consulte precios desde su celular, conectado al WiFi de la tienda.
+        Muestra en la pantalla del verificador un código QR (abajo al centro) para que el cliente consulte precios desde su celular con la cámara.
       </p>
       <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
         <input type="checkbox" disabled={!datos} checked={datos?.consultaWeb ?? false} onChange={(e) => cambiar({ consultaWeb: e.target.checked })} />
         {" "}Consulta por internet (enlace web con QR)
       </label>
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
-        Permite que el cliente consulte precios desde cualquier celular, aunque no esté en el WiFi de la tienda, con el enlace de la administración web
+        Permite que el cliente consulte precios desde cualquier celular, sin necesidad del WiFi de la tienda, con el enlace de la administración web
         (factpos.app › Verificador › «Consulta desde el celular»). Solo muestra el nombre, el precio y la oferta: nunca costos, existencias ni precios mayoristas.
         Cada persona tiene un límite de consultas por minuto. Apagado, ese enlace no responde.
       </p>
@@ -288,8 +269,10 @@ export function Verificador() {
   const pagina = `${base}/verificador${params ? `?${params}` : ""}`;
   const api = `${base}/verificador/${sucursalId || "ID_SUCURSAL"}/CODIGO_DE_BARRAS`;
   // Desde factpos.app/<empresa>: enlace FIJO (el portal manda a la dirección vigente del servidor, que cambia al reiniciarlo)
+  const { datos: ajEnlace } = useDatos<{ enlaceInternet?: string | null }>("/central/verificador/ajustes");
   const movil = CONFIG.modo === "cliente" && CONFIG.slug
     ? `${location.origin}/${CONFIG.slug}/precios${sucursalId ? `?sucursal=${sucursalId}` : ""}`
+    : ajEnlace?.enlaceInternet ? `${ajEnlace.enlaceInternet}${sucursalId ? `?sucursal=${sucursalId}` : ""}`
     : `${base}/verificador/movil${sucursalId ? `?sucursal=${sucursalId}` : ""}`;
   const windows = `msedge --kiosk "${pagina}" --edge-kiosk-type=fullscreen --no-first-run`;
 
@@ -316,7 +299,7 @@ export function Verificador() {
         </div>
         <p className="suave pequeno">Si el servidor atiende una sola sucursal no hace falta elegirla: la página la detecta sola.</p>
         <Fila k="pagina" titulo="Para equipos con navegador o pantalla web (Android y Windows)" texto={pagina} />
-        <Fila k="movil" titulo={esLocal() ? "Consulta desde el celular del cliente (QR en la tienda; solo funciona dentro del WiFi de la sucursal). Para el enlace por internet, ábrala desde factpos.app" : "Consulta desde el celular del cliente por internet: enlace fijo, no cambia al reiniciar el servidor (elija la sucursal y genere el QR con esta dirección; hay que activar «Consulta por internet» arriba)"} texto={movil} />
+        <Fila k="movil" titulo="Consulta de precios desde el celular del cliente (por internet; enlace fijo que no cambia al reiniciar el servidor). Elige la sucursal y activa «Consulta por internet» arriba" texto={movil} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
 
