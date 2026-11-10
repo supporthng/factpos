@@ -35,6 +35,15 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
 .promo{display:inline-block;margin-top:10px;background:#fff1cf;color:#7a4b00;border-radius:999px;padding:6px 14px;font-weight:700;font-size:14px}
 .nota{color:#5b6b7a;margin-top:10px;font-size:14px}
 .err{color:#b3261e;font-weight:700}
+.bien{background:var(--f);color:#fff;border-radius:18px;padding:18px 18px 16px;margin-top:16px;text-align:center}
+.bien h2{margin:0 0 6px;font-size:21px}.bien p{margin:0;opacity:.85;font-size:15px;line-height:1.4}
+.ofs{margin-top:14px}.ofs h3{margin:0 0 8px;font-size:16px;color:var(--f)}
+.of{background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:10px;box-shadow:0 2px 10px rgba(16,32,46,.1);border-left:6px solid var(--m)}
+.of b{display:block;font-size:17px}.of .tx{display:inline-block;margin:6px 0;background:#fff1cf;color:#7a4b00;border-radius:999px;padding:4px 12px;font-weight:700;font-size:14px}
+.of .hasta{color:#7a8794;font-size:12px;margin-left:6px}
+.of ul{list-style:none;margin:6px 0 0;padding:0;font-size:14px;color:#3a4a58}
+.of li{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-top:1px solid #eef1f4}
+.of li s{color:#8a96a3;margin-right:6px;white-space:nowrap}.of li strong{color:#b3261e;white-space:nowrap}.of li span:last-child{white-space:nowrap;text-align:right}
 .et.aviso{background:#fff1f0;border:3px solid #d93025;padding:26px 18px 18px;animation:sacude .5s}
 .et.aviso .ico{font-size:54px;line-height:1}
 .et.aviso h2{color:#b3261e;font-size:26px;margin:8px 0 6px}
@@ -54,6 +63,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   <input type="file" id="archivo" accept="image/*" capture="environment" hidden>
   <form id="form"><input id="codigo" inputmode="numeric" autocomplete="off" placeholder="Escribe el código de barras"><button>Ver</button></form>
   <div id="res"></div>
+  <div id="bienvenida"></div>
 </main>
 <script>
 (function(){
@@ -71,6 +81,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     if (c.secundario) document.documentElement.style.setProperty("--f", c.secundario);
     if (c.logo) { $("logo").src = c.logo; $("logo").hidden = false; }
     if (window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setTimeout(function(){ camara(); }, 300);   // la cámara se abre sola al entrar
+    bienvenida(c);
   }).catch(function(){ $("guia").innerHTML = '<span class="err">No se pudo conectar con la tienda. Verifica que estés en su WiFi.</span>'; });
 
   // La cámara se ofrece si el navegador la permite (en HTTPS). Si el teléfono no trae lector de códigos propio
@@ -296,6 +307,30 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
       $("guia").innerHTML = '<span class="err">No se pudo leer la foto. Revisa tu conexión o escribe el código.</span>';
     } finally { if (url) URL.revokeObjectURL(url); }
   };
+
+  // Bienvenida y ofertas vigentes de la sucursal (si el dueño las tiene encendidas en Verificador)
+  function bienvenida(c){
+    $("bienvenida").innerHTML = '<section class="bien"><h2>¡Bienvenido a ' + esc(c.empresa) + '!</h2><p>' + esc(c.nombre) + '<br>Escanea el código de barras de un producto y mira su precio al instante.</p></section><div class="ofs" id="ofs"></div>';
+    fetch("/verificador/ofertas?sucursal=" + encodeURIComponent(sucursal)).then(function(r){ return r.ok ? r.json() : []; }).then(function(of){
+      if (!of || !of.length) return;
+      var h = '<h3>Ofertas vigentes</h3>';
+      of.slice(0, 6).forEach(function(o){
+        var hasta = ""; try { hasta = new Date(o.hasta).toLocaleDateString("es-DO", { day: "numeric", month: "short" }); } catch(e) {}
+        h += '<div class="of"><b>' + esc(o.nombre) + '</b><span class="tx">' + esc(o.texto) + '</span>' + (hasta ? '<span class="hasta">hasta ' + esc(hasta) + '</span>' : '');
+        var pr = (o.productos || []).slice(0, 3);
+        if (pr.length) {
+          h += '<ul>';
+          pr.forEach(function(x){
+            var tiene = x.precioOferta != null && x.precio != null;
+            h += '<li><span>' + esc(x.nombre) + '</span><span>' + (tiene ? '<s>RD$ ' + fmt(x.precio) + '</s><strong>RD$ ' + fmt(x.precioOferta) + '</strong>' : (x.precio != null ? '<strong>RD$ ' + fmt(x.precio) + '</strong>' : '')) + '</span></li>';
+          });
+          h += '</ul>';
+        }
+        h += '</div>';
+      });
+      $("ofs").innerHTML = h;
+    }).catch(function(){});
+  }
 
   // Ubicación del teléfono: por internet el servidor solo responde a quien está en la tienda (en el WiFi de la tienda no hace falta)
   function ubicacion(){

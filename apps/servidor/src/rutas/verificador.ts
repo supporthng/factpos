@@ -16,7 +16,7 @@ import { config } from "../config.js";
 /** Rutas de la consulta de precios desde el celular del cliente (la página, su configuración y la consulta de un código). */
 export function rutaConsultaMovil(url: string) {
   const [ruta, consulta = ""] = url.split("?");
-  if (ruta === "/verificador/movil" || ruta === "/verificador/config") return true;
+  if (ruta === "/verificador/movil" || ruta === "/verificador/config" || ruta === "/verificador/ofertas") return true;
   return /^\/verificador\/[0-9a-f-]{36}\/[^/]+$/i.test(ruta) && /(^|&)canal=movil(&|$)/.test(consulta);
 }
 const visitas = new Map<string, { n: number; hasta: number }>();
