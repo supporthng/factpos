@@ -470,8 +470,12 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo, onCerrar }: { ajust
         ))}
       </div>
       {msg && <p className="error">{msg}</p>}
-      {onCerrar && <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>}
-      {onCerrar && <button className="enlace" onClick={cambiarServidor}>Cambiar de servidor</button>}
+      {onCerrar && (
+        <div className="fila-enlaces">
+          <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>
+          <button className="enlace" onClick={cambiarServidor}>Cambiar de servidor</button>
+        </div>
+      )}
     </Pantalla>
   );
 }
