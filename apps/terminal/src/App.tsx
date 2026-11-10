@@ -217,7 +217,7 @@ function AppInterna() {
     return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button></Pantalla>;
   }
   if (!ajustes) {
-    return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
+    return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} onCerrar={() => { window.dispatchEvent(new Event("factpos:antes-salir")); setTimeout(cerrarTodo, 200); }} />;
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
   if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} onCerrar={() => setSaliendo(true)} onCambiar={() => setCambiando(true)} />{ventanaSalir}{ventanaCambiar}{ventanaMin}</>;
@@ -331,7 +331,7 @@ async function buscarServidores(avance: (texto: string) => void, alEncontrar: (e
 
 interface CajaElegible { id: string; numero: number; nombre: string; sucursal: string; libre?: boolean; mia?: boolean }
 
-function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; error: string; onListo: (a: Ajustes) => void }) {
+function Configurar({ inicial, error, onListo, onCerrar }: { inicial: Ajustes | null; error: string; onListo: (a: Ajustes) => void; onCerrar: () => void }) {
   const [servidor, setServidor] = useState(inicial?.servidor ?? "");
   const [msg, setMsg] = useState(error);
   const [buscando, setBuscando] = useState(false);
@@ -431,6 +431,8 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
           </>
         )
         : <button className="enlace" onClick={() => setManual(true)}>Escribir la dirección a mano</button>)}
+      {/* Sin servidor no hay PIN que validar: se puede cerrar el programa sin clave */}
+      <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>
     </Pantalla>
   );
 }
