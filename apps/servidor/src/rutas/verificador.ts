@@ -20,6 +20,13 @@ export function rutaConsultaMovil(url: string) {
   return /^\/verificador\/[0-9a-f-]{36}\/[^/]+$/i.test(ruta) && /(^|&)canal=movil(&|$)/.test(consulta);
 }
 const visitas = new Map<string, { n: number; hasta: number }>();
+/** Distancia en metros entre dos puntos (fórmula de haversine). */
+export function distanciaM(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const r = Math.PI / 180, dLat = (lat2 - lat1) * r, dLng = (lng2 - lng1) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+export const RADIO_CONSULTA_M = 150;
 
 /**
  * Verificador de precios.
@@ -64,10 +71,25 @@ export async function rutasVerificador(app: FastifyInstance) {
     // Cada sucursal tiene sus precios y sus ofertas: por internet el enlace SIEMPRE lleva la sucursal, y la activación es la de su empresa
     const id = /^\/verificador\/([0-9a-f-]{36})\//i.exec(req.url)?.[1] ?? /[?&]sucursal=([0-9a-f-]{36})/i.exec(req.url)?.[1];
     if (!id) return rep.code(400).send({ error: "Falta la sucursal en el enlace: genere el enlace desde Verificador eligiendo la sucursal" });
-    const r = await pool.query<{ ok: boolean }>(
-      `SELECT COALESCE(m.verificador->>'consultaWeb' = 'true', false) AS ok
+    const r = await pool.query<{ ok: boolean; lat: string | null; lng: string | null; radio: string | null }>(
+      `SELECT COALESCE(m.verificador->>'consultaWeb' = 'true', false) AS ok,
+              m.verificador->'ubicaciones'->$1::text->>'lat' AS lat, m.verificador->'ubicaciones'->$1::text->>'lng' AS lng,
+              m.verificador->>'radioM' AS radio
          FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id WHERE s.id = $1 AND s.activo`, [id]).catch(() => null);
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
+    // Solo el precio de un producto exige estar en la tienda (la página, su configuración y el QR cargan desde cualquier lugar)
+    if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url)) {
+      const { lat, lng, radio } = r.rows[0];
+      if (lat === null || lng === null) return rep.code(403).send({ error: "Esta tienda todavía no activó la consulta por ubicación. Pregunta el precio en caja." });
+      const q = req.query as { lat?: string; lng?: string; pre?: string };
+      const mLat = Number(q.lat), mLng = Number(q.lng), pre = Math.min(100, Math.max(0, Number(q.pre) || 0));
+      if (q.lat === undefined || q.lng === undefined || !Number.isFinite(mLat) || !Number.isFinite(mLng) || Math.abs(mLat) > 90 || Math.abs(mLng) > 180) {
+        return rep.code(403).send({ codigo: "UBICACION_REQUERIDA", error: "Para consultar precios hay que permitir la ubicación del teléfono: solo funciona dentro de la tienda." });
+      }
+      const radioM = Number(radio) > 0 ? Number(radio) : RADIO_CONSULTA_M;
+      const d = distanciaM(mLat, mLng, Number(lat), Number(lng));
+      if (d - pre > radioM) return rep.code(403).send({ codigo: "FUERA_DE_TIENDA", error: `Solo se puede consultar estando en la tienda (estás a unos ${Math.round(d / 10) * 10} m).` });
+    }
   });
 
   /** Consulta desde el celular del cliente (QR en la tienda, dentro del WiFi de la sucursal). */
@@ -268,18 +290,37 @@ export async function rutasVerificador(app: FastifyInstance) {
   app.get("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const r = await pool.query<{ o: unknown; q: unknown; cw: unknown; w: string | null; a: unknown; s: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'consultaWeb' AS cw, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
-    return { consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
+    const r = await pool.query<{ o: unknown; q: unknown; cw: unknown; w: string | null; a: unknown; s: unknown; u: unknown; rm: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'consultaWeb' AS cw, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s, verificador->'ubicaciones' AS u, verificador->'radioM' AS rm FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
+    return { ubicaciones: (r.rows[0]?.u && typeof r.rows[0].u === "object" ? r.rows[0].u : {}) as Record<string, { lat: number; lng: number }>, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
-    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional(), consultaWeb: z.boolean().optional(), segundosOferta: z.number().int().min(3).max(120).optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
+    const b = z.object({ mostrarOfertas: z.boolean().optional(), mostrarQr: z.boolean().optional(), wifi: z.string().trim().max(40).optional(), autoActualizar: z.boolean().optional(), consultaWeb: z.boolean().optional(), segundosOferta: z.number().int().min(3).max(120).optional(), radioM: z.number().int().min(30).max(1000).optional() }).refine((x) => Object.values(x).some((v) => v !== undefined), "Nada que cambiar").parse(req.body);
     await pool.query(
       `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, $2::jsonb)
        ON CONFLICT (empresa_id) DO UPDATE SET verificador = configuracion_marca.verificador || $2::jsonb`,
       [empresaId, JSON.stringify(b)]);
     return b;
+  });
+
+  /** Ubicación de la tienda para la consulta por internet: solo se responde a teléfonos que estén a menos del radio. */
+  app.put("/central/verificador/ubicacion", async (req) => {
+    permisoPrecios(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const b = z.object({ sucursalId: z.string().uuid(), lat: z.number().min(-90).max(90).nullable(), lng: z.number().min(-180).max(180).nullable() }).parse(req.body);
+    const s = await pool.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, empresaId]);
+    if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    await pool.query(
+      `INSERT INTO configuracion_marca (empresa_id, verificador) VALUES ($1, '{}'::jsonb) ON CONFLICT (empresa_id) DO NOTHING`, [empresaId]);
+    if (b.lat === null || b.lng === null) {
+      await pool.query(`UPDATE configuracion_marca SET verificador = jsonb_set(verificador, '{ubicaciones}', COALESCE(verificador->'ubicaciones', '{}'::jsonb) - $2::text, true) WHERE empresa_id = $1`, [empresaId, b.sucursalId]);
+    } else {
+      await pool.query(
+        `UPDATE configuracion_marca SET verificador = jsonb_set(verificador, '{ubicaciones}', COALESCE(verificador->'ubicaciones', '{}'::jsonb) || jsonb_build_object($2::text, jsonb_build_object('lat', $3::float8, 'lng', $4::float8)), true) WHERE empresa_id = $1`,
+        [empresaId, b.sucursalId, b.lat, b.lng]);
+    }
+    return { ok: true };
   });
 
   /** Botón «Actualizar verificadores ahora»: las apps lo ven en menos de un minuto y se actualizan (si hay una versión nueva). */

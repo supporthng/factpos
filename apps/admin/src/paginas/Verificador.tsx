@@ -66,11 +66,56 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
   );
 }
 
+/** Ubicación de cada tienda para la consulta por internet: solo responde a teléfonos que estén dentro del radio. */
+function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubicaciones: Record<string, { lat: number; lng: number }>; radioM: number; onRadio: (m: number) => void; onGuardado: () => void }) {
+  const [sucursalId, setSucursalId] = useState("");
+  const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState("");
+  const actual = sucursalId ? ubicaciones[sucursalId] : undefined;
+  const guardar = async (lat: number | null, lng: number | null) => {
+    setMsg(""); setOk("");
+    try { await api("/central/verificador/ubicacion", { metodo: "PUT", cuerpo: { sucursalId, lat, lng } }); setOk(lat === null ? "Ubicación quitada." : "Ubicación guardada."); onGuardado(); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  const usarMia = () => {
+    setMsg(""); setOk("");
+    if (!navigator.geolocation) { setMsg("Este navegador no permite leer la ubicación."); return; }
+    navigator.geolocation.getCurrentPosition((p) => { void guardar(Number(p.coords.latitude.toFixed(6)), Number(p.coords.longitude.toFixed(6))); },
+      () => setMsg("No se pudo leer la ubicación. Permítela en el navegador y vuelve a intentar."), { enableHighAccuracy: true, timeout: 15000 });
+  };
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--borde, #d9e1e6)" }}>
+      <strong>Ubicación de la tienda (consulta por internet)</strong>
+      <p className="suave pequeno" style={{ margin: "4px 0 8px" }}>
+        Por internet, el precio solo se muestra a quien esté dentro de la tienda. Elige la sucursal y pulsa «Usar mi ubicación actual» estando en la tienda
+        (desde un teléfono o una PC con ubicación). Mientras una sucursal no tenga ubicación, la consulta por internet no muestra precios.
+      </p>
+      <SelectorSucursal valor={sucursalId} onCambio={setSucursalId} />
+      {sucursalId && (
+        <p className="suave pequeno" style={{ margin: "8px 0" }}>
+          {actual ? `Ubicación guardada: ${actual.lat}, ${actual.lng}` : "Esta sucursal todavía no tiene ubicación."}
+        </p>
+      )}
+      <div className="fila-acciones">
+        <button className="boton primario" disabled={!sucursalId} onClick={usarMia}>Usar mi ubicación actual</button>
+        {actual && <button className="boton" onClick={() => guardar(null, null)}>Quitar ubicación</button>}
+      </div>
+      <label className="campo" style={{ marginTop: 10, maxWidth: 260 }}>
+        <span>Distancia máxima a la tienda (metros)</span>
+        <input type="number" min={30} max={1000} defaultValue={radioM} key={radioM}
+          onBlur={(e) => { const v = Math.min(1000, Math.max(30, Math.round(Number(e.target.value) || 150))); if (v !== radioM) onRadio(v); }} />
+      </label>
+      <Aviso texto={msg} />
+      {ok && <p className="suave pequeno">{ok}</p>}
+    </div>
+  );
+}
+
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
 function AjustesVerificador() {
-  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; consultaWeb?: boolean; wifi?: string; autoActualizar: boolean; segundosOferta?: number }>("/central/verificador/ajustes");
+  const { datos, recargar, error } = useDatos<{ mostrarOfertas: boolean; mostrarQr: boolean; consultaWeb?: boolean; wifi?: string; autoActualizar: boolean; segundosOferta?: number; radioM?: number; ubicaciones?: Record<string, { lat: number; lng: number }> }>("/central/verificador/ajustes");
   const [msg, setMsg] = useState("");
-  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; consultaWeb?: boolean; wifi?: string; autoActualizar?: boolean; segundosOferta?: number }) => {
+  const cambiar = async (cambio: { mostrarOfertas?: boolean; mostrarQr?: boolean; consultaWeb?: boolean; wifi?: string; autoActualizar?: boolean; segundosOferta?: number; radioM?: number }) => {
     setMsg("");
     try { await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: cambio }); recargar(); }
     catch (e) { setMsg((e as Error).message); }
@@ -117,6 +162,7 @@ function AjustesVerificador() {
         (factpos.app › Verificador › «Consulta desde el celular»). Solo muestra el nombre, el precio y la oferta: nunca costos, existencias ni precios mayoristas.
         Cada persona tiene un límite de consultas por minuto. Apagado, ese enlace no responde.
       </p>
+      <UbicacionConsulta ubicaciones={datos?.ubicaciones ?? {}} radioM={datos?.radioM ?? 150} onRadio={(m) => cambiar({ radioM: m })} onGuardado={recargar} />
       <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
         <input type="checkbox" disabled={!datos} checked={datos?.autoActualizar ?? true} onChange={(e) => cambiar({ autoActualizar: e.target.checked })} />
         {" "}Actualizar las apps de los verificadores automáticamente
