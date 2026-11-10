@@ -83,6 +83,15 @@ function AppInterna() {
   // Seguridad de la caja: con el turno abierto, salir de FactPOS necesita la aprobación de un supervisor
   const [saliendo, setSaliendo] = useState(false);
   const [cambiando, setCambiando] = useState(false);
+  // Sin conexión con el servidor no hay dónde validar el PIN: en la pantalla del PIN se deja cerrar FactPOS sin él
+  const [sinServidor, setSinServidor] = useState(false);
+  useEffect(() => {
+    if (!saliendo || !ajustes) { setSinServidor(false); return; }
+    let vivo = true;
+    fetch(`${ajustes.servidor}/`, { method: "HEAD", signal: AbortSignal.timeout(2500), cache: "no-store" })
+      .then(() => vivo && setSinServidor(false)).catch(() => vivo && setSinServidor(true));
+    return () => { vivo = false; };
+  }, [saliendo]); // eslint-disable-line react-hooks/exhaustive-deps
   const [bienvenida, setBienvenida] = useState<{ usuario: string; fondo: string } | null>(null);
   const [minimizando, setMinimizando] = useState(false);
   const [bloqueada, setBloqueada] = useState(false);
@@ -165,7 +174,13 @@ function AppInterna() {
       <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setCambiando(false)}>Volver</button>
     </Modal>
   ) : null;
-  const ventanaSalir = saliendo && ajustes && !usuario ? (
+  const ventanaSalir = saliendo && ajustes && !usuario && sinServidor ? (
+    <Modal titulo="Cerrar FactPOS" onCerrar={() => setSaliendo(false)}>
+      <p>No hay conexión con el servidor, así que no se puede comprobar un PIN. Como no hay ninguna sesión abierta, puede cerrar FactPOS.</p>
+      <button className="boton primario ancho" onClick={aprobadoSalir}>Cerrar FactPOS</button>
+      <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setSaliendo(false)}>Volver a la caja</button>
+    </Modal>
+  ) : saliendo && ajustes && !usuario ? (
     <Modal titulo="Cerrar FactPOS" onCerrar={() => setSaliendo(false)}>
       <p>Para cerrar la caja escriba el PIN de un supervisor o administrador.</p>
       <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cerrar FactPOS" enfocar onAprobado={aprobadoSalir} />
