@@ -3,7 +3,7 @@ import { api, esLocal, sesionActual } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 import { EmpresasEnlazadas, PuestaEnMarcha } from "./Empresas";
 
-interface Terminal { id: string; numero: number; nombre: string; activo: boolean; almacen: string; turnoAbierto: boolean; ultimaVenta: string | null }
+interface Terminal { id: string; numero: number; nombre: string; activo: boolean; almacen: string; turnoAbierto: boolean; ultimaVenta: string | null; conPc?: boolean }
 interface EstadoSync { sucursalId: string; ultimaSubida: string | null; ultimaBajada: string | null; pendientes: number | null; errores: number | null; ultimoError: string | null; enLinea: boolean | null; segundos: number | null; equipo: string | null }
 interface Sucursal {
   id: string; codigo: string; nombre: string; direccion: string | null; telefono: string | null; activo: boolean; tipo: "TIENDA" | "ALMACEN";
@@ -51,6 +51,19 @@ export function Sucursales() {
   };
   const accion = async (ruta: string, cuerpo: unknown, metodo = "POST") => {
     try { await api(ruta, { metodo, cuerpo }); recargar(); } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const liberar = async (t: Terminal) => {
+    if (!window.confirm(`¿Liberar ${t.nombre}? La PC que la tiene dejará de estar ligada a ella.`)) return;
+    try {
+      const r = await api<{ liberada: boolean }>(`/central/terminales/${t.id}/liberar-equipo`, { metodo: "POST", cuerpo: {} });
+      setMsg(r?.liberada
+        ? { t: `${t.nombre} liberada: la próxima PC que abra FactPOS en este servidor podrá tomarla.`, tipo: "ok" }
+        : { t: `${t.nombre} no tenía ninguna PC ligada en ESTE servidor. La liga se guarda en el servidor al que se conecta la PC: si la PC está en otro servidor, libérela desde la administración de ese servidor.`, tipo: "error" });
+      recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const eliminar = (t: Terminal) => {
+    if (window.confirm(`¿Eliminar ${t.nombre}? Dejará de aparecer; sus ventas y turnos anteriores se conservan.`)) void accion(`/central/terminales/${t.id}`, undefined, "DELETE");
   };
 
   return (
@@ -174,8 +187,10 @@ export function Sucursales() {
                   <span className="suave pequeno">Descuenta de: {t.almacen}</span>
                   <span className="suave pequeno">{t.ultimaVenta ? `Última venta: ${new Date(t.ultimaVenta).toLocaleString("es-DO")}` : "Sin ventas"}</span>
                   <span className="suave pequeno mono" title="Identificador para configurar la terminal">{t.id.slice(0, 8)}…</span>
+                  <span className="suave pequeno">{t.conPc ? "PC ligada a esta caja" : "Sin PC ligada"}</span>
                   <button className="enlace" onClick={() => accion(`/central/terminales/${t.id}`, { activo: !t.activo }, "PATCH")}>{t.activo ? "Desactivar" : "Activar"}</button>
-                  <button className="enlace" title="Si cambió la PC de esta caja, libérela para que la nueva PC la reciba" onClick={() => { if (window.confirm(`¿Liberar ${t.nombre}? La PC que la tiene dejará de estar ligada a ella.`)) void accion(`/central/terminales/${t.id}/liberar-equipo`, {}); }}>Liberar PC</button>
+                  <button className="enlace" title="Si cambió la PC de esta caja, libérela para que la nueva PC la reciba" onClick={() => void liberar(t)}>Liberar PC</button>
+                  {!t.turnoAbierto && <button className="enlace" title="Quita la terminal de la lista (conserva sus ventas)" onClick={() => eliminar(t)}>Eliminar</button>}
                 </div>
               ))}
               <button className="terminal nueva" onClick={() => accion(`/central/sucursales/${s.id}/terminales`, {})}>+ Agregar terminal</button>
