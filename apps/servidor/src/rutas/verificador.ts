@@ -73,9 +73,9 @@ export async function rutasVerificador(app: FastifyInstance) {
     if (!id) return rep.code(400).send({ error: "Falta la sucursal en el enlace: genere el enlace desde Verificador eligiendo la sucursal" });
     const r = await pool.query<{ ok: boolean; lat: string | null; lng: string | null; radio: string | null }>(
       `SELECT COALESCE(m.verificador->>'consultaWeb' = 'true', false) AS ok,
-              m.verificador->'ubicaciones'->$1::text->>'lat' AS lat, m.verificador->'ubicaciones'->$1::text->>'lng' AS lng,
+              m.verificador->'ubicaciones'->$2::text->>'lat' AS lat, m.verificador->'ubicaciones'->$2::text->>'lng' AS lng,
               m.verificador->>'radioM' AS radio
-         FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id WHERE s.id = $1 AND s.activo`, [id]).catch(() => null);
+         FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id WHERE s.id = $1::uuid AND s.activo`, [id, id]).catch((e) => { console.error("[consulta móvil]", (e as Error).message); return null; });
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
     // Solo el precio de un producto exige estar en la tienda (la página, su configuración y el QR cargan desde cualquier lugar)
     if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url)) {
