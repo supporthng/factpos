@@ -79,6 +79,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
     if (f === "EFECTIVO") { setTarjeta(""); setTransferencia(""); setCredito(""); }
     if (f === "TARJETA") { setTarjeta(total); setTransferencia(""); setCredito(""); }
     if (f === "TRANSFERENCIA") { setTransferencia(total); setTarjeta(""); setCredito(""); }
+    // Mixto empieza limpio: un monto de otra forma (p. ej. el crédito, que sin cliente ni se ve) no debe quedar escondido sumando
+    if (f === "MIXTO") { setTarjeta(""); setTransferencia(""); setCredito(""); }
   };
   const otros = n(tarjeta).plus(n(transferencia)).plus(n(credito));
   const efectivo = Decimal.max(new Decimal(total).minus(otros), 0);
