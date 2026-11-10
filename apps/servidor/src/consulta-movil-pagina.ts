@@ -35,6 +35,13 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
 .promo{display:inline-block;margin-top:10px;background:#fff1cf;color:#7a4b00;border-radius:999px;padding:6px 14px;font-weight:700;font-size:14px}
 .nota{color:#5b6b7a;margin-top:10px;font-size:14px}
 .err{color:#b3261e;font-weight:700}
+.et.aviso{background:#fff1f0;border:3px solid #d93025;padding:26px 18px 18px;animation:sacude .5s}
+.et.aviso .ico{font-size:54px;line-height:1}
+.et.aviso h2{color:#b3261e;font-size:26px;margin:8px 0 6px}
+.et.aviso .grande{font-size:44px;font-weight:800;color:#b3261e;line-height:1.1;margin:6px 0}
+.et.aviso p{color:#3b1512;font-size:17px;margin:6px 0}
+.et.aviso .cuenta span{background:#d93025}
+@keyframes sacude{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 .cuenta{height:4px;background:#e3e8ec;margin:14px -20px 0}.cuenta span{display:block;height:100%;background:var(--m);width:100%;animation:c linear forwards}
 @keyframes c{to{width:0}}
 </style></head><body>
@@ -63,6 +70,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     document.documentElement.style.setProperty("--m", c.primario);
     if (c.secundario) document.documentElement.style.setProperty("--f", c.secundario);
     if (c.logo) { $("logo").src = c.logo; $("logo").hidden = false; }
+    if (window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setTimeout(function(){ camara(); }, 300);   // la cámara se abre sola al entrar
   }).catch(function(){ $("guia").innerHTML = '<span class="err">No se pudo conectar con la tienda. Verifica que estés en su WiFi.</span>'; });
 
   // La cámara se ofrece si el navegador la permite (en HTTPS). Si el teléfono no trae lector de códigos propio
@@ -246,6 +254,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     $("visor").style.display = "block"; $("guia").textContent = "Abriendo la cámara…";
     try {
       lector = await abrirLector($("visor"), $("video"), function(cod){ lector = null; leido(cod); }, function(t){ $("guia").textContent = t; });
+      ubicacion();   // el permiso de ubicación se pide desde ya, no al leer el primer código
     } catch(e) {
       parar();
       var negada = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
@@ -309,8 +318,18 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
           + (d.promocion ? '<div class="promo">' + esc(d.promocion.nombre) + (d.promocion.precioOferta ? ' · RD$ ' + fmt(d.promocion.precioOferta) : '') + '</div>' : '')
           + '<p class="cod">Código ' + esc(d.codigo) + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
       } else if (r.status === 403 || r.status === 429) {
-        seg = 8;
-        html = '<section class="et"><h2>No disponible</h2><p class="nota">' + esc(d.error || "No se pudo consultar") + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
+        seg = 12;
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        var dist = function(m){ return m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m"; };
+        if (d.codigo === "FUERA_DE_TIENDA") {
+          html = '<section class="et aviso"><div class="ico">&#9888;</div><h2>Estás fuera de la tienda</h2><div class="grande">a ' + dist(d.distanciaM || 0) + '</div>'
+            + '<p>Los precios solo se consultan <b>dentro de la tienda</b> (a menos de ' + dist(d.radioM || 150) + ').</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
+        } else if (d.codigo === "UBICACION_REQUERIDA") {
+          html = '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
+            + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono. Toca el candado junto a la dirección, elige Ubicación › Permitir y vuelve a intentar.</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
+        } else {
+          html = '<section class="et aviso"><div class="ico">&#9888;</div><h2>No disponible</h2><p>' + esc(d.error || "No se pudo consultar") + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
+        }
       } else {
         seg = 5;
         html = '<section class="et"><h2>No encontramos este producto</h2><p class="cod">Código ' + esc(cod) + '</p><p class="nota">Pregunta el precio en caja.</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
