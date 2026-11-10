@@ -370,7 +370,14 @@ if ($esReparacion) {
 # si no, se instala el que viene dentro del instalador. Nunca se usa el de otro programa.
 $pgPropio = PostgresFactPOS
 if ($pgPropio) {
-  if (-not $ClavePostgres) { throw "Ya hay un PostgreSQL de FactPOS ($($pgPropio.Servicio)) pero falta $archivoClave con su clave. Copie ese archivo de la instalación anterior a $Carpeta y vuelva a ejecutar el instalador." }
+  if (-not $ClavePostgres) {
+    # Se perdió postgres-superusuario.txt (p. ej. al desinstalar borrando los datos) pero la base sigue en su servicio:
+    # se fija una clave nueva para el superusuario con acceso local temporal (pg_hba.conf se restaura) y NO se toca ningún dato.
+    $ClavePostgres = Clave 20
+    Set-Content -Path $archivoClave -Value "Usuario: postgres`r`nClave: $ClavePostgres"
+    icacls $archivoClave /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
+    Write-Host "   Falta $archivoClave: la base de datos de FactPOS sigue ahí; se le fija una clave nueva y se conservan los datos." -ForegroundColor Yellow
+  }
   $pgPropio = AsegurarPuertoPropio $pgPropio
   Listo "Se usa el PostgreSQL de FactPOS ya instalado ($($pgPropio.Servicio), puerto $($pgPropio.Puerto))"
 } else {
