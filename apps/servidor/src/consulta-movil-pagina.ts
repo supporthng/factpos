@@ -151,18 +151,29 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   }
   $("bcam").onclick = camara;
 
+  // Ubicación del teléfono: por internet el servidor solo responde a quien está en la tienda (en el WiFi de la tienda no hace falta)
+  function ubicacion(){
+    return new Promise(function(ok){
+      if (!window.isSecureContext || !navigator.geolocation) return ok(null);
+      navigator.geolocation.getCurrentPosition(function(p){ ok({ lat: p.coords.latitude, lng: p.coords.longitude, pre: p.coords.accuracy }); }, function(){ ok(null); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    });
+  }
   async function consultar(cod, deCamara){
     cod = String(cod).trim(); if (!cod || !sucursal) return;
     $("guia").textContent = "Buscando…";
+    var u = await ubicacion();
     var html, seg = 9;
     try {
-      var r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(cod) + "?canal=movil");
+      var r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(cod) + "?canal=movil" + (u ? "&lat=" + u.lat + "&lng=" + u.lng + "&pre=" + Math.round(u.pre) : ""));
       var d = await r.json();
       if (r.ok) {
         var p = fmt(d.precio).split(".");
         html = '<section class="et"><h2>' + esc(d.descripcion) + '</h2><div class="precio"><sup>RD$</sup>' + p[0] + '<small>.' + p[1] + '</small></div>'
           + (d.promocion ? '<div class="promo">' + esc(d.promocion.nombre) + (d.promocion.precioOferta ? ' · RD$ ' + fmt(d.promocion.precioOferta) : '') + '</div>' : '')
           + '<p class="cod">Código ' + esc(d.codigo) + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
+      } else if (r.status === 403 || r.status === 429) {
+        seg = 8;
+        html = '<section class="et"><h2>No disponible</h2><p class="nota">' + esc(d.error || "No se pudo consultar") + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
       } else {
         seg = 5;
         html = '<section class="et"><h2>No encontramos este producto</h2><p class="cod">Código ' + esc(cod) + '</p><p class="nota">Pregunta el precio en caja.</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
