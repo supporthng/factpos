@@ -1280,3 +1280,5 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .aviso-version b { font-size: 15px; }
 .aviso-version > div { display: flex; gap: 8px; margin-top: 4px; }
 .aviso-version .boton { flex: 1; }
+
+.fila-enlaces { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
