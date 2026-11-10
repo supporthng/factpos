@@ -1,3 +1,4 @@
+import { sucursalPropia } from "./contexto.js";
 import { createSocket } from "node:dgram";
 import { execFile } from "node:child_process";
 import { networkInterfaces, hostname } from "node:os";
@@ -38,7 +39,9 @@ export async function datosDescubrimiento(puerto: number) {
   try {
     const r = await pool.query(
       `SELECT (SELECT nombre_comercial FROM empresas ORDER BY nombre_comercial LIMIT 1) AS empresa,
-              COALESCE((SELECT array_agg(nombre ORDER BY codigo) FROM sucursales WHERE activo), '{}') AS sucursales`,
+              COALESCE((SELECT array_agg(nombre ORDER BY codigo) FROM sucursales WHERE activo AND ($1::uuid IS NULL OR id = $1)), '{}') AS sucursales`,
+      // En una sucursal solo se anuncia la propia (a todas las sucursales les bajan las demás desde la nube)
+      [sucursalPropia()],
     );
     empresa = r.rows[0].empresa;
     sucursales = r.rows[0].sucursales;
