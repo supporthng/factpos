@@ -26,7 +26,15 @@ try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch {}
 const urlArg = args.find(x => x.startsWith('--servidor='));
 const PORTAL = (process.env.FACTPOS_PORTAL_URL || 'https://factpos.vercel.app').replace(/\/+$/, '');
 // config.apuntado: dirección que Administración le ordenó usar (gana sobre la del acceso directo)
-let localUrl = config.apuntado || (urlArg ? urlArg.slice('--servidor='.length) : '') || process.env.FACTPOS_SERVIDOR || config.servidor || 'http://127.0.0.1:3000';
+// Una dirección guardada a medias (sin http://, con espacios o barras de más) no debe impedir abrir la app
+function urlValida(u) {
+  if (typeof u !== 'string') return '';
+  let t = u.trim().replace(/\/+$/, '');
+  if (!t) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) t = 'http://' + t;
+  try { const x = new URL(t); return ['http:', 'https:'].includes(x.protocol) && !x.username && !x.password && x.hostname ? t : ''; } catch { return ''; }
+}
+let localUrl = [config.apuntado, urlArg ? urlArg.slice('--servidor='.length) : '', process.env.FACTPOS_SERVIDOR, config.servidor].map(urlValida).find(Boolean) || 'http://127.0.0.1:3000';
 let server;
 let endpoint;
 function saveConfig() { try { fs.mkdirSync(path.dirname(configPath), { recursive: true }); fs.writeFileSync(configPath, JSON.stringify(config, null, 2)); } catch {} }
