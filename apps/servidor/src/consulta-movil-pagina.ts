@@ -81,6 +81,13 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     document.documentElement.style.setProperty("--m", c.primario);
     if (c.secundario) document.documentElement.style.setProperty("--f", c.secundario);
     if (c.logo) { $("logo").src = c.logo; $("logo").hidden = false; }
+    if (c.exigeUbicacion && !c.ubicacionLista) {   // la tienda aún no guardó su ubicación: no se abre el lector
+      $("bcam").style.display = "none"; $("bfoto").style.display = "none"; $("guia").textContent = "";
+      $("form").style.display = "none";
+      $("permiso").innerHTML = '<section class="et aviso"><div class="ico">&#9888;</div><h2>Ubicación de la tienda no configurada</h2>'
+        + '<p>Esta tienda todavía no activó la consulta de precios desde el celular.</p><p>Pregunta el precio en caja.</p></section>';
+      return;
+    }
     setTimeout(arranque, 200);   // al entrar se pide la ubicación y se abre la cámara, sin pulsar nada
     bienvenida(c);
   }).catch(function(){ $("guia").innerHTML = '<span class="err">No se pudo conectar con la tienda. Verifica que estés en su WiFi.</span>'; });
