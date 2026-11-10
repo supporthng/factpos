@@ -42,6 +42,8 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   <div class="visor" id="visor"><video id="video" playsinline muted></video><i></i></div>
   <p class="guia" id="guia"></p>
   <button class="boton" id="bcam" hidden>Escanear con la cámara</button>
+  <button class="boton claro" id="bfoto">Tomar foto del código</button>
+  <input type="file" id="archivo" accept="image/*" capture="environment" hidden>
   <form id="form"><input id="codigo" inputmode="numeric" autocomplete="off" placeholder="Escribe el código de barras"><button>Ver</button></form>
   <div id="res"></div>
 </main>
@@ -106,13 +108,43 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
       if (t && t.applyConstraints) t.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(function(){});
     } catch(e) {}
   }
-  async function conRespaldo(){
-    await cargarZx();
+  function hintsZx(){
     var Z = window.ZXing, hints = new Map();
     hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.ITF]);
     hints.set(Z.DecodeHintType.TRY_HARDER, true);
-    lectorZx = new Z.BrowserMultiFormatReader(hints, 250);
-    $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
+    return hints;
+  }
+  // Foto con la cámara normal del teléfono (enfoca y tiene más resolución que la imagen en vivo): se lee el código de la foto
+  function cargarImagen(url){
+    return new Promise(function(ok, mal){ var i = new Image(); i.onload = function(){ ok(i); }; i.onerror = function(){ mal(new Error("imagen")); }; i.src = url; });
+  }
+  $("bfoto").onclick = function(){ activarAudio(); $("archivo").value = ""; $("archivo").click(); };
+  $("archivo").onchange = async function(){
+    var f = this.files && this.files[0]; if (!f) return;
+    parar(); clearTimeout(volver); $("res").innerHTML = ""; $("guia").textContent = "Leyendo la foto…";
+    var url = null;
+    try {
+      await cargarZx();
+      var lector = new window.ZXing.BrowserMultiFormatReader(hintsZx());
+      url = URL.createObjectURL(f);
+      var img = await cargarImagen(url), texto = null, lados = [2000, 1400, 900];
+      for (var k = 0; k < lados.length && !texto; k++) {
+        var esc = Math.min(1, lados[k] / Math.max(img.naturalWidth, img.naturalHeight));
+        var c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.naturalWidth * esc)); c.height = Math.max(1, Math.round(img.naturalHeight * esc));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        try { var r = await lector.decodeFromImageElement(await cargarImagen(c.toDataURL("image/jpeg", 0.92))); texto = r.getText(); } catch(e0) {}
+      }
+      if (texto) { pitido(); if (navigator.vibrate) navigator.vibrate(60); $("guia").textContent = ""; consultar(texto, false); }
+      else $("guia").innerHTML = '<span class="err">No se pudo leer el código en la foto. Toma la foto con el código de frente, bien enfocado y sin reflejo, o escríbelo.</span>';
+    } catch(e) {
+      $("guia").innerHTML = '<span class="err">No se pudo leer la foto. Escribe el código.</span>';
+    } finally { if (url) URL.revokeObjectURL(url); }
+  };
+  async function conRespaldo(){
+    await cargarZx();
+    var Z = window.ZXing;
+    lectorZx = new Z.BrowserMultiFormatReader(hintsZx(), 250);
+    $("visor").style.display = "block"; $("guia").textContent = "Apunta al código y aleja un poco el teléfono hasta que enfoque";
     await lectorZx.decodeFromConstraints({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }, "video", function(r){ if (r) leido(r.getText()); });
     enfocar();
   }
@@ -135,7 +167,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
       if (!nativo) { await conRespaldo(); return; }
       flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
       var v = $("video"); v.srcObject = flujo; await v.play(); enfocar();
-      $("visor").style.display = "block"; $("guia").textContent = "Apunta al código de barras";
+      $("visor").style.display = "block"; $("guia").textContent = "Apunta al código y aleja un poco el teléfono hasta que enfoque";
       var fallos = 0;
       timer = setInterval(async function(){
         try { var r = await detector.detect(v); if (r.length) leido(r[0].rawValue); }
