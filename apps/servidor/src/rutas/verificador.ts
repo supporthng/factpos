@@ -16,7 +16,7 @@ import { config } from "../config.js";
 /** Rutas de la consulta de precios desde el celular del cliente (la página, su configuración y la consulta de un código). */
 export function rutaConsultaMovil(url: string) {
   const [ruta, consulta = ""] = url.split("?");
-  if (ruta === "/verificador/movil" || ruta === "/verificador/config" || ruta === "/verificador/ofertas") return true;
+  if (ruta === "/verificador/movil" || ruta === "/verificador/config" || ruta === "/verificador/ofertas" || ruta === "/verificador/ubicacion") return true;
   return /^\/verificador\/[0-9a-f-]{36}\/[^/]+$/i.test(ruta) && /(^|&)canal=movil(&|$)/.test(consulta);
 }
 const visitas = new Map<string, { n: number; hasta: number }>();
@@ -79,7 +79,7 @@ export async function rutasVerificador(app: FastifyInstance) {
          LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id WHERE s.id = $1::uuid AND s.activo`, [id, id]).catch((e) => { console.error("[consulta móvil]", (e as Error).message); return null; });
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
     // Solo el precio de un producto exige estar en la tienda (la página, su configuración y el QR cargan desde cualquier lugar)
-    if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url)) {
+    if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url) || /^\/verificador\/ubicacion(\?|$)/.test(req.url)) {
       const { lat, lng, radio } = r.rows[0];
       if (lat === null || lng === null) return rep.code(403).send({ error: "Esta tienda todavía no activó la consulta por ubicación. Pregunta el precio en caja." });
       const q = req.query as { lat?: string; lng?: string; pre?: string };
@@ -94,6 +94,9 @@ export async function rutasVerificador(app: FastifyInstance) {
   });
 
   /** Consulta desde el celular del cliente (QR en la tienda, dentro del WiFi de la sucursal). */
+  /** Al abrir la consulta móvil por internet: el filtro de distancia ya respondió antes de llegar aquí (403 si está fuera de la tienda). */
+  app.get("/verificador/ubicacion", async () => ({ ok: true }));
+
   app.get("/verificador/movil", async (_req, rep) => {
     rep.type("text/html; charset=utf-8");
     return PAGINA_CONSULTA_MOVIL;
