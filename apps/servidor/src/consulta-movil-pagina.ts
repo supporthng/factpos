@@ -61,6 +61,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   <button class="boton" id="bcam" hidden>Escanear con la cámara</button>
   <button class="boton claro" id="bfoto">Tomar foto del código</button>
   <input type="file" id="archivo" accept="image/*" capture="environment" hidden>
+  <div id="permiso"></div>
   <form id="form"><input id="codigo" inputmode="numeric" autocomplete="off" placeholder="Escribe el código de barras"><button>Ver</button></form>
   <div id="res"></div>
   <div id="bienvenida"></div>
@@ -80,7 +81,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     document.documentElement.style.setProperty("--m", c.primario);
     if (c.secundario) document.documentElement.style.setProperty("--f", c.secundario);
     if (c.logo) { $("logo").src = c.logo; $("logo").hidden = false; }
-    if (window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setTimeout(function(){ camara(); }, 300);   // la cámara se abre sola al entrar
+    setTimeout(arranque, 200);   // al entrar se pide la ubicación y se abre la cámara, sin pulsar nada
     bienvenida(c);
   }).catch(function(){ $("guia").innerHTML = '<span class="err">No se pudo conectar con la tienda. Verifica que estés en su WiFi.</span>'; });
 
@@ -333,10 +334,29 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   }
 
   // Ubicación del teléfono: por internet el servidor solo responde a quien está en la tienda (en el WiFi de la tienda no hace falta)
+  var ubicNegada = false;
   function ubicacion(){
     return new Promise(function(ok){
       if (!window.isSecureContext || !navigator.geolocation) return ok(null);
-      navigator.geolocation.getCurrentPosition(function(p){ ok({ lat: p.coords.latitude, lng: p.coords.longitude, pre: p.coords.accuracy }); }, function(){ ok(null); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+      navigator.geolocation.getCurrentPosition(
+        function(p){ ubicNegada = false; ok({ lat: p.coords.latitude, lng: p.coords.longitude, pre: p.coords.accuracy }); },
+        function(er){ if (er && er.code === 1) ubicNegada = true; ok(null); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    });
+  }
+  var PASOS_UBICACION = 'Toca «aA» o el candado junto a la dirección › Ajustes del sitio web › Ubicación › <b>Permitir</b>, y vuelve a intentar.';
+  // Si el teléfono tiene la ubicación bloqueada para esta página, se avisa desde el primer momento (no al leer el primer código)
+  function avisoPermiso(){
+    $("permiso").innerHTML = '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
+      + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono: los precios solo se consultan dentro de la tienda.</p><p>' + PASOS_UBICACION + '</p>'
+      + '<button class="boton" id="breint">Ya la activé, reintentar</button></section>';
+    $("breint").onclick = function(){ ubicacion().then(function(u){ if (u) $("permiso").innerHTML = ""; else if (!ubicNegada) $("permiso").innerHTML = ""; }); };
+  }
+  // Al entrar: primero se pide la ubicación (el teléfono pregunta solo) y enseguida se abre la cámara
+  function arranque(){
+    ubicacion().then(function(u){
+      if (!u && ubicNegada) avisoPermiso();
+      if (window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) camara();
     });
   }
   async function consultar(cod, deCamara){
@@ -361,7 +381,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
             + '<p>Los precios solo se consultan <b>dentro de la tienda</b> (a menos de ' + dist(d.radioM || 150) + ').</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
         } else if (d.codigo === "UBICACION_REQUERIDA") {
           html = '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
-            + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono. Toca el candado junto a la dirección, elige Ubicación › Permitir y vuelve a intentar.</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
+            + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono.</p><p>' + PASOS_UBICACION + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
         } else {
           html = '<section class="et aviso"><div class="ico">&#9888;</div><h2>No disponible</h2><p>' + esc(d.error || "No se pudo consultar") + '</p><div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div></section>';
         }
