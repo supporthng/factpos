@@ -376,7 +376,7 @@ if ($pgPropio) {
     $ClavePostgres = Clave 20
     Set-Content -Path $archivoClave -Value "Usuario: postgres`r`nClave: $ClavePostgres"
     icacls $archivoClave /inheritance:r /grant:r "*S-1-5-32-544:F" "*S-1-5-18:F" 2>$null | Out-Null
-    Write-Host "   Falta $archivoClave: la base de datos de FactPOS sigue ahí; se le fija una clave nueva y se conservan los datos." -ForegroundColor Yellow
+    Write-Host "   Falta ${archivoClave}: la base de datos de FactPOS sigue ahí; se le fija una clave nueva y se conservan los datos." -ForegroundColor Yellow
   }
   $pgPropio = AsegurarPuertoPropio $pgPropio
   Listo "Se usa el PostgreSQL de FactPOS ya instalado ($($pgPropio.Servicio), puerto $($pgPropio.Puerto))"
