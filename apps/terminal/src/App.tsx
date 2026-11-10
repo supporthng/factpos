@@ -323,8 +323,6 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
     setServidor(url);
     try {
       const lista = await api<CajaElegible[]>(url, `/cajas?equipo=${encodeURIComponent(equipoId())}`);
-      const mia = lista.find((c) => c.mia);
-      if (mia) { onListo({ servidor: url, cajaId: mia.id }); return; } // esta PC ya tiene su caja en ese servidor
       setCajas({ url, lista });
     } catch (e) {
       setMsg((e as Error).message);
@@ -356,11 +354,11 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
     return (
       <Pantalla>
         <h2>¿Qué caja es esta PC?</h2>
-        <p className="suave">{cajas.lista[0]?.sucursal ?? "Servidor"} · {cajas.url.replace("http://", "")}</p>
+        <p className="suave">{cajas.url.replace("http://", "")}</p>
         <div className="lista-opciones">
           {cajas.lista.map((c) => (
-            <button key={c.id} className="opcion" disabled={c.libre === false} onClick={() => asignar(cajas.url, c.id)}>
-              <b>{c.nombre}</b> <span className="suave">{c.libre === false ? "en uso por otra PC" : "libre"}</span>
+            <button key={c.id} className="opcion" disabled={c.libre === false && !c.mia} onClick={() => asignar(cajas.url, c.id)}>
+              <b>{c.sucursal} · {c.nombre}</b> <span className="suave">{c.mia ? "esta PC la tenía" : c.libre === false ? "en uso por otra PC" : "libre"}</span>
             </button>
           ))}
           {!cajas.lista.length && <p className="suave">Ese servidor no tiene cajas activas.</p>}
