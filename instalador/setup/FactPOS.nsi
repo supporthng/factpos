@@ -81,7 +81,7 @@ Var ServVer
 Var ServTipo
 Var CliLoc        ; Caja / Administración ya instaladas ("" si no hay)
 Var CliVer
-Var BorrarDatos   ; desinstalador: 1 = borrar configuración, registros y respaldos
+Var BorrarDatos   ; desinstalador: 1 = borrar configuración y registros (los respaldos nunca se borran)
 Var Modo          ; desinstalador: servidor | cliente
 Var hA2
 Var hA3
@@ -834,9 +834,9 @@ Function un.PaginaDatos
     Abort
   ${EndIf}
   ${If} $Modo == "servidor"
-    ${NSD_CreateLabel} 0 0 100% 44u "Se quitan los programas de FactPOS. La base de datos (ventas, productos, clientes) NO se borra: queda en PostgreSQL, así que puede volver a instalar FactPOS y seguir donde estaba.$\r$\n$\r$\nPor defecto también se conservan la configuración (.env), los registros y los respaldos de $INSTDIR."
+    ${NSD_CreateLabel} 0 0 100% 44u "Se quitan los programas de FactPOS. La base de datos (ventas, productos, clientes) NO se borra: queda en PostgreSQL, así que puede volver a instalar FactPOS y seguir donde estaba.$\r$\n$\r$\nLos respaldos de $INSTDIR\respaldos NUNCA se borran al desinstalar. Por defecto también se conservan la configuración (.env) y los registros."
     Pop $0
-    ${NSD_CreateCheckBox} 0 52u 100% 24u "Eliminar también la configuración, los registros y los respaldos de $INSTDIR"
+    ${NSD_CreateCheckBox} 0 52u 100% 24u "Eliminar también la configuración (.env) y los registros de $INSTDIR (los respaldos se conservan siempre)"
     Pop $hBorrar
   ${Else}
     ${NSD_CreateLabel} 0 0 100% 30u "Se quitan los accesos y la aplicación de Caja / Administración de esta computadora. Los datos del negocio están en el servidor y no se tocan."
@@ -851,7 +851,7 @@ Function un.PaginaDatosSalir
   ${NSD_GetState} $hBorrar $0
   ${If} $0 == ${BST_CHECKED}
     ${If} $Modo == "servidor"
-      MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "Se borrarán los respaldos y la configuración de $INSTDIR. Esto no se puede deshacer.$\r$\n$\r$\n¿Continuar?" IDYES siBorrar
+      MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "Se borrarán la configuración (.env) y los registros de $INSTDIR. Los respaldos se conservan. Esto no se puede deshacer.$\r$\n$\r$\n¿Continuar?" IDYES siBorrar
       Abort
       siBorrar:
     ${EndIf}
@@ -913,9 +913,8 @@ Section "Uninstall"
     Delete "$INSTDIR\.env.example"
     Delete "$INSTDIR\INSTALAR FactPOS.bat"
     ${If} $BorrarDatos == "1"
-      DetailPrint "Eliminando configuración, registros y respaldos…"
+      DetailPrint "Eliminando configuración y registros (los respaldos se conservan)…"
       RMDir /r "$INSTDIR\logs"
-      RMDir /r "$INSTDIR\respaldos"
       Delete "$INSTDIR\.env"
       Delete "$INSTDIR\postgres-superusuario.txt"
     ${EndIf}
