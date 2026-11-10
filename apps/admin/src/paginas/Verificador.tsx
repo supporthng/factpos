@@ -66,6 +66,30 @@ function QrConsultaMovil({ inicial }: { inicial: string }) {
   );
 }
 
+/** Coordenadas escritas o pegadas: «18.4861, -69.9312», o un enlace de Google Maps / OpenStreetMap
+ *  (…/@18.48,-69.93,17z · …?q=18.48,-69.93 · …!3d18.48!4d-69.93 · …?ll=… · …#map=17/18.48/-69.93). */
+function coordenadasDeTexto(texto: string): { lat: number; lng: number } | null {
+  let t = (texto ?? "").trim();
+  try { t = decodeURIComponent(t); } catch { /* se usa tal cual */ }
+  const patrones = [
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    /@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/,
+    /[?&](?:q|query|ll|center|destination)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/,
+    /[?&]mlat=(-?\d+(?:\.\d+)?)&mlon=(-?\d+(?:\.\d+)?)/,
+    /#map=\d+\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/,
+    /^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/,
+  ];
+  for (const p of patrones) {
+    const m = t.match(p);
+    if (!m) continue;
+    const lat = Number(m[1]), lng = Number(m[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)) {
+      return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
+    }
+  }
+  return null;
+}
+
 /** Ubicación de cada tienda para la consulta por internet: solo responde a teléfonos que estén dentro del radio. */
 function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubicaciones: Record<string, { lat: number; lng: number }>; radioM: number; onRadio: (m: number) => void; onGuardado: () => void }) {
   const [sucursalId, setSucursalId] = useState("");
@@ -80,10 +104,10 @@ function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubica
   const [pegado, setPegado] = useState("");
   // Coordenadas copiadas de Google Maps (clic derecho en la tienda › se copian «18.48, -69.93»)
   const guardarPegado = () => {
-    const m = pegado.replace(/[()°]/g, " ").match(/(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
-    const lat = m ? Number(m[1]) : NaN, lng = m ? Number(m[2]) : NaN;
-    if (!m || Math.abs(lat) > 90 || Math.abs(lng) > 180) { setOk(""); setMsg("Escribe las coordenadas como en Google Maps, por ejemplo: 18.486100, -69.931200"); return; }
-    void guardar(Number(lat.toFixed(6)), Number(lng.toFixed(6)));
+    if (/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(pegado)) { setOk(""); setMsg("Ese enlace corto de Google Maps no trae las coordenadas. Ábrelo en el navegador y copia la dirección completa de la barra, o los números."); return; }
+    const c = coordenadasDeTexto(pegado);
+    if (!c) { setOk(""); setMsg("No encontré coordenadas. Pega los números (18.486100, -69.931200) o el enlace de Google Maps / OpenStreetMap."); return; }
+    void guardar(c.lat, c.lng);
   };
   const usarMia = () => {
     setMsg(""); setOk("");
@@ -109,8 +133,8 @@ function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubica
         {actual && <button className="boton" onClick={() => guardar(null, null)}>Quitar ubicación</button>}
       </div>
       <label className="campo" style={{ marginTop: 10, maxWidth: 360 }}>
-        <span>O pega las coordenadas de la tienda (Google Maps: clic derecho sobre la tienda y toca los números para copiarlos)</span>
-        <input value={pegado} placeholder="18.486100, -69.931200" disabled={!sucursalId} onChange={(e) => setPegado(e.target.value)} onKeyDown={(e) => e.key === "Enter" && guardarPegado()} />
+        <span>O pega las coordenadas o el enlace de la tienda en Google Maps (clic derecho sobre la tienda y toca los números para copiarlos)</span>
+        <input value={pegado} placeholder="18.486100, -69.931200 o enlace de Google Maps" disabled={!sucursalId} onChange={(e) => setPegado(e.target.value)} onKeyDown={(e) => e.key === "Enter" && guardarPegado()} />
       </label>
       <div className="fila-acciones" style={{ marginTop: 6 }}>
         <button className="boton" disabled={!sucursalId || !pegado.trim()} onClick={guardarPegado}>Guardar coordenadas</button>
