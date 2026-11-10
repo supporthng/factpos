@@ -368,8 +368,16 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
     setEncontrados([]);
     setCajas(null);
     setMsg("");
-    const hallados: Encontrado[] = [];
-    await buscarServidores(setAvance, (e) => { hallados.push(e); setEncontrados([...hallados]); }, true);
+    // Un mismo servidor puede aparecer por varias direcciones (localhost, su IP, factpos.local): se muestra una sola vez, con la más directa
+    const porServidor = new Map<string, Encontrado>();
+    const rango = (u: string) => { const h = new URL(u).hostname; return h === "localhost" || h === "127.0.0.1" ? 0 : /^\d+\.\d+\.\d+\.\d+$/.test(h) ? 1 : 2; };
+    await buscarServidores(setAvance, (e) => {
+      const clave = `${e.equipo}|${e.empresa}|${e.sucursales.join(",")}`;
+      const previo = porServidor.get(clave);
+      if (!previo || rango(e.url) < rango(previo.url)) porServidor.set(clave, e);
+      setEncontrados([...porServidor.values()]);
+    }, true);
+    const hallados = [...porServidor.values()];
     setBuscando(false);
     if (!hallados.length) { setMsg("No se encontró el servidor en la red. Revise que esté encendido y en la misma red, o escriba su dirección."); setManual(true); }
   };
