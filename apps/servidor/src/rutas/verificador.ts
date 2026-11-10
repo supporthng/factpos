@@ -291,7 +291,8 @@ export async function rutasVerificador(app: FastifyInstance) {
     permisoPrecios(req);
     const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const r = await pool.query<{ o: unknown; q: unknown; cw: unknown; w: string | null; a: unknown; s: unknown; u: unknown; rm: unknown }>("SELECT verificador->'mostrarOfertas' AS o, verificador->'mostrarQr' AS q, verificador->>'wifi' AS w, verificador->'consultaWeb' AS cw, verificador->'autoActualizar' AS a, verificador->'segundosOferta' AS s, verificador->'ubicaciones' AS u, verificador->'radioM' AS rm FROM configuracion_marca WHERE empresa_id = $1", [empresaId]);
-    return { ubicaciones: (r.rows[0]?.u && typeof r.rows[0].u === "object" ? r.rows[0].u : {}) as Record<string, { lat: number; lng: number }>, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
+    const empresaCorta = (process.env.FACTPOS_EMPRESA ?? "").trim().toLowerCase();
+    return { enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones: (r.rows[0]?.u && typeof r.rows[0].u === "object" ? r.rows[0].u : {}) as Record<string, { lat: number; lng: number }>, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
