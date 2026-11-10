@@ -214,6 +214,9 @@ export function TecladoPantalla() {
           <div className="tp-fila">
             <button type="button" className="tp-tecla" {...accion(() => tecla("-"))}>-</button>
             <button type="button" className="tp-tecla" {...accion(() => tecla("."))}>.</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla(":"))}>:</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla("/"))}>/</button>
+            <button type="button" className="tp-tecla" {...accion(() => tecla("_"))}>_</button>
             <button type="button" className="tp-tecla tp-espacio" {...accion(() => tecla(" "))}>espacio</button>
             <button type="button" className="tp-tecla" {...accion(() => tecla("@"))}>@</button>
             <button type="button" className="tp-tecla" {...accion(() => tecla("C"))}>C</button>
