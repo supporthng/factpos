@@ -45,7 +45,6 @@ const MINUTOS_INACTIVIDAD = 5;
 
 /** Desvincula esta PC del servidor actual: borra lo guardado y vuelve a buscar los servidores de la red para elegir otro. */
 function cambiarServidor() {
-  if (!confirm("¿Cambiar de servidor?\n\nEsta caja se desvinculará del servidor actual y buscará los servidores de la red para que elija uno.")) return;
   try { localStorage.removeItem("factpos.terminal"); } catch { /* sin almacenamiento */ }
   fijarSesionCaja(null);
   location.reload();
@@ -83,6 +82,7 @@ function AppInterna() {
 
   // Seguridad de la caja: con el turno abierto, salir de FactPOS necesita la aprobación de un supervisor
   const [saliendo, setSaliendo] = useState(false);
+  const [cambiando, setCambiando] = useState(false);
   const [bienvenida, setBienvenida] = useState<{ usuario: string; fondo: string } | null>(null);
   const [minimizando, setMinimizando] = useState(false);
   const [bloqueada, setBloqueada] = useState(false);
@@ -157,6 +157,14 @@ function AppInterna() {
 
   // Sin turno abierto (ya se hizo el cierre) no hay nada que proteger: se cierra la caja con una confirmación, sin PIN
   // En la pantalla del PIN (nadie ha entrado) no hay turno de nadie que proteger, pero cerrar la caja sí pide a un supervisor o administrador
+  const ventanaCambiar = cambiando && ajustes ? (
+    <Modal titulo="Cambiar de servidor" onCerrar={() => setCambiando(false)}>
+      <p>Esta PC quedó asignada a su caja y solo un supervisor o administrador puede cambiarla. Escriba su PIN para desvincularla y elegir otro servidor.</p>
+      <PinSupervisor ajustes={ajustes} permiso="caja.salir" textoBoton="Autorizar y cambiar de servidor" enfocar onAprobado={cambiarServidor} />
+      <p className="suave" style={{ marginTop: 8 }}>Después, el administrador debe liberar esta PC en el servidor anterior (Sucursales y terminales › Liberar PC) para que pueda tomar otra caja.</p>
+      <button className="boton ancho" style={{ marginTop: 8 }} onClick={() => setCambiando(false)}>Volver</button>
+    </Modal>
+  ) : null;
   const ventanaSalir = saliendo && ajustes && !usuario ? (
     <Modal titulo="Cerrar FactPOS" onCerrar={() => setSaliendo(false)}>
       <p>Para cerrar la caja escriba el PIN de un supervisor o administrador.</p>
@@ -191,13 +199,13 @@ function AppInterna() {
   if (cerrada) return <Pantalla><h2>Caja cerrada</h2><p className="suave">Ya puede cerrar esta ventana.</p><button className="boton ancho" onClick={() => location.reload()}>Abrir de nuevo</button></Pantalla>;
   if (ajustes && error && !config) {
     // Esta PC ya tiene su caja: un fallo de conexión nunca la desconfigura, solo se reintenta
-    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button><button className="enlace" onClick={cambiarServidor}>Cambiar de servidor</button></Pantalla>;
+    return <Pantalla><h2>Sin conexión con el servidor</h2><p className="error">{error}</p><p className="suave">Esta caja sigue asignada. Revise que el servidor esté encendido.</p><button className="boton ancho" onClick={() => { setError(""); setAjustes({ ...ajustes }); }}>Reintentar</button></Pantalla>;
   }
   if (!ajustes) {
     return <Configurar inicial={ajustes} error={error} onListo={(a) => { guardarAjustes(a); setError(""); setAjustes(a); }} />;
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p></Pantalla>;
-  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} onCerrar={() => setSaliendo(true)} />{ventanaSalir}{ventanaMin}</>;
+  if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} onCerrar={() => setSaliendo(true)} onCambiar={() => setCambiando(true)} />{ventanaSalir}{ventanaCambiar}{ventanaMin}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <><AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onSalir={salir} onCerrarSistema={() => setSaliendo(true)} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />{ventanaSalir}</>;
 
@@ -323,6 +331,8 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
     setServidor(url);
     try {
       const lista = await api<CajaElegible[]>(url, `/cajas?equipo=${encodeURIComponent(equipoId())}`);
+      const mia = lista.find((c) => c.mia);
+      if (mia) { onListo({ servidor: url, cajaId: mia.id }); return; } // la asignación es definitiva: solo el administrador la libera
       setCajas({ url, lista });
     } catch (e) {
       setMsg((e as Error).message);
@@ -402,7 +412,7 @@ function Configurar({ inicial, error, onListo }: { inicial: Ajustes | null; erro
   );
 }
 
-function ElegirUsuario({ ajustes, config, onElegir, bloqueo, onCerrar }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void; bloqueo?: Usuario; onCerrar?: () => void }) {
+function ElegirUsuario({ ajustes, config, onElegir, bloqueo, onCerrar, onCambiar }: { ajustes: Ajustes; config: ConfigCaja; onElegir: (u: Usuario) => void; bloqueo?: Usuario; onCerrar?: () => void; onCambiar?: () => void }) {
   const [pin, setPin] = useState("");
   const [msg, setMsg] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -471,7 +481,7 @@ function ElegirUsuario({ ajustes, config, onElegir, bloqueo, onCerrar }: { ajust
       {onCerrar && (
         <div className="fila-enlaces">
           <button className="enlace" onClick={onCerrar}>Cerrar FactPOS</button>
-          <button className="enlace" onClick={cambiarServidor}>Cambiar de servidor</button>
+          {onCambiar && <button className="enlace" onClick={onCambiar}>Cambiar de servidor</button>}
         </div>
       )}
     </Pantalla>

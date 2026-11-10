@@ -35,6 +35,11 @@ export async function rutasTurnos(app: FastifyInstance) {
       const ya = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas_equipos ce JOIN cajas ca ON ca.id = ce.caja_id JOIN sucursales s ON s.id = ca.sucursal_id
           WHERE ce.equipo_id = $1 AND ca.activo AND ($2::uuid IS NULL OR ca.sucursal_id = $2)`, [equipoId, sucursalPropia()])).rows[0];
+      if (ya) {
+        // Definitiva: la PC no cambia de caja por su cuenta; solo el administrador la libera (Sucursales y terminales › Liberar PC)
+        if (cajaId && cajaId !== ya.id) throw new ErrorNegocio(`Esta PC ya está asignada a la ${ya.nombre}. Solo el administrador puede cambiarla: debe liberarla en Sucursales y terminales.`, 409);
+        return ya;
+      }
       if (cajaId) {
         // La persona eligió la caja: debe ser de esta sucursal y estar libre
         const elegida = (await c.query(
@@ -45,7 +50,6 @@ export async function rutasTurnos(app: FastifyInstance) {
         await c.query("INSERT INTO cajas_equipos (caja_id, equipo_id) VALUES ($1,$2)", [elegida.id, equipoId]);
         return elegida;
       }
-      if (ya) return ya;
       const libre = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
           WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
