@@ -112,9 +112,12 @@ const TarjetaProducto = memo(function TarjetaProducto({ p, nivel, n, catalogo, s
       const ahora = new Date();
       // Ofertas con tope agotadas no se anuncian
       const oferta = ofertasPara(catalogo, p, nivel).find((o) => ofertaVigente(o, ahora) && (o.restantes == null || Number(o.restantes) / Number(p.factor) >= 1));
-      const stock = Number(p.existencia ?? 0);
+      const existencia = Number(p.existencia ?? 0);
       const minimo = Number(p.minimo ?? 0);
-      const estado = !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
+      // El inventario está en unidades base: cada presentación (trago, botella, caja) muestra cuántas hay disponibles de ella
+      const factor = Number(p.factor) || 1;
+      const stock = factor === 1 || p.esPesable ? existencia : Math.max(0, Math.floor(existencia / factor));
+      const estado = !p.controlaStock ? null : existencia <= 0 || stock <= 0 ? "agotado" : existencia <= minimo ? "bajo" : "ok";
       return (
         <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
           style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>
