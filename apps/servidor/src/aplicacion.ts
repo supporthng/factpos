@@ -60,6 +60,7 @@ import { rutasCajaMovimientos } from "./rutas/caja-movimientos.js";
 import { rutasCentralCxc } from "./rutas/central-cxc.js";
 import { rutasCentralClientes } from "./rutas/central-clientes.js";
 import { rutasPedidos } from "./rutas/pedidos.js";
+import { rutasCuentas } from "./rutas/cuentas.js";
 import { rutasCentralFacturas } from "./rutas/central-facturas.js";
 import { rutasContingencia } from "./rutas/contingencia.js";
 import { rutasCentralIncidentes } from "./rutas/central-incidentes.js";
@@ -257,6 +258,7 @@ export async function crearApp() {
   await app.register(rutasEquiposRed);
   await app.register(rutasDelivery);
   await app.register(rutasPedidos);
+  await app.register(rutasCuentas);
   await app.register(rutasCentralFacturas);
   await app.register(rutasFacturas);
   await app.register(rutasCierre);
