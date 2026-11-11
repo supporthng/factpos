@@ -365,7 +365,15 @@ export async function rutasVerificador(app: FastifyInstance) {
     const codigos: Record<string, string> = {};
     for (const f of cods.rows) codigos[f.id] = f.c;
     for (const f of propias.rows) { if (typeof f.u?.lat === "number" && typeof f.u?.lng === "number") ubicaciones[f.id] = f.u; else delete ubicaciones[f.id]; }
-    return { enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones, codigos, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
+    // ¿Ese nombre corto existe en el portal? (un error de escritura da «No encontramos esa administración» al escanear el QR)
+    let empresaEnPortal: boolean | null = null;
+    if (empresaCorta) {
+      try {
+        const rp = await fetch(`${PORTAL_URL()}/licencias/cliente/${encodeURIComponent(empresaCorta)}`, { signal: AbortSignal.timeout(6_000) });
+        empresaEnPortal = rp.ok ? true : rp.status === 404 ? false : null;
+      } catch { empresaEnPortal = null; }
+    }
+    return { empresaEnPortal, empresaCorta, enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones, codigos, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);

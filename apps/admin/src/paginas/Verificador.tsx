@@ -13,7 +13,7 @@ interface Consultas {
 
 /** Todo lo de la consulta de precios por internet en un solo lugar: interruptor, ubicación, distancia, código del QR, cartel y bloqueos. */
 function ConsultaInternet({ sucursalId }: { sucursalId: string }) {
-  type Aj = { enlaceInternet?: string | null; consultaWeb?: boolean; radioM?: number; ubicaciones?: Record<string, { lat: number; lng: number }>; codigos?: Record<string, string> };
+  type Aj = { empresaEnPortal?: boolean | null; empresaCorta?: string; enlaceInternet?: string | null; consultaWeb?: boolean; radioM?: number; ubicaciones?: Record<string, { lat: number; lng: number }>; codigos?: Record<string, string> };
   const { datos, recargar } = useDatos<Aj>("/central/verificador/ajustes");
   const [activa, setActiva] = useState(false);
   const [coord, setCoord] = useState("");
@@ -97,7 +97,7 @@ function ConsultaInternet({ sucursalId }: { sucursalId: string }) {
           <ul className="pequeno" style={{ listStyle: "none", padding: 0, margin: "0 0 10px" }}>
             {paso(!!datos?.consultaWeb, "Consulta por internet encendida")}
             {paso(!!guardada, guardada ? `Ubicación de la tienda guardada (${guardada.lat}, ${guardada.lng})` : "Falta la ubicación de la tienda: sin ella no se muestran precios")}
-            {paso(!!datos?.enlaceInternet, datos?.enlaceInternet ? "Enlace de internet de la empresa listo" : "Falta el nombre de la empresa en el servidor (FACTPOS_EMPRESA)")}
+            {paso(!!datos?.enlaceInternet && datos?.empresaEnPortal !== false, !datos?.enlaceInternet ? "Falta el nombre de la empresa en el servidor (FACTPOS_EMPRESA)" : datos.empresaEnPortal === false ? `El nombre «${datos.empresaCorta}» (FACTPOS_EMPRESA) no existe en el portal: revise cómo está escrito en el .env del servidor, o el nombre corto del cliente en Portal › Clientes. El QR no funcionará así.` : "Enlace de internet de la empresa listo")}
           </ul>
           <label className="check" style={{ fontSize: 16 }}>
             <input type="checkbox" disabled={!datos} checked={activa} onChange={(e) => setActiva(e.target.checked)} /> Consulta por internet encendida
@@ -306,7 +306,7 @@ export function Verificador() {
   const pagina = `${base}/verificador${params ? `?${params}` : ""}`;
   const api = `${base}/verificador/${sucursalId || "ID_SUCURSAL"}/CODIGO_DE_BARRAS`;
   // Desde factpos.app/<empresa>: enlace FIJO (el portal manda a la dirección vigente del servidor, que cambia al reiniciarlo)
-  const { datos: ajEnlace } = useDatos<{ enlaceInternet?: string | null; codigos?: Record<string, string> }>("/central/verificador/ajustes");
+  const { datos: ajEnlace } = useDatos<{ empresaEnPortal?: boolean | null; empresaCorta?: string; enlaceInternet?: string | null; codigos?: Record<string, string> }>("/central/verificador/ajustes");
   const codigoQr = sucursalId ? ajEnlace?.codigos?.[sucursalId] : undefined;
   const movil = CONFIG.modo === "cliente" && CONFIG.slug
     ? `${location.origin}/${CONFIG.slug}/precios${sucursalId ? `?sucursal=${sucursalId}${codigoQr ? `&k=${codigoQr}` : ""}` : ""}`
@@ -328,6 +328,7 @@ export function Verificador() {
     <>
       <Encabezado titulo="Verificador de precios" descripcion="El cliente pasa el producto por el lector del equipo y ve su precio, la oferta vigente y si el precio incluye ITBIS. Funciona desde el servidor de la sucursal, también sin internet." />
       <AjustesVerificador />
+      {ajEnlace?.empresaEnPortal === false && <Aviso texto={`El nombre «${ajEnlace.empresaCorta}» (FACTPOS_EMPRESA) no existe en el portal, por eso el QR dice «No encontramos esa administración». Corríjalo en el .env del servidor y reinícielo.`} />}
       {!esLocal() && <Aviso tipo="info" texto="Esta dirección es la del servidor donde está abierta la administración. Los verificadores se conectan al servidor de la sucursal (en su red local): abra esta pantalla desde allí, o use la dirección IP de ese servidor en lugar de la que aparece abajo." />}
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Dirección del verificador</h3>
