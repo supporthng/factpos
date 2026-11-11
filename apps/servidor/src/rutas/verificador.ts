@@ -8,6 +8,7 @@ import { PORTAL_URL } from "../licencia/cliente.js";
 import { supervisorPorPin } from "../autorizacion.js";
 import { ofertasPara } from "../promociones.js";
 import QRCode from "qrcode";
+import { createHash, randomBytes } from "node:crypto";
 import { PAGINA_CONSULTA_MOVIL } from "../consulta-movil-pagina.js";
 import { PAGINA_VERIFICADOR } from "../verificador-pagina.js";
 import { direccionesLocales } from "../red.js";
@@ -27,6 +28,18 @@ export function distanciaM(lat1: number, lng1: number, lat2: number, lng2: numbe
   return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 export const RADIO_CONSULTA_M = 150;
+/** Precisión máxima del GPS que se acepta (m): con una peor, la ubicación no sirve para saber si está en la tienda. */
+export const PRECISION_MAX_M = 100;
+/** Intentos fuera de la tienda por equipo antes de pausarlo, y cuánto dura la pausa. */
+const MAX_FUERA = 6, PAUSA_FUERA_MS = 10 * 60_000;
+const fuera = new Map<string, { n: number; hasta: number }>();
+/** Identificador corto y no reversible del equipo (la IP no se guarda). */
+const equipoCorto = (ip: string) => createHash("sha256").update(ip).digest("hex").slice(0, 8);
+/** Código del enlace/QR de una sucursal: 8 letras y números sin símbolos confusos. */
+export function nuevoCodigoConsulta() {
+  const abc = "abcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from(randomBytes(8), (b) => abc[b % abc.length]).join("");
+}
 
 /**
  * Verificador de precios.
@@ -71,24 +84,48 @@ export async function rutasVerificador(app: FastifyInstance) {
     // Cada sucursal tiene sus precios y sus ofertas: por internet el enlace SIEMPRE lleva la sucursal, y la activación es la de su empresa
     const id = /^\/verificador\/([0-9a-f-]{36})\//i.exec(req.url)?.[1] ?? /[?&]sucursal=([0-9a-f-]{36})/i.exec(req.url)?.[1];
     if (!id) return rep.code(400).send({ error: "Falta la sucursal en el enlace: genere el enlace desde Verificador eligiendo la sucursal" });
-    const r = await pool.query<{ ok: boolean; lat: string | null; lng: string | null; radio: string | null }>(
+    const r = await pool.query<{ ok: boolean; lat: string | null; lng: string | null; radio: string | null; codigo: string | null }>(
       `SELECT COALESCE(m.verificador->>'consultaWeb' = 'true', false) AS ok,
               CASE WHEN cs.ubicacion_tienda IS NOT NULL THEN cs.ubicacion_tienda->>'lat' ELSE m.verificador->'ubicaciones'->$2::text->>'lat' END AS lat, CASE WHEN cs.ubicacion_tienda IS NOT NULL THEN cs.ubicacion_tienda->>'lng' ELSE m.verificador->'ubicaciones'->$2::text->>'lng' END AS lng,
-              m.verificador->>'radioM' AS radio
+              m.verificador->>'radioM' AS radio, cs.codigo_consulta AS codigo
          FROM sucursales s LEFT JOIN configuracion_marca m ON m.empresa_id = s.empresa_id
          LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id WHERE s.id = $1::uuid AND s.activo`, [id, id]).catch((e) => { console.error("[consulta móvil]", (e as Error).message); return null; });
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
+    const equipo = equipoCorto(ip);
+    const bloquear = (motivo: string, distanciaM?: number) => {
+      pool.query("INSERT INTO consulta_movil_bloqueos (sucursal_id, motivo, distancia_m, equipo) VALUES ($1, $2, $3, $4)", [id, motivo, distanciaM ?? null, equipo]).catch(() => {});
+      if (Math.random() < 0.01) pool.query("DELETE FROM consulta_movil_bloqueos WHERE creado_en < now() - interval '60 days'").catch(() => {});
+    };
+    // Código del QR: si la sucursal tiene uno, el enlace debe traerlo (la página en sí carga siempre para poder avisar «QR vencido»)
+    const { codigo } = r.rows[0];
+    const pedido = req.url.split("?")[0] !== "/verificador/movil";
+    if (codigo && pedido && /[?&]k=([A-Za-z0-9]{6,32})(&|$)/.exec(req.url)?.[1] !== codigo) {
+      bloquear("QR vencido o sin código");
+      return rep.code(403).send({ codigo: "ENLACE_VENCIDO", error: "Este código QR ya no es válido. Pide el nuevo en caja." });
+    }
     // Solo el precio de un producto exige estar en la tienda (la página, su configuración y el QR cargan desde cualquier lugar)
     if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url) || /^\/verificador\/ubicacion(\?|$)/.test(req.url)) {
       const { lat, lng, radio } = r.rows[0];
       if (lat === null || lng === null) return rep.code(403).send({ error: "Esta tienda todavía no activó la consulta por ubicación. Pregunta el precio en caja." });
       const q = req.query as { lat?: string; lng?: string; pre?: string };
-      const mLat = Number(q.lat), mLng = Number(q.lng), pre = Math.min(100, Math.max(0, Number(q.pre) || 0));
+      const mLat = Number(q.lat), mLng = Number(q.lng), precision = Math.max(0, Number(q.pre) || 0), pre = Math.min(50, precision);
       if (q.lat === undefined || q.lng === undefined || !Number.isFinite(mLat) || !Number.isFinite(mLng) || Math.abs(mLat) > 90 || Math.abs(mLng) > 180) {
         return rep.code(403).send({ codigo: "UBICACION_REQUERIDA", error: "Para consultar precios hay que permitir la ubicación del teléfono: solo funciona dentro de la tienda." });
       }
+      // Una ubicación muy imprecisa (o «0,0») no prueba que esté en la tienda
+      if (precision > PRECISION_MAX_M || (mLat === 0 && mLng === 0)) {
+        bloquear("Ubicación imprecisa");
+        return rep.code(403).send({ codigo: "UBICACION_IMPRECISA", error: "No se pudo ubicar el teléfono con precisión. Activa la ubicación precisa e inténtalo de nuevo." });
+      }
       const radioM = Number(radio) > 0 ? Number(radio) : RADIO_CONSULTA_M;
       const d = distanciaM(mLat, mLng, Number(lat), Number(lng));
+      if (d - pre > radioM) {
+        const f = fuera.get(`${ip}|${id}`);
+        if (!f || f.hasta < ahora) fuera.set(`${ip}|${id}`, { n: 1, hasta: ahora + PAUSA_FUERA_MS }); else f.n++;
+        if (fuera.size > 5000) for (const [k, x] of fuera) if (x.hasta < ahora) fuera.delete(k);
+        bloquear("Fuera de la tienda", Math.round(d / 10) * 10);
+        if ((fuera.get(`${ip}|${id}`)?.n ?? 0) > MAX_FUERA) return rep.code(429).send({ error: "Demasiados intentos fuera de la tienda. Espera unos minutos." });
+      } else fuera.delete(`${ip}|${id}`);
       if (d - pre > radioM) return rep.code(403).send({ codigo: "FUERA_DE_TIENDA", distanciaM: Math.round(d / 10) * 10, radioM, error: `Solo se puede consultar estando en la tienda (estás a unos ${Math.round(d / 10) * 10} m).` });
     }
   });
@@ -116,8 +153,9 @@ export async function rutasVerificador(app: FastifyInstance) {
     const empresaCorta = (process.env.FACTPOS_EMPRESA ?? "").trim().toLowerCase();
     let suc = sucursal ?? sucursalPropia() ?? undefined;
     if (!suc) { const u = await pool.query<{ id: string }>("SELECT id FROM sucursales WHERE activo LIMIT 2"); if (u.rowCount === 1) suc = u.rows[0].id; }
+    const codigo = suc ? (await pool.query<{ c: string | null }>("SELECT codigo_consulta AS c FROM configuracion_sucursal WHERE sucursal_id = $1", [suc])).rows[0]?.c : null;
     const url = empresaCorta && suc
-      ? `${PORTAL_URL()}/${empresaCorta}/precios?sucursal=${suc}`
+      ? `${PORTAL_URL()}/${empresaCorta}/precios?sucursal=${suc}${codigo ? `&k=${codigo}` : ""}`
       : `http://${destino}/verificador/movil${sucursal ? `?sucursal=${sucursal}` : ""}`;
     rep.type("image/svg+xml").header("cache-control", "public, max-age=60");
     return QRCode.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
@@ -310,8 +348,12 @@ export async function rutasVerificador(app: FastifyInstance) {
     const ubicaciones = { ...(r.rows[0]?.u && typeof r.rows[0].u === "object" ? r.rows[0].u : {}) } as Record<string, { lat: number; lng: number }>;
     const propias = await pool.query<{ id: string; u: { lat: number; lng: number } }>(
       "SELECT cs.sucursal_id AS id, cs.ubicacion_tienda AS u FROM configuracion_sucursal cs JOIN sucursales s ON s.id = cs.sucursal_id WHERE s.empresa_id = $1 AND cs.ubicacion_tienda IS NOT NULL", [empresaId]);
+    const cods = await pool.query<{ id: string; c: string }>(
+      "SELECT cs.sucursal_id AS id, cs.codigo_consulta AS c FROM configuracion_sucursal cs JOIN sucursales s ON s.id = cs.sucursal_id WHERE s.empresa_id = $1 AND cs.codigo_consulta IS NOT NULL", [empresaId]);
+    const codigos: Record<string, string> = {};
+    for (const f of cods.rows) codigos[f.id] = f.c;
     for (const f of propias.rows) { if (typeof f.u?.lat === "number" && typeof f.u?.lng === "number") ubicaciones[f.id] = f.u; else delete ubicaciones[f.id]; }
-    return { enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
+    return { enlaceInternet: empresaCorta ? `${PORTAL_URL()}/${empresaCorta}/precios` : null, ubicaciones, codigos, radioM: typeof r.rows[0]?.rm === "number" ? r.rows[0].rm : RADIO_CONSULTA_M, consultaWeb: r.rows[0]?.cw === true, mostrarOfertas: r.rows[0]?.o !== false, mostrarQr: r.rows[0]?.q !== false, wifi: (r.rows[0] as { w?: string | null } | undefined)?.w ?? "", autoActualizar: r.rows[0]?.a !== false, segundosOferta: typeof r.rows[0]?.s === "number" ? r.rows[0].s : 7 };
   });
   app.put("/central/verificador/ajustes", async (req) => {
     permisoPrecios(req);
@@ -337,6 +379,33 @@ export async function rutasVerificador(app: FastifyInstance) {
       `INSERT INTO configuracion_sucursal (sucursal_id, ubicacion_tienda) VALUES ($1, $2::jsonb)
        ON CONFLICT (sucursal_id) DO UPDATE SET ubicacion_tienda = EXCLUDED.ubicacion_tienda`, [b.sucursalId, u]);
     return { ok: true };
+  });
+
+  /** Renueva (o quita) el código del enlace/QR de una sucursal: los QR impresos con el código anterior dejan de funcionar. */
+  app.put("/central/verificador/codigo-consulta", async (req) => {
+    permisoPrecios(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const b = z.object({ sucursalId: z.string().uuid(), quitar: z.boolean().optional() }).parse(req.body);
+    const s = await pool.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, empresaId]);
+    if (!s.rowCount) throw new ErrorNegocio("Sucursal no encontrada", 404);
+    const codigo = b.quitar ? null : nuevoCodigoConsulta();
+    await pool.query(
+      `INSERT INTO configuracion_sucursal (sucursal_id, codigo_consulta) VALUES ($1, $2)
+       ON CONFLICT (sucursal_id) DO UPDATE SET codigo_consulta = EXCLUDED.codigo_consulta`, [b.sucursalId, codigo]);
+    return { codigo };
+  });
+
+  /** Intentos bloqueados de la consulta por internet (fuera de la tienda, QR vencido, ubicación imprecisa). */
+  app.get("/central/verificador/bloqueos", async (req) => {
+    permisoPrecios(req);
+    const empresaId = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const { sucursal } = z.object({ sucursal: z.string().uuid().optional() }).parse(req.query);
+    const r = await pool.query(
+      `SELECT b.creado_en AS "creadoEn", b.motivo, b.distancia_m AS "distanciaM", b.equipo, s.nombre AS sucursal
+         FROM consulta_movil_bloqueos b JOIN sucursales s ON s.id = b.sucursal_id
+        WHERE s.empresa_id = $1 AND ($2::uuid IS NULL OR b.sucursal_id = $2) AND b.creado_en > now() - interval '30 days'
+        ORDER BY b.creado_en DESC LIMIT 100`, [empresaId, sucursal ?? null]);
+    return { bloqueos: r.rows };
   });
 
   /** Botón «Actualizar verificadores ahora»: las apps lo ven en menos de un minuto y se actualizan (si hay una versión nueva). */
