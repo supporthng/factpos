@@ -3,6 +3,7 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
+import { crearComandas } from "./comandas.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { dividirPorAsientos, dividirPorLineas, dividirPorMontos, ErrorDivision, repartirIgual, repartirProporcional } from "./cuentas-division.js";
 
@@ -152,8 +153,9 @@ export async function rutasCuentas(app: FastifyInstance) {
     const ctx = await preparar(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     await cuentaDe(ctx.sucursalId, id);
-    await pool.query("UPDATE cuenta_lineas SET enviada_en = now() WHERE cuenta_id = $1 AND enviada_en IS NULL AND NOT anulada AND venta_id IS NULL", [id]);
-    return detalle(ctx.sucursalId, id);
+    // Cada estación (barra, cocina) recibe su comanda con lo nuevo; las categorías sin estación solo quedan marcadas como enviadas
+    const comandas = await enTransaccion((c) => crearComandas(c, ctx.sucursalId, id, usuarioDe(req)));
+    return { ...(await detalle(ctx.sucursalId, id)), comandas };
   });
 
   /** Juntar otra cuenta abierta con esta (los asientos se conservan). */
