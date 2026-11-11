@@ -10,6 +10,16 @@ export const PAGINA_WEB = /* html */ `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FactPOS · Punto de venta y facturación electrónica</title>
+<link rel="canonical" href="__BASE__/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="FactPOS">
+<meta property="og:locale" content="es_DO">
+<meta property="og:title" content="FactPOS · Punto de venta y facturación electrónica e-CF">
+<meta property="og:description" content="Caja rápida, e-CF de la DGII, inventario y varias sucursales. Para tiendas, restaurantes, bares y discotecas. Sigue vendiendo aunque se caiga el internet.">
+<meta property="og:url" content="__BASE__/">
+<meta property="og:image" content="__BASE__/iconos/factpos-512.png">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FactPOS","applicationCategory":"BusinessApplication","operatingSystem":"Windows, Android, Web","inLanguage":"es-DO","description":"Punto de venta con facturación electrónica e-CF de la DGII, inventario y varias sucursales para tiendas, restaurantes, bares y discotecas en República Dominicana.","url":"__BASE__/"}</script>
 <meta name="description" content="FactPOS: caja rápida, facturación electrónica e-CF de la DGII, inventario y varias sucursales en un solo panel. Funciona también sin internet.">
 <meta name="theme-color" content="#0b1218">
 <link rel="icon" href="/favicon.ico">
@@ -128,6 +138,12 @@ footer a{text-decoration:none;color:var(--primario)}
 .mini .pi.a{background:#fff1e0;color:#b45309}
 .mini .bb{height:7px;border-radius:99px;background:var(--borde);overflow:hidden;width:90px}
 .mini .bb i{display:block;height:100%;background:var(--acento)}
+.rejilla.tres{grid-template-columns:repeat(3,1fr)}
+@media(max-width:900px){.rejilla.tres{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.rejilla.tres{grid-template-columns:1fr}}
+.wa{position:fixed;right:16px;bottom:16px;z-index:40;display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:999px;background:#25d366;color:#06240f;font-weight:700;text-decoration:none;box-shadow:0 10px 28px -8px rgba(0,0,0,.45)}
+.wa:hover{filter:brightness(1.05)}
+@media(max-width:520px){.wa span{display:none}.wa{padding:14px}}
 @media(max-width:860px){.pan.on{grid-template-columns:1fr}}
 @media(max-width:860px){#descargar .cta{grid-template-columns:1fr!important}.hero .cont{grid-template-columns:1fr}.cifras,.pasos{grid-template-columns:1fr}.nav nav{display:none}.nav .btn{margin-left:auto}.hero{padding:56px 0 64px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
@@ -136,7 +152,7 @@ footer a{text-decoration:none;color:var(--primario)}
 <body>
 <header class="nav"><div class="cont">
   <a class="logo" href="/"><img src="/iconos/factpos-192.png" alt="" width="32" height="32"><span>Fact<b>POS</b></span></a>
-  <nav><a href="/demo">Demo</a><a href="#funciones">Funciones</a><a href="#pantallas">Pantallas</a><a href="#descargar">Descargar</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
+  <nav><a href="/demo">Demo</a><a href="#funciones">Funciones</a><a href="#negocios">Bares y restaurantes</a><a href="#pantallas">Pantallas</a><a href="#descargar">Descargar</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
   <a class="btn p" href="/entrar#inicio">Iniciar sesión</a>
 </div></header>
 
@@ -176,6 +192,18 @@ footer a{text-decoration:none;color:var(--primario)}
     <div class="tarj"><div class="ic">📱</div><h3>Verificador de precios</h3><p>Pantallas en la tienda y consulta desde el celular del cliente con un QR, que solo responde estando dentro de la tienda.</p></div>
     <div class="tarj"><div class="ic">🔒</div><h3>Seguridad</h3><p>Permisos por usuario, PIN de supervisor, verificación en 2 pasos, equipos autorizados y respaldos cifrados.</p></div>
     <div class="tarj"><div class="ic">📊</div><h3>Administración web</h3><p>Reportes, cierres de caja y configuración desde la computadora o el celular, desde cualquier lugar.</p></div>
+  </div>
+</div></section>
+
+<section id="negocios" style="padding-top:0"><div class="cont">
+  <div class="tit"><small>Restaurantes, bares y discotecas</small><h2>También para negocios de mesas y barras</h2><p>Todo lo de la tienda, más lo que se necesita cuando se atiende por mesa, por barra o en una noche de mucha gente. Se activa solo para los negocios que lo usan.</p></div>
+  <div class="rejilla tres">
+    <div class="tarj"><div class="ic">🍽️</div><h3>Cuentas abiertas y dividir la cuenta</h3><p>Una cuenta por mesa o por cliente. Se divide antes de pedir (cada persona con lo suyo) o después: en partes iguales, por montos o por producto, y cada quien paga con su tarjeta.</p></div>
+    <div class="tarj"><div class="ic">🍸</div><h3>Comandas a la barra y a la cocina</h3><p>Al enviar el pedido, cada estación recibe solo lo suyo: en una pantalla con la cola de pedidos o impreso. El bartender marca «Listo» y no se pierde nada.</p></div>
+    <div class="tarj"><div class="ic">🧾</div><h3>Propina legal del 10 %</h3><p>Se calcula sobre el consumo sin ITBIS y se cobra aparte del comprobante, con su detalle en el ticket y en el cierre de caja.</p></div>
+    <div class="tarj"><div class="ic">🥃</div><h3>Botellas y tragos del mismo inventario</h3><p>Venda la botella cerrada o por tragos y dobles; el inventario se descuenta solo, sin llevar dos conteos.</p></div>
+    <div class="tarj"><div class="ic">🎟️</div><h3>Entradas, aforo y vales</h3><p>Cobre la entrada, sepa cuánta gente hay adentro y entregue vales de consumo incluido que se canjean en la barra.</p></div>
+    <div class="tarj"><div class="ic">🛡️</div><h3>Control de cortesías y anulaciones</h3><p>Las cortesías y lo anulado después de enviarlo a la barra piden PIN de supervisor y motivo, y quedan en un reporte por noche.</p></div>
   </div>
 </div></section>
 
@@ -268,6 +296,10 @@ footer a{text-decoration:none;color:var(--primario)}
     });
     if (d.descuentoAnual) $("planes-nota").textContent = "Pagando el año completo tienes " + d.descuentoAnual + " % de descuento.";
     var k = d.contacto || {}, cont = $("contactos");
+    if (k.whatsapp) {
+      var fl = el("a", "wa", ""); fl.href = "https://wa.me/" + String(k.whatsapp).replace(/[^0-9]/g, "") + "?text=" + encodeURIComponent("Hola, quiero información de FactPOS"); fl.rel = "noopener"; fl.setAttribute("aria-label", "Escribir por WhatsApp");
+      fl.innerHTML = "<b>💬</b><span>Escríbenos por WhatsApp</span>"; document.body.appendChild(fl);
+    }
     if (k.whatsapp) { var w = el("a", "btn s", "WhatsApp"); w.href = "https://wa.me/" + String(k.whatsapp).replace(/[^0-9]/g, ""); w.rel = "noopener"; cont.appendChild(w); }
     if (k.correo) { var m = el("a", "btn s", k.correo); m.href = "mailto:" + k.correo; cont.appendChild(m); }
     if (k.telefono && !k.whatsapp) { var t = el("a", "btn s", k.telefono); t.href = "tel:" + String(k.telefono).replace(/[^0-9+]/g, ""); cont.appendChild(t); }
