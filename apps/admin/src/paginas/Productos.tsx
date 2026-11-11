@@ -20,7 +20,7 @@ interface Ficha {
   sku: string; nombre: string; nombreCorto: string | null; marca: string | null; categoriaId: string | null; tipo: Tipo;
   impuestoId: string; precioIncluyeItbis: boolean; esPesable: boolean; costoReferencia: string;
   permiteSinExistencia: boolean; precioVariable: boolean; precioVariableMin: string | null; precioVariableMax: string | null;
-  controlaLotes: boolean; volumenMl: number | null; gradoAlcohol: number | null; imagen: string | null; activo: boolean;
+  controlaLotes: boolean; volumenMl: number | null; gradoAlcohol: number | null; imagen: string | null; activo: boolean; valeConsumos?: number;
   presentaciones: Presentacion[];
   sucursales: { sucursalId: string; sucursal?: string; existencia?: string; stockMinimo: string; stockMaximo: string | null; ubicacion: string | null; activo: boolean }[];
   proveedores: { proveedorId: string; nombre?: string; codigoProveedor: string | null; ultimoCosto: string | null; principal: boolean }[];
@@ -505,6 +505,13 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
             <label className="campo"><span>Grado alcohólico (%)</span><input className="numero" inputMode="decimal" value={f.gradoAlcohol ?? ""} onChange={(e) => cambiar({ gradoAlcohol: e.target.value ? Number(e.target.value.replace(/[^\d.]/g, "")) : null })} /></label>
           </div>
         )}
+      </div>
+
+      <div className="panel">
+        <label className="campo" style={{ maxWidth: 420 }}><span>Consumos incluidos (vale) <span className="suave">· para entradas con tragos; 0 = sin vale</span></span>
+          <input className="numero" inputMode="numeric" value={f.valeConsumos ? String(f.valeConsumos) : ""} placeholder="0"
+            onChange={(e) => cambiar({ valeConsumos: Math.min(20, Number(e.target.value.replace(/\D/g, "")) || 0) })} /></label>
+        {!!f.valeConsumos && <p className="suave" style={{ margin: "4px 0 0" }}>Cada unidad vendida imprime un vale de {f.valeConsumos} consumo(s) que se canjea en la barra (solo en negocios con cuentas; no se vende sin servidor).</p>}
       </div>
 
       <div className="panel">

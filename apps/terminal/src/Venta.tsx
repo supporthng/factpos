@@ -933,6 +933,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             hayDescuentos: lineas.some((l) => l.descuentoManual),
           }}
           permitirSin={!!config.funciones?.sinComprobante}
+          conVales={lineas.some((l) => Number(l.prod.valeConsumos ?? 0) > 0)}
           onVendido={(r, op) => {
             clienteOmitido.current = false;
             if (config.aforoActivo) setTimeout(() => void recargarAforo(), 800);

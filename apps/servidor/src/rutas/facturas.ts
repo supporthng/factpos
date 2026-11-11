@@ -22,6 +22,8 @@ export async function datosTicket(c: Pick<PoolClient, "query">, ventaId: string)
                 'oferta', o.nombre, 'descuentoOferta', i.descuento_oferta, 'descuentoCupon', i.descuento_cupon,
                 'descuentoManual', i.descuento_manual, 'descuentoNivel', i.descuento_nivel, 'presentacionId', i.presentacion_id) ORDER BY i.linea)
                FROM venta_items i LEFT JOIN ofertas o ON o.id = i.oferta_id WHERE i.venta_id = v.id) AS lineas,
+            (SELECT jsonb_agg(jsonb_build_object('codigo', vc.codigo, 'descripcion', vc.descripcion, 'consumos', vc.consumos) ORDER BY vc.creado_en, vc.codigo)
+               FROM vales_consumo vc WHERE vc.venta_id = v.id) AS vales,
             (SELECT jsonb_agg(jsonb_build_object('formaPago', p.forma_pago, 'monto', p.monto, 'recibido', p.recibido, 'cambio', p.cambio, 'referencia', p.referencia))
                FROM venta_pagos p WHERE p.venta_id = v.id) AS pagos,
             (SELECT jsonb_build_object('encf', d.encf, 'codigoSeguridad', d.codigo_seguridad, 'fechaFirma', d.fecha_firma,
