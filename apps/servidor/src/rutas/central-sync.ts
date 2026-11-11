@@ -457,6 +457,11 @@ async function aplicarSubida(c: Pg, sucursalId: string, tabla: string, p: Payloa
       (p.filas as Payload[]).forEach(propio);
       await aplicarFilas(c, "pedidos_delivery", p.filas, "reemplazar");
       return;
+    case "control_cuentas":
+      (p.filas as Payload[]).forEach(propio);
+      await aplicarFilas(c, "control_cuentas", p.filas, "insertar");
+      await aplicarKardex(c, p.kardex);
+      return;
     case "movimientos_caja":
     case "auditoria":
     case "cxc_movimientos":

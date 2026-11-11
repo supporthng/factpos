@@ -22,7 +22,7 @@ export interface ComandaNueva {
  * Separa por estación lo pendiente de enviar de una cuenta y crea una comanda por estación. Marca las líneas como enviadas
  * (también las de categorías sin estación: salen «enviadas» pero sin comanda). Se llama dentro de la transacción del envío.
  */
-export async function crearComandas(c: PoolClient, sucursalId: string, cuentaId: string, usuarioId: string | null): Promise<ComandaNueva[]> {
+export async function crearComandas(c: PoolClient, sucursalId: string, cuentaId: string, usuarioId: string | null, soloLineas: string[] | null = null): Promise<ComandaNueva[]> {
   await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`comandas:${sucursalId}`]);
   const filas = (await c.query<{ id: string; descripcion: string; cantidad: string; nota: string | null; persona: string | null; estacionId: string | null }>(
     `SELECT l.id, l.descripcion, l.cantidad::text AS cantidad, l.nota, a.nombre AS persona,
@@ -31,8 +31,8 @@ export async function crearComandas(c: PoolClient, sucursalId: string, cuentaId:
        FROM cuenta_lineas l
        JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
        LEFT JOIN cuenta_asientos a ON a.id = l.asiento_id
-      WHERE l.cuenta_id = $1 AND l.enviada_en IS NULL AND NOT l.anulada AND l.venta_id IS NULL
-      ORDER BY l.creada_en, l.id FOR UPDATE OF l`, [cuentaId, sucursalId])).rows;
+      WHERE l.cuenta_id = $1 AND l.enviada_en IS NULL AND NOT l.anulada AND l.venta_id IS NULL AND ($3::uuid[] IS NULL OR l.id = ANY($3::uuid[]))
+      ORDER BY l.creada_en, l.id FOR UPDATE OF l`, [cuentaId, sucursalId, soloLineas])).rows;
   if (!filas.length) return [];
   const cuenta = (await c.query<{ nombre: string; mesa: string | null }>("SELECT nombre, mesa FROM cuentas WHERE id = $1", [cuentaId])).rows[0];
   const porEstacion = new Map<string, typeof filas>();

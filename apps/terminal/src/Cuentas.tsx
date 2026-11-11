@@ -13,7 +13,8 @@ import { ComandaPapel, type Comanda } from "./Comandas";
  */
 interface LineaC { id: string; asientoId: string | null; descripcion: string; cantidad: string; total: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null; presentacionId: string }
 interface AsientoC { id: string; nombre: string; total: string }
-interface CuentaC { id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
+interface CortesiaC { descripcion: string; cantidad: string; motivoTipo: string; motivo: string | null; valor: string }
+interface CuentaC { cortesias?: CortesiaC[]; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
 interface Resumen { id: string; nombre: string; mesa: string | null; numero: string; lineas: number; asientos: number; abiertaEn: string }
 interface Parte { indice: number; nombre: string; consumo: string; propina: string; totalConPropina: string; lineas: string[] | null }
 interface Division { cuentaId: string; modo: string; total: string; partes: Parte[] }
@@ -117,6 +118,9 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
   const [destino, setDestino] = useState<string | null>(cuenta.asientos[0]?.id ?? null);
   const [dividiendo, setDividiendo] = useState(false);
   const [anulando, setAnulando] = useState<LineaC | null>(null);
+  const [regalando, setRegalando] = useState<LineaC | null>(null);
+  const [motivoTipo, setMotivoTipo] = useState("CASA");
+  const [motivo, setMotivo] = useState("");
   const [uniendo, setUniendo] = useState(false);
 
   const vivas = cuenta.lineas.filter((l) => !l.anulada && !l.ventaId);
@@ -146,10 +150,23 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
   if (dividiendo) return <DividirCuenta ajustes={ajustes} url={url} cuenta={cuenta} onCobrar={onCobrar} onVolver={() => setDividiendo(false)} />;
   if (anulando) {
     return (
-      <Modal titulo="Quitar producto enviado" onCerrar={() => setAnulando(null)}>
-        <p><b>{anulando.descripcion}</b> ya salió a la barra o la cocina. Para quitarlo hace falta la aprobación de un supervisor.</p>
-        <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y quitar" enfocar
-          onAprobado={(a) => { const l = anulando; setAnulando(null); void accion(`${url}/lineas/${l.id}`, { anulada: true, autorizacion: a.token }, "PATCH"); }} />
+      <Modal titulo="Quitar de la cuenta" onCerrar={() => { setAnulando(null); setMotivo(""); }}>
+        <p><b>{anulando.descripcion}</b> ya salió a la barra o la cocina. Para quitarlo hace falta el motivo y la aprobación de un supervisor; queda en el reporte.</p>
+        <label>Motivo<input autoFocus value={motivo} maxLength={200} placeholder="Se equivocó de producto, el cliente no lo quiso…" onChange={(e) => setMotivo(e.target.value)} /></label>
+        <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y quitar" deshabilitado={motivo.trim().length < 3}
+          onAprobado={(a) => { const l = anulando; const m = motivo.trim(); setAnulando(null); setMotivo(""); void accion(`${url}/lineas/${l.id}`, { anulada: true, autorizacion: a.token, motivo: m }, "PATCH"); }} />
+      </Modal>
+    );
+  }
+  if (regalando) {
+    const motivos: [string, string][] = [["CASA", "Invitación de la casa"], ["RRPP", "Relaciones públicas"], ["CLIENTE_VIP", "Cliente VIP"], ["ERROR", "Error o producto devuelto"], ["OTRO", "Otro"]];
+    return (
+      <Modal titulo="Cortesía" onCerrar={() => { setRegalando(null); setMotivo(""); }}>
+        <p><b>{Number(regalando.cantidad)} × {regalando.descripcion}</b> ({rd(regalando.total)}) se regala: no se cobra, se descuenta del inventario y queda en el reporte con su motivo. Requiere un supervisor.</p>
+        <div className="chips-categorias">{motivos.map(([k, t]) => <button key={k} className={motivoTipo === k ? "activa" : ""} onClick={() => setMotivoTipo(k)}>{t}</button>)}</div>
+        <label>Detalle {motivoTipo === "OTRO" ? "" : <span className="suave">(opcional: a quién o por qué)</span>}<input value={motivo} maxLength={200} onChange={(e) => setMotivo(e.target.value)} /></label>
+        <PinSupervisor ajustes={ajustes} permiso="venta.descuento" textoBoton="Autorizar cortesía" deshabilitado={motivoTipo === "OTRO" && motivo.trim().length < 3}
+          onAprobado={(a) => { const l = regalando; const m = motivo.trim(); const t = motivoTipo; setRegalando(null); setMotivo(""); setMotivoTipo("CASA"); void accion(`${url}/lineas/${l.id}/cortesia`, { motivoTipo: t, motivo: m, autorizacion: a.token }); }} />
       </Modal>
     );
   }
@@ -187,6 +204,7 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
                           {cuenta.asientos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                         </select>
                       )}
+                      <button className="enlace" disabled={ocupado} title="Regalar este producto (supervisor)" onClick={() => setRegalando(l)}>Cortesía</button>
                       <button className="enlace" disabled={ocupado} onClick={() => (l.enviadaEn ? setAnulando(l) : void accion(`${url}/lineas/${l.id}`, { anulada: true }, "PATCH"))}>Quitar</button>
                     </span>
                   </div>
@@ -194,6 +212,7 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
               </div>
             ))}
           </div>
+          {!!cuenta.cortesias?.length && <p className="suave" style={{ margin: "6px 0 0" }}>Cortesías: {cuenta.cortesias.map((c) => `${Number(c.cantidad)} × ${c.descripcion}`).join(", ")}</p>}
           {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
           <p style={{ marginTop: 10 }}><b>Pendiente {rd(cuenta.total)}</b> <span className="suave">· propina legal 10 % {rd(cuenta.propinaLegal)}</span></p>
           <div className="pv-atajos pv-atajos-min" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>

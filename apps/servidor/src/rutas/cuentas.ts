@@ -4,6 +4,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
 import { crearComandas } from "./comandas.js";
+import { repartirPorLotes } from "../lotes.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { dividirPorAsientos, dividirPorLineas, dividirPorMontos, ErrorDivision, repartirIgual, repartirProporcional } from "./cuentas-division.js";
 
@@ -63,8 +64,10 @@ export async function rutasCuentas(app: FastifyInstance) {
     const porAsiento = asientos.map((a) => ({ ...a, total: aMonto(vivas.filter((l) => l.asientoId === a.id).reduce((s, l) => s + totalLinea(l), 0)) }));
     const total = vivas.reduce((s, l) => s + totalLinea(l), 0);
     const sinAsiento = vivas.filter((l) => l.asientoId === null).reduce((s, l) => s + totalLinea(l), 0);
+    const cortesias = (await pool.query(
+      `SELECT descripcion, cantidad::text AS cantidad, motivo_tipo AS "motivoTipo", motivo, valor::text AS valor FROM control_cuentas WHERE cuenta_id = $1 AND tipo = 'CORTESIA' ORDER BY creado_en`, [id])).rows;
     return {
-      ...c, asientos: porAsiento, total: aMonto(total), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
+      ...c, cortesias, asientos: porAsiento, total: aMonto(total), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
       lineas: lineas.map((l) => ({ ...l, total: aMonto(totalLinea(l)) })),
     };
   };
@@ -135,17 +138,102 @@ export async function rutasCuentas(app: FastifyInstance) {
   app.patch("/cajas/:cajaId/cuentas/:id/lineas/:lineaId", async (req) => {
     const ctx = await preparar(req);
     const { id, lineaId } = z.object({ id: uuid, lineaId: uuid }).parse(req.params);
-    const b = z.object({ asientoId: uuid.nullable().optional(), cantidad: cantidad.optional(), anulada: z.boolean().optional(), autorizacion: z.string().max(2000).optional() }).parse(req.body);
-    await cuentaDe(ctx.sucursalId, id);
+    const b = z.object({ asientoId: uuid.nullable().optional(), cantidad: cantidad.optional(), anulada: z.boolean().optional(), autorizacion: z.string().max(2000).optional(), motivo: z.string().trim().max(200).optional() }).parse(req.body);
+    const cuenta = await cuentaDe(ctx.sucursalId, id);
     const l = (await pool.query<{ enviada: boolean }>("SELECT enviada_en IS NOT NULL AS enviada FROM cuenta_lineas WHERE id = $1 AND cuenta_id = $2", [lineaId, id])).rows[0];
     if (!l) throw new ErrorNegocio("Línea no encontrada", 404);
-    if (l.enviada && (b.anulada || b.cantidad !== undefined)) verificarAutorizacion(b.autorizacion, "venta.anular", ctx.cajaId);
+    if (l.enviada && (b.anulada || b.cantidad !== undefined)) {
+      const aut = verificarAutorizacion(b.autorizacion, "venta.anular", ctx.cajaId);
+      // Quitar algo que ya salió a la barra o la cocina deja constancia: quién, quién lo autorizó y por qué
+      if (b.anulada) {
+        if (!b.motivo || b.motivo.length < 3) throw new ErrorNegocio("Escriba el motivo de la anulación", 400);
+        await enTransaccion(async (c) => {
+          await c.query("UPDATE cuenta_lineas SET anulada = TRUE WHERE id = $1 AND cuenta_id = $2", [lineaId, id]);
+          await registrarControl(c, ctx.sucursalId, ctx.cajaId, cuenta, lineaId, "ANULACION", "OTRO", b.motivo!, usuarioDe(req), aut.supervisorId);
+        });
+        return detalle(ctx.sucursalId, id);
+      }
+    }
     if (b.asientoId && !(await pool.query("SELECT 1 FROM cuenta_asientos WHERE id = $1 AND cuenta_id = $2", [b.asientoId, id])).rowCount) throw new ErrorNegocio("Ese asiento no es de la cuenta", 400);
     await pool.query(
       `UPDATE cuenta_lineas SET asiento_id = CASE WHEN $3::boolean THEN $4::uuid ELSE asiento_id END,
               cantidad = COALESCE($5::numeric, cantidad), anulada = COALESCE($6::boolean, anulada) WHERE id = $1 AND cuenta_id = $2`,
       [lineaId, id, "asientoId" in b, b.asientoId ?? null, b.cantidad ?? null, b.anulada ?? null]);
     return detalle(ctx.sucursalId, id);
+  });
+
+  /** Registra en el control (y sube a la central) una cortesía o una anulación de algo ya enviado. La cortesía descuenta el inventario. */
+  const registrarControl = async (
+    c: Parameters<Parameters<typeof enTransaccion>[0]>[0], sucursalId: string, cajaId: string, cuenta: { id: string; nombre: string },
+    lineaId: string, tipo: "CORTESIA" | "ANULACION", motivoTipo: string, motivo: string, usuarioId: string | null, autorizadoPor: string,
+  ) => {
+    const l = (await c.query<FilaLinea & { productoId: string; factor: string; tipoProd: string; controlaStock: boolean; enviadaEn: string | null }>(
+      `SELECT l.id, l.descripcion, l.cantidad::text AS cantidad, l.precio_unitario::text AS "precioUnitario", l.tasa_itbis::text AS "tasaItbis",
+              l.enviada_en AS "enviadaEn", p.precio_incluye_impuesto AS "incluyeItbis", p.id AS "productoId", pr.factor::text AS factor,
+              p.tipo AS "tipoProd", p.controla_stock AS "controlaStock"
+         FROM cuenta_lineas l JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
+        WHERE l.id = $1`, [lineaId])).rows[0];
+    const id = uuidv7();
+    const valor = aMonto(totalLinea(l as FilaLinea));
+    await c.query(
+      `INSERT INTO control_cuentas (id, sucursal_id, tipo, cuenta_id, cuenta_nombre, caja_id, producto_id, descripcion, cantidad, valor, motivo_tipo, motivo, ya_enviada, usuario_id, autorizado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [id, sucursalId, tipo, cuenta.id, cuenta.nombre, cajaId, l.productoId, l.descripcion, l.cantidad, valor, motivoTipo, motivo || null, !!l.enviadaEn, usuarioId, autorizadoPor]);
+    const kardexIds: string[] = [];
+    if (tipo === "CORTESIA") {
+      const unidades = Number(l.cantidad) * Number(l.factor);
+      const salidas: { productoId: string; cantidad: string }[] = [];
+      if (l.tipoProd === "COMBO") {
+        const comp = (await c.query<{ id: string; cantidad: string }>("SELECT componente_id AS id, cantidad::text FROM producto_componentes WHERE combo_id = $1", [l.productoId])).rows;
+        for (const x of comp) salidas.push({ productoId: x.id, cantidad: (-(unidades * Number(x.cantidad))).toFixed(3) });
+      } else if (l.controlaStock) salidas.push({ productoId: l.productoId, cantidad: (-unidades).toFixed(3) });
+      if (salidas.length) {
+        const almacenId = (await c.query<{ id: string }>("SELECT almacen_id AS id FROM cajas WHERE id = $1", [cajaId])).rows[0]?.id;
+        if (!almacenId) throw new ErrorNegocio("La caja no tiene almacén", 409);
+        const KL = await repartirPorLotes(c, almacenId, salidas);
+        const ids = KL.map(() => uuidv7());
+        kardexIds.push(...ids);
+        await c.query(
+          `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario, documento_tipo, documento_id, motivo, usuario_id, lote_id)
+           SELECT id, $2, $3, producto_id, 'CONSUMO_INTERNO', cantidad, 0, 'cortesia', $4, $5, $6, lote_id
+             FROM unnest($1::uuid[], $7::uuid[], $8::numeric[], $9::uuid[]) AS t(id, producto_id, cantidad, lote_id)`,
+          [ids, sucursalId, almacenId, id, `Cortesía · ${motivoTipo}${motivo ? ` · ${motivo}` : ""}`, usuarioId, KL.map((k) => k.productoId), KL.map((k) => k.cantidad), KL.map((k) => k.loteId)]);
+        await c.query(
+          `UPDATE control_cuentas SET costo = COALESCE((SELECT -sum(k.cantidad * k.costo_unitario) FROM kardex_movimientos k WHERE k.id = ANY($2::uuid[])), 0)::numeric(14,2) WHERE id = $1`, [id, ids]);
+      }
+    }
+    await c.query(
+      `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
+       SELECT 'control_cuentas', cc.id, 'UPSERT', jsonb_build_object('filas', jsonb_build_array(to_jsonb(cc)),
+              'kardex', (SELECT jsonb_agg(to_jsonb(k)) FROM kardex_movimientos k WHERE k.id = ANY($2::uuid[])))
+         FROM control_cuentas cc WHERE cc.id = $1`, [id, kardexIds]);
+  };
+
+  /**
+   * Cortesía: se regala un producto de la cuenta. Requiere un supervisor, un motivo y queda en el reporte.
+   * Sale la comanda a la barra (si faltaba enviarlo), el producto deja de cobrarse y se descuenta del inventario.
+   */
+  app.post("/cajas/:cajaId/cuentas/:id/lineas/:lineaId/cortesia", async (req) => {
+    const ctx = await preparar(req);
+    const { id, lineaId } = z.object({ id: uuid, lineaId: uuid }).parse(req.params);
+    const b = z.object({
+      motivoTipo: z.enum(["CASA", "RRPP", "CLIENTE_VIP", "ERROR", "OTRO"]), motivo: z.string().trim().max(200).default(""), autorizacion: z.string().max(2000),
+    }).parse(req.body);
+    const aut = verificarAutorizacion(b.autorizacion, ["venta.descuento", "venta.anular"], ctx.cajaId);
+    if (b.motivoTipo === "OTRO" && b.motivo.length < 3) throw new ErrorNegocio("Escriba el motivo de la cortesía", 400);
+    const cuenta = await cuentaDe(ctx.sucursalId, id);
+    const comandas = await enTransaccion(async (c) => {
+      const l = (await c.query<{ anulada: boolean; ventaId: string | null; enviada: boolean }>(
+        `SELECT anulada, venta_id AS "ventaId", enviada_en IS NOT NULL AS enviada FROM cuenta_lineas WHERE id = $1 AND cuenta_id = $2 FOR UPDATE`, [lineaId, id])).rows[0];
+      if (!l) throw new ErrorNegocio("Línea no encontrada", 404);
+      if (l.anulada || l.ventaId) throw new ErrorNegocio("Ese producto ya no está pendiente en la cuenta", 409);
+      // Lo regalado también se prepara: si todavía no salió, sale ahora su comanda
+      const nuevas = l.enviada ? [] : await crearComandas(c, ctx.sucursalId, id, usuarioDe(req), [lineaId]);
+      await c.query("UPDATE cuenta_lineas SET anulada = TRUE WHERE id = $1", [lineaId]);
+      await registrarControl(c, ctx.sucursalId, ctx.cajaId, cuenta, lineaId, "CORTESIA", b.motivoTipo, b.motivo, usuarioDe(req), aut.supervisorId);
+      return nuevas;
+    });
+    return { ...(await detalle(ctx.sucursalId, id)), comandas };
   });
 
   /** Marca lo ordenado como enviado a la barra o la cocina (desde ahí, anular pide supervisor). */
