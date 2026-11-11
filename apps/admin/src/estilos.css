@@ -1473,3 +1473,34 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .cli-vacio { grid-column: 1 / -1; padding: 20px 4px; }
 @media (max-width: 560px) { .cli-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .cli-tarj { transition: none; } .cli-tarj:hover { transform: none; } }
+
+/* ── Portal: instaladores, e-CF por cliente y certificación ── */
+.ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.ins-tarj { display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 18px; background: var(--panel); border: 1px solid var(--borde); }
+.ins-tarj.sin { opacity: .65; }
+.ins-cab { display: flex; align-items: center; gap: 12px; }
+.ins-cab > div { flex: 1; min-width: 0; }
+.ins-icono { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; color: #fff; background: linear-gradient(135deg, #0369a1, #14b8a6); }
+.ins-para { margin: 0; flex: 1; font-size: 14px; }
+.ins-meta { min-height: 18px; }
+.ecf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; margin-bottom: 14px; }
+.ecf-grid .cli-tarj.ecf-ok { --e: #15803d; }
+.ecf-grid .cli-tarj.ecf-cerca { --e: #b45309; }
+.ecf-grid .cli-tarj.ecf-excedido, .ecf-grid .cli-tarj.ecf-sin-plan { --e: #b91c1c; }
+.ecf-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ecf-campos .campo { margin: 0; }
+.ecf-pie { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pastilla.av { background: var(--alerta-suave); color: var(--alerta); }
+.cert-avance { display: flex; align-items: center; gap: 20px; padding: 20px 22px; margin-bottom: 14px; border-radius: 18px; background: var(--panel); border: 1px solid var(--borde); }
+.cert-anillo { --p: 0%; flex: none; width: 86px; height: 86px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--primario) var(--p), var(--borde) 0); position: relative; }
+.cert-anillo::before { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: var(--panel); }
+.cert-anillo b { position: relative; font-size: 20px; }
+.cert-texto { display: flex; flex-direction: column; gap: 4px; }
+.cert-texto b { font-size: 19px; letter-spacing: -.2px; }
+.cert-paso { gap: 14px; position: relative; }
+.cert-num { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  background: var(--fondo); color: var(--suave); border: 2px solid var(--borde-fuerte); }
+.cert-paso.hecho .cert-num { background: var(--primario); border-color: var(--primario); color: #fff; }
+.cert-paso.en_curso .cert-num { border-color: #b45309; color: #b45309; background: var(--alerta-suave); }
+@media (max-width: 560px) { .ecf-campos { grid-template-columns: 1fr; } .cert-avance { flex-direction: column; text-align: center; } }

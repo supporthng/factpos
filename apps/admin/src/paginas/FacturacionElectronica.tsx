@@ -115,30 +115,43 @@ export function FacturacionElectronica() {
         ].filter(Boolean).join(" · ")} />
       )}
 
-      <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Clientes · {r?.mes ?? ""}</h3>
-        <Tabla filas={r?.clientes ?? []} clave={(c) => c.clienteId} vacio="Aún no hay clientes con licencia" columnas={[
-          { titulo: "Cliente", valor: (c) => <b>{c.cliente}</b> },
-          { titulo: "Rango", valor: (c) => (
-            <select value={c.planId ?? ""} onChange={(e) => asignar(c, e.target.value || null, null)}>
-              <option value="">Sin facturación electrónica</option>
-              {(planes.datos ?? []).filter((p) => p.activo || p.id === c.planId).map((p) => <option key={p.id} value={p.id}>{p.nombre} · {usd(p.precioUsd)}</option>)}
-            </select>) },
-          { titulo: "Incluido (especial)", valor: (c) => c.planId ? (
-            <input type="number" min={0} step={0.01} style={{ width: 90 }} placeholder="del rango" defaultValue={c.precioEspecial ?? ""}
-              onBlur={(e) => { const v = e.target.value.trim() === "" ? null : Number(e.target.value); if (v !== c.precioEspecial) asignar(c, c.planId, v); }} />) : "—" },
-          { titulo: "Este mes", valor: (c) => c.maxMes ? `${num(c.actual)} de ${num(c.maxMes)} (${c.pct}%)` : num(c.actual), der: true },
-          { titulo: "Mes anterior", valor: (c) => num(c.anterior), der: true },
-          { titulo: "Estado", valor: (c) => (
-            <>
+      <h2 className="titulo-seccion" style={{ marginTop: 18 }}>Clientes · {r?.mes ?? ""}</h2>
+      <div className="ecf-grid">
+        {(r?.clientes ?? []).map((c) => (
+          <article key={c.clienteId} className={"cli-tarj ecf-" + c.estado}>
+            <header className="cli-cab">
+              <span className="cli-avatar" aria-hidden="true">{c.cliente.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</span>
+              <div className="cli-nombre"><b>{c.cliente}</b><span className="mono pequeno suave">/{c.slug}/</span></div>
               <span className={"pastilla " + ESTADO[c.estado].c}>{ESTADO[c.estado].t}</span>
-              {c.sugerido && <div className="suave pequeno">{c.dosMesesExcedido ? "Dos meses seguidos pasado. " : ""}Sugerido: {c.sugerido.nombre}{" "}
-                <button className="boton" onClick={() => asignar(c, c.sugerido!.id, null)}>Pasar</button></div>}
-            </>) },
-          { titulo: "Sobre el costo", valor: (c) => c.planId ? usd(c.margenUsd) : "—", der: true },
-        ]} />
-        <p className="suave pequeno" style={{ marginBottom: 0 }}>El conteo se actualiza cuando el sistema del cliente renueva su licencia (cada vez que se conecta al portal). Cuenta los e-CF enviados o aceptados, no los rechazados.</p>
+            </header>
+            <div className="cli-medidores" style={{ gridTemplateColumns: "1fr" }}>
+              <div>
+                <span className={c.estado === "excedido" || c.estado === "cerca" ? "texto-alerta" : "suave"}>
+                  Este mes: {c.maxMes ? `${num(c.actual)} de ${num(c.maxMes)} (${c.pct}%)` : num(c.actual)} · mes anterior {num(c.anterior)}
+                </span>
+                <i><b className={c.estado === "excedido" || c.estado === "cerca" ? "excedido" : ""} style={{ width: `${Math.min(100, c.pct ?? 0)}%` }} /></i>
+              </div>
+            </div>
+            <div className="ecf-campos">
+              <label className="campo"><span>Rango</span>
+                <select value={c.planId ?? ""} onChange={(e) => asignar(c, e.target.value || null, null)}>
+                  <option value="">Sin facturación electrónica</option>
+                  {(planes.datos ?? []).filter((p) => p.activo || p.id === c.planId).map((p) => <option key={p.id} value={p.id}>{p.nombre} · {usd(p.precioUsd)}</option>)}
+                </select></label>
+              {c.planId && <label className="campo"><span>Incluido (especial)</span>
+                <input type="number" min={0} step={0.01} placeholder="del rango" defaultValue={c.precioEspecial ?? ""}
+                  onBlur={(e) => { const v = e.target.value.trim() === "" ? null : Number(e.target.value); if (v !== c.precioEspecial) asignar(c, c.planId, v); }} /></label>}
+            </div>
+            <div className="ecf-pie">
+              <span className="suave pequeno">Sobre el costo: <b>{c.planId ? usd(c.margenUsd) : "—"}</b></span>
+              {c.sugerido && <span className="pequeno">{c.dosMesesExcedido ? "Dos meses seguidos pasado. " : ""}Sugerido: <b>{c.sugerido.nombre}</b>{" "}
+                <button className="boton" onClick={() => asignar(c, c.sugerido!.id, null)}>Pasar</button></span>}
+            </div>
+          </article>
+        ))}
+        {r && !r.clientes.length && <p className="suave">Aún no hay clientes con licencia</p>}
       </div>
+      <p className="suave pequeno">El conteo se actualiza cuando el sistema del cliente renueva su licencia (cada vez que se conecta al portal). Cuenta los e-CF enviados o aceptados, no los borradores.</p>
 
       <Planes planes={planes.datos ?? []} recargar={recargar} />
 
