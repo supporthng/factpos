@@ -249,6 +249,9 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
   const plantillaGuarniciones = () => setLista((l) => [...l,
     ...["Arroz blanco", "Moro", "Tostones", "Ensalada", "Papas fritas"].map((nombre) => ({ id: "", grupo: "Guarnición", nombre, presentacionId: null, categoriaId: null, producto: null as string | null })),
   ]) ;
+  const plantillaTermino = () => setLista((l) => [...l,
+    ...["Término medio", "Tres cuartos", "Bien cocida", "Término rojo", "Jugosa"].map((nombre) => ({ id: "", grupo: "Término", nombre, presentacionId: null, categoriaId: null, producto: null as string | null })),
+  ]);
   const resultados = buscar && buscar.texto.trim().length >= 2
     ? catalogo.productos.filter((p) => p.nombre.toLowerCase().includes(buscar.texto.trim().toLowerCase())).slice(0, 6) : [];
   const guardar = async () => {
@@ -316,7 +319,8 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
         </div>
       )}
       <button className="boton fantasma" onClick={() => setLista((l) => [...l, { id: "", grupo: "", nombre: "", presentacionId: null, categoriaId: null, producto: null }])}>+ Agregar modificador</button>{" "}
-      <button className="boton fantasma" onClick={() => { plantillaGuarniciones(); cambiarRegla("Guarnición", { obligatorio: true, maxOpciones: 1 }); }}>+ Guarniciones (arroz, moro, tostones…)</button>
+      <button className="boton fantasma" onClick={() => { plantillaGuarniciones(); cambiarRegla("Guarnición", { obligatorio: true, maxOpciones: 1 }); }}>+ Guarniciones (arroz, moro, tostones…)</button>{" "}
+      <button className="boton fantasma" onClick={() => { plantillaTermino(); cambiarRegla("Término", { obligatorio: true, maxOpciones: 1 }); }}>+ Término de la carne</button>
       <button className="boton primario ancho" style={{ marginTop: 10 }}
         disabled={guardando || lista.some((m) => !m.nombre.trim())} onClick={guardar}>Guardar</button>
     </Modal>
