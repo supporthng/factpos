@@ -953,7 +953,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
         />
       )}
       {modal === "cuentas" && idx && catalogo && (
-        <Cuentas ajustes={ajustes} productos={catalogo.productos} precio={(p) => precioPara(p, nivelPrecio, catalogo.nivelPredeterminado).precio}
+        <Cuentas ajustes={ajustes} catalogo={catalogo} nivel={nivelPrecio}
           onCobrar={cobrarCuenta} onCerrar={() => setModal(null)} />
       )}
       {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}

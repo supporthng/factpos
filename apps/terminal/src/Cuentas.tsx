@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ProductoCatalogo } from "@factpos/compartido";
+import { precioPara, type Catalogo, type ProductoCatalogo } from "@factpos/compartido";
+import { VistaCatalogo } from "./Catalogo";
 import { api, ErrorApi, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
@@ -25,8 +26,8 @@ export interface PlanCobro {
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
 
-export function Cuentas({ ajustes, productos, precio, onCobrar, onCerrar }: {
-  ajustes: Ajustes; productos: ProductoCatalogo[]; precio: (p: ProductoCatalogo) => string | null;
+export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
+  ajustes: Ajustes; catalogo: Catalogo; nivel: number;
   onCobrar: (plan: PlanCobro) => void; onCerrar: () => void;
 }) {
   const base = `/cajas/${ajustes.cajaId}/cuentas`;
@@ -53,7 +54,7 @@ export function Cuentas({ ajustes, productos, precio, onCobrar, onCerrar }: {
   };
 
   if (cuenta) {
-    return <DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} productos={productos} precio={precio} error={error} ocupado={ocupado}
+    return <DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
       accion={accion} onCobrar={onCobrar} onVolver={() => { setCuenta(null); void cargarLista(); }} onCerrar={onCerrar} />;
   }
 
@@ -94,24 +95,17 @@ export function Cuentas({ ajustes, productos, precio, onCobrar, onCerrar }: {
   );
 }
 
-function DetalleCuenta({ ajustes, base, cuenta, productos, precio, error, ocupado, accion, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; base: string; cuenta: CuentaC; productos: ProductoCatalogo[]; precio: (p: ProductoCatalogo) => string | null;
+function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, ocupado, accion, onCobrar, onVolver, onCerrar }: {
+  ajustes: Ajustes; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number;
   error: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
   const url = `${base}/${cuenta.id}`;
   /** A quién se carga lo que se pide: null = toda la mesa */
   const [destino, setDestino] = useState<string | null>(cuenta.asientos[0]?.id ?? null);
-  const [texto, setTexto] = useState("");
   const [dividiendo, setDividiendo] = useState(false);
   const [anulando, setAnulando] = useState<LineaC | null>(null);
   const [uniendo, setUniendo] = useState(false);
-
-  const encontrados = useMemo(() => {
-    const t = texto.trim().toLowerCase();
-    if (t.length < 2) return [];
-    return productos.filter((p) => p.nombre.toLowerCase().includes(t) || p.sku.toLowerCase().includes(t) || p.codigos.some((c) => c.includes(t))).slice(0, 8);
-  }, [texto, productos]);
 
   const vivas = cuenta.lineas.filter((l) => !l.anulada && !l.ventaId);
   const cobradas = cuenta.lineas.filter((l) => !l.anulada && l.ventaId).length;
@@ -121,9 +115,20 @@ function DetalleCuenta({ ajustes, base, cuenta, productos, precio, error, ocupad
   ];
 
   const agregar = (p: ProductoCatalogo) => {
-    if (precio(p) === null && !p.precioVariable) return;
-    setTexto("");
+    if (precioPara(p, nivel, catalogo.nivelPredeterminado).precio === null && !p.precioVariable) return;
     void accion(`${url}/lineas`, { presentacionId: p.presentacionId, cantidad: "1", asientoId: destino });
+  };
+  /** Lo que ya tiene la cuenta pendiente de cada producto (se ve en la tarjeta del catálogo) */
+  const enCuenta = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of vivas) m.set(l.presentacionId, (m.get(l.presentacionId) ?? 0) + Number(l.cantidad));
+    return m;
+  }, [vivas]);
+  const porCodigo = (t: string) => {
+    const p = catalogo.productos.find((x) => x.codigos.includes(t.trim()));
+    if (!p) return false;
+    agregar(p);
+    return true;
   };
 
   if (dividiendo) return <DividirCuenta ajustes={ajustes} url={url} cuenta={cuenta} onCobrar={onCobrar} onVolver={() => setDividiendo(false)} />;
@@ -139,52 +144,51 @@ function DetalleCuenta({ ajustes, base, cuenta, productos, precio, error, ocupad
   if (uniendo) return <UnirCuenta ajustes={ajustes} base={base} actualId={cuenta.id} onElegir={(id) => { setUniendo(false); void accion(`${url}/unir`, { desdeId: id }); }} onVolver={() => setUniendo(false)} />;
 
   return (
-    <Modal titulo={`${cuenta.nombre} · #${cuenta.numero}`} onCerrar={onCerrar} ancho>
-      <button className="enlace" onClick={onVolver}>← Todas las cuentas</button>
-      {error && <p className="error">{error}</p>}
-      <div className="pestanas" style={{ flexWrap: "wrap" }}>
-        <button className={destino === null ? "activa" : ""} onClick={() => setDestino(null)}>Toda la mesa</button>
-        {cuenta.asientos.map((a) => <button key={a.id} className={destino === a.id ? "activa" : ""} onClick={() => setDestino(a.id)}>{a.nombre}</button>)}
-        <button onClick={async () => { const c = await accion(`${url}/asientos`, {}); if (c) setDestino(c.asientos[c.asientos.length - 1]?.id ?? null); }}>+ Persona</button>
-      </div>
-      <input autoFocus placeholder={`Buscar producto para ${destino ? cuenta.asientos.find((a) => a.id === destino)?.nombre ?? "" : "toda la mesa"}…`} value={texto} onChange={(e) => setTexto(e.target.value)} />
-      {encontrados.length > 0 && (
-        <div className="resultados">
-          {encontrados.map((p) => (
-            <div key={p.presentacionId} className="factura" role="button" tabIndex={0} style={{ cursor: "pointer" }} onClick={() => agregar(p)}
-              onKeyDown={(e) => { if (e.key === "Enter") agregar(p); }}>
-              <span>{p.nombre} {p.presentacion !== "Unidad" ? p.presentacion : ""}</span><b>{precio(p) !== null ? rd(precio(p)!) : "sin precio"}</b>
-            </div>
-          ))}
-        </div>
-      )}
-      {grupos.filter((g) => g.id === null ? g.lineas.length > 0 : true).map((g) => (
-        <div key={g.id ?? "mesa"} style={{ marginTop: 10 }}>
-          <b>{g.nombre}</b> <span className="suave">{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span>
-          {g.lineas.length === 0 && <p className="suave" style={{ margin: "2px 0" }}>Nada pedido todavía.</p>}
-          {g.lineas.map((l) => (
-            <div key={l.id} className="factura">
-              <span>{Number(l.cantidad)} × {l.descripcion}{l.enviadaEn ? <span className="suave"> · enviado</span> : null}</span>
-              <span className="factura-acciones">
-                <b>{rd(l.total)}</b>
-                {cuenta.asientos.length > 0 && (
-                  <select aria-label="Pasar a" value={l.asientoId ?? ""} onChange={(e) => void accion(`${url}/lineas/${l.id}`, { asientoId: e.target.value || null }, "PATCH")}>
-                    <option value="">Mesa</option>
-                    {cuenta.asientos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                  </select>
-                )}
-                <button className="enlace" disabled={ocupado} onClick={() => (l.enviadaEn ? setAnulando(l) : void accion(`${url}/lineas/${l.id}`, { anulada: true }, "PATCH"))}>Quitar</button>
-              </span>
-            </div>
-          ))}
-        </div>
-      ))}
-      {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
-      <p style={{ marginTop: 12 }}><b>Pendiente {rd(cuenta.total)}</b> <span className="suave">· propina legal 10 % {rd(cuenta.propinaLegal)} (referencia)</span></p>
-      <div className="pv-atajos pv-atajos-min" style={{ position: "sticky", bottom: -22, background: "var(--panel)", padding: "10px 0 2px", marginTop: 8, gridTemplateColumns: "repeat(3, 1fr)" }}>
-        <button disabled={ocupado || !vivas.some((l) => !l.enviadaEn)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra/cocina</button>
-        <button disabled={ocupado} onClick={() => setUniendo(true)}>Unir con otra</button>
-        <button className="primario" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir y cobrar</button>
+    <Modal titulo={`${cuenta.nombre} · #${cuenta.numero}`} onCerrar={onCerrar} ancho clase="cuenta-ancha">
+      <div className="cuenta-doble">
+        <section className="cuenta-catalogo" aria-label="Productos">
+          <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivel} enCarrito={enCuenta} onAgregar={agregar} onCodigo={porCodigo} />
+        </section>
+        <section className="cuenta-lado" aria-label="Cuenta">
+          <button className="enlace" onClick={onVolver}>← Todas las cuentas</button>
+          {error && <p className="error">{error}</p>}
+          <div className="pestanas" style={{ flexWrap: "wrap" }}>
+            <button className={destino === null ? "activa" : ""} onClick={() => setDestino(null)}>Toda la mesa</button>
+            {cuenta.asientos.map((a) => <button key={a.id} className={destino === a.id ? "activa" : ""} onClick={() => setDestino(a.id)}>{a.nombre}</button>)}
+            <button onClick={async () => { const c = await accion(`${url}/asientos`, {}); if (c) setDestino(c.asientos[c.asientos.length - 1]?.id ?? null); }}>+ Persona</button>
+          </div>
+          <p className="suave" style={{ margin: "0 0 4px" }}>Lo que toque en el catálogo se carga a: <b>{destino ? cuenta.asientos.find((a) => a.id === destino)?.nombre ?? "" : "toda la mesa"}</b></p>
+          <div className="cuenta-lineas">
+            {grupos.filter((g) => g.id === null ? g.lineas.length > 0 : true).map((g) => (
+              <div key={g.id ?? "mesa"} style={{ marginTop: 8 }}>
+                <b>{g.nombre}</b> <span className="suave">{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span>
+                {g.lineas.length === 0 && <p className="suave" style={{ margin: "2px 0" }}>Nada pedido todavía.</p>}
+                {g.lineas.map((l) => (
+                  <div key={l.id} className="factura">
+                    <span>{Number(l.cantidad)} × {l.descripcion}{l.enviadaEn ? <span className="suave"> · enviado</span> : null}</span>
+                    <span className="factura-acciones">
+                      <b>{rd(l.total)}</b>
+                      {cuenta.asientos.length > 0 && (
+                        <select aria-label="Pasar a" value={l.asientoId ?? ""} onChange={(e) => void accion(`${url}/lineas/${l.id}`, { asientoId: e.target.value || null }, "PATCH")}>
+                          <option value="">Mesa</option>
+                          {cuenta.asientos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                        </select>
+                      )}
+                      <button className="enlace" disabled={ocupado} onClick={() => (l.enviadaEn ? setAnulando(l) : void accion(`${url}/lineas/${l.id}`, { anulada: true }, "PATCH"))}>Quitar</button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
+          <p style={{ marginTop: 10 }}><b>Pendiente {rd(cuenta.total)}</b> <span className="suave">· propina legal 10 % {rd(cuenta.propinaLegal)}</span></p>
+          <div className="pv-atajos pv-atajos-min" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+            <button disabled={ocupado || !vivas.some((l) => !l.enviadaEn)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra/cocina</button>
+            <button disabled={ocupado} onClick={() => setUniendo(true)}>Unir con otra</button>
+            <button className="primario" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir y cobrar</button>
+          </div>
+        </section>
       </div>
     </Modal>
   );
