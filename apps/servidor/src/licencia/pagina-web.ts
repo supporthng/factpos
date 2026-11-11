@@ -189,9 +189,10 @@ footer a{text-decoration:none;color:var(--primario)}
 <section id="descargar" style="padding-top:0"><div class="cont">
   <div class="cta" style="text-align:left;display:grid;grid-template-columns:1.2fr .8fr;gap:28px;align-items:center">
     <div>
+      <span class="etq"><i></i>Disfrute su demo por 15 días</span>
       <h2 style="margin-bottom:8px">Descargue FactPOS para Windows</h2>
-      <p style="margin:0 0 20px">El instalador completo trae el servidor, la caja y la administración. Pruébelo 15 días sin pagar y sin tarjeta; cuando quiera seguir, activamos su licencia.</p>
-      <div class="acc" style="justify-content:flex-start"><a class="btn p" href="/licencias/descargar-instalador">Descargar el instalador</a><a class="btn s" href="/demo">Probar la demo en el navegador</a></div>
+      <p style="margin:0 0 20px">Descargue el instalador completo (servidor, caja y administración) y disfrute su demo por 15 días, sin pagar y sin tarjeta. Cuando quiera seguir, activamos su licencia.</p>
+      <div class="acc" style="justify-content:flex-start"><a class="btn p" href="/licencias/descargar-instalador">Descargar y disfrutar 15 días de demo</a><a class="btn s" href="/demo">Probar la demo en el navegador</a></div>
     </div>
     <ol style="margin:0;padding-left:20px;color:#a9bacb;display:grid;gap:8px;font-size:15px">
       <li>Descargue y abra el instalador.</li>
