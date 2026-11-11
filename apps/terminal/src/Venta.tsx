@@ -16,6 +16,7 @@ import { Ticket, type VentaRegistrada } from "./Ticket";
 import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
 import { guardarRespaldoPausadas, leerRespaldoPausadas } from "./pausadas-respaldo";
+import { Barra } from "./Comandas";
 import { Cuentas, type PlanCobro } from "./Cuentas";
 import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
 import { guardarCache, leerCache, useConexion, disponibleCupo, pedirExistencia, exportarPendientes } from "./contingencia";
@@ -66,7 +67,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "facturasPin" | "pausadas"
-  | "cuentas" | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
+  | "cuentas" | "barra" | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -796,7 +797,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
-                ...(config.tipoNegocio && config.tipoNegocio !== "TIENDA" ? [["Cuentas", () => setModal("cuentas"), false] as const] : []),
+                ...(config.tipoNegocio && config.tipoNegocio !== "TIENDA" ? [["Cuentas", () => setModal("cuentas"), false] as const, ["Barra", () => setModal("barra"), false] as const] : []),
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ["Cerrar turno", () => setModal("turno"), false],
               ] as const).map(([t, f, d]) => (
@@ -808,6 +809,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
               <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
               {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("cuentas")}>Cuentas</button>}
+              {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("barra")}>Barra</button>}
               {verCatalogo
                 ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
                 : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
@@ -952,6 +954,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             existenciasRef.current().catch(() => {}); }}
         />
       )}
+      {modal === "barra" && <Barra ajustes={ajustes} onCerrar={() => setModal(null)} />}
       {modal === "cuentas" && idx && catalogo && (
         <Cuentas ajustes={ajustes} catalogo={catalogo} nivel={nivelPrecio}
           onCobrar={cobrarCuenta} onCerrar={() => setModal(null)} />

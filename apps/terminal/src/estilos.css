@@ -1292,3 +1292,14 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cuenta-lado { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .cuenta-lineas { flex: 1; min-height: 0; overflow: auto; }
 @media (max-width: 900px) { .cuenta-doble { grid-template-columns: 1fr; overflow: auto; } .cuenta-catalogo { max-height: 50vh; border-right: 0; } }
+
+/* Barra y cocina: cola de comandas por estación */
+.barra { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.barra-cabecera { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.barra-cola { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; align-content: start; }
+.comanda { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.comanda.tarde { border-color: var(--error); box-shadow: 0 0 0 1px var(--error) inset; }
+.comanda.lista { opacity: .6; }
+.comanda header { display: flex; justify-content: space-between; gap: 8px; }
+.comanda ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 18px; }
+.comanda footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; }

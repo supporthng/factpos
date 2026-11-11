@@ -4,6 +4,7 @@ import { VistaCatalogo } from "./Catalogo";
 import { api, ErrorApi, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
+import { ComandaPapel, type Comanda } from "./Comandas";
 
 /**
  * Cuentas abiertas (restaurantes, bares, discotecas): mesas o clientes con varias personas («asientos»).
@@ -36,6 +37,9 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [nueva, setNueva] = useState<{ nombre: string; asientos: string } | null>(null);
+  /** Comandas que salen por la impresora de esta caja, y el aviso de adónde fue lo enviado */
+  const [papeles, setPapeles] = useState<Comanda[]>([]);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const cargarLista = useCallback(async () => {
     try { setLista(await api<Resumen[]>(ajustes.servidor, base)); setError(null); } catch (e) { setError((e as Error).message); }
@@ -45,7 +49,14 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
   /** Ejecuta una acción del servidor que devuelve la cuenta actualizada. */
   const accion = async (ruta: string, cuerpo?: unknown, metodo?: string) => {
     setOcupado(true);
-    try { const c = await api<CuentaC>(ajustes.servidor, ruta, { cuerpo: cuerpo ?? {}, metodo }); setCuenta(c); setError(null); return c; }
+    try {
+      const c = await api<CuentaC & { comandas?: (Comanda & { imprimeEnCaja: boolean })[] }>(ajustes.servidor, ruta, { cuerpo: cuerpo ?? {}, metodo });
+      if (c.comandas) {
+        setAviso(c.comandas.length ? `Enviado: ${c.comandas.map((x) => `comanda #${x.numero} → ${x.estacion}`).join(" · ")}` : "Enviado (sin estación asignada: no hay comanda)");
+        setPapeles((p) => [...p, ...c.comandas!.filter((x) => x.imprimeEnCaja)]);
+      }
+      setCuenta(c); setError(null); return c;
+    }
     catch (e) { setError((e as Error).message); return null; }
     finally { setOcupado(false); }
   };
@@ -53,13 +64,14 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
     try { setCuenta(await api<CuentaC>(ajustes.servidor, `${base}/${id}`)); setError(null); } catch (e) { setError((e as Error).message); }
   };
 
+  const papel = papeles[0] ? <ComandaPapel key={papeles[0].id} comanda={papeles[0]} onListo={() => setPapeles((p) => p.slice(1))} /> : null;
   if (cuenta) {
-    return <DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
-      accion={accion} onCobrar={onCobrar} onVolver={() => { setCuenta(null); void cargarLista(); }} onCerrar={onCerrar} />;
+    return <><DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
+      accion={accion} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
   }
 
   return (
-    <Modal titulo="Cuentas abiertas" onCerrar={onCerrar}>
+    <><Modal titulo="Cuentas abiertas" onCerrar={onCerrar}>
       {error && <p className="error">{error}</p>}
       {nueva ? (
         <form onSubmit={async (ev) => {
@@ -91,13 +103,13 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
           </div>
         </>
       )}
-    </Modal>
+    </Modal>{papel}</>
   );
 }
 
-function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, ocupado, accion, onCobrar, onVolver, onCerrar }: {
+function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, onCobrar, onVolver, onCerrar }: {
   ajustes: Ajustes; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number;
-  error: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
+  error: string | null; aviso: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
   const url = `${base}/${cuenta.id}`;
@@ -152,6 +164,7 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, ocupado,
         <section className="cuenta-lado" aria-label="Cuenta">
           <button className="enlace" onClick={onVolver}>← Todas las cuentas</button>
           {error && <p className="error">{error}</p>}
+          {aviso && <p className="suave" style={{ margin: "4px 0", color: "var(--acento, #2dd4bf)" }}>{aviso}</p>}
           <div className="pestanas" style={{ flexWrap: "wrap" }}>
             <button className={destino === null ? "activa" : ""} onClick={() => setDestino(null)}>Toda la mesa</button>
             {cuenta.asientos.map((a) => <button key={a.id} className={destino === a.id ? "activa" : ""} onClick={() => setDestino(a.id)}>{a.nombre}</button>)}
