@@ -1323,3 +1323,15 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .comanda header { display: flex; justify-content: space-between; gap: 8px; }
 .comanda ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 18px; }
 .comanda footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; }
+
+/* Cuenta: con tantos controles por producto (persona, tiempo, vale, cortesía, quitar) la descripción ocupa su renglón y los controles bajan */
+.cuenta-lineas .factura { flex-wrap: wrap; row-gap: 4px; }
+.cuenta-lineas .factura > span:first-child { flex: 1 1 100%; min-width: 0; }
+.cuenta-lineas .factura .factura-acciones { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.cuenta-lineas .factura { padding: 8px 10px; }
+.cuenta-lineas .factura-acciones { gap: 8px; }
+.cuenta-lineas .factura select { padding: 4px 6px; min-height: 0; font-size: 13px; }
+.cuenta-lineas .factura .enlace { font-size: 13px; padding: 2px 4px; }
+.cuenta-lineas .factura b { font-size: 14px; }
+.cuenta-lineas .linea-extra { flex-wrap: nowrap; }
+.cuenta-lineas .linea-extra > span:first-child { flex: 1 1 auto; }
