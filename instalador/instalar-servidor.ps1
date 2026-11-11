@@ -49,7 +49,7 @@ param(
   [switch]$Master,
   [string]$Empresa = "",
   [string]$Licencia = "",
-  [string]$Portal = "https://factpos.vercel.app",
+  [string]$Portal = "https://factpos.app",
   [switch]$NoInteractivo
 )
 $ErrorActionPreference = "Stop"

@@ -22,7 +22,7 @@ function Listo($t) { Write-Host "   $t" -ForegroundColor Green }
 
 # Portal de FactPOS (lo deja el empaquetado: variable PORTAL_URL de GitHub)
 $portal = "__PORTAL_URL__"
-if ($portal -like "__*") { $portal = "https://factpos.vercel.app" }
+if ($portal -like "__*") { $portal = "https://factpos.app" }
 
 Paso "Su empresa en FactPOS"
 if (-not $Url) {

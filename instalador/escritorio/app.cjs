@@ -24,7 +24,7 @@ const configPath = path.join(app.getPath('userData'), 'conexion.json');
 let config = {};
 try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch {}
 const urlArg = args.find(x => x.startsWith('--servidor='));
-const PORTAL = (process.env.FACTPOS_PORTAL_URL || 'https://factpos.vercel.app').replace(/\/+$/, '');
+const PORTAL = (process.env.FACTPOS_PORTAL_URL || 'https://factpos.app').replace(/\/+$/, '');
 // config.apuntado: dirección que Administración le ordenó usar (gana sobre la del acceso directo)
 // Una dirección guardada a medias (sin http://, con espacios o barras de más) no debe impedir abrir la app
 function urlValida(u) {

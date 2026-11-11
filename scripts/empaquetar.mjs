@@ -53,7 +53,7 @@ rmSync(join(dir, "instalador/setup"), { recursive: true, force: true }); // fuen
 copiar("instalador/INSTALAR FactPOS.bat", "INSTALAR FactPOS.bat");
 // Los instaladores traen la dirección del PORTAL de FactPOS (variable PORTAL_URL de GitHub):
 // con el nombre corto de la empresa, el portal dice dónde está su nube y su administración.
-const adminUrl = (process.env.PORTAL_URL || "https://factpos.vercel.app").trim().replace(/\/+$/, "");
+const adminUrl = (process.env.PORTAL_URL || "https://factpos.app").trim().replace(/\/+$/, "");
 for (const f of ["instalador/instalar-administracion.ps1", "instalador/instalar-todo-en-uno.ps1"]) {
   const ruta = join(dir, f);
   writeFileSync(ruta, readFileSync(ruta, "utf8").replaceAll("__PORTAL_URL__", adminUrl));

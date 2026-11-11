@@ -27,7 +27,7 @@ import { syncActiva } from "../sync/sucursal.js";
  */
 /** Dirección pública para entrar a la administración web (la que se le da al cliente). */
 export const WEB_URL = () => (process.env.FACTPOS_WEB_URL || "https://factpos.app").replace(/\/+$/, "");
-export const PORTAL_URL = () => (process.env.FACTPOS_PORTAL_URL || "https://factpos.vercel.app").replace(/\/+$/, "");
+export const PORTAL_URL = () => (process.env.FACTPOS_PORTAL_URL || "https://factpos.app").replace(/\/+$/, "");
 const PRUEBA_SUCURSALES = 2;
 const RENOVAR_CADA_MS = 12 * 3600_000;
 

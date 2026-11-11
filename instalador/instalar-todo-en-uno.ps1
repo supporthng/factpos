@@ -86,7 +86,7 @@ $datos = [ordered]@{ Puerto = 3000; CentralUrl = ""; SucursalId = ""; CentralCla
 if (SiNo "¿Esta tienda se conecta con la Administración en la nube?" $true) {
   # Cada empresa tiene SU nube; el portal de FactPOS dice dónde está con el nombre corto
   $portal = "__PORTAL_URL__"
-  if ($portal -like "__*") { $portal = "https://factpos.vercel.app" }
+  if ($portal -like "__*") { $portal = "https://factpos.app" }
   Write-Host "   Escriba el nombre corto de su empresa en FactPOS (ej. royalliquorstore)"
   Write-Host "   o la dirección de la API de su nube si se la dieron." -ForegroundColor DarkGray
   do {

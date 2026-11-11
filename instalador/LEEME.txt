@@ -50,7 +50,7 @@ UN SOLO INSTALADOR PARA TODO
 
    4. Administración (oficina, dueño, supervisor)
       - No necesita servidor: pregunta el nombre corto de su empresa y abre su
-        administración (https://factpos.vercel.app/<empresa>/) en su propia ventana.
+        administración (https://factpos.app/<empresa>/) en su propia ventana.
       - Deja "FactPOS Administración" en el escritorio y en el menú Inicio.
 
    Cada sucursal trabaja por su cuenta (su servidor, sus cajas, su inventario)

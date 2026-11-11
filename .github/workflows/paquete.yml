@@ -8,7 +8,7 @@ name: Instaladores
 # - Una etiqueta v1.2.3  → además, una versión fija con su número.
 # - También se puede correr a mano (Actions › Instaladores › Run workflow).
 # Opcional: variable del repositorio PORTAL_URL (Settings › Secrets and variables ›
-# Actions › Variables) con la dirección de su portal; si no, https://factpos.vercel.app.
+# Actions › Variables) con la dirección de su portal; si no, https://factpos.app.
 
 on:
   push:

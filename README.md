@@ -273,12 +273,12 @@ y todas se administran juntas desde la nube.
 ## FactPOS como producto: portal, clientes y licencias
 
 ```
-PORTAL DEL PROVEEDOR (MODO=portal) · https://factpos.vercel.app
+PORTAL DEL PROVEEDOR (MODO=portal) · https://factpos.app
   clientes, licencias, activaciones · NO guarda datos de los clientes
         │ licencias firmadas (Ed25519)
         ▼
 NUBE DE CADA CLIENTE (MODO=central) · su Vercel + su Supabase (cuentas del cliente)
-  administración web: https://factpos.vercel.app/<cliente>/ (la sirve el portal y habla con SU API)
+  administración web: https://factpos.app/<cliente>/ (la sirve el portal y habla con SU API)
         │ sincronización
         ▼
 SERVIDORES DE SUS SUCURSALES (MODO=sucursal) + cajas
@@ -308,7 +308,7 @@ SERVIDORES DE SUS SUCURSALES (MODO=sucursal) + cajas
    también en cada actualización. Al abrir su administración por primera vez aparece la
    **Configuración inicial** (pide la `CLAVE_ACCESO`): empresa, RNC, primera sucursal y usuario administrador.
 5. En el portal ponga la **dirección de su API** en el cliente. Su administración queda en
-   `https://factpos.vercel.app/royalliquorstore/`.
+   `https://factpos.app/royalliquorstore/`.
 6. El cliente entra, va a **Licencia** y activa con la clave. Luego instala sus servidores (instalador,
    opción Servidor, con el nombre corto de su empresa) y sus cajas.
 

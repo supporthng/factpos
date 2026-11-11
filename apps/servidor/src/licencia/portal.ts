@@ -14,7 +14,7 @@ import { verificarSoftware } from "../fiscal/verificacion-software.js";
 import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
 
 /**
- * PORTAL DEL PROVEEDOR (MODO=portal) — p. ej. https://factpos.vercel.app
+ * PORTAL DEL PROVEEDOR (MODO=portal) — p. ej. https://factpos.app
  *
  * Aquí se administran los clientes que compraron FactPOS y sus licencias.
  * NO se guarda ningún dato de los clientes (ventas, productos, clientes…):
