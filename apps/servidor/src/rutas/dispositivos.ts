@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
+import { ipCliente } from "../tunel.js";
 
 /**
  * DISPOSITIVOS REMOTOS. Con «Exigir dispositivo autorizado» (Sistema › Seguridad) encendido, quien entra a la
@@ -54,7 +55,7 @@ export async function rutasDispositivos(app: FastifyInstance) {
   app.post("/central/dispositivo/solicitar", async (req) => {
     const b = z.object({ nombre: z.string().trim().min(1).max(60), plataforma: z.string().trim().max(40).default("") }).parse(req.body);
     const ahora = Date.now();
-    const lista = (recientes.get(req.ip) ?? []).filter((t) => ahora - t < 3600_000);
+    const lista = (recientes.get(ipCliente(req)) ?? []).filter((t) => ahora - t < 3600_000);
     if (lista.length >= 5) throw new ErrorNegocio("Demasiadas solicitudes desde este equipo: espere un rato", 429);
     // La autorización vale para todo el servidor (se comprueba por credencial, no por empresa): con varias empresas el equipo
     // se anota en la primera y los administradores de cualquiera de ellas lo ven y lo resuelven.
@@ -62,10 +63,10 @@ export async function rutasDispositivos(app: FastifyInstance) {
     if (!emp.rowCount) throw new ErrorNegocio("Este servidor no tiene empresas activas: no se puede registrar el dispositivo", 409);
     const pend = await pool.query("SELECT 1 FROM dispositivos_remotos WHERE estado = 'PENDIENTE'");
     if ((pend.rowCount ?? 0) >= 30) throw new ErrorNegocio("Hay demasiadas solicitudes pendientes: un administrador debe resolverlas", 429);
-    lista.push(ahora); recientes.set(req.ip, lista);
+    lista.push(ahora); recientes.set(ipCliente(req), lista);
     const id = randomUUID(), secreto = randomBytes(24).toString("base64url");
     await pool.query("INSERT INTO dispositivos_remotos (id, empresa_id, nombre, plataforma, secreto_hash, ip) VALUES ($1,$2,$3,$4,$5,$6)",
-      [id, emp.rows[0].id, b.nombre, b.plataforma, huella(secreto), req.ip]);
+      [id, emp.rows[0].id, b.nombre, b.plataforma, huella(secreto), ipCliente(req)]);
     return { dispositivo: `${id}.${secreto}`, estado: "PENDIENTE" };
   });
 
