@@ -17,6 +17,7 @@ const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.C
 import { FranjaEmpresa, SelectorEmpresa } from "./paginas/Empresas";
 import { AgregarAInicio } from "./AgregarAInicio";
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
+import { InicioPortal } from "./paginas/InicioPortal";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
 import { Actualizaciones, AvisoActualizacion } from "./paginas/Actualizaciones";
@@ -396,7 +397,7 @@ function AppInterna() {
               <>
                 <div className="saludo">
                   <h1>{saludo()}, {sesion.nombre.split(" ")[0]}</h1>
-                  <p className="suave">¿Qué desea hacer hoy? Elija una función.</p>
+                  <p className="suave">{enPortal ? "Esto es lo que pasa hoy en el portal." : "¿Qué desea hacer hoy? Elija una función."}</p>
                 </div>
                 <div className="buscador-inicio">
                   <span className="buscador-lupa" aria-hidden="true"><Icono n="buscar" tamano={18} /></span>
@@ -414,6 +415,8 @@ function AppInterna() {
                     ))}
                     {!opcionesBuscadas.length && <p className="suave">Ninguna opción coincide con “{buscaOpcion.trim()}”.</p>}
                   </div>
+                ) : enPortal ? (
+                  <InicioPortal irA={setSeccion} accesos={visibles.map((v) => ({ id: v.id, titulo: v.titulo, i: v.i, texto: DESCRIPCION[v.id] ?? "" }))} />
                 ) : (<>
                 <h2 className="titulo-seccion">Módulos</h2>
                 <div className="cuadricula cuadricula-grupos">
