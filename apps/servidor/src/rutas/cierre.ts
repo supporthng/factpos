@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { contextoCaja } from "../contexto.js";
 import { leerToken } from "../sesion.js";
 import { usuarioVigente } from "./sesion.js";
 import { FORMAS_CONTADAS, diferenciaCierre, efectivoContado, efectivoEsperado, esperadoPorForma } from "./cuadre.js";
@@ -191,6 +192,13 @@ export async function rutasCierre(app: FastifyInstance) {
     const { fecha } = z.object({ fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
     const quien = await quienVe(req, cajaId);
     const soloMio = quien.todos ? null : quien.usuarioId;
+    // Bares y discotecas: la jornada (la noche) termina a las 6:00 a. m.; de madrugada, «hoy» sigue siendo la noche que empezó ayer.
+    // Las tiendas siguen con el día de calendario.
+    const ctxDia = await contextoCaja(cajaId);
+    const tn = (await pool.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctxDia.empresaId])).rows[0]?.t ?? "TIENDA";
+    const desfaseH = tn === "TIENDA" ? 0 : 6;
+    const hoy = (await pool.query<{ d: string }>("SELECT ((now() AT TIME ZONE 'America/Santo_Domingo') - make_interval(hours => $1))::date::text AS d", [desfaseH])).rows[0].d;
+    const fechaDia = fecha ?? hoy;
     const r = await pool.query(
       `SELECT t.id, u.nombre AS cajero, t.estado, t.abierto_en AS "abiertoEn", t.cerrado_en AS "cerradoEn",
               t.diferencia::text AS diferencia, t.declarado, t.esperado,
@@ -198,21 +206,21 @@ export async function rutasCierre(app: FastifyInstance) {
               (SELECT COUNT(*) FROM ventas v WHERE v.turno_id = t.id AND v.tipo_documento NOT IN ('E34','ANU'))::int AS facturas
          FROM turnos t JOIN usuarios u ON u.id = t.usuario_id
         WHERE t.caja_id = $1 AND ($3::uuid IS NULL OR t.usuario_id = $3)
-          AND (t.abierto_en AT TIME ZONE 'America/Santo_Domingo')::date = COALESCE($2::date, (now() AT TIME ZONE 'America/Santo_Domingo')::date)
+          AND ((t.abierto_en AT TIME ZONE 'America/Santo_Domingo') - make_interval(hours => $4))::date = $2::date
         ORDER BY t.abierto_en`,
-      [cajaId, fecha ?? null, soloMio],
+      [cajaId, fechaDia, soloMio, desfaseH],
     );
     const pagos = await pool.query(
       `SELECT f.forma_pago AS "formaPago", SUM(f.monto)::text AS monto
          FROM rpt_formas_pago f JOIN turnos t ON t.id = f.turno_id
         WHERE t.caja_id = $1 AND ($3::uuid IS NULL OR t.usuario_id = $3)
-          AND (t.abierto_en AT TIME ZONE 'America/Santo_Domingo')::date = COALESCE($2::date, (now() AT TIME ZONE 'America/Santo_Domingo')::date)
+          AND ((t.abierto_en AT TIME ZONE 'America/Santo_Domingo') - make_interval(hours => $4))::date = $2::date
         GROUP BY f.forma_pago ORDER BY f.forma_pago`,
-      [cajaId, fecha ?? null, soloMio],
+      [cajaId, fechaDia, soloMio, desfaseH],
     );
     const suma = (k: "ventas" | "diferencia") => r.rows.reduce((a, x) => a.plus(x[k] ?? 0), new Decimal(0)).toFixed(2);
     return {
-      fecha: fecha ?? new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10),
+      fecha: fechaDia,
       turnos: r.rows,
       formasPago: pagos.rows,
       totales: { ventas: suma("ventas"), diferencia: suma("diferencia"), facturas: r.rows.reduce((a, x) => a + x.facturas, 0) },
