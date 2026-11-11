@@ -196,15 +196,18 @@ export async function rutasSalon(app: FastifyInstance) {
     return { cuentaId };
   });
 
-  /** Modificadores disponibles (los de nota y los extras con cargo), con el precio del extra. */
+  /** Modificadores disponibles (los de nota y los extras con cargo, con el precio del extra) y las reglas de cada grupo. */
   app.get("/cajas/:cajaId/modificadores", async (req) => {
     const ctx = await preparar(req);
-    return (await pool.query(
+    const modificadores = (await pool.query(
       `SELECT m.id, m.grupo, m.nombre, m.presentacion_id AS "presentacionId", m.categoria_id AS "categoriaId",
               CASE WHEN m.presentacion_id IS NULL THEN NULL ELSE p.nombre END AS "producto"
          FROM modificadores m
          LEFT JOIN presentaciones pr ON pr.id = m.presentacion_id LEFT JOIN productos p ON p.id = pr.producto_id
         WHERE m.empresa_id = $1 AND m.activo ORDER BY m.grupo, m.orden, m.nombre`, [ctx.empresaId])).rows;
+    const grupos = (await pool.query(
+      `SELECT nombre, obligatorio, max_opciones AS "maxOpciones" FROM modificador_grupos WHERE empresa_id = $1 ORDER BY nombre`, [ctx.empresaId])).rows;
+    return { modificadores, grupos };
   });
 
   /** Guarda los modificadores (solo supervisor). */
@@ -216,8 +219,13 @@ export async function rutasSalon(app: FastifyInstance) {
         id: uuid.optional(), grupo: z.string().trim().max(30).default(""), nombre: z.string().trim().min(1).max(40),
         presentacionId: uuid.nullable().default(null), categoriaId: uuid.nullable().default(null),
       })).max(300),
+      grupos: z.array(z.object({ nombre: z.string().trim().min(1).max(30), obligatorio: z.boolean(), maxOpciones: z.number().int().min(1).max(99) })).max(50).default([]),
     }).parse(req.body);
     await enTransaccion(async (c) => {
+      await c.query("DELETE FROM modificador_grupos WHERE empresa_id = $1", [ctx.empresaId]);
+      for (const g of b.grupos) {
+        await c.query("INSERT INTO modificador_grupos (empresa_id, nombre, obligatorio, max_opciones) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING", [ctx.empresaId, g.nombre, g.obligatorio, g.maxOpciones]);
+      }
       const ids: string[] = [];
       for (const [i, m] of b.modificadores.entries()) {
         if (m.presentacionId && !(await c.query(

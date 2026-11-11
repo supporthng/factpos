@@ -151,6 +151,21 @@ export async function rutasCuentas(app: FastifyInstance) {
       if (!e || e.precio === null) throw new ErrorNegocio(`«${m.nombre}» no está disponible o no tiene precio`, 409);
       extras.push({ mod: m.nombre, p: e });
     }
+    // Reglas del grupo (guarniciones): obligatorio = al menos una, máximo = hasta cuántas
+    const reglas = (await pool.query<{ grupo: string; obligatorio: boolean; max: number; elegidos: string }>(
+      `SELECT g.nombre AS grupo, g.obligatorio, g.max_opciones AS max,
+              COUNT(*) FILTER (WHERE m.id = ANY($3::uuid[]))::text AS elegidos
+         FROM modificador_grupos g
+         JOIN modificadores m ON m.empresa_id = g.empresa_id AND m.grupo = g.nombre AND m.activo
+         JOIN presentaciones pr ON pr.id = $2
+         JOIN productos pd ON pd.id = pr.producto_id
+        WHERE g.empresa_id = $1 AND (m.categoria_id IS NULL OR m.categoria_id = pd.categoria_id)
+        GROUP BY g.nombre, g.obligatorio, g.max_opciones`, [ctx.empresaId, b.presentacionId, ids])).rows;
+    for (const r of reglas) {
+      const n = Number(r.elegidos);
+      if (r.obligatorio && n < 1) throw new ErrorNegocio(`Falta elegir ${r.grupo.toLowerCase() || "una opción"} para «${p.nombre}»`, 400);
+      if (n > r.max) throw new ErrorNegocio(`En ${r.grupo || "este grupo"} se puede elegir ${r.max === 1 ? "una sola opción" : `hasta ${r.max}`}`, 400);
+    }
     const nota = [...mods.filter((m) => !m.presentacionId).map((m) => m.nombre), ...(b.nota ? [b.nota] : [])].join(" · ") || null;
     const paso = b.paso ?? 1;
     await enTransaccion(async (c) => {

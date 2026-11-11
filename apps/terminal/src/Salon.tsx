@@ -17,6 +17,7 @@ export interface MesaC {
   cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null;
 }
 export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; producto: string | null }
+export interface GrupoMod { nombre: string; obligatorio: boolean; maxOpciones: number }
 export const PASOS: [number, string][] = [[1, "Ya"], [2, "Fuertes"], [3, "Postres"]];
 
 export const horaCorta = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" });
@@ -228,10 +229,11 @@ export function ConfigMesas({ ajustes, mesas, onGuardado, onCerrar }: { ajustes:
 }
 
 /** Crear los modificadores: de nota (término, sin cebolla) o extras con cargo (un producto del catálogo). Solo supervisor. */
-export function ConfigModificadores({ ajustes, catalogo, actuales, onGuardado, onCerrar }: {
-  ajustes: Ajustes; catalogo: Catalogo; actuales: Modificador[]; onGuardado: () => void; onCerrar: () => void;
+export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuales, onGuardado, onCerrar }: {
+  ajustes: Ajustes; catalogo: Catalogo; actuales: Modificador[]; gruposActuales: GrupoMod[]; onGuardado: () => void; onCerrar: () => void;
 }) {
   const [lista, setLista] = useState<Modificador[]>(actuales);
+  const [reglas, setReglas] = useState<GrupoMod[]>(gruposActuales);
   const [buscar, setBuscar] = useState<{ i: number; texto: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -241,13 +243,19 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, onGuardado, o
     return [...m].sort((a, b) => a[1].localeCompare(b[1]));
   }, [catalogo.productos]);
   const cambiar = (i: number, c: Partial<Modificador>) => setLista((l) => l.map((x, j) => (j === i ? { ...x, ...c } : x)));
+  const nombresGrupo = [...new Set(lista.map((m) => m.grupo.trim()).filter(Boolean))];
+  const regla = (g: string): GrupoMod => reglas.find((r) => r.nombre === g) ?? { nombre: g, obligatorio: false, maxOpciones: 99 };
+  const cambiarRegla = (g: string, c: Partial<GrupoMod>) => setReglas((r) => [...r.filter((x) => x.nombre !== g), { ...regla(g), ...c }]);
+  const plantillaGuarniciones = () => setLista((l) => [...l,
+    ...["Arroz blanco", "Moro", "Tostones", "Ensalada", "Papas fritas"].map((nombre) => ({ id: "", grupo: "Guarnición", nombre, presentacionId: null, categoriaId: null, producto: null as string | null })),
+  ]) ;
   const resultados = buscar && buscar.texto.trim().length >= 2
     ? catalogo.productos.filter((p) => p.nombre.toLowerCase().includes(buscar.texto.trim().toLowerCase())).slice(0, 6) : [];
   const guardar = async () => {
     setGuardando(true);
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`, {
-        metodo: "PUT", cuerpo: { modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId })) },
+        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId })) },
       });
       onGuardado();
     } catch (e) { setError((e as Error).message); }
@@ -292,7 +300,23 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, onGuardado, o
         ))}
         {!lista.length && <p className="suave">Todavía no hay modificadores.</p>}
       </div>
-      <button className="boton fantasma" onClick={() => setLista((l) => [...l, { id: "", grupo: "", nombre: "", presentacionId: null, categoriaId: null, producto: null }])}>+ Agregar modificador</button>
+      {nombresGrupo.length > 0 && (
+        <div className="cobro2-bloque" style={{ margin: "8px 0" }}>
+          <b>Reglas por grupo</b>
+          {nombresGrupo.map((g) => (
+            <div key={g} style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+              <span style={{ minWidth: 110 }}>{g}</span>
+              <label><input type="checkbox" checked={regla(g).obligatorio} onChange={(e) => cambiarRegla(g, { obligatorio: e.target.checked })} /> Obligatorio</label>
+              <label>Elegir hasta{" "}
+                <select value={regla(g).maxOpciones} onChange={(e) => cambiarRegla(g, { maxOpciones: Number(e.target.value) })}>
+                  <option value={1}>1 (una sola)</option><option value={2}>2</option><option value={3}>3</option><option value={99}>Las que quiera</option>
+                </select></label>
+            </div>
+          ))}
+        </div>
+      )}
+      <button className="boton fantasma" onClick={() => setLista((l) => [...l, { id: "", grupo: "", nombre: "", presentacionId: null, categoriaId: null, producto: null }])}>+ Agregar modificador</button>{" "}
+      <button className="boton fantasma" onClick={() => { plantillaGuarniciones(); cambiarRegla("Guarnición", { obligatorio: true, maxOpciones: 1 }); }}>+ Guarniciones (arroz, moro, tostones…)</button>
       <button className="boton primario ancho" style={{ marginTop: 10 }}
         disabled={guardando || lista.some((m) => !m.nombre.trim())} onClick={guardar}>Guardar</button>
     </Modal>
@@ -300,8 +324,8 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, onGuardado, o
 }
 
 /** Al tocar un plato con modificadores: elegir cuáles lleva (y en qué tiempo sale). */
-export function ElegirModificadores({ titulo, mods, tiempos, pasoInicial, onListo, onCerrar }: {
-  titulo: string; mods: Modificador[]; tiempos: boolean; pasoInicial: number;
+export function ElegirModificadores({ titulo, mods, reglas, tiempos, pasoInicial, onListo, onCerrar }: {
+  titulo: string; mods: Modificador[]; reglas: GrupoMod[]; tiempos: boolean; pasoInicial: number;
   onListo: (r: { mods: string[]; nota: string; paso: number }) => void; onCerrar: () => void;
 }) {
   const [sel, setSel] = useState<string[]>([]);
@@ -312,14 +336,24 @@ export function ElegirModificadores({ titulo, mods, tiempos, pasoInicial, onList
     for (const x of mods) m.set(x.grupo, [...(m.get(x.grupo) ?? []), x]);
     return [...m];
   }, [mods]);
-  const alternar = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const reglaDe = (g: string) => reglas.find((r) => r.nombre === g);
+  const alternar = (id: string, g: string) => setSel((s) => {
+    if (s.includes(id)) return s.filter((x) => x !== id);
+    const max = reglaDe(g)?.maxOpciones ?? 99;
+    const delGrupo = s.filter((x) => mods.find((m) => m.id === x)?.grupo === g);
+    // Con «una sola» la nueva opción reemplaza a la anterior; con un máximo mayor no deja pasar de ahí
+    if (max === 1) return [...s.filter((x) => !delGrupo.includes(x)), id];
+    return delGrupo.length >= max ? s : [...s, id];
+  });
+  const faltan = grupos.filter(([g]) => reglaDe(g)?.obligatorio && !sel.some((x) => mods.find((m) => m.id === x)?.grupo === g)).map(([g]) => g);
   return (
     <Modal titulo={titulo} onCerrar={onCerrar}>
       {grupos.map(([g, lista]) => (
         <div key={g} style={{ marginBottom: 8 }}>
-          {g && <div className="mesas-zona" style={{ margin: "4px 0" }}>{g}</div>}
+          {g && <div className="mesas-zona" style={{ margin: "4px 0" }}>{g}{reglaDe(g) && (
+            <span className="suave"> · {reglaDe(g)!.obligatorio ? "obligatorio" : "opcional"}, {reglaDe(g)!.maxOpciones === 1 ? "elija 1" : reglaDe(g)!.maxOpciones < 99 ? `hasta ${reglaDe(g)!.maxOpciones}` : "las que quiera"}</span>)}</div>}
           <div className="pasos">
-            {lista.map((m) => <button key={m.id} className={sel.includes(m.id) ? "activa" : ""} onClick={() => alternar(m.id)}>{m.nombre}{m.presentacionId ? " (+)" : ""}</button>)}
+            {lista.map((m) => <button key={m.id} className={sel.includes(m.id) ? "activa" : ""} onClick={() => alternar(m.id, g)}>{m.nombre}{m.presentacionId ? " (+)" : ""}</button>)}
           </div>
         </div>
       ))}
@@ -331,7 +365,8 @@ export function ElegirModificadores({ titulo, mods, tiempos, pasoInicial, onList
         </div>
       )}
       <p className="suave">«(+)» tiene cargo y se suma a la cuenta.</p>
-      <button className="boton primario ancho" onClick={() => onListo({ mods: sel, nota: nota.trim(), paso })}>Agregar</button>
+      <button className="boton primario ancho" disabled={faltan.length > 0} onClick={() => onListo({ mods: sel, nota: nota.trim(), paso })}>
+        {faltan.length ? `Elija: ${faltan.join(", ")}` : "Agregar"}</button>
     </Modal>
   );
 }

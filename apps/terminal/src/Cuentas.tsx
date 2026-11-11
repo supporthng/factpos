@@ -5,7 +5,7 @@ import { api, ErrorApi, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { ComandaPapel, type Comanda } from "./Comandas";
-import { ConfigMesas, ConfigModificadores, ElegirModificadores, MapaMesas, MoverCuenta, PASOS, PreCuentaPapel, ReporteSalon, ReservasSalon, PedidoParaLlevar, horaCorta, type DatosPreCuenta, type MesaC, type Modificador } from "./Salon";
+import { ConfigMesas, ConfigModificadores, ElegirModificadores, MapaMesas, MoverCuenta, PASOS, PreCuentaPapel, ReporteSalon, ReservasSalon, PedidoParaLlevar, horaCorta, type DatosPreCuenta, type MesaC, type GrupoMod, type Modificador } from "./Salon";
 import type { ConfigCaja } from "./App";
 
 /**
@@ -45,6 +45,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   const [aviso, setAviso] = useState<string | null>(null);
   const [mesas, setMesas] = useState<MesaC[]>([]);
   const [modificadores, setModificadores] = useState<Modificador[]>([]);
+  const [gruposMod, setGruposMod] = useState<GrupoMod[]>([]);
   const [pantalla, setPantalla] = useState<"MESAS" | "MODS" | "REPORTE" | "RESERVAS" | "LLEVAR" | null>(null);
   const [reservaMesa, setReservaMesa] = useState<MesaC | null>(null);
 
@@ -52,7 +53,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
     try { setLista(await api<Resumen[]>(ajustes.servidor, base)); setError(null); } catch (e) { setError((e as Error).message); }
     // El mapa y los modificadores son opcionales: sin mesas creadas todo funciona como la lista de cuentas
     api<MesaC[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/mesas`).then(setMesas).catch(() => setMesas([]));
-    api<Modificador[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`).then(setModificadores).catch(() => setModificadores([]));
+    api<{ modificadores: Modificador[]; grupos: GrupoMod[] }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`)
+      .then((r) => { setModificadores(r.modificadores); setGruposMod(r.grupos); }).catch(() => { setModificadores([]); setGruposMod([]); });
   }, [ajustes.servidor, ajustes.cajaId, base]);
   useEffect(() => { void cargarLista(); }, [cargarLista]);
   // El mapa se mantiene al día mientras se mira (otras cajas abren y cierran mesas)
@@ -93,7 +95,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   const papel = papeles[0] ? <ComandaPapel key={papeles[0].id} comanda={papeles[0]} onListo={() => setPapeles((p) => p.slice(1))} /> : null;
   if (cuenta) {
     return <><DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
-      accion={accion} modificadores={modificadores} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
+      accion={accion} modificadores={modificadores} gruposMod={gruposMod} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
   }
 
   if (pantalla === "MESAS") return <ConfigMesas ajustes={ajustes} mesas={mesas} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
@@ -115,7 +117,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
     );
   }
   if (pantalla === "REPORTE") return <ReporteSalon ajustes={ajustes} onCerrar={() => setPantalla(null)} />;
-  if (pantalla === "MODS") return <ConfigModificadores ajustes={ajustes} catalogo={catalogo} actuales={modificadores} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
+  if (pantalla === "MODS") return <ConfigModificadores ajustes={ajustes} catalogo={catalogo} actuales={modificadores} gruposActuales={gruposMod} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
   return (
     <><Modal titulo="Cuentas abiertas" onCerrar={onCerrar} ancho>
       {error && <p className="error">{error}</p>}
@@ -171,8 +173,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   );
 }
 
-function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[];
+function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, onCobrar, onVolver, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[];
   error: string | null; aviso: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
@@ -226,7 +228,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
   };
 
   if (eligiendo) {
-    return <ElegirModificadores titulo={eligiendo.nombre} mods={aplicables(eligiendo)} tiempos={tiempos} pasoInicial={pasoNuevo}
+    return <ElegirModificadores titulo={eligiendo.nombre} mods={aplicables(eligiendo)} reglas={gruposMod} tiempos={tiempos} pasoInicial={pasoNuevo}
       onCerrar={() => setEligiendo(null)} onListo={(r) => { const p = eligiendo; setEligiendo(null); agregar(p, r); }} />;
   }
   if (moviendo) {
