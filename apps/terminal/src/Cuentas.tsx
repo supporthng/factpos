@@ -139,7 +139,7 @@ function DetalleCuenta({ ajustes, base, cuenta, productos, precio, error, ocupad
   if (uniendo) return <UnirCuenta ajustes={ajustes} base={base} actualId={cuenta.id} onElegir={(id) => { setUniendo(false); void accion(`${url}/unir`, { desdeId: id }); }} onVolver={() => setUniendo(false)} />;
 
   return (
-    <Modal titulo={`${cuenta.nombre} · #${cuenta.numero}`} onCerrar={onCerrar}>
+    <Modal titulo={`${cuenta.nombre} · #${cuenta.numero}`} onCerrar={onCerrar} ancho>
       <button className="enlace" onClick={onVolver}>← Todas las cuentas</button>
       {error && <p className="error">{error}</p>}
       <div className="pestanas" style={{ flexWrap: "wrap" }}>
@@ -151,9 +151,10 @@ function DetalleCuenta({ ajustes, base, cuenta, productos, precio, error, ocupad
       {encontrados.length > 0 && (
         <div className="resultados">
           {encontrados.map((p) => (
-            <button key={p.presentacionId} className="factura" onClick={() => agregar(p)}>
+            <div key={p.presentacionId} className="factura" role="button" tabIndex={0} style={{ cursor: "pointer" }} onClick={() => agregar(p)}
+              onKeyDown={(e) => { if (e.key === "Enter") agregar(p); }}>
               <span>{p.nombre} {p.presentacion !== "Unidad" ? p.presentacion : ""}</span><b>{precio(p) !== null ? rd(precio(p)!) : "sin precio"}</b>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -180,7 +181,7 @@ function DetalleCuenta({ ajustes, base, cuenta, productos, precio, error, ocupad
       ))}
       {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
       <p style={{ marginTop: 12 }}><b>Pendiente {rd(cuenta.total)}</b> <span className="suave">· propina legal 10 % {rd(cuenta.propinaLegal)} (referencia)</span></p>
-      <div className="pv-atajos pv-atajos-min">
+      <div className="pv-atajos pv-atajos-min" style={{ position: "sticky", bottom: -22, background: "var(--panel)", padding: "10px 0 2px", marginTop: 8, gridTemplateColumns: "repeat(3, 1fr)" }}>
         <button disabled={ocupado || !vivas.some((l) => !l.enviadaEn)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra/cocina</button>
         <button disabled={ocupado} onClick={() => setUniendo(true)}>Unir con otra</button>
         <button className="primario" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir y cobrar</button>
@@ -197,7 +198,10 @@ function UnirCuenta({ ajustes, base, actualId, onElegir, onVolver }: { ajustes: 
       <p className="suave">Lo de la cuenta que elija pasa a esta, y esa queda cerrada.</p>
       {lista.length === 0 && <p className="suave">No hay otras cuentas abiertas.</p>}
       <div className="resultados">
-        {lista.map((c) => <button key={c.id} className="factura" onClick={() => onElegir(c.id)}><span><b>{c.nombre}</b> <span className="suave">· {c.lineas} producto(s)</span></span></button>)}
+        {lista.map((c) => (
+          <div key={c.id} className="factura"><span><b>{c.nombre}</b> <span className="suave">· {c.lineas} producto(s)</span></span>
+            <span className="factura-acciones"><button className="boton primario" onClick={() => onElegir(c.id)}>Unir</button></span></div>
+        ))}
       </div>
       <button className="enlace" onClick={onVolver}>Cancelar</button>
     </Modal>
@@ -231,7 +235,7 @@ function DividirCuenta({ ajustes, url, cuenta, onCobrar, onVolver }: { ajustes: 
   const porSeparado = modo === "ASIENTOS" || modo === "PRODUCTOS";
 
   return (
-    <Modal titulo={`Dividir ${cuenta.nombre}`} onCerrar={onVolver}>
+    <Modal titulo={`Dividir ${cuenta.nombre}`} onCerrar={onVolver} ancho>
       <button className="enlace" onClick={onVolver}>← Volver a la cuenta</button>
       <div className="pestanas" style={{ flexWrap: "wrap" }}>
         {([["ASIENTOS", "Por persona (ya ordenado)"], ["IGUAL", "Partes iguales"], ["MONTOS", "Por monto"], ["PRODUCTOS", "Por producto"]] as [Modo, string][]).map(([m, t]) => (
