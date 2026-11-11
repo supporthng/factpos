@@ -213,6 +213,8 @@ function AppInterna() {
   const [error, setError] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
   const [cambiarClave, setCambiarClave] = useState(false);
+  /** Entró con la contraseña inicial: tiene que crear la suya antes de usar nada. */
+  const [debeCambiar, setDebeCambiar] = useState(false);
   const [buscaOpcion, setBuscaOpcion] = useState("");
   const [menuUsuario, setMenuUsuario] = useState(false);
   const [, setRefresco] = useState(0);
@@ -228,8 +230,8 @@ function AppInterna() {
   useEffect(() => {
     if (!sesion) return;
     // Permisos al día (si el administrador cambió el rol, se refleja al abrir)
-    api<{ usuario: { permisos: string[]; nombre: string; sucursales: string[] | null }; modo?: string }>("/central/sesion")
-      .then((r) => { fijarModoServidor(r.modo ?? null); fijarSesion({ ...sesion, permisos: r.usuario.permisos, nombre: r.usuario.nombre, sucursales: r.usuario.sucursales }); setRefresco((x) => x + 1); })
+    api<{ usuario: { permisos: string[]; nombre: string; sucursales: string[] | null }; modo?: string; debeCambiarClave?: boolean }>("/central/sesion")
+      .then((r) => { setDebeCambiar(!!r.debeCambiarClave); fijarModoServidor(r.modo ?? null); fijarSesion({ ...sesion, permisos: r.usuario.permisos, nombre: r.usuario.nombre, sucursales: r.usuario.sucursales }); setRefresco((x) => x + 1); })
       .catch(() => {});
     if (enPortal) { setCatalogo(CATALOGO_VACIO); return; }
     api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch((e) => setError(e.message));
@@ -462,7 +464,7 @@ function AppInterna() {
 
             {vista === "seccion" && <Suspense fallback={<p className="suave" style={{ padding: 24 }}>Cargando…</p>}><Actual /></Suspense>}
           </main>
-          {cambiarClave && <CambiarClave onCerrar={() => setCambiarClave(false)} />}
+          {(cambiarClave || debeCambiar) && <CambiarClave obligatorio={debeCambiar} onCerrar={() => { setCambiarClave(false); setDebeCambiar(false); }} />}
         </div>
       </div>
     </CatalogoCtx.Provider>
@@ -571,7 +573,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
             <small>{rol}</small>
             <h1>Iniciar sesión</h1>
           </div>
-          <label className="campo"><span>Usuario</span><input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
+          <label className="campo"><span>{enPortal ? "Correo" : "Usuario"}</span><input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
           <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
           {empresas && <label className="campo"><span>Empresa</span>
             <select value={rnc} onChange={(e) => setRnc(e.target.value)}>
@@ -640,7 +642,7 @@ function SinPermisos() {
   return <p className="suave">Su usuario no tiene secciones habilitadas. Pídale al administrador que revise su rol.</p>;
 }
 
-function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
+function CambiarClave({ onCerrar, obligatorio = false }: { onCerrar: () => void; obligatorio?: boolean }) {
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
   const [repetir, setRepetir] = useState("");
@@ -656,9 +658,10 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
     } catch (e) { setMsg({ t: (e as Error).message }); }
   };
   return (
-    <div className="fondo-modal" onMouseDown={onCerrar}>
+    <div className="fondo-modal" onMouseDown={obligatorio ? undefined : onCerrar}>
       <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={guardar}>
-        <h2 style={{ marginTop: 0 }}>Cambiar mi contraseña</h2>
+        <h2 style={{ marginTop: 0 }}>{obligatorio ? "Cree su contraseña" : "Cambiar mi contraseña"}</h2>
+        {obligatorio && <p className="suave">Entró con la contraseña inicial. Escriba esa misma como «actual» y elija una nueva, de 8 o más caracteres, que no sea fácil de adivinar.</p>}
         <label className="campo"><span>Contraseña actual</span><input type="password" autoFocus value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" /></label>
         <label className="campo"><span>Nueva (8 o más caracteres)</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" /></label>
         <label className="campo"><span>Repita la nueva</span><input type="password" value={repetir} onChange={(e) => setRepetir(e.target.value)} autoComplete="new-password" /></label>
@@ -666,7 +669,7 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
         <div className="acciones-modal">
           <button type="button" className="boton fantasma" onClick={() => setDosPasos(true)}>Verificación en dos pasos…</button>
           <span className="pr-espacio" />
-          <button type="button" className="boton" onClick={onCerrar}>Cancelar</button>
+          {!obligatorio && <button type="button" className="boton" onClick={onCerrar}>Cancelar</button>}
           <button className="boton primario" disabled={!actual || !nueva}>Guardar</button>
         </div>
       </form>
