@@ -63,6 +63,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
   const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
   const [forma, setForma] = useState<MetodoPago>(metodo);
   const [refTarjeta, setRefTarjeta] = useState("");
+  /** Otras tarjetas del mismo cobro (cada persona paga con la suya): monto y voucher de cada una */
+  const [masTarjetas, setMasTarjetas] = useState<{ monto: string; ref: string }[]>([]);
   const [transferencia, setTransferencia] = useState(metodo === "TRANSFERENCIA" ? total : "");
   const [credito, setCredito] = useState(metodo === "CREDITO" ? total : "");
   /** Aprobación para vender a crédito: propia (si el cajero tiene el permiso) o de un supervisor con su PIN */
@@ -82,13 +84,22 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
   const elegirForma = (f: MetodoPago) => {
     setForma(f); setRecibido(""); onMetodo?.(f);
     if (f === "CREDITO") { setCredito(total); setTarjeta(""); setTransferencia(""); if (!cliente) onBuscarCliente(); return; }
+    if (f !== "MIXTO" && f !== "TARJETA") setMasTarjetas([]);
     if (f === "EFECTIVO") { setTarjeta(""); setTransferencia(""); setCredito(""); }
-    if (f === "TARJETA") { setTarjeta(total); setTransferencia(""); setCredito(""); }
+    if (f === "TARJETA") { setMasTarjetas([]); setTarjeta(total); setTransferencia(""); setCredito(""); }
     if (f === "TRANSFERENCIA") { setTransferencia(total); setTarjeta(""); setCredito(""); }
     // Mixto empieza limpio: un monto de otra forma (p. ej. el crédito, que sin cliente ni se ve) no debe quedar escondido sumando
     if (f === "MIXTO") { setTarjeta(""); setTransferencia(""); setCredito(""); }
   };
-  const otros = n(tarjeta).plus(n(transferencia)).plus(n(credito));
+  const tarjetasTotal = masTarjetas.reduce((a, t) => a.plus(n(t.monto)), n(tarjeta));
+  const otros = tarjetasTotal.plus(n(transferencia)).plus(n(credito));
+  const refValida = (r: string) => /^[A-Za-z0-9-]{4,}$/.test(r.trim());
+  const agregarTarjeta = () => {
+    // Con "Tarjeta" el primer monto era el total: se libera para repartirlo entre las tarjetas
+    if (forma === "TARJETA") { setForma("MIXTO"); onMetodo?.("MIXTO"); setTarjeta(""); }
+    setMasTarjetas((t) => [...t, { monto: "", ref: "" }]);
+  };
+  const cambiarTarjeta = (i: number, c: Partial<{ monto: string; ref: string }>) => setMasTarjetas((t) => t.map((x, j) => (j === i ? { ...x, ...c } : x)));
   const efectivo = Decimal.max(new Decimal(total).minus(otros), 0);
   const cambio = recibido ? n(recibido).minus(efectivo) : new Decimal(0);
   // Límite 0 = sin límite de crédito
@@ -103,14 +114,16 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
   const error = useMemo(() => {
     if (sinServidor && motivoNoContingencia) return motivoNoContingencia;
     if (otros.gt(total)) return "Los pagos superan el total";
-    if (n(tarjeta).gt(0) && !/^[A-Za-z0-9-]{4,}$/.test(refTarjeta.trim())) return "Escriba el número de aprobación del voucher de la tarjeta";
+    if (n(tarjeta).gt(0) && !refValida(refTarjeta)) return "Escriba el número de aprobación del voucher de la tarjeta";
+    if (masTarjetas.some((t) => n(t.monto).gt(0) && !refValida(t.ref))) return "Escriba el número de aprobación del voucher de cada tarjeta";
+    if (masTarjetas.some((t) => n(t.monto).lte(0))) return "Escriba el monto de cada tarjeta o quite la que sobra";
     if (efectivo.gt(0) && recibido && cambio.lt(0)) return "El efectivo recibido no alcanza";
     if (n(credito).gt(0) && !cliente) return "Para vender a crédito seleccione un cliente (F4)";
     if (n(credito).gt(0) && !aprobCredito) return "La venta a crédito necesita la aprobación de un supervisor";
     if (!sinLimiteCredito && n(credito).gt(disponibleCredito)) return `Crédito disponible: ${rd(disponibleCredito.toFixed(2))}`;
     if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) return "El e-CF y el NCF requieren cliente con RNC o cédula y nombre";
     return "";
-  }, [otros, efectivo, recibido, cambio, credito, cliente, sinLimiteCredito, aprobCredito, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
+  }, [masTarjetas, otros, efectivo, recibido, cambio, credito, cliente, sinLimiteCredito, aprobCredito, tipoFactura, total, tarjeta, refTarjeta, sinServidor, motivoNoContingencia]);
   // e-CF y NCF exigen cliente: si falta, se abre sola la ventana de clientes (al elegirlos y al abrir el cobro)
   const pedirCliente = () => { if (!sinServidor && requiereDocumento(tipoFactura) && !tieneDocumentoFiscal(cliente)) onBuscarCliente(); };
   const pidioCliente = useRef(false);
@@ -123,6 +136,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
     setMsg("");
     const pagos = [
       ...(n(tarjeta).gt(0) ? [{ formaPago: "TARJETA", monto: n(tarjeta).toFixed(2), referencia: refTarjeta || undefined }] : []),
+      ...masTarjetas.filter((t) => n(t.monto).gt(0)).map((t) => ({ formaPago: "TARJETA", monto: n(t.monto).toFixed(2), referencia: t.ref })),
       ...(n(transferencia).gt(0) ? [{ formaPago: "TRANSFERENCIA", monto: n(transferencia).toFixed(2) }] : []),
       ...(n(credito).gt(0) ? [{ formaPago: "CREDITO", monto: n(credito).toFixed(2) }] : []),
       ...(efectivo.gt(0) ? [{ formaPago: "EFECTIVO", monto: efectivo.toFixed(2), recibido: (recibido ? n(recibido) : efectivo).toFixed(2) }] : []),
@@ -243,6 +257,28 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
                   value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} /></label>
                   : <input autoFocus={forma === "TARJETA"} className={"entrada-grande ref" + (n(tarjeta).gt(0) && refTarjeta.trim().length < 4 ? " requerido" : "")} placeholder="Núm. de aprobación del voucher" aria-label="Número de aprobación del voucher"
                   value={refTarjeta} onChange={(e) => setRefTarjeta(e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cobrar()} />}
+              </div>
+            )}
+            {(forma === "TARJETA" || forma === "MIXTO") && (
+              <div className="cobro2-bloque">
+                {masTarjetas.map((t, i) => (
+                  <div key={i} className="fila-campo" style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
+                    <label className="campo"><span>Tarjeta {i + 2}</span>
+                      <input inputMode="decimal" value={t.monto} placeholder={Decimal.max(new Decimal(total).minus(otros), 0).toFixed(2)} aria-label={`Monto de la tarjeta ${i + 2}`}
+                        onChange={(e) => cambiarTarjeta(i, { monto: e.target.value.replace(/[^\d.]/g, "") })} />
+                    </label>
+                    <label className="campo"><span>Núm. de aprobación</span>
+                      <input className={"ref" + (n(t.monto).gt(0) && !refValida(t.ref) ? " requerido" : "")} value={t.ref} aria-label={`Número de aprobación de la tarjeta ${i + 2}`}
+                        onChange={(e) => cambiarTarjeta(i, { ref: e.target.value.replace(/[^A-Za-z0-9-]/g, "").toUpperCase() })} />
+                    </label>
+                    <span style={{ display: "flex", gap: 4 }}>
+                      <button className="boton fantasma chico" title="Poner lo que falta por pagar" onClick={() => cambiarTarjeta(i, { monto: Decimal.max(new Decimal(total).minus(otros.minus(n(t.monto))), 0).toFixed(2) })}>Resto</button>
+                      <button className="boton fantasma chico" aria-label={`Quitar tarjeta ${i + 2}`} onClick={() => setMasTarjetas((x) => x.filter((_, j) => j !== i))}>×</button>
+                    </span>
+                  </div>
+                ))}
+                <button className="boton fantasma chico" onClick={agregarTarjeta}>+ Otra tarjeta</button>
+                {masTarjetas.length > 0 && <p className="suave" style={{ margin: "6px 0 0" }}>Tarjetas: {rd(tarjetasTotal.toFixed(2))} · falta {rd(Decimal.max(new Decimal(total).minus(otros), 0).toFixed(2))}</p>}
               </div>
             )}
             {forma === "MIXTO" && (
