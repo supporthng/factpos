@@ -512,6 +512,7 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
           <h3>Presentaciones y códigos de barra</h3>
           <button className="boton" onClick={() => cambiar({ presentaciones: [...f.presentaciones, { nombre: "Caja", factor: "12", codigos: [], precios: {} }] })}>Agregar presentación</button>
         </div>
+        {f.presentaciones.length === 1 && !f.esPesable && <MedidasLicor principal={f.presentaciones[0]} onAplicar={(pres) => cambiar({ presentaciones: pres })} />}
         {f.presentaciones.map((p, i) => (
           <div key={p.id ?? i} className="presentacion">
             <label className="campo"><span>{i === 0 ? "Principal" : "Presentación"}</span><input value={p.nombre} onChange={(e) => cambiar({ presentaciones: f.presentaciones.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)) })} /></label>
@@ -1240,6 +1241,35 @@ function ProductoRapido({ aux, recargarAux, onCerrar, onCreado, onCompleta, edit
           <button className="boton primario" disabled={guardando || !!dupCodigo} onClick={() => (editar ? guardarCambios() : crear(false))}>{guardando ? "Guardando…" : editar ? "Guardar cambios" : "Crear producto"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Botella con tragos: la unidad del inventario pasa a ser el trago, y la botella son N tragos. Así la botella cerrada y el trago salen
+ * del MISMO inventario, sin decimales (la existencia queda en tragos: 48 = 3 botellas). Solo para productos nuevos o sin existencia.
+ */
+function MedidasLicor({ principal, onAplicar }: { principal: Presentacion; onAplicar: (p: Presentacion[]) => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const [tragos, setTragos] = useState("16");
+  const nTragos = Number(tragos);
+  const valido = Number.isInteger(nTragos) && nTragos >= 2 && nTragos <= 100;
+  if (!abierto) {
+    return <p className="suave" style={{ margin: "0 0 8px" }}>¿Es una botella que también se vende por tragos? <button className="enlace" onClick={() => setAbierto(true)}>Configurar botella con tragos</button></p>;
+  }
+  return (
+    <div className="aviso" style={{ margin: "0 0 10px" }}>
+      <b>Botella con tragos</b>
+      <p className="suave" style={{ margin: "4px 0" }}>La existencia pasa a contarse en tragos y la botella equivale a varios. Úselo en productos nuevos o sin existencia: si ya tiene existencia en botellas, la cantidad quedaría mal interpretada.</p>
+      <label className="campo"><span>¿Cuántos tragos tiene una botella? <span className="suave">(750 ml ≈ 16 de 1.5 oz o 25 de 30 ml)</span></span>
+        <input className="numero" inputMode="numeric" value={tragos} onChange={(e) => setTragos(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
+      <button className="boton primario" disabled={!valido} onClick={() => {
+        const base = { codigos: [] as string[], precios: {} };
+        onAplicar([{ ...principal, nombre: "Trago", factor: "1" }, { ...base, nombre: "Doble", factor: "2" }, { ...base, nombre: "Botella", factor: String(nTragos) }]);
+        setAbierto(false);
+      }}>Crear medidas: Trago, Doble y Botella</button>
+      <button className="enlace" onClick={() => setAbierto(false)}>Cancelar</button>
     </div>
   );
 }
