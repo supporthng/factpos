@@ -16,6 +16,7 @@ import { Ticket, type VentaRegistrada } from "./Ticket";
 import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
 import { guardarRespaldoPausadas, leerRespaldoPausadas } from "./pausadas-respaldo";
+import { Cuentas, type PlanCobro } from "./Cuentas";
 import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
 import { guardarCache, leerCache, useConexion, disponibleCupo, pedirExistencia, exportarPendientes } from "./contingencia";
 
@@ -65,7 +66,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "facturasPin" | "pausadas"
-  | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
+  | "cuentas" | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -92,6 +93,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   /** El cajero cerró la búsqueda de cliente sin elegir: al volver al cobro no se abre otra vez sola (sería imposible cerrarla) */
   const clienteOmitido = useRef(false);
   const [pedidoActivo, setPedidoActivo] = useState<{ id: string; numero: string } | null>(null);
+  /** Parte de una cuenta abierta (restaurante, bar, discoteca) que se está cobrando en esta venta */
+  const [cuentaActiva, setCuentaActiva] = useState<PlanCobro | null>(null);
   const [cupon, setCupon] = useState<Cupon | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [aviso, setAviso] = useState<{ texto: string; tipo: "error" | "ok" } | null>(null);
@@ -404,7 +407,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setSel((s) => Math.min(s, lineas.length - 2));
   };
   const nuevaVenta = () => {
-    setPedidoActivo(null); setTipoComp(config.funciones?.sinComprobante ? "SIN" : "E32");
+    setPedidoActivo(null); setCuentaActiva(null); setTipoComp(config.funciones?.sinComprobante ? "SIN" : "E32");
     setLineas([]); setSel(-1); setCliente(null); setCupon(null); setAprobacion(null); setNotas(""); setMetodo("EFECTIVO"); avisadas.current = new Set();
   };
 
@@ -448,6 +451,22 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     avisar("Venta en pausa. F5 para retomarla.", "ok");
   };
   /** Pasa un pedido completo (alistado) a la venta: los precios son los de hoy y el nivel de su cliente. */
+  /** Carga en la venta lo que se va a cobrar de una cuenta abierta (una persona, o toda la cuenta). */
+  const cobrarCuenta = (plan: PlanCobro) => {
+    if (lineas.length) return avisar("Termine o ponga en pausa la venta actual antes de cobrar la cuenta.");
+    const nuevas: Linea[] = [];
+    const faltan: string[] = [];
+    for (const it of plan.items) {
+      const prod = idx?.porId.get(it.presentacionId);
+      if (!prod) faltan.push(it.presentacionId); else nuevas.push({ prod, cantidad: it.cantidad });
+    }
+    if (faltan.length) return avisar("Hay productos de la cuenta que no están en el catálogo de esta caja. Actualice el catálogo.");
+    setLineas(nuevas); setSel(nuevas.length - 1); setCliente(null); setNotas(`Cuenta ${plan.titulo}`);
+    setCuentaActiva(plan);
+    setModal(null);
+    avisar(plan.partes > 1 ? `${plan.titulo}: parte ${plan.parte} de ${plan.partes}. Cobre para continuar.` : `${plan.titulo} cargada. Cobre para cerrarla.`, "ok");
+  };
+
   const facturarPedido = async (p: PedidoDetalle) => {
     if (lineas.length) return avisar("Termine o ponga en pausa la venta actual antes de facturar el pedido.");
     const nuevas: Linea[] = [];
@@ -777,6 +796,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
+                ...(config.tipoNegocio && config.tipoNegocio !== "TIENDA" ? [["Cuentas", () => setModal("cuentas"), false] as const] : []),
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ["Cerrar turno", () => setModal("turno"), false],
               ] as const).map(([t, f, d]) => (
@@ -787,6 +807,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
               <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
               <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
+              {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("cuentas")}>Cuentas</button>}
               {verCatalogo
                 ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
                 : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
@@ -907,6 +928,13 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           permitirSin={!!config.funciones?.sinComprobante}
           onVendido={(r, op) => {
             clienteOmitido.current = false;
+            const cta = cuentaActiva;
+            if (cta) { // las líneas de la cuenta quedan ligadas a esta venta; si faltan partes, se vuelve a la cuenta
+              const avisarCobrada = (n: number) => api<{ estado: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/cuentas/${cta.cuentaId}/cobrada`, { cuerpo: { ventaId: r.id, lineaIds: cta.lineaIds } })
+                .then((c) => { if (c.estado === "ABIERTA") setModal("cuentas"); })
+                .catch(() => { if (n > 0) setTimeout(() => avisarCobrada(n - 1), 5000); });
+              avisarCobrada(5);
+            }
             const ped = pedidoActivo;
             if (ped) { // el pedido queda facturado; si falla el aviso se reintenta unas veces
               const avisarFacturado = (n: number) => api(ajustes.servidor, `/cajas/${ajustes.cajaId}/pedidos/${ped.id}/facturado`, { cuerpo: { ventaId: r.id } })
@@ -922,6 +950,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             else { setTicketAuto(r); setConfirmacion({ titulo: "Venta registrada", cambio: cambioAviso, nota: null }); }
             existenciasRef.current().catch(() => {}); }}
         />
+      )}
+      {modal === "cuentas" && idx && catalogo && (
+        <Cuentas ajustes={ajustes} productos={catalogo.productos} precio={(p) => precioPara(p, nivelPrecio, catalogo.nivelPredeterminado).precio}
+          onCobrar={cobrarCuenta} onCerrar={() => setModal(null)} />
       )}
       {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}
       {modal === "delivery" && (

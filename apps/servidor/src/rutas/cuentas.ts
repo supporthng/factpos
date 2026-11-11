@@ -19,7 +19,7 @@ const aMonto = (c: number) => (c / 100).toFixed(2);
 
 interface FilaLinea {
   id: string; asientoId: string | null; presentacionId: string; descripcion: string; cantidad: string;
-  precioUnitario: string; tasaItbis: string; nota: string | null; enviadaEn: string | null; anulada: boolean;
+  precioUnitario: string; tasaItbis: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null;
   incluyeItbis?: boolean;
 }
 
@@ -51,11 +51,12 @@ export async function rutasCuentas(app: FastifyInstance) {
       "SELECT id, nombre, orden FROM cuenta_asientos WHERE cuenta_id = $1 ORDER BY orden, id", [id])).rows;
     const lineas = (await pool.query<FilaLinea>(
       `SELECT l.id, l.asiento_id AS "asientoId", l.presentacion_id AS "presentacionId", l.descripcion, l.cantidad::text AS cantidad,
-              l.precio_unitario::text AS "precioUnitario", l.tasa_itbis::text AS "tasaItbis", l.nota, l.enviada_en AS "enviadaEn", l.anulada,
+              l.precio_unitario::text AS "precioUnitario", l.tasa_itbis::text AS "tasaItbis", l.nota, l.enviada_en AS "enviadaEn", l.anulada, l.venta_id AS "ventaId",
               p.precio_incluye_impuesto AS "incluyeItbis"
          FROM cuenta_lineas l JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
         WHERE l.cuenta_id = $1 ORDER BY l.creada_en, l.id`, [id])).rows;
-    const vivas = lineas.filter((l) => !l.anulada);
+    // Pendientes de cobrar: ni anuladas ni cobradas ya
+    const vivas = lineas.filter((l) => !l.anulada && !l.ventaId);
     const porAsiento = asientos.map((a) => ({ ...a, total: aMonto(vivas.filter((l) => l.asientoId === a.id).reduce((s, l) => s + totalLinea(l), 0)) }));
     const total = vivas.reduce((s, l) => s + totalLinea(l), 0);
     const sinAsiento = vivas.filter((l) => l.asientoId === null).reduce((s, l) => s + totalLinea(l), 0);
@@ -69,7 +70,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const ctx = await preparar(req);
     const r = await pool.query(
       `SELECT c.id, c.nombre, c.mesa, c.numero::text, c.abierta_en AS "abiertaEn", u.nombre AS "abiertaPor",
-              (SELECT count(*)::int FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada) AS lineas,
+              (SELECT count(*)::int FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS lineas,
               (SELECT count(*)::int FROM cuenta_asientos a WHERE a.cuenta_id = c.id) AS asientos
          FROM cuentas c LEFT JOIN usuarios u ON u.id = c.abierta_por
         WHERE c.sucursal_id = $1 AND c.estado = 'ABIERTA' ORDER BY c.abierta_en`, [ctx.sucursalId]);
@@ -149,7 +150,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const ctx = await preparar(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     await cuentaDe(ctx.sucursalId, id);
-    await pool.query("UPDATE cuenta_lineas SET enviada_en = now() WHERE cuenta_id = $1 AND enviada_en IS NULL AND NOT anulada", [id]);
+    await pool.query("UPDATE cuenta_lineas SET enviada_en = now() WHERE cuenta_id = $1 AND enviada_en IS NULL AND NOT anulada AND venta_id IS NULL", [id]);
     return detalle(ctx.sucursalId, id);
   });
 
@@ -187,7 +188,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     ]).parse(req.body);
     const d = await detalle(ctx.sucursalId, id);
     if (d.estado !== "ABIERTA") throw new ErrorNegocio("La cuenta ya está cerrada", 409);
-    const vivas = d.lineas.filter((l) => !l.anulada);
+    const vivas = d.lineas.filter((l) => !l.anulada && !l.ventaId);
     const totales = vivas.map((l) => ({ id: l.id, total: centavos(l.total) }));
     const total = totales.reduce((s, l) => s + l.total, 0);
     if (!total) throw new ErrorNegocio("La cuenta está vacía", 400);
@@ -215,6 +216,25 @@ export async function rutasCuentas(app: FastifyInstance) {
     }
   });
 
+  /**
+   * La caja avisa que cobró una parte: esas líneas quedan ligadas a la venta. Cuando ya no queda nada pendiente, la cuenta se cierra sola.
+   * Así se cobra por partes y se puede retomar sin cobrar dos veces.
+   */
+  app.post("/cajas/:cajaId/cuentas/:id/cobrada", async (req) => {
+    const ctx = await preparar(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ ventaId: uuid, lineaIds: z.array(uuid).min(1).max(500) }).parse(req.body);
+    await cuentaDe(ctx.sucursalId, id);
+    if (!(await pool.query("SELECT 1 FROM ventas WHERE id = $1 AND sucursal_id = $2", [b.ventaId, ctx.sucursalId])).rowCount) throw new ErrorNegocio("Esa venta no existe en esta sucursal", 400);
+    await enTransaccion(async (c) => {
+      await c.query("UPDATE cuenta_lineas SET venta_id = $3 WHERE cuenta_id = $1 AND id = ANY($2::uuid[]) AND venta_id IS NULL AND NOT anulada", [id, b.lineaIds, b.ventaId]);
+      await c.query("INSERT INTO cuenta_ventas (cuenta_id, venta_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id, b.ventaId]);
+      const quedan = (await c.query("SELECT count(*)::int AS n FROM cuenta_lineas WHERE cuenta_id = $1 AND NOT anulada AND venta_id IS NULL", [id])).rows[0].n;
+      if (!quedan) await c.query("UPDATE cuentas SET estado = 'COBRADA', cerrada_en = now() WHERE id = $1", [id]);
+    });
+    return detalle(ctx.sucursalId, id);
+  });
+
   /** Termina la cuenta una vez cobradas todas sus partes (las ventas hechas con la venta normal de la caja). */
   app.post("/cajas/:cajaId/cuentas/:id/cerrar", async (req) => {
     const ctx = await preparar(req);
@@ -237,6 +257,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const b = z.object({ autorizacion: z.string().max(2000).optional() }).parse(req.body ?? {});
     await cuentaDe(ctx.sucursalId, id);
     const enviadas = (await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM cuenta_lineas WHERE cuenta_id = $1 AND enviada_en IS NOT NULL AND NOT anulada", [id])).rows[0]!.n;
+    if ((await pool.query("SELECT 1 FROM cuenta_lineas WHERE cuenta_id = $1 AND venta_id IS NOT NULL", [id])).rowCount) throw new ErrorNegocio("La cuenta ya tiene partes cobradas: cobre lo que falta", 409);
     if (enviadas) verificarAutorizacion(b.autorizacion, "venta.anular", ctx.cajaId);
     await pool.query("UPDATE cuentas SET estado = 'ANULADA', cerrada_en = now() WHERE id = $1", [id]);
     return { ok: true };

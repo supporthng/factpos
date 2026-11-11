@@ -20,6 +20,8 @@ export interface ConfigCaja {
   empresa: string;
   rnc: string;
   modulos: { delivery: { activo: boolean } };
+  /** TIENDA (por defecto) o RESTAURANTE, BAR, DISCOTECA, COMIDA_RAPIDA: activa las cuentas abiertas */
+  tipoNegocio?: string;
   /** Funciones de Seguridad que cambian la pantalla de venta */
   funciones?: { sinComprobante: boolean };
   marca: { logo: string | null; primario: string; secundario: string | null; logoEnTicket: boolean; usarColores?: boolean; formato?: Partial<import("@factpos/compartido").FormatoTicket>; pantallaCliente?: Partial<import("./pantalla-cliente").ConfigPantalla> };

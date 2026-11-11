@@ -48,6 +48,38 @@ export function DatosEmpresa() {
           {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
         </div>
       </div>
+      <TipoNegocio />
     </>
+  );
+}
+
+const TIPOS: [string, string][] = [
+  ["TIENDA", "Tienda, colmado o licorería (venta directa en caja)"],
+  ["RESTAURANTE", "Restaurante"],
+  ["BAR", "Bar"],
+  ["DISCOTECA", "Discoteca"],
+  ["COMIDA_RAPIDA", "Comida rápida"],
+];
+
+/** Con un tipo distinto de «Tienda» las cajas muestran Cuentas: mesas o clientes con varias personas, que se dividen antes o después de ordenar. */
+function TipoNegocio() {
+  const [tipo, setTipo] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  useEffect(() => { api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => setTipo(r.tipoNegocio)).catch(() => setTipo("TIENDA")); }, []);
+  if (tipo === null) return null;
+  const guardar = async (nuevo: string) => {
+    setMsg(null);
+    try { await api("/central/empresa/tipo-negocio", { metodo: "PUT", cuerpo: { tipoNegocio: nuevo } }); setTipo(nuevo); setMsg({ t: nuevo === "TIENDA" ? "Listo: las cajas siguen como siempre." : "Guardado. En unos segundos las cajas mostrarán el botón Cuentas (al recargar la pantalla de venta).", tipo: "ok" }); }
+    catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  return (
+    <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+      <h3 style={{ marginTop: 0 }}>Tipo de negocio</h3>
+      <p className="suave">«Tienda» deja todo como está. Los demás activan <b>Cuentas</b> en la caja: mesas o clientes con varias personas, para dividir la cuenta antes o después de ordenar.</p>
+      <select value={tipo} onChange={(e) => void guardar(e.target.value)}>
+        {TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+      </select>
+      {msg && <div style={{ marginTop: 8 }}><Aviso texto={msg.t} tipo={msg.tipo} /></div>}
+    </div>
   );
 }
