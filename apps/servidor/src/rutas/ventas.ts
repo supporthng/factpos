@@ -46,6 +46,7 @@ const VentaSchema = CarritoSchema.extend({
   /** Observaciones de la venta (salen en el ticket) */
   notas: z.string().trim().max(300).optional(),
   tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]).default("E32"),
+  propinaLegal: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Propina inválida").optional(),
   pagos: z
     .array(
       z.object({
@@ -69,6 +70,8 @@ export interface VentaInput extends Carrito {
   motivoDescuento?: string;
   notas?: string;
   tipoDocumento: "E32" | "E31" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN";
+  /** Propina legal cobrada (solo restaurantes, bares y discotecas): se suma a lo que paga el cliente, fuera del comprobante */
+  propinaLegal?: string;
   pagos: { formaPago: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "DELIVERY" | "OTRO"; monto: string; recibido?: string; referencia?: string }[];
 }
 
@@ -273,10 +276,20 @@ export async function registrarVenta(
     throw new ErrorNegocio("La factura de crédito fiscal requiere un cliente con RNC o cédula");
   }
 
-  if (opciones.pagarTodoCon) body = { ...body, pagos: [{ formaPago: opciones.pagarTodoCon, monto: q.totales.total }] };
+  // Propina legal: solo en negocios con cuentas (no TIENDA); nunca sin servidor; no mayor que el consumo
+  const propina = new Decimal(body.propinaLegal ?? 0).toDecimalPlaces(2);
+  if (propina.gt(0)) {
+    if (cont) throw new ErrorNegocio("Sin servidor no se cobra propina legal");
+    const tn = (await c.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0]?.t;
+    if (!tn || tn === "TIENDA") throw new ErrorNegocio("La propina legal solo aplica a restaurantes, bares y discotecas", 400);
+    if (propina.gt(q.totales.subtotal)) throw new ErrorNegocio("La propina no puede ser mayor que el consumo", 400);
+  }
+  const aCobrar = new Decimal(q.totales.total).plus(propina);
+
+  if (opciones.pagarTodoCon) body = { ...body, pagos: [{ formaPago: opciones.pagarTodoCon, monto: aCobrar.toFixed(2) }] };
   let pagos;
   try {
-    pagos = validarPagos(q.totales.total, body.pagos);
+    pagos = validarPagos(aCobrar, body.pagos);
   } catch (e) {
     throw new ErrorNegocio((e as Error).message);
   }
@@ -305,15 +318,15 @@ export async function registrarVenta(
     ? await asignarNumeroNoElectronico(c, ctx.sucursalId, body.tipoDocumento as "B01" | "B02" | "B14" | "B15" | "B16" | "SIN") : null;
   const v = await c.query<{ numero: string }>(
     `INSERT INTO ventas (id, sucursal_id, caja_id, turno_id, usuario_id, cliente_id, numero_interno,
-                         tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia, notas, numero_documento)
+                         tipo_documento, condicion, subtotal, descuento, itbis, isc, total, creado_en, contingencia, notas, numero_documento, propina_legal)
      VALUES ($1,$2,$3,$4,$5,$6,
              (SELECT COALESCE(MAX(numero_interno), 0) + 1 FROM ventas WHERE caja_id = $3),
-             $7,$8,$9,$10,$11,0,$12, COALESCE($13::timestamptz, now()), $14, $15, $16)
+             $7,$8,$9,$10,$11,0,$12, COALESCE($13::timestamptz, now()), $14, $15, $16, $17)
      RETURNING numero_interno AS numero`,
     [ventaId, ctx.sucursalId, cajaId, turnoId, body.usuarioId, body.clienteId ?? null,
      body.tipoDocumento, credito.gt(0) ? "CREDITO" : "CONTADO",
      q.totales.subtotal, q.totales.descuento, q.totales.itbis, q.totales.total, cont?.creadoEn ?? null, !!cont, body.notas || null,
-     numeroDocumento],
+     numeroDocumento, propina.toFixed(2)],
   );
   const numero = v.rows[0].numero;
 
@@ -447,6 +460,7 @@ export async function registrarVenta(
     numeroDocumento: numeroDocumento ?? (fiscal as { encf?: string } | null)?.encf ?? null,
     tipoDocumento: body.tipoDocumento,
     ...resumen(q),
+    propinaLegal: propina.toFixed(2),
     pagos,
     cambio: pagos.reduce((a, p) => a.plus(p.cambio ?? 0), new Decimal(0)).toFixed(2),
     fiscal,

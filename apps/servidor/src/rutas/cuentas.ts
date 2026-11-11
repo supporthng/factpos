@@ -4,7 +4,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type PresentacionVenta } from "../contexto.js";
 import { verificarAutorizacion } from "../autorizacion.js";
-import { dividirPorAsientos, dividirPorLineas, dividirPorMontos, ErrorDivision, propinaPorParte, repartirIgual } from "./cuentas-division.js";
+import { dividirPorAsientos, dividirPorLineas, dividirPorMontos, ErrorDivision, repartirIgual, repartirProporcional } from "./cuentas-division.js";
 
 /**
  * Cuentas abiertas (restaurantes, bares, discotecas): una cuenta por mesa o cliente, con «asientos» (personas).
@@ -24,6 +24,8 @@ interface FilaLinea {
 }
 
 /** Total de una línea en centavos (el precio guardado ya incluye el ITBIS si el producto lo trae incluido). */
+/** Propina legal de una cuenta (centavos): 10 % del consumo SIN ITBIS (cada línea sin su impuesto). */
+const propinaDe = (lineas: FilaLinea[]) => Math.round(lineas.reduce((s, l) => s + totalLinea(l) / (1 + Number(l.tasaItbis)), 0) / 10);
 const totalLinea = (l: FilaLinea) => Math.round(Number(l.cantidad) * Number(l.precioUnitario) * (l.incluyeItbis === false ? 1 + Number(l.tasaItbis) : 1) * 100);
 
 export async function rutasCuentas(app: FastifyInstance) {
@@ -61,7 +63,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const total = vivas.reduce((s, l) => s + totalLinea(l), 0);
     const sinAsiento = vivas.filter((l) => l.asientoId === null).reduce((s, l) => s + totalLinea(l), 0);
     return {
-      ...c, asientos: porAsiento, total: aMonto(total), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaPorParte([total])[0] ?? 0),
+      ...c, asientos: porAsiento, total: aMonto(total), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
       lineas: lineas.map((l) => ({ ...l, total: aMonto(totalLinea(l)) })),
     };
   };
@@ -208,7 +210,8 @@ export async function rutasCuentas(app: FastifyInstance) {
         montos = dividirPorLineas(totales, b.partes, b.asignacion, b.compartidas ?? {}); nombres = montos.map((_, i) => `Persona ${i + 1}`);
         lineasPorParte = montos.map((_, i) => vivas.filter((l) => b.asignacion[l.id] === i).map((l) => l.id));
       }
-      const propinas = propinaPorParte(montos);
+      // 10 % del consumo sin ITBIS, repartido en proporción a lo que consume cada parte (suma exacta)
+      const propinas = repartirProporcional(propinaDe(vivas), montos);
       return { cuentaId: id, modo: b.modo, total: aMonto(total), partes: montos.map((m, i) => ({ indice: i, nombre: nombres[i], consumo: aMonto(m), propina: aMonto(propinas[i]!), totalConPropina: aMonto(m + propinas[i]!), lineas: lineasPorParte?.[i] ?? null })) };
     } catch (e) {
       if (e instanceof ErrorDivision) throw new ErrorNegocio(e.message, 400);
