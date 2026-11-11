@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as EventoPuntero } from "react";
 import type { Catalogo } from "@factpos/compartido";
 import { api, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
@@ -8,7 +9,7 @@ import { Modal } from "./Venta";
  * Lo configura un supervisor (el servidor lo exige); el mesero o cajero solo lo usa.
  */
 export interface MesaC {
-  id: string; nombre: string; zona: string; capacidad: number;
+  id: string; nombre: string; zona: string; capacidad: number; posX: number | null; posY: number | null; forma: "CUADRADA" | "REDONDA" | "LARGA";
   cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null;
 }
 export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; producto: string | null }
@@ -16,90 +17,147 @@ export const PASOS: [number, string][] = [[1, "Ya"], [2, "Fuertes"], [3, "Postre
 
 export const duracion = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`);
 
-/** Mesas agrupadas por zona; tocar una libre abre su cuenta y tocar una ocupada la retoma. */
+/** Forma de la mesa en el plano */
+export type Forma = "CUADRADA" | "REDONDA" | "LARGA";
+const FORMAS: [Forma, string][] = [["CUADRADA", "Cuadrada"], ["REDONDA", "Redonda"], ["LARGA", "Larga"]];
+
+/** Lugar de cada mesa en el plano de su zona (en %). Las que no tienen lugar se acomodan solas en cuadrícula. */
+export function lugares<T extends { posX: number | null; posY: number | null }>(lista: T[]): { m: T; x: number; y: number }[] {
+  let k = 0;
+  return lista.map((m) => {
+    if (m.posX !== null && m.posY !== null) return { m, x: m.posX, y: m.posY };
+    const i = k++;
+    return { m, x: 12 + (i % 5) * 19, y: 16 + Math.floor(i / 5) * 26 };
+  });
+}
+
+/** Pestañas de zonas (solo si hay más de una) */
+function ZonasTabs({ zonas, actual, onElegir }: { zonas: string[]; actual: string; onElegir: (z: string) => void }) {
+  if (zonas.length < 2) return null;
+  return <div className="pestanas" style={{ flexWrap: "wrap" }}>{zonas.map((z) => <button key={z} className={z === actual ? "activa" : ""} onClick={() => onElegir(z)}>{z || "Mesas"}</button>)}</div>;
+}
+
+/** Plano del salón: las mesas donde el supervisor las dibujó; tocar una libre abre su cuenta y tocar una ocupada la retoma. */
 export function MapaMesas({ mesas, onMesa }: { mesas: MesaC[]; onMesa: (m: MesaC) => void }) {
-  const zonas = useMemo(() => {
-    const m = new Map<string, MesaC[]>();
-    for (const x of mesas) m.set(x.zona, [...(m.get(x.zona) ?? []), x]);
-    return [...m];
-  }, [mesas]);
+  const zonas = useMemo(() => [...new Set(mesas.map((m) => m.zona))], [mesas]);
+  const [zona, setZona] = useState(zonas[0] ?? "");
+  const actual = zonas.includes(zona) ? zona : zonas[0] ?? "";
+  const delaZona = mesas.filter((m) => m.zona === actual);
   return (
     <>
-      {zonas.map(([zona, lista]) => (
-        <section key={zona}>
-          {(zonas.length > 1 || zona) && <div className="mesas-zona">{zona || "Mesas"}</div>}
-          <div className="mesas-mapa">
-            {lista.map((m) => {
-              const ocupada = !!m.cuentaId;
-              const larga = ocupada && (m.minutos ?? 0) >= 90;
-              return (
-                <button key={m.id} className={"mesa " + (ocupada ? (larga ? "ocupada larga" : "ocupada") : "libre")} onClick={() => onMesa(m)}
-                  aria-label={`${m.nombre}, ${ocupada ? "ocupada" : "libre"}`}>
-                  <b>{m.nombre}</b>
-                  {ocupada
-                    ? <><small>{m.mesero ?? ""}{m.mesero ? " · " : ""}{duracion(m.minutos ?? 0)}</small>
-                      {!!m.esperando && <span className="mesa-espera">{m.esperando} sin enviar</span>}
-                      <span className="mesa-total">{rd(m.total ?? "0")}</span></>
-                    : <small>Libre · {m.capacidad} personas</small>}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+      <ZonasTabs zonas={zonas} actual={actual} onElegir={setZona} />
+      <div className="plano" role="group" aria-label={`Plano de ${actual || "mesas"}`}>
+        {lugares(delaZona).map(({ m, x, y }) => {
+          const ocupada = !!m.cuentaId;
+          const larga = ocupada && (m.minutos ?? 0) >= 90;
+          return (
+            <button key={m.id} className={`mesa forma-${m.forma.toLowerCase()} ` + (ocupada ? (larga ? "ocupada larga" : "ocupada") : "libre")} style={{ left: `${x}%`, top: `${y}%` }}
+              onClick={() => onMesa(m)} aria-label={`${m.nombre}, ${ocupada ? "ocupada" : "libre"}`}>
+              <b>{m.nombre}</b>
+              {ocupada
+                ? <><small>{m.mesero ?? ""}{m.mesero ? " · " : ""}{duracion(m.minutos ?? 0)}</small>
+                  {!!m.esperando && <span className="mesa-espera">{m.esperando} sin enviar</span>}
+                  <span className="mesa-total">{rd(m.total ?? "0")}</span></>
+                : <small>Libre · {m.capacidad}</small>}
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 }
 
-/** Crear y ordenar las mesas por zona (solo supervisor). */
+interface MesaEd { key: string; id?: string; nombre: string; zona: string; capacidad: number; forma: Forma; posX: number | null; posY: number | null }
+
+/** Diseñar el salón: se arrastran las mesas a su lugar en el plano de cada zona (solo supervisor). */
 export function ConfigMesas({ ajustes, mesas, onGuardado, onCerrar }: { ajustes: Ajustes; mesas: MesaC[]; onGuardado: () => void; onCerrar: () => void }) {
-  const [lista, setLista] = useState<{ id?: string; nombre: string; zona: string; capacidad: number }[]>(mesas.map((m) => ({ id: m.id, nombre: m.nombre, zona: m.zona, capacidad: m.capacidad })));
-  const [lote, setLote] = useState({ cuantas: "10", prefijo: "Mesa", zona: "Salón", capacidad: "4" });
+  const [lista, setLista] = useState<MesaEd[]>(() => {
+    // Lo creado antes sin lugar queda fijo donde se ve hoy, así se puede arrastrar desde ahí
+    const out: MesaEd[] = [];
+    for (const z of new Set(mesas.map((m) => m.zona))) {
+      for (const { m, x, y } of lugares(mesas.filter((q) => q.zona === z))) out.push({ key: m.id, id: m.id, nombre: m.nombre, zona: m.zona, capacidad: m.capacidad, forma: m.forma, posX: x, posY: y });
+    }
+    return out;
+  });
+  const [zona, setZona] = useState(mesas[0]?.zona ?? "Salón");
+  const [zonaNueva, setZonaNueva] = useState("");
+  const [sel, setSel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const cambiar = (i: number, c: Partial<(typeof lista)[number]>) => setLista((l) => l.map((x, j) => (j === i ? { ...x, ...c } : x)));
-  const agregarLote = () => {
-    const n = Math.max(1, Math.min(100, Number(lote.cuantas) || 0));
+  const plano = useRef<HTMLDivElement>(null);
+  const arrastre = useRef<{ key: string } | null>(null);
+  const contador = useRef(0);
+  const zonas = useMemo(() => { const z = [...new Set(lista.map((m) => m.zona))]; return z.includes(zona) ? z : [...z, zona]; }, [lista, zona]);
+  const cambiar = (key: string, c: Partial<MesaEd>) => setLista((l) => l.map((x) => (x.key === key ? { ...x, ...c } : x)));
+  const elegida = lista.find((m) => m.key === sel) ?? null;
+
+  const agregar = (forma: Forma) => {
     const usados = new Set(lista.map((m) => m.nombre.toLowerCase()));
-    const nuevas: typeof lista = [];
-    for (let k = 1; nuevas.length < n && k < 1000; k++) {
-      const nombre = `${lote.prefijo.trim() || "Mesa"} ${k}`;
-      if (!usados.has(nombre.toLowerCase())) nuevas.push({ nombre, zona: lote.zona.trim(), capacidad: Math.max(1, Math.min(60, Number(lote.capacidad) || 4)) });
-    }
-    setLista((l) => [...l, ...nuevas]);
+    let n = lista.filter((m) => m.zona === zona).length + 1;
+    while (usados.has(`mesa ${n}`)) n++;
+    const key = `n${++contador.current}`;
+    // Cada mesa nueva aparece en un lugar distinto para no quedar encima de otra
+    const k = lista.filter((m) => m.zona === zona).length;
+    setLista((l) => [...l, { key, nombre: `Mesa ${n}`, zona, capacidad: forma === "LARGA" ? 8 : 4, forma, posX: 12 + (k % 5) * 19, posY: 16 + (Math.floor(k / 5) % 3) * 26 }]);
+    setSel(key);
+  };
+  const mover = (ev: EventoPuntero) => {
+    const a = arrastre.current; const el = plano.current;
+    if (!a || !el) return;
+    const r = el.getBoundingClientRect();
+    const x = Math.max(4, Math.min(96, ((ev.clientX - r.left) / r.width) * 100));
+    const y = Math.max(6, Math.min(94, ((ev.clientY - r.top) / r.height) * 100));
+    // se acomoda de a 1 % para que queden alineadas con facilidad
+    cambiar(a.key, { posX: Math.round(x), posY: Math.round(y) });
   };
   const guardar = async () => {
     setGuardando(true);
-    try { await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/mesas`, { metodo: "PUT", cuerpo: { mesas: lista } }); onGuardado(); }
-    catch (e) { setError((e as Error).message); }
+    try {
+      await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/mesas`, {
+        metodo: "PUT", cuerpo: { mesas: lista.map((m) => ({ id: m.id, nombre: m.nombre, zona: m.zona, capacidad: m.capacidad, forma: m.forma, posX: m.posX, posY: m.posY })) },
+      });
+      onGuardado();
+    } catch (e) { setError((e as Error).message); }
     setGuardando(false);
   };
+  const duplicada = new Set(lista.map((m) => m.nombre.trim().toLowerCase())).size !== lista.length;
   return (
-    <Modal titulo="Mesas del salón" onCerrar={onCerrar} ancho>
-      <p className="suave">Cree las mesas por zona (Salón, Terraza, Barra…). Una mesa con cuenta abierta se ve ocupada en el mapa.</p>
+    <Modal titulo="Diseño del salón" onCerrar={onCerrar} ancho>
+      <p className="suave">Arrastre cada mesa a su lugar, como está en su local. Cada zona (Salón, Terraza, Barra…) tiene su propio plano.</p>
       {error && <p className="error">{error}</p>}
-      <div className="cobro2-bloque" style={{ marginBottom: 10 }}>
-        <b>Crear varias de una vez</b>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr) auto", gap: 8, alignItems: "end" }}>
-          <label className="campo"><span>Cuántas</span><input inputMode="numeric" value={lote.cuantas} onChange={(e) => setLote({ ...lote, cuantas: e.target.value.replace(/\D/g, "").slice(0, 3) })} /></label>
-          <label className="campo"><span>Nombre</span><input value={lote.prefijo} maxLength={20} onChange={(e) => setLote({ ...lote, prefijo: e.target.value })} /></label>
-          <label className="campo"><span>Zona</span><input value={lote.zona} maxLength={30} onChange={(e) => setLote({ ...lote, zona: e.target.value })} /></label>
-          <label className="campo"><span>Personas</span><input inputMode="numeric" value={lote.capacidad} onChange={(e) => setLote({ ...lote, capacidad: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></label>
-          <button className="boton" onClick={agregarLote}>Crear</button>
-        </div>
+      <ZonasTabs zonas={zonas} actual={zona} onElegir={(z) => { setZona(z); setSel(null); }} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
+        <span className="suave">Agregar:</span>
+        {FORMAS.map(([f, t]) => <button key={f} className="boton fantasma chico" onClick={() => agregar(f)}>+ {t}</button>)}
+        <span style={{ flex: 1 }} />
+        <input style={{ maxWidth: 160 }} placeholder="Nueva zona (Terraza…)" value={zonaNueva} maxLength={30} onChange={(e) => setZonaNueva(e.target.value)} />
+        <button className="boton fantasma chico" disabled={!zonaNueva.trim()} onClick={() => { setZona(zonaNueva.trim()); setZonaNueva(""); setSel(null); }}>Crear zona</button>
       </div>
-      <div className="resultados" style={{ maxHeight: "40vh", overflow: "auto" }}>
-        {lista.map((m, i) => (
-          <div key={m.id ?? `n${i}`} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 80px auto", gap: 8, alignItems: "center", marginBottom: 6 }}>
-            <input aria-label="Nombre" value={m.nombre} maxLength={30} onChange={(e) => cambiar(i, { nombre: e.target.value })} />
-            <input aria-label="Zona" value={m.zona} maxLength={30} placeholder="Zona" onChange={(e) => cambiar(i, { zona: e.target.value })} />
-            <input aria-label="Personas" inputMode="numeric" value={String(m.capacidad)} onChange={(e) => cambiar(i, { capacidad: Math.max(1, Math.min(60, Number(e.target.value.replace(/\D/g, "")) || 1)) })} />
-            <button className="enlace" onClick={() => setLista((l) => l.filter((_, j) => j !== i))}>Quitar</button>
+      <div ref={plano} className="plano plano-editor" onPointerMove={mover} onPointerUp={() => { arrastre.current = null; }} onPointerLeave={() => { arrastre.current = null; }}
+        onPointerDown={(e) => { if (e.target === e.currentTarget) setSel(null); }}>
+        {lista.filter((m) => m.zona === zona).map((m) => (
+          <div key={m.key} className={`mesa libre forma-${m.forma.toLowerCase()}` + (m.key === sel ? " elegida" : "")} style={{ left: `${m.posX ?? 50}%`, top: `${m.posY ?? 50}%`, touchAction: "none" }}
+            onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); arrastre.current = { key: m.key }; setSel(m.key); }}>
+            <b>{m.nombre}</b><small>{m.capacidad} personas</small>
           </div>
         ))}
-        {!lista.length && <p className="suave">Todavía no hay mesas.</p>}
+        {!lista.some((m) => m.zona === zona) && <p className="suave" style={{ margin: 16 }}>Esta zona está vacía: agregue mesas con los botones de arriba.</p>}
       </div>
-      <button className="boton primario ancho" style={{ marginTop: 10 }} disabled={guardando || lista.some((m) => !m.nombre.trim())} onClick={guardar}>Guardar mesas</button>
+      {elegida ? (
+        <div className="cobro2-bloque" style={{ marginTop: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 90px 1fr auto", gap: 8, alignItems: "end" }}>
+            <label className="campo"><span>Nombre</span><input value={elegida.nombre} maxLength={30} onChange={(e) => cambiar(elegida.key, { nombre: e.target.value })} /></label>
+            <label className="campo"><span>Forma</span>
+              <select value={elegida.forma} onChange={(e) => cambiar(elegida.key, { forma: e.target.value as Forma })}>{FORMAS.map(([f, t]) => <option key={f} value={f}>{t}</option>)}</select></label>
+            <label className="campo"><span>Personas</span><input inputMode="numeric" value={String(elegida.capacidad)} onChange={(e) => cambiar(elegida.key, { capacidad: Math.max(1, Math.min(60, Number(e.target.value.replace(/\D/g, "")) || 1)) })} /></label>
+            <label className="campo"><span>Zona</span>
+              <select value={elegida.zona} onChange={(e) => { cambiar(elegida.key, { zona: e.target.value, posX: 50, posY: 50 }); setZona(e.target.value); }}>{zonas.map((z) => <option key={z} value={z}>{z || "Mesas"}</option>)}</select></label>
+            <button className="enlace" onClick={() => { setLista((l) => l.filter((m) => m.key !== elegida.key)); setSel(null); }}>Quitar</button>
+          </div>
+        </div>
+      ) : <p className="suave" style={{ margin: "6px 0" }}>Toque una mesa para cambiarle el nombre, la forma o las personas.</p>}
+      {duplicada && <p className="error">Hay dos mesas con el mismo nombre.</p>}
+      <button className="boton primario ancho" style={{ marginTop: 10 }} disabled={guardando || duplicada || lista.some((m) => !m.nombre.trim())} onClick={guardar}>Guardar diseño</button>
     </Modal>
   );
 }

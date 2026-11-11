@@ -27,7 +27,7 @@ export async function rutasSalon(app: FastifyInstance) {
   app.get("/cajas/:cajaId/mesas", async (req) => {
     const ctx = await preparar(req);
     return (await pool.query(
-      `SELECT m.id, m.nombre, m.zona, m.capacidad,
+      `SELECT m.id, m.nombre, m.zona, m.capacidad, m.pos_x::float8 AS "posX", m.pos_y::float8 AS "posY", m.forma,
               c.id AS "cuentaId", c.abierta_en AS "abiertaEn", u.nombre AS mesero,
               floor(EXTRACT(EPOCH FROM (now() - c.abierta_en)) / 60)::int AS minutos,
               c.productos, c.total, c.esperando
@@ -51,7 +51,9 @@ export async function rutasSalon(app: FastifyInstance) {
     const ctx = await preparar(req);
     exigirSupervisor(req, "Configurar las mesas");
     const b = z.object({
-      mesas: z.array(z.object({ id: uuid.optional(), nombre: z.string().trim().min(1).max(30), zona: z.string().trim().max(30).default(""), capacidad: z.number().int().min(1).max(60).default(4) })).max(300),
+      mesas: z.array(z.object({ id: uuid.optional(), nombre: z.string().trim().min(1).max(30), zona: z.string().trim().max(30).default(""), capacidad: z.number().int().min(1).max(60).default(4),
+        posX: z.number().min(0).max(100).nullable().default(null), posY: z.number().min(0).max(100).nullable().default(null), forma: z.enum(["CUADRADA", "REDONDA", "LARGA"]).default("CUADRADA"),
+      })).max(300),
     }).parse(req.body);
     const nombres = b.mesas.map((m) => m.nombre.toLowerCase());
     if (new Set(nombres).size !== nombres.length) throw new ErrorNegocio("Hay dos mesas con el mismo nombre", 400);
@@ -63,9 +65,9 @@ export async function rutasSalon(app: FastifyInstance) {
         const id = m.id ?? uuidv7();
         ids.push(id);
         await c.query(
-          `INSERT INTO mesas (id, sucursal_id, nombre, zona, capacidad, orden, activa) VALUES ($1,$2,$3,$4,$5,$6,TRUE)
-           ON CONFLICT (id) DO UPDATE SET nombre = $3, zona = $4, capacidad = $5, orden = $6, activa = TRUE WHERE mesas.sucursal_id = $2`,
-          [id, ctx.sucursalId, m.nombre, m.zona, m.capacidad, i]);
+          `INSERT INTO mesas (id, sucursal_id, nombre, zona, capacidad, orden, activa, pos_x, pos_y, forma) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9)
+           ON CONFLICT (id) DO UPDATE SET nombre = $3, zona = $4, capacidad = $5, orden = $6, activa = TRUE, pos_x = $7, pos_y = $8, forma = $9 WHERE mesas.sucursal_id = $2`,
+          [id, ctx.sucursalId, m.nombre, m.zona, m.capacidad, i, m.posX, m.posY, m.forma]);
       }
       await c.query("UPDATE mesas SET activa = FALSE WHERE sucursal_id = $1 AND NOT (id = ANY($2::uuid[]))", [ctx.sucursalId, ids]);
     }).catch((e: { code?: string }) => {

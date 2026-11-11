@@ -1336,3 +1336,17 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cuenta-lineas .linea-extra { flex-wrap: nowrap; }
 .cuenta-lineas .linea-extra > span:first-child { flex: 1 1 auto; }
 .barra { width: 100%; align-self: stretch; }
+
+/* Plano del salón: las mesas donde las dibujó el supervisor (posición en % del plano de su zona) */
+.plano { position: relative; width: 100%; aspect-ratio: 2 / 1; min-height: 280px; margin: 8px 0; border: 1px dashed var(--borde); border-radius: 14px; overflow: hidden;
+  background-color: var(--panel-2); background-image: radial-gradient(var(--borde) 1px, transparent 1px); background-size: 24px 24px; }
+.plano .mesa { position: absolute; transform: translate(-50%, -50%); width: 122px; min-height: 0; height: 84px; padding: 8px 10px; justify-content: center; box-shadow: 0 2px 8px rgb(0 0 0 / .25); }
+.plano .mesa b { font-size: 15px; }
+.plano .mesa .mesa-total { margin-top: 2px; font-size: 13px; }
+.plano .mesa.forma-redonda { width: 112px; height: 112px; border-radius: 50%; align-items: center; text-align: center; }
+.plano .mesa.forma-larga { width: 200px; height: 68px; }
+.plano .mesa .mesa-espera { font-size: 10px; padding: 0 7px; }
+.plano-editor .mesa { cursor: grab; user-select: none; }
+.plano-editor .mesa:active { cursor: grabbing; }
+.plano-editor .mesa.elegida { outline: 3px solid var(--info); outline-offset: 2px; z-index: 2; }
+@media (max-width: 900px) { .plano .mesa { width: 98px; height: 72px; } .plano .mesa.forma-larga { width: 150px; } .plano .mesa.forma-redonda { width: 84px; height: 84px; } }
