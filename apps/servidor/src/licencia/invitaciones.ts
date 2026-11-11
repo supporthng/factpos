@@ -112,7 +112,7 @@ function paginaInvitacion(o: { id?: string; whatsapp: string | null; version: st
 <meta name="description" content="Recorrido interactivo de FactPOS y descarga de la prueba gratis de 15 días.">
 <meta property="og:title" content="Conozca FactPOS"><meta property="og:description" content="Punto de venta e inventario para su negocio. Vea el recorrido y pruébelo 15 días gratis.">
 <style>
-:root{--p:#0f766e;--p2:#0b5a54;--t:#14202b;--s:#5b6b7a;--b:#dfe6ec;--bg:#f4f7f9;--w:#fff;--ok:#16a34a;--al:#d97706}
+:root{--p:#2563eb;--p2:#0b5a54;--t:#14202b;--s:#5b6b7a;--b:#dfe6ec;--bg:#f4f7f9;--w:#fff;--ok:#16a34a;--al:#d97706}
 @media(prefers-color-scheme:dark){:root{--t:#e8eef3;--s:#9db0c0;--b:#2a3946;--bg:#0f1820;--w:#16232e}}
 *{box-sizing:border-box}body{margin:0;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--t)}
 header{padding:18px 20px;display:flex;align-items:center;gap:10px;max-width:1040px;margin:0 auto}
