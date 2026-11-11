@@ -83,6 +83,15 @@ section{padding:76px 0}
 .nota{color:var(--suave);font-size:14px;margin-top:18px}
 .cargando,.vacio{color:var(--suave)}
 .cta{text-align:center;color:#e6edf3;border-radius:22px;padding:54px 24px;background:radial-gradient(600px 300px at 50% 0%,rgba(20,184,166,.28),transparent 70%),var(--oscuro)}
+.sol{max-width:560px;margin:0 auto 30px;text-align:left;display:grid;gap:10px;grid-template-columns:1fr 1fr}
+.sol h3{grid-column:1/-1;margin:0;text-align:center;font-size:20px}
+.sol input,.sol textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.07);color:#e6edf3;font:inherit}
+.sol input::placeholder,.sol textarea::placeholder{color:#93a4b6}
+.sol .ancho{grid-column:1/-1}
+.sol button{grid-column:1/-1;cursor:pointer;font:inherit}
+.sol .ok{grid-column:1/-1;text-align:center;color:#5eead4;margin:0}
+.sol .mal{grid-column:1/-1;text-align:center;color:#fca5a5;margin:0}
+@media(max-width:560px){.sol{grid-template-columns:1fr}}
 .cta h2{margin:0 0 10px;font-size:clamp(26px,3.4vw,40px);letter-spacing:-.02em}
 .cta p{margin:0 auto 24px;color:#a9bacb;max-width:560px}
 .cta .acc{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
@@ -210,6 +219,16 @@ footer a{text-decoration:none;color:var(--primario)}
 
 <section id="contacto"><div class="cont">
   <div class="cta">
+    <form class="sol" id="sol" novalidate>
+      <h3>Solicita tu demo de 15 días</h3>
+      <input id="s-nombre" placeholder="Tu nombre" maxlength="80" autocomplete="name" required>
+      <input id="s-negocio" placeholder="Nombre del negocio" maxlength="100" required>
+      <input id="s-tel" type="tel" placeholder="Teléfono / WhatsApp" maxlength="30" autocomplete="tel" required>
+      <input id="s-correo" type="email" placeholder="Correo (opcional)" maxlength="120" autocomplete="email">
+      <textarea class="ancho" id="s-msg" rows="2" maxlength="400" placeholder="¿Cuántas sucursales tienes y qué necesitas? (opcional)"></textarea>
+      <button class="btn p" id="s-btn" type="submit">Solicitar demo y descargar</button>
+      <p class="ok" id="s-ok" hidden></p><p class="mal" id="s-mal" hidden></p>
+    </form>
     <h2>¿Ya eres cliente?</h2>
     <p>Entra al portal con tu usuario y tu contraseña. Si todavía no tienes cuenta, escríbenos y te ayudamos a empezar.</p>
     <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><span id="contactos" style="display:inline-flex;gap:12px;flex-wrap:wrap"></span></div>
@@ -254,6 +273,25 @@ footer a{text-decoration:none;color:var(--primario)}
     if (k.telefono && !k.whatsapp) { var t = el("a", "btn s", k.telefono); t.href = "tel:" + String(k.telefono).replace(/[^0-9+]/g, ""); cont.appendChild(t); }
   }).catch(function(){
     var lista = $("planes-lista"); lista.textContent = ""; lista.appendChild(el("p", "vacio", "No pudimos cargar los planes ahora. Escríbenos y te los enviamos."));
+  });
+  var sol = $("sol");
+  if (sol) sol.addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var ok = $("s-ok"), mal = $("s-mal"), btn = $("s-btn");
+    ok.hidden = true; mal.hidden = true;
+    var nombre = $("s-nombre").value.trim(), negocio = $("s-negocio").value.trim(), tel = $("s-tel").value.trim(), correo = $("s-correo").value.trim();
+    if (nombre.length < 2 || negocio.length < 2 || tel.length < 7) { mal.textContent = "Escribe tu nombre, el negocio y un teléfono."; mal.hidden = false; return; }
+    btn.disabled = true;
+    var cuerpo = { nombre: nombre, negocio: negocio, telefono: tel, correo: correo, mensaje: $("s-msg").value.trim() };
+    fetch("/licencias/prospecto", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo) })
+      .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j && j.error ? j.error : "No se pudo enviar"); return j; }); })
+      .then(function(j){
+        ok.textContent = j.url ? "¡Listo! Te contactaremos pronto. Tu descarga empieza ahora." : "¡Listo! Te contactaremos pronto con tu demo.";
+        ok.hidden = false; sol.reset();
+        if (j.url) window.location.href = j.url;
+      })
+      .catch(function(e){ mal.textContent = (e && e.message) || "No se pudo enviar. Intenta de nuevo."; mal.hidden = false; })
+      .then(function(){ btn.disabled = false; });
   });
 })();
 </script>
