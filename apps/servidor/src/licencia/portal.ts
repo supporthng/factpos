@@ -1099,7 +1099,12 @@ async function rutasPaginas(app: FastifyInstance) {
 
   // Portal
   // La raíz es la página web pública; el portal (inicio de sesión y panel) vive en /entrar
-  app.get("/", (_req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_WEB));
+  app.get("/", (req, rep) => {
+    // Los enlaces absolutos de «compartir» (Open Graph) salen del dominio con el que se entró
+    const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").replace(/[^a-zA-Z0-9.:-]/g, "");
+    const base = host ? `https://${host}` : "";
+    return rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_WEB.replaceAll("__BASE__", base));
+  });
   app.get("/demo", (_req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_DEMO));
   app.get("/entrar", (_req, rep) => pagina(rep, { modo: "portal", api: "" }));
   for (const r of ["/assets/*", "/iconos/*", "/sw.js", "/manifest.webmanifest"]) {
