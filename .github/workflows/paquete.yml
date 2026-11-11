@@ -110,8 +110,10 @@ jobs:
           gh release upload ultima paquete/FactPOS-*Setup-*.exe paquete/FactPOS-Caja-Limpiar-*.exe paquete/FactPOS-Instalador-*.zip --clobber
           # Quitar los archivos de versiones anteriores: el portal solo debe ver la última
           VERSION=$(node -p "require('./package.json').version")
+          # Los .exe llevan la versión como la ve el cliente (48.6.0 → 4.8.6); el ZIP, la real. Se conservan ambos nombres.
+          ETIQUETA=$(node -p "const v=require('./package.json').version;const m=/^(\\d+)(?:\\.(\\d))?(?:\\.|$)/.exec(v);if(!m||m[1].length<2){v}else{const n=Number(m[1]);Math.floor(n/10)+'.'+(n%10)+(m[2]&&m[2]!=='0'?'.'+m[2]:'')}")
           # grep devuelve 1 cuando no queda nada que borrar: no es un error
-          gh release view ultima --json assets -q '.assets[].name' | { grep -v -F "$VERSION" || true; } | while read -r a; do gh release delete-asset ultima "$a" -y || true; done
+          gh release view ultima --json assets -q '.assets[].name' | { grep -v -F -e "-$VERSION." -e "-$ETIQUETA." || true; } | while read -r a; do gh release delete-asset ultima "$a" -y || true; done
       - name: Publicar versión numerada
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
