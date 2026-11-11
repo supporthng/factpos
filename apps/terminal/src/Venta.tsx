@@ -17,6 +17,7 @@ import { SimboloFactPOS } from "./Logo";
 import { VistaCatalogo } from "./Catalogo";
 import { guardarRespaldoPausadas, leerRespaldoPausadas } from "./pausadas-respaldo";
 import { Barra } from "./Comandas";
+import { Aforo, aforoLleno, etiquetaAforo, useAforo } from "./Aforo";
 import { Cuentas, type PlanCobro } from "./Cuentas";
 import { TAMANOS, leerTamano, guardarTamano, leerTema, guardarTema, type Tamano, type Tema } from "./escala";
 import { guardarCache, leerCache, useConexion, disponibleCupo, pedirExistencia, exportarPendientes } from "./contingencia";
@@ -67,7 +68,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "facturasPin" | "pausadas"
-  | "cuentas" | "barra" | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
+  | "cuentas" | "barra" | "aforo" | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -171,6 +172,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const nivelCliente = cliente?.nivel ?? catalogo?.nivelPredeterminado ?? 1;
   // Precios 2 y 3 como % de descuento sobre el precio 1: se muestra el precio 1 y el descuento se marca en cada línea
   const descNivelPct = catalogo?.descuentosNivel?.[String(nivelCliente)] ?? null;
+  const { aforo, recargar: recargarAforo, poner: ponerAforo } = useAforo(ajustes, !!config.aforoActivo);
   const nivelPrecio = descNivelPct && catalogo ? catalogo.nivelPredeterminado : nivelCliente;
 
   // Cotización local, instantánea
@@ -798,6 +800,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
                 ...(config.tipoNegocio && config.tipoNegocio !== "TIENDA" ? [["Cuentas", () => setModal("cuentas"), false] as const, ["Barra", () => setModal("barra"), false] as const] : []),
+                ...(config.aforoActivo ? [[etiquetaAforo(aforo), () => setModal("aforo"), false] as const] : []),
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ["Cerrar turno", () => setModal("turno"), false],
               ] as const).map(([t, f, d]) => (
@@ -810,6 +813,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
               <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
               {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("cuentas")}>Cuentas</button>}
               {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("barra")}>Barra</button>}
+              {config.aforoActivo && <button className={aforoLleno(aforo) ? "error" : ""} onClick={() => setModal("aforo")}>{etiquetaAforo(aforo)}</button>}
               {verCatalogo
                 ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
                 : <button onClick={() => setModal("turno")}>Cerrar turno</button>}
@@ -931,6 +935,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
           permitirSin={!!config.funciones?.sinComprobante}
           onVendido={(r, op) => {
             clienteOmitido.current = false;
+            if (config.aforoActivo) setTimeout(() => void recargarAforo(), 800);
             const cta = cuentaActiva;
             if (cta) { // las líneas de la cuenta quedan ligadas a esta venta; si faltan partes, se vuelve a la cuenta
               const avisarCobrada = (n: number) => api<{ estado: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/cuentas/${cta.cuentaId}/cobrada`, { cuerpo: { ventaId: r.id, lineaIds: cta.lineaIds } })
@@ -954,6 +959,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             existenciasRef.current().catch(() => {}); }}
         />
       )}
+      {modal === "aforo" && <Aforo ajustes={ajustes} aforo={aforo} onCambio={ponerAforo} onCerrar={() => setModal(null)} />}
       {modal === "barra" && <Barra ajustes={ajustes} onCerrar={() => setModal(null)} />}
       {modal === "cuentas" && idx && catalogo && (
         <Cuentas ajustes={ajustes} catalogo={catalogo} nivel={nivelPrecio}
