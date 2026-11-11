@@ -365,7 +365,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     var cuenta = seg ? '<div class="cuenta"><span style="animation-duration:' + seg + 's"></span></div>' : '';
     if (d.codigo === "FUERA_DE_TIENDA") {
       return '<section class="et aviso"><div class="ico">&#9888;</div><h2>Estás fuera de la tienda</h2><div class="grande">a ' + dist(d.distanciaM || 0) + '</div>'
-        + '<p>Los precios solo se consultan <b>dentro de la tienda</b> (a menos de ' + dist(d.radioM || 150) + ').</p>' + cuenta + '</section>';
+        + '<p>Los precios solo se consultan <b>dentro de la tienda</b>.</p>' + cuenta + '</section>';
     }
     if (d.codigo === "UBICACION_REQUERIDA") {
       return '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
