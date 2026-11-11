@@ -84,7 +84,7 @@ const esCorreo = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 const NOMBRE_TIPO: Record<Tipo, string> = { CIERRE_CAJA: "Cierre de caja", RESUMEN_DIARIO: "Resumen del día", INCIDENTES: "Incidente" };
 
 export function Correo() {
-  const { datos, recargar } = useDatos<{ config: Config | null; envios: Envio[]; cron: boolean }>("/central/correo");
+  const { datos, recargar } = useDatos<{ config: Config | null; envios: Envio[]; cron: boolean; avisos?: { tipo: "error" | "info"; texto: string }[] }>("/central/correo");
   const historial = useDatos<Enviado[]>("/central/correo/historial");
   if (!datos) return <Encabezado titulo="Correo y envíos" descripcion="Cargando…" />;
   const lista = !!datos.config?.tieneClave && !!datos.config.remitenteCorreo;
@@ -93,6 +93,7 @@ export function Correo() {
       <Encabezado titulo="Correo y envíos" descripcion="La cuenta desde la que salen los reportes, y qué se envía solo: cierres de caja, el resumen del día y los avisos de incidentes." />
       <Conexion config={datos.config} onGuardado={() => { recargar(); }} />
       <h2>Envíos automáticos</h2>
+      {(datos.avisos ?? []).map((a, i) => <Aviso key={i} tipo={a.tipo} texto={a.texto} />)}
       {!lista && <Aviso tipo="info" texto="Configure y guarde la cuenta de correo de arriba para poder activar los envíos." />}
       {!datos.cron && <Aviso tipo="info" texto="Falta la tarea de vigilancia (CRON_SECRET en Vercel y en GitHub): sin ella el resumen del día no sale a su hora. Los cierres de caja sí salen al llegar de la sucursal." />}
       <div className="envios-correo">

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
-import { cifrarClave, enviarCorreo, leerConfigCorreo, probarConexion } from "../correo/transporte.js";
+import { cifrarClave, correoListo, enviarCorreo, leerConfigCorreo, probarConexion } from "../correo/transporte.js";
 import { construir, marcaDe, procesarEnvios, type TipoEnvio } from "../correo/envios.js";
 import { correoPrueba } from "../correo/plantillas.js";
 import { olvidarCanales } from "../incidentes.js";
@@ -47,6 +47,7 @@ export async function rutasCentralCorreo(app: FastifyInstance) {
     ]);
     const porTipo = Object.fromEntries(envios.rows.map((r) => [r.tipo, r]));
     return {
+      avisos: await avisosDeCorreo(e, envios.rows),
       config,
       envios: TIPOS.map((t) => porTipo[t] ?? { tipo: t, activo: false, destinatarios: [], sucursales: null, hora: 7, soloConDiferencia: false, activadoEn: null, ultimoEnvio: null }),
       cron: !!process.env.CRON_SECRET || !process.env.VERCEL,
@@ -188,4 +189,39 @@ export async function rutasCentralCorreo(app: FastifyInstance) {
 
   /** Correr ya los envíos pendientes (botón "Enviar pendientes ahora"). */
   app.post("/central/correo/procesar", async (req) => procesarEnvios((m) => req.log.warn(m)));
+}
+
+
+/**
+ * Lo que está impidiendo (o puede impedir) que los correos salgan, en palabras simples, para verlo en el panel
+ * sin tener que adivinar: cuenta incompleta, sucursales con cuenta propia, errores recientes y cierres sin enviar.
+ */
+async function avisosDeCorreo(empresaId: string, envios: { tipo: string; activo: boolean; destinatarios: string[]; sucursales: string[] | null; activadoEn?: string | Date | null }[]) {
+  const avisos: { tipo: "error" | "info"; texto: string }[] = [];
+  const cierre = envios.find((x) => x.tipo === "CIERRE_CAJA");
+  const listo = await correoListo(empresaId);
+  if (cierre?.activo && !cierre.destinatarios.length) avisos.push({ tipo: "error", texto: "Cierres de caja está activado pero no tiene ningún destinatario: no saldrá nada." });
+  if (cierre?.activo && !listo) avisos.push({ tipo: "error", texto: "Cierres de caja está activado pero la cuenta de correo no está completa (falta remitente, servidor o contraseña): no saldrá nada hasta guardarla." });
+  if (!cierre?.activo) avisos.push({ tipo: "info", texto: "Los cierres de caja no se envían por correo: «Cierres de caja» está desactivado en este servidor." });
+
+  const propias = await pool.query<{ nombre: string }>(
+    `SELECT s.nombre FROM sync_sucursales ss JOIN sucursales s ON s.id = ss.sucursal_id WHERE s.empresa_id = $1 AND ss.correo_propio ORDER BY s.nombre`, [empresaId]).catch(() => null);
+  if (propias?.rowCount) avisos.push({ tipo: "info", texto: `${propias.rows.map((r) => r.nombre).join(", ")} envía(n) sus cierres con su propia cuenta de correo: este servidor no los manda. Si no llegan, revise «Correo y envíos» en ese servidor.` });
+
+  const errores = await pool.query<{ n: number; error: string | null }>(
+    `SELECT COUNT(*)::int AS n, (ARRAY_AGG(error ORDER BY creado_en DESC))[1] AS error FROM correos_enviados
+      WHERE empresa_id = $1 AND estado = 'ERROR' AND creado_en > now() - interval '3 days'`, [empresaId]).catch(() => null);
+  if (errores?.rows[0]?.n) avisos.push({ tipo: "error", texto: `${errores.rows[0].n} correo(s) de los últimos 3 días no se pudieron enviar. Último error: ${errores.rows[0].error ?? "sin detalle"}` });
+
+  if (cierre?.activo && cierre.destinatarios.length) {
+    const sin = await pool.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM turnos t JOIN sucursales s ON s.id = t.sucursal_id
+        WHERE s.empresa_id = $1 AND t.estado = 'CERRADO' AND t.cerrado_en > now() - interval '3 days'
+          AND t.cerrado_en > COALESCE($2::timestamptz, now()) - interval '1 minute'
+          AND NOT EXISTS (SELECT 1 FROM sync_sucursales ss WHERE ss.sucursal_id = t.sucursal_id AND ss.correo_propio)
+          AND NOT EXISTS (SELECT 1 FROM correos_enviados c WHERE c.empresa_id = $1 AND c.tipo = 'CIERRE_CAJA' AND c.clave = t.id::text)`,
+      [empresaId, cierre.activadoEn ?? null]).catch(() => null);
+    if (sin?.rows[0]?.n) avisos.push({ tipo: "error", texto: `${sin.rows[0].n} cierre(s) de caja de los últimos 3 días todavía no se han enviado por correo.` });
+  }
+  return avisos;
 }

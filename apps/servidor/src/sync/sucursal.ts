@@ -6,6 +6,7 @@ import { TABLAS_BAJADA } from "../rutas/central-sync.js";
 import { aplicarFilas, aplicarKardex, modoSincronizacion, type Modo } from "./aplicar.js";
 import { guardarCertificado, huellaEnUso, type FilaCertificado } from "../fiscal/certificado-guardado.js";
 import { quitarCertificado, usarCertificado } from "../fiscal/firma.js";
+import { correoListo } from "../correo/transporte.js";
 
 /**
  * Sincronización del servidor de una sucursal con la central en la nube.
@@ -153,9 +154,11 @@ async function avisarEquipo() {
     `SELECT id, so, equipo, build, ultimo_contacto AS "ultimoContacto" FROM verificador_equipos WHERE ultimo_contacto > now() - interval '30 days' ORDER BY ultimo_contacto DESC LIMIT 100`)
     .catch(() => ({ rows: [] }))).rows.map((v: { ultimoContacto: Date | string }) => ({ ...v, ultimoContacto: new Date(v.ultimoContacto).toISOString() }));
   // ¿Esta sucursal envía sus cierres con su propia cuenta de correo? (la nube entonces no los manda)
-  const correoPropio = !!(await pool.query(
-    `SELECT 1 FROM envios_correo e JOIN configuracion_correo c ON c.empresa_id = e.empresa_id
-      WHERE e.tipo = 'CIERRE_CAJA' AND e.activo AND cardinality(e.destinatarios) > 0 AND c.clave_cifrada IS NOT NULL LIMIT 1`).catch(() => null))?.rowCount;
+  // Solo cuenta como «propia» si de verdad puede enviar (remitente, servidor y clave): con la cuenta a medias, la nube sigue mandándolos
+  const empresasConCierres = (await pool.query<{ empresa_id: string }>(
+    `SELECT empresa_id FROM envios_correo WHERE tipo = 'CIERRE_CAJA' AND activo AND cardinality(destinatarios) > 0`).catch(() => ({ rows: [] as { empresa_id: string }[] }))).rows;
+  let correoPropio = false;
+  for (const f of empresasConCierres) if (await correoListo(f.empresa_id)) { correoPropio = true; break; }
   await pedir("/central/sync/equipo", { method: "POST", body: JSON.stringify({ sucursalId: configSync().sucursalId, equipo: hostname().slice(0, 80), appVersion: versionActual().slice(0, 20), verificadores, correoPropio }) });
 }
 
