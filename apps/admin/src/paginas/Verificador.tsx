@@ -11,20 +11,64 @@ interface Consultas {
   sinPrecioLista: { codigo: string; veces: number; ultima: string }[];
 }
 
-/** QR para que el cliente consulte precios desde su celular (por internet, solo estando en la tienda). Se puede imprimir o descargar. */
-function QrConsultaMovil({ inicial, sucursalId }: { inicial: string; sucursalId: string }) {
-  const [url, setUrl] = useState(inicial);
+/** Todo lo de la consulta de precios por internet en un solo lugar: interruptor, ubicación, distancia, código del QR, cartel y bloqueos. */
+function ConsultaInternet({ sucursalId }: { sucursalId: string }) {
+  type Aj = { enlaceInternet?: string | null; consultaWeb?: boolean; radioM?: number; ubicaciones?: Record<string, { lat: number; lng: number }>; codigos?: Record<string, string> };
+  const { datos, recargar } = useDatos<Aj>("/central/verificador/ajustes");
+  const [activa, setActiva] = useState(false);
+  const [coord, setCoord] = useState("");
+  const [radio, setRadio] = useState(150);
+  const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const guardada = sucursalId ? datos?.ubicaciones?.[sucursalId] : undefined;
+  const codigo = sucursalId ? datos?.codigos?.[sucursalId] : undefined;
+  // El formulario parte de lo guardado, así que al volver a abrir la pantalla se ve la configuración tal como quedó
+  useEffect(() => {
+    if (!datos) return;
+    setActiva(datos.consultaWeb ?? false);
+    setRadio(datos.radioM ?? 150);
+    setCoord(guardada ? `${guardada.lat}, ${guardada.lng}` : "");
+  }, [datos, guardada?.lat, guardada?.lng, sucursalId]);
+
+  const usarMia = () => {
+    setMsg(""); setOk("");
+    if (!navigator.geolocation) { setMsg("Este navegador no permite leer la ubicación."); return; }
+    navigator.geolocation.getCurrentPosition((p) => setCoord(`${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`),
+      () => setMsg("No se pudo leer la ubicación (la app de escritorio y las PC sin GPS suelen no poder). Pega las coordenadas o el enlace de Google Maps."), { enableHighAccuracy: true, timeout: 15000 });
+  };
+  const guardar = async () => {
+    setMsg(""); setOk("");
+    if (!sucursalId) { setMsg("Elige la sucursal."); return; }
+    if (/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(coord)) { setMsg("Ese enlace corto de Google Maps no trae las coordenadas. Ábrelo en el navegador y copia la dirección completa de la barra, o los números."); return; }
+    const c = coord.trim() ? coordenadasDeTexto(coord) : null;
+    if (coord.trim() && !c) { setMsg("No encontré coordenadas. Pega los números (18.486100, -69.931200) o el enlace de Google Maps."); return; }
+    setGuardando(true);
+    try {
+      const r = Math.min(1000, Math.max(30, Math.round(Number(radio) || 150)));
+      await api("/central/verificador/ajustes", { metodo: "PUT", cuerpo: { consultaWeb: activa, radioM: r } });
+      if ((c?.lat ?? null) !== (guardada?.lat ?? null) || (c?.lng ?? null) !== (guardada?.lng ?? null)) {
+        await api("/central/verificador/ubicacion", { metodo: "PUT", cuerpo: { sucursalId, lat: c?.lat ?? null, lng: c?.lng ?? null } });
+      }
+      recargar(); setOk("Guardado.");
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setGuardando(false); }
+  };
+  const cambiarCodigo = async (quitar: boolean) => {
+    setMsg(""); setOk("");
+    if (!quitar && codigo && !window.confirm("Se creará un código nuevo. Los QR ya impresos dejan de funcionar y hay que imprimir el cartel otra vez. ¿Continuar?")) return;
+    try { await api("/central/verificador/codigo-consulta", { metodo: "PUT", cuerpo: { sucursalId, quitar } }); recargar(); setOk(quitar ? "Código quitado: cualquier QR de la tienda vuelve a funcionar." : "Código nuevo creado. Imprime el cartel otra vez."); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+
+  const internet = datos?.enlaceInternet && sucursalId ? `${datos.enlaceInternet}?sucursal=${sucursalId}${codigo ? `&k=${codigo}` : ""}` : "";
   const [img, setImg] = useState("");
-  const { datos: ajustes } = useDatos<{ enlaceInternet?: string | null }>("/central/verificador/ajustes");
-  // El QR del cartel abre el enlace de INTERNET de la empresa (fijo, no cambia al reiniciar el servidor): el cliente no necesita el WiFi,
-  // y la consulta solo responde dentro de la tienda por la ubicación. La dirección se puede cambiar a mano en el campo.
-  const internet = ajustes?.enlaceInternet ? `${ajustes.enlaceInternet}${sucursalId ? `?sucursal=${sucursalId}` : ""}` : "";
-  useEffect(() => setUrl(internet || inicial), [inicial, internet]);
   useEffect(() => {
     let vivo = true;
-    QRCode.toDataURL(url, { margin: 2, width: 480, errorCorrectionLevel: "M" }).then((d) => { if (vivo) setImg(d); }).catch(() => { if (vivo) setImg(""); });
+    if (!internet) { setImg(""); return; }
+    QRCode.toDataURL(internet, { margin: 2, width: 480, errorCorrectionLevel: "M" }).then((d) => { if (vivo) setImg(d); }).catch(() => { if (vivo) setImg(""); });
     return () => { vivo = false; };
-  }, [url]);
+  }, [internet]);
   const imprimir = () => {
     const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
     const pasos = ["Escanea este código con la cámara del celular", "Permite la ubicación cuando el celular lo pida", "Escanea el código de barras del producto y mira su precio"];
@@ -35,20 +79,81 @@ function QrConsultaMovil({ inicial, sucursalId }: { inicial: string; sucursalId:
 <img src="${img}" style="width:340px;margin:10px auto;display:block" alt="">
 <p style="font-size:18px;color:#5b6b7a">Funciona estando dentro de la tienda.</p></body>`);
   };
+
+  const [verBloqueos, setVerBloqueos] = useState(false);
+  const { datos: bl } = useDatos<{ bloqueos: { creadoEn: string; motivo: string; distanciaM: number | null; equipo: string | null; sucursal: string }[] }>(
+    verBloqueos ? `/central/verificador/bloqueos${sucursalId ? `?sucursal=${sucursalId}` : ""}` : "", [verBloqueos, sucursalId]);
+
+  const paso = (listo: boolean, texto: string) => <li style={{ color: listo ? "#1f7a3d" : "#b3261e" }}>{listo ? "✓" : "✗"} {texto}</li>;
   return (
     <div className="panel" style={{ marginTop: 16 }}>
-      <h3 style={{ marginTop: 0 }}>QR para consultar desde el celular</h3>
-      <p className="suave pequeno">El cliente escanea este QR con la cámara del celular y consulta el precio de cualquier producto. Es el enlace de internet de tu empresa: no necesita WiFi y solo muestra precios estando dentro de la tienda (la ubicación de cada sucursal se guarda en «Configuración del verificador»). Elige la sucursal arriba para que el enlace lleve la suya, imprime el cartel y pégalo en el local.</p>
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
-        {img ? <img src={img} alt="QR de la consulta de precios" width={200} height={200} style={{ border: "1px solid #dde3e8", borderRadius: 8 }} /> : <div style={{ width: 200, height: 200 }} />}
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <label className="campo"><span>Dirección que abre el QR</span><input value={url} onChange={(e) => setUrl(e.target.value)} /></label>
-          <div className="fila-acciones" style={{ marginTop: 10 }}>
-            <button className="boton" disabled={!img} onClick={imprimir}>Imprimir</button>
-            <a className="boton" style={{ textDecoration: "none" }} href={img} download="qr-consulta-precios.png" aria-disabled={!img}>Descargar imagen</a>
+      <h3 style={{ marginTop: 0 }}>Consulta de precios por internet (QR)</h3>
+      <p className="suave pequeno">
+        El cliente escanea el QR con la cámara del celular y ve el precio de cualquier producto, sin WiFi y solo estando dentro de la tienda.
+        Solo se muestra nombre, precio y oferta: nunca costos ni existencias. Elige la sucursal arriba, ajusta y pulsa <b>Guardar</b>: todo queda guardado.
+      </p>
+      {!sucursalId ? <Aviso tipo="info" texto="Elige la sucursal en «Dirección del verificador» para configurar su consulta por internet." /> : (
+        <>
+          <ul className="pequeno" style={{ listStyle: "none", padding: 0, margin: "0 0 10px" }}>
+            {paso(!!datos?.consultaWeb, "Consulta por internet encendida")}
+            {paso(!!guardada, guardada ? `Ubicación de la tienda guardada (${guardada.lat}, ${guardada.lng})` : "Falta la ubicación de la tienda: sin ella no se muestran precios")}
+            {paso(!!datos?.enlaceInternet, datos?.enlaceInternet ? "Enlace de internet de la empresa listo" : "Falta el nombre de la empresa en el servidor (FACTPOS_EMPRESA)")}
+          </ul>
+          <label className="check" style={{ fontSize: 16 }}>
+            <input type="checkbox" disabled={!datos} checked={activa} onChange={(e) => setActiva(e.target.checked)} /> Consulta por internet encendida
+          </label>
+          <label className="campo" style={{ marginTop: 10, maxWidth: 420 }}>
+            <span>Ubicación de la tienda: coordenadas o enlace de Google Maps</span>
+            <input value={coord} placeholder="18.486100, -69.931200 o enlace de Google Maps" onChange={(e) => setCoord(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void guardar()} />
+          </label>
+          <div className="fila-acciones" style={{ marginTop: 6 }}>
+            <button className="boton" onClick={usarMia}>Usar mi ubicación actual</button>
+            {guardada && <a className="boton" style={{ textDecoration: "none" }} target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${guardada.lat},${guardada.lng}`}>Ver en el mapa</a>}
           </div>
-        </div>
-      </div>
+          <label className="campo" style={{ marginTop: 10, maxWidth: 260 }}>
+            <span>Distancia máxima a la tienda (metros)</span>
+            <input type="number" min={30} max={1000} value={radio} onChange={(e) => setRadio(Number(e.target.value))} />
+          </label>
+          <div className="fila-acciones" style={{ marginTop: 12 }}>
+            <button className="boton primario" disabled={guardando} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>
+          </div>
+          <Aviso texto={msg} />
+          {ok && <p style={{ color: "#1f7a3d", margin: "8px 0 0" }}>✓ {ok}</p>}
+
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--borde, #d9e1e6)" }}>
+            {img ? <img src={img} alt="QR de la consulta de precios" width={200} height={200} style={{ border: "1px solid #dde3e8", borderRadius: 8 }} /> : <div style={{ width: 200, height: 200 }} />}
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <label className="campo"><span>Dirección que abre el QR</span><input readOnly value={internet} onFocus={(e) => e.currentTarget.select()} /></label>
+              <div className="fila-acciones" style={{ marginTop: 10 }}>
+                <button className="boton" disabled={!img} onClick={imprimir}>Imprimir cartel</button>
+                <a className="boton" style={{ textDecoration: "none" }} href={img} download="qr-consulta-precios.png" aria-disabled={!img}>Descargar imagen</a>
+              </div>
+              <p className="suave pequeno" style={{ margin: "10px 0 4px" }}>
+                <b>Código de seguridad del QR:</b> {codigo ? <span className="mono">{codigo}</span> : "sin código (cualquier QR de esta tienda funciona)"}.
+                Si alguien comparte el QR fuera de la tienda, crea un código nuevo e imprime el cartel otra vez.
+              </p>
+              <div className="fila-acciones">
+                <button className="boton" onClick={() => cambiarCodigo(false)}>{codigo ? "Renovar código" : "Crear código"}</button>
+                {codigo && <button className="boton" onClick={() => cambiarCodigo(true)}>Quitar código</button>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--borde, #d9e1e6)" }}>
+            <button className="boton" onClick={() => setVerBloqueos((v) => !v)}>{verBloqueos ? "Ocultar intentos bloqueados" : "Ver intentos bloqueados (30 días)"}</button>
+            {verBloqueos && (
+              <div style={{ marginTop: 8 }}>
+                {!bl ? <p className="suave pequeno">Cargando…</p> : bl.bloqueos.length === 0 ? <p className="suave pequeno">Sin intentos bloqueados. Solo se ven aquí los de este servidor; los de internet llegan al servidor principal.</p> : (
+                  <table className="tabla"><thead><tr><th>Cuándo</th><th>Sucursal</th><th>Motivo</th><th>Distancia</th><th>Equipo</th></tr></thead><tbody>
+                    {bl.bloqueos.map((b, i) => <tr key={i}><td>{new Date(b.creadoEn).toLocaleString("es-DO")}</td><td>{b.sucursal}</td><td>{b.motivo}</td>
+                      <td>{b.distanciaM == null ? "—" : b.distanciaM >= 1000 ? `${(b.distanciaM / 1000).toFixed(1)} km` : `${b.distanciaM} m`}</td><td className="mono">{b.equipo ?? ""}</td></tr>)}
+                  </tbody></table>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -75,66 +180,6 @@ function coordenadasDeTexto(texto: string): { lat: number; lng: number } | null 
     }
   }
   return null;
-}
-
-/** Ubicación de cada tienda para la consulta por internet: solo responde a teléfonos que estén dentro del radio. */
-function UbicacionConsulta({ ubicaciones, radioM, onRadio, onGuardado }: { ubicaciones: Record<string, { lat: number; lng: number }>; radioM: number; onRadio: (m: number) => void; onGuardado: () => void }) {
-  const [sucursalId, setSucursalId] = useState("");
-  const [msg, setMsg] = useState("");
-  const [ok, setOk] = useState("");
-  const actual = sucursalId ? ubicaciones[sucursalId] : undefined;
-  const guardar = async (lat: number | null, lng: number | null) => {
-    setMsg(""); setOk("");
-    try { await api("/central/verificador/ubicacion", { metodo: "PUT", cuerpo: { sucursalId, lat, lng } }); setOk(lat === null ? "Ubicación quitada." : "Ubicación guardada."); onGuardado(); }
-    catch (e) { setMsg((e as Error).message); }
-  };
-  const [pegado, setPegado] = useState("");
-  // Coordenadas copiadas de Google Maps (clic derecho en la tienda › se copian «18.48, -69.93»)
-  const guardarPegado = () => {
-    if (/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(pegado)) { setOk(""); setMsg("Ese enlace corto de Google Maps no trae las coordenadas. Ábrelo en el navegador y copia la dirección completa de la barra, o los números."); return; }
-    const c = coordenadasDeTexto(pegado);
-    if (!c) { setOk(""); setMsg("No encontré coordenadas. Pega los números (18.486100, -69.931200) o el enlace de Google Maps / OpenStreetMap."); return; }
-    void guardar(c.lat, c.lng);
-  };
-  const usarMia = () => {
-    setMsg(""); setOk("");
-    if (!navigator.geolocation) { setMsg("Este navegador no permite leer la ubicación."); return; }
-    navigator.geolocation.getCurrentPosition((p) => { void guardar(Number(p.coords.latitude.toFixed(6)), Number(p.coords.longitude.toFixed(6))); },
-      () => setMsg("No se pudo leer la ubicación (la app de escritorio y las PC sin GPS suelen no poder). Usa el campo de coordenadas de abajo."), { enableHighAccuracy: true, timeout: 15000 });
-  };
-  return (
-    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--borde, #d9e1e6)" }}>
-      <strong>Ubicación de la tienda (consulta por internet)</strong>
-      <p className="suave pequeno" style={{ margin: "4px 0 8px" }}>
-        Por internet, el precio solo se muestra a quien esté dentro de la tienda. Elige la sucursal y pulsa «Usar mi ubicación actual» estando en la tienda
-        (desde un teléfono o una PC con ubicación). Mientras una sucursal no tenga ubicación, la consulta por internet no muestra precios.
-      </p>
-      <SelectorSucursal valor={sucursalId} onCambio={setSucursalId} />
-      {sucursalId && (
-        <p className="suave pequeno" style={{ margin: "8px 0" }}>
-          {actual ? `Ubicación guardada: ${actual.lat}, ${actual.lng}` : "Esta sucursal todavía no tiene ubicación."}
-        </p>
-      )}
-      <div className="fila-acciones">
-        <button className="boton primario" disabled={!sucursalId} onClick={usarMia}>Usar mi ubicación actual</button>
-        {actual && <button className="boton" onClick={() => guardar(null, null)}>Quitar ubicación</button>}
-      </div>
-      <label className="campo" style={{ marginTop: 10, maxWidth: 360 }}>
-        <span>O pega las coordenadas o el enlace de la tienda en Google Maps (clic derecho sobre la tienda y toca los números para copiarlos)</span>
-        <input value={pegado} placeholder="18.486100, -69.931200 o enlace de Google Maps" disabled={!sucursalId} onChange={(e) => setPegado(e.target.value)} onKeyDown={(e) => e.key === "Enter" && guardarPegado()} />
-      </label>
-      <div className="fila-acciones" style={{ marginTop: 6 }}>
-        <button className="boton" disabled={!sucursalId || !pegado.trim()} onClick={guardarPegado}>Guardar coordenadas</button>
-      </div>
-      <label className="campo" style={{ marginTop: 10, maxWidth: 260 }}>
-        <span>Distancia máxima a la tienda (metros)</span>
-        <input type="number" min={30} max={1000} defaultValue={radioM} key={radioM}
-          onBlur={(e) => { const v = Math.min(1000, Math.max(30, Math.round(Number(e.target.value) || 150))); if (v !== radioM) onRadio(v); }} />
-      </label>
-      <Aviso texto={msg} />
-      {ok && <p className="suave pequeno">{ok}</p>}
-    </div>
-  );
 }
 
 /** Interruptor general: mostrar u ocultar las ofertas en la pantalla del verificador. */
@@ -179,16 +224,6 @@ function AjustesVerificador() {
       <p className="suave pequeno" style={{ marginBottom: 0 }}>
         Muestra en la pantalla del verificador un código QR (abajo al centro) para que el cliente consulte precios desde su celular con la cámara.
       </p>
-      <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
-        <input type="checkbox" disabled={!datos} checked={datos?.consultaWeb ?? false} onChange={(e) => cambiar({ consultaWeb: e.target.checked })} />
-        {" "}Consulta por internet (enlace web con QR)
-      </label>
-      <p className="suave pequeno" style={{ marginBottom: 0 }}>
-        Permite que el cliente consulte precios desde cualquier celular, sin necesidad del WiFi de la tienda, con el enlace de la administración web
-        (factpos.app › Verificador › «Consulta desde el celular»). Solo muestra el nombre, el precio y la oferta: nunca costos, existencias ni precios mayoristas.
-        Cada persona tiene un límite de consultas por minuto. Apagado, ese enlace no responde.
-      </p>
-      <UbicacionConsulta ubicaciones={datos?.ubicaciones ?? {}} radioM={datos?.radioM ?? 150} onRadio={(m) => cambiar({ radioM: m })} onGuardado={recargar} />
       <label className="check" style={{ fontSize: 16, marginTop: 14, display: "block" }}>
         <input type="checkbox" disabled={!datos} checked={datos?.autoActualizar ?? true} onChange={(e) => cambiar({ autoActualizar: e.target.checked })} />
         {" "}Actualizar las apps de los verificadores automáticamente
@@ -250,7 +285,9 @@ const descarga = (so: "android" | "windows") => `${CONFIG.api ?? ""}/verificador
 
 /** Verificadores de precios (Android y Windows): la dirección que se configura en cada equipo y cómo dejarlo en pantalla completa. */
 export function Verificador() {
-  const [sucursalId, setSucursalId] = useState("");
+  // La sucursal elegida se recuerda en este equipo: al volver a abrir la pantalla ya está seleccionada
+  const [sucursalId, setSucursalId] = useState(() => { try { return localStorage.getItem("verificador.sucursal") ?? ""; } catch { return ""; } });
+  useEffect(() => { try { localStorage.setItem("verificador.sucursal", sucursalId); } catch { /* sin almacenamiento */ } }, [sucursalId]);
   const [niveles, setNiveles] = useState(false);
   const [copiado, setCopiado] = useState<string | null>(null);
   const copiar = async (t: string, k: string) => { try { await navigator.clipboard.writeText(t); setCopiado(k); setTimeout(() => setCopiado(null), 2000); } catch { /* sin portapapeles */ } };
@@ -269,10 +306,11 @@ export function Verificador() {
   const pagina = `${base}/verificador${params ? `?${params}` : ""}`;
   const api = `${base}/verificador/${sucursalId || "ID_SUCURSAL"}/CODIGO_DE_BARRAS`;
   // Desde factpos.app/<empresa>: enlace FIJO (el portal manda a la dirección vigente del servidor, que cambia al reiniciarlo)
-  const { datos: ajEnlace } = useDatos<{ enlaceInternet?: string | null }>("/central/verificador/ajustes");
+  const { datos: ajEnlace } = useDatos<{ enlaceInternet?: string | null; codigos?: Record<string, string> }>("/central/verificador/ajustes");
+  const codigoQr = sucursalId ? ajEnlace?.codigos?.[sucursalId] : undefined;
   const movil = CONFIG.modo === "cliente" && CONFIG.slug
-    ? `${location.origin}/${CONFIG.slug}/precios${sucursalId ? `?sucursal=${sucursalId}` : ""}`
-    : ajEnlace?.enlaceInternet ? `${ajEnlace.enlaceInternet}${sucursalId ? `?sucursal=${sucursalId}` : ""}`
+    ? `${location.origin}/${CONFIG.slug}/precios${sucursalId ? `?sucursal=${sucursalId}${codigoQr ? `&k=${codigoQr}` : ""}` : ""}`
+    : ajEnlace?.enlaceInternet ? `${ajEnlace.enlaceInternet}${sucursalId ? `?sucursal=${sucursalId}${codigoQr ? `&k=${codigoQr}` : ""}` : ""}`
     : `${base}/verificador/movil${sucursalId ? `?sucursal=${sucursalId}` : ""}`;
   const windows = `msedge --kiosk "${pagina}" --edge-kiosk-type=fullscreen --no-first-run`;
 
@@ -299,11 +337,11 @@ export function Verificador() {
         </div>
         <p className="suave pequeno">Si el servidor atiende una sola sucursal no hace falta elegirla: la página la detecta sola.</p>
         <Fila k="pagina" titulo="Para equipos con navegador o pantalla web (Android y Windows)" texto={pagina} />
-        <Fila k="movil" titulo="Consulta de precios desde el celular del cliente (por internet; enlace fijo que no cambia al reiniciar el servidor). Elige la sucursal y activa «Consulta por internet» arriba" texto={movil} />
+        <Fila k="movil" titulo="Consulta de precios desde el celular del cliente (por internet; enlace fijo que no cambia al reiniciar el servidor). Se configura en el panel de abajo" texto={movil} />
         <Fila k="api" titulo="Para equipos que consultan por su cuenta (API, responde JSON)" texto={api} />
       </div>
 
-      <QrConsultaMovil inicial={movil} sucursalId={sucursalId} />
+      <ConsultaInternet sucursalId={sucursalId} />
 
       <ConsultasRecientes sucursalId={sucursalId} />
 

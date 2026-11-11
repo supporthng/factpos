@@ -69,12 +69,15 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
 <script>
 (function(){
   var sucursal = new URLSearchParams(location.search).get("sucursal");
+  var clave = new URLSearchParams(location.search).get("k") || "";   // código del QR (si la tienda lo renovó)
+  var kq = function(){ return clave ? "&k=" + encodeURIComponent(clave) : ""; };
   var $ = function(id){ return document.getElementById(id); };
   var flujo = null, detector = null, timer = null, volver = null;
   function esc(t){ return String(t == null ? "" : t).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
   function fmt(n){ return Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
-  fetch("/verificador/config" + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) : "")).then(function(r){ return r.json(); }).then(function(c){
+  fetch("/verificador/config" + (sucursal ? "?sucursal=" + encodeURIComponent(sucursal) + kq() : "")).then(function(r){ return r.json(); }).then(function(c){
+    if (c.codigo === "ENLACE_VENCIDO") { controles(false); $("guia").textContent = ""; $("permiso").innerHTML = tarjetaError(c, 0); return; }
     if (c.error) { $("guia").innerHTML = '<span class="err">' + esc(c.error) + '</span>'; return; }
     sucursal = c.sucursalId;
     $("empresa").textContent = c.empresa; $("suc").textContent = c.nombre;
@@ -319,7 +322,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   // Bienvenida y ofertas vigentes de la sucursal (si el dueño las tiene encendidas en Verificador)
   function bienvenida(c){
     $("bienvenida").innerHTML = '<section class="bien"><h2>¡Bienvenido a ' + esc(c.empresa) + '!</h2><p>' + esc(c.nombre) + '<br>Escanea el código de barras de un producto y mira su precio al instante.</p></section><div class="ofs" id="ofs"></div>';
-    fetch("/verificador/ofertas?sucursal=" + encodeURIComponent(sucursal)).then(function(r){ return r.ok ? r.json() : []; }).then(function(of){
+    fetch("/verificador/ofertas?sucursal=" + encodeURIComponent(sucursal) + kq()).then(function(r){ return r.ok ? r.json() : []; }).then(function(of){
       if (!of || !of.length) return;
       var h = '<h3>Ofertas vigentes</h3>';
       of.slice(0, 6).forEach(function(o){
@@ -371,6 +374,14 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
       return '<section class="et aviso"><div class="ico">&#128205;</div><h2>Activa tu ubicación</h2>'
         + '<p>Para ver precios hay que <b>permitir la ubicación</b> de este teléfono.</p><p>' + PASOS_UBICACION + '</p>' + cuenta + '</section>';
     }
+    if (d.codigo === "ENLACE_VENCIDO") {
+      return '<section class="et aviso"><div class="ico">&#128274;</div><h2>Este código QR ya no es válido</h2>'
+        + '<p>La tienda lo renovó. Pide en caja el código nuevo.</p>' + cuenta + '</section>';
+    }
+    if (d.codigo === "UBICACION_IMPRECISA") {
+      return '<section class="et aviso"><div class="ico">&#128225;</div><h2>No pudimos ubicarte bien</h2>'
+        + '<p>Activa la <b>ubicación precisa</b> del teléfono (en los ajustes del navegador) e inténtalo de nuevo.</p>' + cuenta + '</section>';
+    }
     return '<section class="et aviso"><div class="ico">&#9888;</div><h2>No disponible</h2><p>' + esc(d.error || "No se pudo consultar") + '</p>' + cuenta + '</section>';
   }
   // Al entrar: primero se pide la ubicación (el teléfono pregunta solo) y enseguida se abre la cámara
@@ -382,7 +393,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
   function comprobar(){
     return ubicacion().then(function(u){
       if (!u) { if (ubicNegada) avisoPermiso(); return true; }
-      return fetch("/verificador/ubicacion?sucursal=" + encodeURIComponent(sucursal) + "&lat=" + u.lat + "&lng=" + u.lng + "&pre=" + Math.round(u.pre))
+      return fetch("/verificador/ubicacion?sucursal=" + encodeURIComponent(sucursal) + kq() + "&lat=" + u.lat + "&lng=" + u.lng + "&pre=" + Math.round(u.pre))
         .then(function(r){ return r.ok ? { ok: true } : r.json().then(function(d){ return { ok: false, d: d }; }); })
         .catch(function(){ return { ok: true }; })
         .then(function(x){
@@ -406,7 +417,7 @@ form button{border:0;border-radius:12px;padding:0 20px;font-size:16px;font-weigh
     var u = await ubicacion();
     var html, seg = 9;
     try {
-      var r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(cod) + "?canal=movil" + (u ? "&lat=" + u.lat + "&lng=" + u.lng + "&pre=" + Math.round(u.pre) : ""));
+      var r = await fetch("/verificador/" + encodeURIComponent(sucursal) + "/" + encodeURIComponent(cod) + "?canal=movil" + kq() + (u ? "&lat=" + u.lat + "&lng=" + u.lng + "&pre=" + Math.round(u.pre) : ""));
       var d = await r.json();
       if (r.ok) {
         var p = fmt(d.precio).split(".");

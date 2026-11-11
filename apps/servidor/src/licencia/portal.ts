@@ -1109,11 +1109,11 @@ async function rutasPaginas(app: FastifyInstance) {
    */
   app.get("/:slug/precios", async (req, rep) => {
     const { slug } = req.params as { slug: string };
-    const { sucursal } = req.query as { sucursal?: string };
+    const { sucursal, k } = req.query as { sucursal?: string; k?: string };
     const c = await cliente(slug.toLowerCase());
     if (!c) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
     if (!c.api_url) return rep.type("text/html; charset=utf-8").send(sinNube(c.nombre));
-    const id = /^[0-9a-f-]{36}$/i.test(sucursal ?? "") ? `?sucursal=${sucursal}` : "";
+    const id = /^[0-9a-f-]{36}$/i.test(sucursal ?? "") ? `?sucursal=${sucursal}${/^[A-Za-z0-9]{6,32}$/.test(k ?? "") ? `&k=${k}` : ""}` : "";
     return rep.header("cache-control", "no-store").redirect(`${String(c.api_url).replace(/\/+$/, "")}/verificador/movil${id}`);
   });
   app.get("/:slug/*", async (req, rep) => {
