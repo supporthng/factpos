@@ -1337,16 +1337,26 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cuenta-lineas .linea-extra > span:first-child { flex: 1 1 auto; }
 .barra { width: 100%; align-self: stretch; }
 
-/* Plano del salón: las mesas donde las dibujó el supervisor (posición en % del plano de su zona) */
+/* Plano del salón: las mesas donde las dibujó el supervisor (posición en % del plano de su zona), dibujadas con sus sillas */
 .plano { position: relative; width: 100%; aspect-ratio: 2 / 1; min-height: 280px; margin: 8px 0; border: 1px dashed var(--borde); border-radius: 14px; overflow: hidden;
   background-color: var(--panel-2); background-image: radial-gradient(var(--borde) 1px, transparent 1px); background-size: 24px 24px; }
-.plano .mesa { position: absolute; transform: translate(-50%, -50%); width: 122px; min-height: 0; height: 84px; padding: 8px 10px; justify-content: center; box-shadow: 0 2px 8px rgb(0 0 0 / .25); }
-.plano .mesa b { font-size: 15px; }
-.plano .mesa .mesa-total { margin-top: 2px; font-size: 13px; }
-.plano .mesa.forma-redonda { width: 112px; height: 112px; border-radius: 50%; align-items: center; text-align: center; }
-.plano .mesa.forma-larga { width: 200px; height: 68px; }
+.plano .mesa { position: absolute; transform: translate(-50%, -50%); width: 118px; min-height: 0; height: auto; padding: 2px; align-items: center; text-align: center; gap: 0;
+  background: transparent; border: 0; box-shadow: none; }
+.plano .mesa.libre, .plano .mesa.ocupada, .plano .mesa.larga { background: transparent; border: 0; }
+.plano .mesa b { font-size: 14px; }
+.plano .mesa .mesa-total { margin-top: 0; font-size: 13px; }
 .plano .mesa .mesa-espera { font-size: 10px; padding: 0 7px; }
-.plano-editor .mesa { cursor: grab; user-select: none; }
+.mesa-icono { color: var(--suave); display: block; }
+.mesa.libre .mesa-icono { color: var(--ok); }
+.mesa.ocupada .mesa-icono { color: var(--info); }
+.mesa.ocupada.larga .mesa-icono { color: var(--oferta); }
+.plano-editor .mesa { cursor: grab; user-select: none; border-radius: 12px; }
 .plano-editor .mesa:active { cursor: grabbing; }
-.plano-editor .mesa.elegida { outline: 3px solid var(--info); outline-offset: 2px; z-index: 2; }
-@media (max-width: 900px) { .plano .mesa { width: 98px; height: 72px; } .plano .mesa.forma-larga { width: 150px; } .plano .mesa.forma-redonda { width: 84px; height: 84px; } }
+.plano-editor .mesa.elegida { outline: 3px solid var(--info); outline-offset: 2px; z-index: 2; background: color-mix(in srgb, var(--info) 10%, transparent); }
+/* Galería para agregar una mesa: forma y para cuántas personas */
+.modelos { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: thin; }
+.modelo { flex: none; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 6px 10px; border-radius: 12px; border: 1px solid var(--borde); background: var(--panel); color: var(--texto); }
+.modelo .mesa-icono { color: var(--primario); }
+.modelo b { font-size: 13px; }
+.modelo small { color: var(--suave); font-size: 12px; }
+@media (max-width: 900px) { .plano .mesa { width: 98px; } }

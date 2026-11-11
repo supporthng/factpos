@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as EventoPuntero } from "react";
+import type { PointerEvent as EventoPuntero, ReactElement } from "react";
 import type { Catalogo } from "@factpos/compartido";
 import { api, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
@@ -19,7 +19,54 @@ export const duracion = (min: number) => (min < 60 ? `${min} min` : `${Math.floo
 
 /** Forma de la mesa en el plano */
 export type Forma = "CUADRADA" | "REDONDA" | "LARGA";
-const FORMAS: [Forma, string][] = [["CUADRADA", "Cuadrada"], ["REDONDA", "Redonda"], ["LARGA", "Larga"]];
+const FORMAS: [Forma, string][] = [["CUADRADA", "Cuadrada"], ["REDONDA", "Redonda"], ["LARGA", "Rectangular"]];
+/** Mesas listas para agregar: la forma y para cuántos comensales */
+const MODELOS: { forma: Forma; nombre: string; capacidades: number[] }[] = [
+  { forma: "REDONDA", nombre: "Redonda", capacidades: [2, 4, 6, 8] },
+  { forma: "CUADRADA", nombre: "Cuadrada", capacidades: [2, 4, 8] },
+  { forma: "LARGA", nombre: "Rectangular", capacidades: [4, 6, 8, 10, 12] },
+];
+
+/** Dibujo de una mesa vista desde arriba, con una silla por comensal (redonda, cuadrada o rectangular). Toma el color del texto. */
+export function MesaIcono({ forma, capacidad, tam = 76 }: { forma: Forma; capacidad: number; tam?: number }) {
+  const n = Math.max(1, Math.min(14, capacidad));
+  const sillas: { x: number; y: number; w: number; h: number; r: number }[] = [];
+  let mesa: ReactElement;
+  if (forma === "REDONDA") {
+    mesa = <circle cx="50" cy="50" r="22" />;
+    const rad = n >= 10 ? 5 : 6.5;
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i) / n - Math.PI / 2;
+      sillas.push({ x: 50 + 37 * Math.cos(a) - rad, y: 50 + 37 * Math.sin(a) - rad, w: rad * 2, h: rad * 2, r: rad });
+    }
+  } else if (forma === "CUADRADA") {
+    mesa = <rect x="30" y="30" width="40" height="40" rx="5" />;
+    // las sillas se reparten por los cuatro lados (arriba, abajo, izquierda, derecha)
+    const lado = [0, 0, 0, 0];
+    for (let i = 0; i < n; i++) lado[i % 4] = (lado[i % 4] ?? 0) + 1;
+    const pos = (k: number, j: number) => 30 + (40 * (j + 0.5)) / k;
+    for (let j = 0; j < lado[0]!; j++) sillas.push({ x: pos(lado[0]!, j) - 6, y: 17, w: 12, h: 8, r: 2.5 });
+    for (let j = 0; j < lado[1]!; j++) sillas.push({ x: pos(lado[1]!, j) - 6, y: 75, w: 12, h: 8, r: 2.5 });
+    for (let j = 0; j < lado[2]!; j++) sillas.push({ x: 17, y: pos(lado[2]!, j) - 6, w: 8, h: 12, r: 2.5 });
+    for (let j = 0; j < lado[3]!; j++) sillas.push({ x: 75, y: pos(lado[3]!, j) - 6, w: 8, h: 12, r: 2.5 });
+  } else {
+    mesa = <rect x="14" y="36" width="72" height="28" rx="5" />;
+    // en una rectangular las sillas van en los lados largos y, de 6 en adelante, una en cada cabecera
+    const cab = n >= 6 ? 2 : 0;
+    const resto = n - cab;
+    const arriba = Math.ceil(resto / 2), abajo = Math.floor(resto / 2);
+    const pos = (k: number, j: number) => 14 + (72 * (j + 0.5)) / k;
+    for (let j = 0; j < arriba; j++) sillas.push({ x: pos(arriba, j) - 6, y: 24, w: 12, h: 8, r: 2.5 });
+    for (let j = 0; j < abajo; j++) sillas.push({ x: pos(abajo, j) - 6, y: 68, w: 12, h: 8, r: 2.5 });
+    if (cab) { sillas.push({ x: 3, y: 44, w: 8, h: 12, r: 2.5 }); sillas.push({ x: 89, y: 44, w: 8, h: 12, r: 2.5 }); }
+  }
+  return (
+    <svg className="mesa-icono" viewBox="0 0 100 100" width={tam} height={tam} aria-hidden="true" focusable="false">
+      <g fill="currentColor" fillOpacity=".2" stroke="currentColor" strokeWidth="2.5">{mesa}</g>
+      <g fill="currentColor" fillOpacity=".6">{sillas.map((c, i) => <rect key={i} x={c.x} y={c.y} width={c.w} height={c.h} rx={c.r} />)}</g>
+    </svg>
+  );
+}
 
 /** Lugar de cada mesa en el plano de su zona (en %). Las que no tienen lugar se acomodan solas en cuadrícula. */
 export function lugares<T extends { posX: number | null; posY: number | null }>(lista: T[]): { m: T; x: number; y: number }[] {
@@ -51,8 +98,9 @@ export function MapaMesas({ mesas, onMesa }: { mesas: MesaC[]; onMesa: (m: MesaC
           const ocupada = !!m.cuentaId;
           const larga = ocupada && (m.minutos ?? 0) >= 90;
           return (
-            <button key={m.id} className={`mesa forma-${m.forma.toLowerCase()} ` + (ocupada ? (larga ? "ocupada larga" : "ocupada") : "libre")} style={{ left: `${x}%`, top: `${y}%` }}
+            <button key={m.id} className={`mesa con-icono ` + (ocupada ? (larga ? "ocupada larga" : "ocupada") : "libre")} style={{ left: `${x}%`, top: `${y}%` }}
               onClick={() => onMesa(m)} aria-label={`${m.nombre}, ${ocupada ? "ocupada" : "libre"}`}>
+              <MesaIcono forma={m.forma} capacidad={m.capacidad} />
               <b>{m.nombre}</b>
               {ocupada
                 ? <><small>{m.mesero ?? ""}{m.mesero ? " · " : ""}{duracion(m.minutos ?? 0)}</small>
@@ -91,14 +139,14 @@ export function ConfigMesas({ ajustes, mesas, onGuardado, onCerrar }: { ajustes:
   const cambiar = (key: string, c: Partial<MesaEd>) => setLista((l) => l.map((x) => (x.key === key ? { ...x, ...c } : x)));
   const elegida = lista.find((m) => m.key === sel) ?? null;
 
-  const agregar = (forma: Forma) => {
+  const agregar = (forma: Forma, capacidad: number) => {
     const usados = new Set(lista.map((m) => m.nombre.toLowerCase()));
     let n = lista.filter((m) => m.zona === zona).length + 1;
     while (usados.has(`mesa ${n}`)) n++;
     const key = `n${++contador.current}`;
     // Cada mesa nueva aparece en un lugar distinto para no quedar encima de otra
     const k = lista.filter((m) => m.zona === zona).length;
-    setLista((l) => [...l, { key, nombre: `Mesa ${n}`, zona, capacidad: forma === "LARGA" ? 8 : 4, forma, posX: 12 + (k % 5) * 19, posY: 16 + (Math.floor(k / 5) % 3) * 26 }]);
+    setLista((l) => [...l, { key, nombre: `Mesa ${n}`, zona, capacidad, forma, posX: 12 + (k % 5) * 19, posY: 16 + (Math.floor(k / 5) % 3) * 26 }]);
     setSel(key);
   };
   const mover = (ev: EventoPuntero) => {
@@ -127,18 +175,23 @@ export function ConfigMesas({ ajustes, mesas, onGuardado, onCerrar }: { ajustes:
       {error && <p className="error">{error}</p>}
       <ZonasTabs zonas={zonas} actual={zona} onElegir={(z) => { setZona(z); setSel(null); }} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
-        <span className="suave">Agregar:</span>
-        {FORMAS.map(([f, t]) => <button key={f} className="boton fantasma chico" onClick={() => agregar(f)}>+ {t}</button>)}
         <span style={{ flex: 1 }} />
         <input style={{ maxWidth: 160 }} placeholder="Nueva zona (Terraza…)" value={zonaNueva} maxLength={30} onChange={(e) => setZonaNueva(e.target.value)} />
         <button className="boton fantasma chico" disabled={!zonaNueva.trim()} onClick={() => { setZona(zonaNueva.trim()); setZonaNueva(""); setSel(null); }}>Crear zona</button>
       </div>
+      <div className="modelos" role="group" aria-label="Agregar una mesa">
+        {MODELOS.flatMap((mo) => mo.capacidades.map((c) => (
+          <button key={`${mo.forma}${c}`} className="modelo" onClick={() => agregar(mo.forma, c)} title={`Agregar mesa ${mo.nombre.toLowerCase()} para ${c} personas`}>
+            <MesaIcono forma={mo.forma} capacidad={c} tam={54} /><b>{mo.nombre}</b><small>{c} personas</small>
+          </button>
+        )))}
+      </div>
       <div ref={plano} className="plano plano-editor" onPointerMove={mover} onPointerUp={() => { arrastre.current = null; }} onPointerLeave={() => { arrastre.current = null; }}
         onPointerDown={(e) => { if (e.target === e.currentTarget) setSel(null); }}>
         {lista.filter((m) => m.zona === zona).map((m) => (
-          <div key={m.key} className={`mesa libre forma-${m.forma.toLowerCase()}` + (m.key === sel ? " elegida" : "")} style={{ left: `${m.posX ?? 50}%`, top: `${m.posY ?? 50}%`, touchAction: "none" }}
+          <div key={m.key} className={`mesa libre con-icono` + (m.key === sel ? " elegida" : "")} style={{ left: `${m.posX ?? 50}%`, top: `${m.posY ?? 50}%`, touchAction: "none" }}
             onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); arrastre.current = { key: m.key }; setSel(m.key); }}>
-            <b>{m.nombre}</b><small>{m.capacidad} personas</small>
+            <MesaIcono forma={m.forma} capacidad={m.capacidad} /><b>{m.nombre}</b><small>{m.capacidad} personas</small>
           </div>
         ))}
         {!lista.some((m) => m.zona === zona) && <p className="suave" style={{ margin: 16 }}>Esta zona está vacía: agregue mesas con los botones de arriba.</p>}
