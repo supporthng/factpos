@@ -531,4 +531,15 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     await pool.query("UPDATE empresas SET precios_por_sucursal = $2 WHERE id = $1", [empresaDe(req), activo]);
     return { preciosPorSucursal: activo };
   });
+
+  /** Tipo de negocio de la empresa: TIENDA (como hasta hoy) o RESTAURANTE, BAR, DISCOTECA, COMIDA_RAPIDA, que activan las cuentas abiertas. */
+  app.get("/central/empresa/tipo-negocio", async (req) => {
+    const r = await pool.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [empresaDe(req)]);
+    return { tipoNegocio: r.rows[0]?.t ?? "TIENDA" };
+  });
+  app.put("/central/empresa/tipo-negocio", async (req) => {
+    const { tipoNegocio } = z.object({ tipoNegocio: z.enum(["TIENDA", "RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"]) }).parse(req.body);
+    await pool.query("UPDATE empresas SET tipo_negocio = $2 WHERE id = $1", [empresaDe(req), tipoNegocio]);
+    return { tipoNegocio };
+  });
 }
