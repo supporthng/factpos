@@ -27,7 +27,7 @@ export interface PlanCobro {
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
 
 export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
-  ajustes: Ajustes; catalogo: Catalogo; nivel: number | null;
+  ajustes: Ajustes; catalogo: Catalogo; nivel: number;
   onCobrar: (plan: PlanCobro) => void; onCerrar: () => void;
 }) {
   const base = `/cajas/${ajustes.cajaId}/cuentas`;
@@ -96,7 +96,7 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
 }
 
 function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, ocupado, accion, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number | null;
+  ajustes: Ajustes; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number;
   error: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
