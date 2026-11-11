@@ -574,7 +574,7 @@ function PrimerUso({ servidor, pideClave, onListo }: { servidor: string; pideCla
   const set = (k: keyof typeof d, v: string) => setD((x) => ({ ...x, [k]: v }));
   const crear = async (e: React.FormEvent) => {
     e.preventDefault(); setMsg("");
-    if (d.clave.length < 4) return setMsg("La contraseña debe tener al menos 4 caracteres");
+    if (d.clave.length < 8) return setMsg("La contraseña debe tener al menos 8 caracteres");
     if (d.clave !== d.repetir) return setMsg("Las dos contraseñas no coinciden");
     setTrabajando(true);
     try {
@@ -598,7 +598,7 @@ function PrimerUso({ servidor, pideClave, onListo }: { servidor: string; pideCla
         <div className="dos-col">
           <label className="campo"><span>Su nombre</span><input value={d.nombre} onChange={(e) => set("nombre", e.target.value)} /></label>
           <label className="campo"><span>Usuario</span><input value={d.usuario} autoCapitalize="none" onChange={(e) => set("usuario", e.target.value.toLowerCase())} /></label>
-          <label className="campo"><span>Contraseña (4 o más caracteres)</span><input type="password" minLength={4} maxLength={200} value={d.clave} onChange={(e) => set("clave", e.target.value)} autoComplete="new-password" /></label>
+          <label className="campo"><span>Contraseña (8 o más caracteres)</span><input type="password" minLength={8} maxLength={200} value={d.clave} onChange={(e) => set("clave", e.target.value)} autoComplete="new-password" /></label>
           <label className="campo"><span>Repita la contraseña</span><input type="password" minLength={8} maxLength={200} value={d.repetir} onChange={(e) => set("repetir", e.target.value)} autoComplete="new-password" /></label>
         </div>
         <label className="campo"><span>PIN para la caja (opcional, 4 a 6 números)</span><input value={d.pin} inputMode="numeric" maxLength={6} onChange={(e) => set("pin", e.target.value.replace(/\D/g, ""))} /></label>
@@ -635,7 +635,7 @@ function CambiarClave({ onCerrar }: { onCerrar: () => void }) {
       <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={guardar}>
         <h2 style={{ marginTop: 0 }}>Cambiar mi contraseña</h2>
         <label className="campo"><span>Contraseña actual</span><input type="password" autoFocus value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" /></label>
-        <label className="campo"><span>Nueva (4 o más caracteres)</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" /></label>
+        <label className="campo"><span>Nueva (8 o más caracteres)</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" /></label>
         <label className="campo"><span>Repita la nueva</span><input type="password" value={repetir} onChange={(e) => setRepetir(e.target.value)} autoComplete="new-password" /></label>
         {msg && <p className={msg.ok ? "ok" : "error"}>{msg.t}</p>}
         <div className="acciones-modal">

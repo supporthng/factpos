@@ -5,6 +5,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { huellaConexion } from "./sesion.js";
 import { estadoTunel, vieneDelTunel } from "../tunel.js";
+import { ipCliente } from "../tunel.js";
 
 /** Dirección por la que una sucursal en otro local alcanza esta central (túnel, o la nube), o null si no se conoce. */
 function direccionPublica(req: { headers: Record<string, unknown> }): string | null {
@@ -119,7 +120,7 @@ export async function rutasCentralAlta(app: FastifyInstance) {
         `INSERT INTO altas_servidor (codigo, sondeo_hash, equipo, version, ip, rnc, expira_en)
          VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(hours => $7)) ON CONFLICT (codigo) DO NOTHING
          RETURNING expira_en AS "expiraEn"`,
-        [c, huella(sondeo), b.equipo ?? null, b.version ?? null, req.ip ?? null, b.rnc ?? null, VIGENCIA_HORAS],
+        [c, huella(sondeo), b.equipo ?? null, b.version ?? null, ipCliente(req), b.rnc ?? null, VIGENCIA_HORAS],
       );
       if (r.rowCount) { rep.code(201); return { codigo: c, sondeo, expiraEn: r.rows[0].expiraEn }; }
     }
@@ -146,7 +147,7 @@ export async function rutasCentralAlta(app: FastifyInstance) {
   /** Camino B: el instalador trae el código que generó la Administración para una sucursal. */
   app.post("/central/alta/canjear", async (req) => {
     const b = z.object({ codigo, equipo: z.string().trim().max(80).optional(), version: z.string().trim().max(40).optional() }).parse(req.body);
-    const ip = req.ip ?? "?";
+    const ip = ipCliente(req);
     return enTransaccion(async (c) => {
       const a = (await c.query(
         `SELECT codigo, sucursal_id, empresa_id, aprobado_por, entregado_en, equipo,
@@ -171,7 +172,7 @@ export async function rutasCentralAlta(app: FastifyInstance) {
 
   /** Comprueba un código de instalación SIN gastarlo (el instalador lo usa al pulsar Siguiente). */
   app.post("/central/alta/verificar", async (req) => {
-    const ip = req.ip ?? "?";
+    const ip = ipCliente(req);
     const b = z.object({ codigo }).parse(req.body);
     const a = (await pool.query(
       `SELECT a.entregado_en AS "entregadoEn", s.nombre AS sucursal, e.nombre_comercial AS empresa

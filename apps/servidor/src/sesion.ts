@@ -29,9 +29,11 @@ export async function verificarClave(clave: string, guardado: string | null | un
   return esperado.length === calc.length && timingSafeEqual(esperado, calc);
 }
 
-/** Contraseña aceptable: 4 caracteres o más (decisión del dueño del negocio). */
+/** Contraseñas de la administración (las que entran por internet): 8 caracteres o más y nada obvio. Los PIN de caja son otra cosa. */
+const CLAVES_OBVIAS = new Set(["12345678", "123456789", "1234567890", "password", "contrasena", "contraseña", "admin1234", "qwertyui", "qwerty123", "11111111", "00000000", "abcd1234", "factpos1", "factpos123"]);
 export function claveSegura(clave: string) {
-  if (clave.length < 4) return "La contraseña debe tener al menos 4 caracteres";
+  if (clave.length < 8) return "La contraseña debe tener al menos 8 caracteres";
+  if (/^(.)\1+$/.test(clave) || CLAVES_OBVIAS.has(clave.toLowerCase())) return "Esa contraseña es demasiado fácil de adivinar: elija otra";
   return null;
 }
 
@@ -114,6 +116,8 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
 export function permisoDeRuta(metodo: string, ruta: string): string | null {
   const escribe = metodo !== "GET" && metodo !== "HEAD";
   if (ruta.startsWith("/central/sesion")) return null; // cada usuario maneja su propia contraseña y verificación
+  // Entregan secretos (clave de los respaldos en la nube, archivo de licencia): solo el administrador principal, también para leer
+  if (/^\/central\/(restaurar-respaldo|licencia\/archivo)(\/|$)/.test(ruta)) return "*";
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
   if (/^\/central\/facturas(\/|$)/.test(ruta)) return "admin.facturas";
   if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros

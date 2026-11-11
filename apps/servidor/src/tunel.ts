@@ -38,6 +38,8 @@ export function permitidoPorTunel(ruta: string) {
   return ruta === "/salud" || ruta === "/actualizacion/estado" || ruta.startsWith("/central/") || ruta === "/admin" || ruta.startsWith("/admin/");
 }
 /** ¿La petición llegó por el túnel (desde internet)? Cloudflare agrega esta cabecera. */
+/** IP real de quien llama: por el túnel, `req.ip` es siempre la del propio servidor, así que los frenos por IP la tomaban como una sola persona. */
+export const ipCliente = (req: { headers: Record<string, unknown>; ip?: string }) => String(req.headers["cf-connecting-ip"] ?? req.ip ?? "?");
 export const vieneDelTunel = (headers: Record<string, unknown>) => typeof headers["cf-connecting-ip"] === "string";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
