@@ -6,6 +6,7 @@ import { TABLAS_BAJADA } from "../rutas/central-sync.js";
 import { aplicarFilas, aplicarKardex, modoSincronizacion, type Modo } from "./aplicar.js";
 import { guardarCertificado, huellaEnUso, type FilaCertificado } from "../fiscal/certificado-guardado.js";
 import { quitarCertificado, usarCertificado } from "../fiscal/firma.js";
+import { correoListo } from "../correo/transporte.js";
 
 /**
  * Sincronización del servidor de una sucursal con la central en la nube.
