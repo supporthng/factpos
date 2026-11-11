@@ -7,6 +7,7 @@ import { pool, ErrorNegocio } from "../db.js";
 import { hashPin } from "../autorizacion.js";
 import { esCodigoRecuperacion, huellaRecuperacion, nuevoSecreto, nuevosCodigosRecuperacion, uriOtp, verificarCodigo } from "../doble-factor.js";
 import { contextoCaja } from "../contexto.js";
+import { prepararAdminPortal } from "../licencia/admin-portal.js";
 import {
   PERMISOS, claveSegura, crearToken, hashClave, leerToken, puedeAdministrar, tienePermiso, verificarClave, type SesionAdmin,
 } from "../sesion.js";
@@ -77,6 +78,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     const ip = `ip:${String(req.headers["cf-connecting-ip"] ?? req.ip)}`;
     frenar(llave);
     frenar(ip, 20); // quien prueba muchos usuarios desde un mismo lugar
+    if (config.modo === "portal") await prepararAdminPortal();
     const r = await pool.query<{ id: string; nombre: string; empresa_id: string; empresa: string; rnc: string; clave_hash: string; permisos: string[] }>(
       `SELECT u.id, u.nombre, u.empresa_id, e.nombre_comercial AS empresa, e.rnc, u.clave_hash, ro.permisos
          FROM usuarios u JOIN roles ro ON ro.id = u.rol_id JOIN empresas e ON e.id = u.empresa_id
@@ -128,7 +130,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     }
     fallos.delete(llave);
     const token = crearToken({ t: "admin", u: u.id, e: u.empresa_id, n: u.nombre, p: u.permisos }, 12);
-    return { token, usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos }, empresa: { id: u.empresa_id, nombre: u.empresa } };
+    return { token, usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos }, empresa: { id: u.empresa_id, nombre: u.empresa }, debeCambiarClave: await esClaveTemporal(u.id) };
   });
 
   /** Datos de la sesión actual (al abrir la administración). Si el rol cambió, se refleja. */
@@ -142,7 +144,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     );
     if (!r.rowCount) throw new ErrorNegocio("Su usuario fue desactivado", 401);
     const u = r.rows[0];
-    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa }, modo: config.modo };
+    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa }, modo: config.modo, debeCambiarClave: await esClaveTemporal(u.id) };
   });
 
   // ------------------------------------------------------------- Verificación en dos pasos (cada usuario, la suya)
@@ -206,9 +208,12 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     const b = z.object({ actual: z.string(), nueva: z.string().max(200) }).parse(req.body);
     const r = await pool.query<{ clave_hash: string }>("SELECT clave_hash FROM usuarios WHERE id = $1", [s.u]);
     if (!(await verificarClave(b.actual, r.rows[0]?.clave_hash))) throw new ErrorNegocio("La contraseña actual no es correcta", 400);
+    if (b.nueva === b.actual) throw new ErrorNegocio("La contraseña nueva tiene que ser distinta de la actual");
     const malo = claveSegura(b.nueva);
     if (malo) throw new ErrorNegocio(malo);
     await pool.query("UPDATE usuarios SET clave_hash = $2 WHERE id = $1", [s.u, await hashClave(b.nueva)]);
+    await pool.query("DELETE FROM usuarios_clave_temporal WHERE usuario_id = $1", [s.u]);
+    olvidarUsuario(s.u);
     return { ok: true };
   });
 
@@ -385,14 +390,19 @@ export const leerSesionAdmin = (req: FastifyRequest) => {
 };
 
 /** Estado vigente del usuario (activo y permisos de su rol), con 30 s de memoria. */
-const vigentes = new Map<string, { activo: boolean; permisos: string[]; sucursales: string[] | null; t: number }>();
+const vigentes = new Map<string, { activo: boolean; permisos: string[]; sucursales: string[] | null; temporal: boolean; t: number }>();
 export async function usuarioVigente(id: string) {
   const v = vigentes.get(id);
   if (v && v.t > Date.now() - 30_000) return v;
-  const r = await pool.query<{ activo: boolean; permisos: string[]; sucursales: string[] | null }>(
-    "SELECT u.activo, ro.permisos, u.sucursales FROM usuarios u JOIN roles ro ON ro.id = u.rol_id WHERE u.id = $1", [id]);
-  const n = { activo: !!r.rows[0]?.activo, permisos: r.rows[0]?.permisos ?? [], sucursales: r.rows[0]?.sucursales ?? null, t: Date.now() };
+  const r = await pool.query<{ activo: boolean; permisos: string[]; sucursales: string[] | null; temporal: boolean }>(
+    `SELECT u.activo, ro.permisos, u.sucursales, EXISTS (SELECT 1 FROM usuarios_clave_temporal t WHERE t.usuario_id = u.id) AS temporal
+       FROM usuarios u JOIN roles ro ON ro.id = u.rol_id WHERE u.id = $1`, [id]);
+  const n = { activo: !!r.rows[0]?.activo, permisos: r.rows[0]?.permisos ?? [], sucursales: r.rows[0]?.sucursales ?? null, temporal: !!r.rows[0]?.temporal, t: Date.now() };
   vigentes.set(id, n);
   return n;
+}
+/** ¿Entró con la contraseña inicial y todavía no la cambia? */
+async function esClaveTemporal(id: string) {
+  return (await pool.query("SELECT 1 FROM usuarios_clave_temporal WHERE usuario_id = $1", [id])).rowCount! > 0;
 }
 export const olvidarUsuario = (id?: string) => (id ? vigentes.delete(id) : vigentes.clear());

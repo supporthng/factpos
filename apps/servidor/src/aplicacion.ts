@@ -143,6 +143,8 @@ export async function crearApp() {
       // Si lo desactivaron o le cambiaron el rol, aplica de inmediato (no espera a que venza la sesión)
       const v = await usuarioVigente(s.u);
       if (!v.activo) return rep.code(401).send({ error: "Su usuario fue desactivado", sesion: true });
+      // Con la contraseña inicial solo puede cambiarla: nada más hasta entonces
+      if (v.temporal && ruta !== "/central/sesion" && ruta !== "/central/sesion/clave") return rep.code(403).send({ error: "Debe cambiar su contraseña antes de continuar", cambiarClave: true });
       s.p = v.permisos;
       // Sucursales a las que tiene acceso: se revisa toda sucursal que venga en la petición
       delete req.headers["x-sucursales"];
