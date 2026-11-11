@@ -36,20 +36,25 @@ export function InstaladoresPortal() {
       <Aviso texto={error} />
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       {enlace && <p className="pequeno">¿No empezó la descarga? <a href={enlace} target="_blank" rel="noreferrer">Haz clic aquí</a> (el enlace dura unos minutos).</p>}
-      <div className="panel">
+      <div className="ins-grid">
         {(datos ?? []).map((i) => (
-          <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 0", borderTop: "1px solid var(--borde, #e3e8ee)" }}>
-            <div>
-              <b>{i.titulo}</b>
-              <div className="suave pequeno">{i.para} · {i.plataforma}</div>
-              <div className="suave pequeno">
-                {i.publicado
-                  ? <>{i.version ? `Versión ${versionCliente(i.version)}` : i.compilacion ? `Compilación ${i.compilacion}` : "Publicado"} · {fecha(i.fecha)}{i.tamano ? ` · ${mb(i.tamano)}` : ""}{i.nombre ? ` · ${i.nombre}` : ""}</>
-                  : <b className="texto-alerta">Todavía no está publicado</b>}
+          <article key={i.id} className={"ins-tarj" + (i.publicado ? "" : " sin")}>
+            <div className="ins-cab">
+              <span className="ins-icono" aria-hidden="true">{i.plataforma.toLowerCase().includes("android") ? "A" : i.plataforma.toLowerCase().includes("mac") ? "M" : "W"}</span>
+              <div>
+                <b>{i.titulo}</b>
+                <div className="suave pequeno">{i.plataforma}</div>
               </div>
+              {i.publicado
+                ? <span className="pastilla ok">{i.version ? `v${versionCliente(i.version)}` : i.compilacion ? `#${i.compilacion}` : "Publicado"}</span>
+                : <span className="pastilla alerta">No publicado</span>}
             </div>
-            <button className="boton primario" disabled={!i.publicado || trabajando !== null} onClick={() => descargar(i)}>{trabajando === i.id ? "Preparando…" : "Descargar"}</button>
-          </div>
+            <p className="suave ins-para">{i.para}</p>
+            <div className="ins-meta suave pequeno">
+              {i.publicado ? <>{fecha(i.fecha)}{i.tamano ? ` · ${mb(i.tamano)}` : ""}</> : "Todavía no está publicado"}
+            </div>
+            <button className="boton primario ancho" disabled={!i.publicado || trabajando !== null} onClick={() => descargar(i)}>{trabajando === i.id ? "Preparando…" : "Descargar"}</button>
+          </article>
         ))}
         {!datos && !error && <p className="suave">Cargando…</p>}
       </div>

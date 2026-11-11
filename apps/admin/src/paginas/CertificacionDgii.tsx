@@ -194,6 +194,13 @@ export function CertificacionDgii() {
         <button className="boton primario" disabled={guardando} onClick={guardar}>Guardar</button>
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <div className="cert-avance">
+        <div className="cert-anillo" style={{ "--p": `${Math.round((hechos / PASOS.length) * 100)}%` } as React.CSSProperties}><b>{Math.round((hechos / PASOS.length) * 100)}%</b></div>
+        <div className="cert-texto">
+          <b>{f.autorizado ? "FactPOS está autorizado por la DGII" : `${hechos} de ${PASOS.length} pasos de la certificación`}</b>
+          <span className="suave">{f.autorizado ? "El proceso terminó." : (() => { const sig = PASOS.find(([n]) => paso(n).estado !== "HECHO"); return sig ? `Sigue: ${sig[0]}. ${sig[1]}` : "Solo falta marcar la autorización final."; })()}</span>
+        </div>
+      </div>
       <VerificacionEcf />
       <EnsayoTipos />
       <ChecklistSolicitud />
@@ -222,9 +229,10 @@ export function CertificacionDgii() {
         {PASOS.map(([n, titulo, detalle]) => {
           const p = paso(n);
           return (
-            <div key={n} className="seg-fila">
+            <div key={n} className={"seg-fila cert-paso " + p.estado.toLowerCase()}>
+              <span className="cert-num" aria-hidden="true">{p.estado === "HECHO" ? "✓" : n}</span>
               <div style={{ flex: 1 }}>
-                <b>{n}. {titulo}</b> <span className={"pastilla " + (p.estado === "HECHO" ? "ok" : p.estado === "EN_CURSO" ? "" : "alerta")}>{ROT[p.estado]}</span>
+                <b>{titulo}</b> <span className={"pastilla " + (p.estado === "HECHO" ? "ok" : p.estado === "EN_CURSO" ? "av" : "")}>{ROT[p.estado]}</span>
                 <p className="suave pequeno" style={{ margin: "4px 0 0", maxWidth: "75ch" }}>{detalle}</p>
                 <input style={{ marginTop: 6, width: "100%", maxWidth: 520 }} placeholder="Nota (opcional)" value={p.nota ?? ""} onChange={(e) => cambiarPaso(n, { nota: e.target.value })} />
               </div>
