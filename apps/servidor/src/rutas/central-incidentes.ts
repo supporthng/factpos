@@ -1,3 +1,4 @@
+import { avisarVencimientos } from "../licencia/avisos-vencimiento.js";
 import { procesarEnvios } from "../correo/envios.js";
 import { renovarSiToca } from "../licencia/cliente.js";
 import { sucursalesDe } from "../sesion.js";
@@ -60,7 +61,8 @@ export async function rutasCentralIncidentes(app: FastifyInstance) {
     if (!secreto || !timingSafeEqual(h(dado), h(secreto))) return rep.code(401).send({ error: "No autorizado" });
     const v = await vigilar((m) => req.log.info(m));
     const correos = await procesarEnvios((m) => req.log.warn(m)).catch((e: Error) => ({ error: e.message }));
+    const vencimientos = await avisarVencimientos((m) => req.log.warn(m)).catch((e: Error) => ({ error: e.message }));
     await renovarSiToca((m) => req.log.info(m)).catch(() => {});
-    return { ...v, correos };
+    return { ...v, correos, vencimientos };
   });
 }

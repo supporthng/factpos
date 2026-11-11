@@ -228,3 +228,16 @@ ${c.condiciones ? `<p style="font-size:13px;line-height:1.5;margin:0;color:${COL
     texto,
   };
 }
+
+/** Aviso al cliente de que su licencia está por vencer. */
+export function correoVencimiento(m: Marca, cliente: string, vence: string, dias: number) {
+  const cuando = dias <= 0 ? "vence hoy" : dias === 1 ? "vence mañana" : `vence en ${dias} días`;
+  const cuerpo = `<p style="font-size:15px;line-height:1.6;margin:0 0 10px">Hola, ${esc(cliente)}.</p>
+<p style="font-size:15px;line-height:1.6;margin:0 0 10px">Le avisamos que su licencia de FactPOS <b>${cuando}</b> (${esc(fechaLarga(vence))}).</p>
+<p style="font-size:15px;line-height:1.6;margin:0">Para renovarla sin interrupciones, responda este correo o comuníquese con nosotros. Su sistema seguirá funcionando mientras tanto.</p>`;
+  return {
+    asunto: dias <= 0 ? "Su licencia de FactPOS vence hoy" : `Su licencia de FactPOS vence en ${dias} día${dias === 1 ? "" : "s"}`,
+    html: base(m, "Su licencia está por vencer", esc(cliente), cuerpo, ""),
+    texto: `Hola, ${cliente}. Su licencia de FactPOS ${cuando} (${vence}). Para renovarla, responda este correo o comuníquese con nosotros.`,
+  };
+}
