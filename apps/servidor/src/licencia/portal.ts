@@ -9,6 +9,7 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
 import { rutasInvitaciones } from "./invitaciones.js";
 import { PAGINA_WEB } from "./pagina-web.js";
+import { PAGINA_DEMO } from "./pagina-demo.js";
 import { verificarSoftware } from "../fiscal/verificacion-software.js";
 import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
 
@@ -1085,6 +1086,7 @@ async function rutasPaginas(app: FastifyInstance) {
   // Portal
   // La raíz es la página web pública; el portal (inicio de sesión y panel) vive en /entrar
   app.get("/", (_req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_WEB));
+  app.get("/demo", (_req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_DEMO));
   app.get("/entrar", (_req, rep) => pagina(rep, { modo: "portal", api: "" }));
   for (const r of ["/assets/*", "/iconos/*", "/sw.js", "/manifest.webmanifest"]) {
     app.get(r, (req, rep) => archivo(rep, req.url.split("?")[0].slice(1)) ?? rep.code(404).send({ error: "No encontrado" }));

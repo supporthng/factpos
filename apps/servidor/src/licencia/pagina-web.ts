@@ -96,7 +96,7 @@ footer a{text-decoration:none;color:var(--primario)}
 <body>
 <header class="nav"><div class="cont">
   <a class="logo" href="/"><img src="/iconos/factpos-192.png" alt="" width="32" height="32"><span>Fact<b>POS</b></span></a>
-  <nav><a href="#funciones">Funciones</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
+  <nav><a href="/demo">Demo</a><a href="#funciones">Funciones</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
   <a class="btn p" href="/entrar#inicio">Iniciar sesión</a>
 </div></header>
 
@@ -105,7 +105,7 @@ footer a{text-decoration:none;color:var(--primario)}
     <span class="etq"><i></i>Facturación electrónica e-CF · DGII</span>
     <h1>Tu tienda, tus cajas y tu inventario <em>en un solo panel</em>.</h1>
     <p class="sub">Caja rápida, comprobantes fiscales electrónicos, varias sucursales y precios al instante. Cada tienda sigue vendiendo aunque se caiga el internet.</p>
-    <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><a class="btn s" href="#planes">Ver planes</a></div>
+    <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><a class="btn s" href="/demo">Probar la demo</a></div>
   </div>
   <div class="consola" aria-hidden="true">
     <div class="barra"><i></i><i></i><i></i></div>
