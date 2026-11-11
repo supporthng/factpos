@@ -120,14 +120,14 @@ footer a{text-decoration:none;color:var(--primario)}
 .mini .bb{height:7px;border-radius:99px;background:var(--borde);overflow:hidden;width:90px}
 .mini .bb i{display:block;height:100%;background:var(--acento)}
 @media(max-width:860px){.pan.on{grid-template-columns:1fr}}
-@media(max-width:860px){.hero .cont{grid-template-columns:1fr}.cifras,.pasos{grid-template-columns:1fr}.nav nav{display:none}.nav .btn{margin-left:auto}.hero{padding:56px 0 64px}}
+@media(max-width:860px){#descargar .cta{grid-template-columns:1fr!important}.hero .cont{grid-template-columns:1fr}.cifras,.pasos{grid-template-columns:1fr}.nav nav{display:none}.nav .btn{margin-left:auto}.hero{padding:56px 0 64px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
 <header class="nav"><div class="cont">
   <a class="logo" href="/"><img src="/iconos/factpos-192.png" alt="" width="32" height="32"><span>Fact<b>POS</b></span></a>
-  <nav><a href="/demo">Demo</a><a href="#funciones">Funciones</a><a href="#pantallas">Pantallas</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
+  <nav><a href="/demo">Demo</a><a href="#funciones">Funciones</a><a href="#pantallas">Pantallas</a><a href="#descargar">Descargar</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
   <a class="btn p" href="/entrar#inicio">Iniciar sesión</a>
 </div></header>
 
@@ -136,7 +136,7 @@ footer a{text-decoration:none;color:var(--primario)}
     <span class="etq"><i></i>Facturación electrónica e-CF · DGII</span>
     <h1>Tu tienda, tus cajas y tu inventario <em>en un solo panel</em>.</h1>
     <p class="sub">Caja rápida, comprobantes fiscales electrónicos, varias sucursales y precios al instante. Cada tienda sigue vendiendo aunque se caiga el internet.</p>
-    <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><a class="btn s" href="/demo">Probar la demo</a></div>
+    <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><a class="btn s" href="/licencias/descargar-instalador">Descargar</a><a class="btn s" href="/demo">Probar la demo</a></div>
   </div>
   <div class="consola" aria-hidden="true">
     <div class="barra"><i></i><i></i><i></i></div>
@@ -183,6 +183,21 @@ footer a{text-decoration:none;color:var(--primario)}
     <div class="paso"><h3>Activa tu empresa</h3><p>Pide tu activación y recibe tu licencia, tu dirección de administración y tu instalador.</p></div>
     <div class="paso"><h3>Instala el servidor y las cajas</h3><p>Un instalador para el servidor de la tienda y otro para cada caja. Se encuentran solos en la red.</p></div>
     <div class="paso"><h3>Vende y administra</h3><p>Factura en caja y controla ventas, inventario y comprobantes desde el panel web.</p></div>
+  </div>
+</div></section>
+
+<section id="descargar" style="padding-top:0"><div class="cont">
+  <div class="cta" style="text-align:left;display:grid;grid-template-columns:1.2fr .8fr;gap:28px;align-items:center">
+    <div>
+      <h2 style="margin-bottom:8px">Descargue FactPOS para Windows</h2>
+      <p style="margin:0 0 20px">El instalador completo trae el servidor, la caja y la administración. Pruébelo 15 días sin pagar y sin tarjeta; cuando quiera seguir, activamos su licencia.</p>
+      <div class="acc" style="justify-content:flex-start"><a class="btn p" href="/licencias/descargar-instalador">Descargar el instalador</a><a class="btn s" href="/demo">Probar la demo en el navegador</a></div>
+    </div>
+    <ol style="margin:0;padding-left:20px;color:#a9bacb;display:grid;gap:8px;font-size:15px">
+      <li>Descargue y abra el instalador.</li>
+      <li>Siga los pasos: se instala solo.</li>
+      <li>Entre a la administración y empiece a vender.</li>
+    </ol>
   </div>
 </div></section>
 
