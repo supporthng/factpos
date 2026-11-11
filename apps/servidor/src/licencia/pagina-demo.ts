@@ -17,7 +17,8 @@ export const PAGINA_DEMO = /* html */ `<!doctype html>
 *{box-sizing:border-box}
 body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;background:var(--fondo);color:var(--texto);-webkit-font-smoothing:antialiased}
 button{font:inherit;cursor:pointer}
-.app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+.app{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
+.sc{overflow-x:auto}
 aside{background:var(--lateral);color:#cbd8e5;padding:16px 12px;position:sticky;top:0;height:100vh;overflow:auto}
 .marca{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;color:#fff;padding:4px 8px 16px;text-decoration:none}
 .marca b{color:#2dd4bf}
@@ -88,7 +89,8 @@ input.bus,select{padding:9px 12px;border:1px solid var(--borde);border-radius:9p
 .chips button{padding:5px 11px;border-radius:999px;border:1px solid var(--borde);background:var(--panel);color:var(--texto);font-size:13px}
 .det{background:var(--fondo);border-radius:12px;padding:14px;margin-top:10px}
 .menu{display:none;position:fixed;bottom:14px;right:14px;z-index:20;padding:12px 16px;border-radius:999px;border:0;background:var(--pri2);color:#04211e;font-weight:700;box-shadow:0 10px 24px -8px rgba(0,0,0,.5)}
-@media(max-width:900px){.app{grid-template-columns:1fr}aside{position:fixed;inset:0 40% 0 0;z-index:30;transform:translateX(-105%);transition:transform .2s;height:100vh}aside.ab{transform:none}.menu{display:block}.kpis{grid-template-columns:1fr 1fr}.dos,.pos{grid-template-columns:1fr}.carro{position:static}main{padding:18px 14px 80px}.top{padding:10px 14px}.aviso{padding:8px 14px}.top .emp{display:none}}
+@media(max-width:900px){.app{grid-template-columns:minmax(0,1fr)}aside{position:fixed;inset:0 40% 0 0;z-index:30;transform:translateX(-105%);transition:transform .2s;height:100vh}aside.ab{transform:none}.menu{display:block}.kpis{grid-template-columns:1fr 1fr}.dos,.pos{grid-template-columns:1fr}.carro{position:static}main{padding:18px 14px 80px}.top{padding:10px 14px}.aviso{padding:8px 14px}.top .emp{display:none}}
+@media(max-width:520px){.kpis{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -171,7 +173,7 @@ input.bus,select{padding:9px 12px;border:1px solid var(--borde);border-radius:9p
       cuerpo.appendChild(tr);
     });
     t.appendChild(cuerpo);
-    return t;
+    return h("div", { c: "sc" }, [t]);
   }
 
   var V = {};
