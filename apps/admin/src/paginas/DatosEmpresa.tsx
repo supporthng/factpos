@@ -49,6 +49,7 @@ export function DatosEmpresa() {
         </div>
       </div>
       <TipoNegocio />
+      <AforoEntradas />
     </>
   );
 }
@@ -79,6 +80,43 @@ function TipoNegocio() {
       <select value={tipo} onChange={(e) => void guardar(e.target.value)}>
         {TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
       </select>
+      {msg && <div style={{ marginTop: 8 }}><Aviso texto={msg.t} tipo={msg.tipo} /></div>}
+    </div>
+  );
+}
+
+/** Entradas y aforo: solo para bar o discoteca. Apagado por defecto; al apagarlo la caja deja de mostrar el contador. */
+function AforoEntradas() {
+  const [c, setC] = useState<{ tipoNegocio: string; activo: boolean; maximo: number | null; categoriaId: string | null; categorias: { id: string; nombre: string }[] } | null>(null);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  useEffect(() => { api<NonNullable<typeof c>>("/central/empresa/aforo").then(setC).catch(() => setC(null)); }, []);
+  if (!c || (c.tipoNegocio !== "BAR" && c.tipoNegocio !== "DISCOTECA")) return null;
+  const guardar = async (n: typeof c) => {
+    setMsg(null);
+    try {
+      await api("/central/empresa/aforo", { metodo: "PUT", cuerpo: { activo: n.activo, maximo: n.maximo, categoriaId: n.categoriaId } });
+      setC(n); setMsg({ t: n.activo ? "Guardado. Las cajas muestran el contador de aforo al recargar la pantalla de venta." : "Aforo desactivado.", tipo: "ok" });
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  return (
+    <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+      <h3 style={{ marginTop: 0 }}>Entradas y aforo</h3>
+      <p className="suave">La entrada se vende como cualquier producto (con su comprobante) de una categoría que usted elige; cada unidad vendida cuenta como una persona. La caja muestra cuántas hay dentro y avisa al llegar al máximo.</p>
+      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+        <input type="checkbox" checked={c.activo} onChange={(e) => void guardar({ ...c, activo: e.target.checked })} /> Controlar entradas y aforo
+      </label>
+      {c.activo && (
+        <div style={{ display: "grid", gap: 10, marginTop: 10, maxWidth: 420 }}>
+          <label className="campo"><span>Categoría de las entradas</span>
+            <select value={c.categoriaId ?? ""} onChange={(e) => void guardar({ ...c, categoriaId: e.target.value || null })}>
+              <option value="">Elija…</option>
+              {c.categorias.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select></label>
+          <label className="campo"><span>Capacidad máxima (personas)</span>
+            <input className="numero" inputMode="numeric" defaultValue={c.maximo ?? ""} placeholder="Sin límite"
+              onBlur={(e) => { const v = e.target.value.replace(/\D/g, ""); void guardar({ ...c, maximo: v ? Number(v) : null }); }} /></label>
+        </div>
+      )}
       {msg && <div style={{ marginTop: 8 }}><Aviso texto={msg.t} tipo={msg.tipo} /></div>}
     </div>
   );

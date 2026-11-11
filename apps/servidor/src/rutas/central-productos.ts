@@ -537,6 +537,23 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     const r = await pool.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [empresaDe(req)]);
     return { tipoNegocio: r.rows[0]?.t ?? "TIENDA" };
   });
+  /** Entradas y aforo (solo bar o discoteca): activar, máximo de personas y la categoría cuyas ventas son las entradas. */
+  app.get("/central/empresa/aforo", async (req) => {
+    const e = empresaDe(req);
+    const r = await pool.query(`SELECT tipo_negocio AS "tipoNegocio", aforo_activo AS activo, aforo_maximo AS maximo, aforo_categoria_id AS "categoriaId" FROM empresas WHERE id = $1`, [e]);
+    const categorias = (await pool.query("SELECT id, nombre FROM categorias WHERE empresa_id = $1 ORDER BY nombre", [e])).rows;
+    return { ...r.rows[0], categorias };
+  });
+  app.put("/central/empresa/aforo", async (req) => {
+    const b = z.object({ activo: z.boolean(), maximo: z.number().int().min(1).max(100000).nullable(), categoriaId: uuid.nullable() }).parse(req.body);
+    const e = empresaDe(req);
+    const t = (await pool.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [e])).rows[0]?.t;
+    if (b.activo && t !== "BAR" && t !== "DISCOTECA") throw new ErrorNegocio("El control de aforo es para bares y discotecas: cambie primero el tipo de negocio", 400);
+    if (b.activo && !b.categoriaId) throw new ErrorNegocio("Elija la categoría de las entradas", 400);
+    if (b.categoriaId && !(await pool.query("SELECT 1 FROM categorias WHERE id = $1 AND empresa_id = $2", [b.categoriaId, e])).rowCount) throw new ErrorNegocio("Categoría no encontrada", 404);
+    await pool.query("UPDATE empresas SET aforo_activo = $2, aforo_maximo = $3, aforo_categoria_id = $4 WHERE id = $1", [e, b.activo, b.maximo, b.categoriaId]);
+    return { ok: true };
+  });
   app.put("/central/empresa/tipo-negocio", async (req) => {
     const { tipoNegocio } = z.object({ tipoNegocio: z.enum(["TIENDA", "RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"]) }).parse(req.body);
     await pool.query("UPDATE empresas SET tipo_negocio = $2 WHERE id = $1", [empresaDe(req), tipoNegocio]);

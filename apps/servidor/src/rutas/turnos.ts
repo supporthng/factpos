@@ -66,7 +66,7 @@ export async function rutasTurnos(app: FastifyInstance) {
     const { cajaId } = z.object({ cajaId: z.string().uuid() }).parse(req.params);
     const r = await pool.query(
       `SELECT ca.id, ca.numero, ca.nombre, s.id AS "sucursalId", s.nombre AS sucursal,
-              e.nombre_comercial AS empresa, e.rnc, e.tipo_negocio AS "tipoNegocio",
+              e.nombre_comercial AS empresa, e.rnc, e.tipo_negocio AS "tipoNegocio", e.aforo_activo AS "aforoActivo",
               COALESCE(cs.modulos, '{}'::jsonb) AS modulos,
               jsonb_build_object('logo', m.logo, 'primario', COALESCE(m.color_primario, '#2dd4bf'),
                                  'secundario', CASE WHEN m.empresa_id IS NULL THEN '#0e1b26' ELSE m.color_secundario END, 'logoEnTicket', COALESCE(m.logo_en_ticket, true), 'usarColores', COALESCE(m.usar_colores_logo, true),
