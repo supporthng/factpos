@@ -63,11 +63,13 @@ export async function rutasCuentas(app: FastifyInstance) {
     const vivas = lineas.filter((l) => !l.anulada && !l.ventaId);
     const porAsiento = asientos.map((a) => ({ ...a, total: aMonto(vivas.filter((l) => l.asientoId === a.id).reduce((s, l) => s + totalLinea(l), 0)) }));
     const total = vivas.reduce((s, l) => s + totalLinea(l), 0);
+    // Para la pre-cuenta: el consumo separado en base e ITBIS (cada línea redondeada, suman exacto el total)
+    const itbis = vivas.reduce((s, l) => s + (totalLinea(l) - Math.round(totalLinea(l) / (1 + Number(l.tasaItbis)))), 0);
     const sinAsiento = vivas.filter((l) => l.asientoId === null).reduce((s, l) => s + totalLinea(l), 0);
     const cortesias = (await pool.query(
       `SELECT descripcion, cantidad::text AS cantidad, motivo_tipo AS "motivoTipo", motivo, valor::text AS valor FROM control_cuentas WHERE cuenta_id = $1 AND tipo IN ('CORTESIA','VALE') ORDER BY creado_en`, [id])).rows;
     return {
-      ...c, cortesias, asientos: porAsiento, total: aMonto(total), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
+      ...c, cortesias, asientos: porAsiento, total: aMonto(total), itbis: aMonto(itbis), subtotal: aMonto(total - itbis), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
       lineas: lineas.map((l) => ({ ...l, total: aMonto(totalLinea(l)) })),
     };
   };
@@ -75,7 +77,7 @@ export async function rutasCuentas(app: FastifyInstance) {
   app.get("/cajas/:cajaId/cuentas", async (req) => {
     const ctx = await preparar(req);
     const r = await pool.query(
-      `SELECT c.id, c.nombre, c.mesa, c.numero::text, c.abierta_en AS "abiertaEn", u.nombre AS "abiertaPor",
+      `SELECT c.id, c.nombre, c.mesa, c.nota, c.numero::text, c.abierta_en AS "abiertaEn", u.nombre AS "abiertaPor",
               (SELECT count(*)::int FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS lineas,
               (SELECT count(*)::int FROM cuenta_asientos a WHERE a.cuenta_id = c.id) AS asientos,
               (SELECT COALESCE(sum(l.cantidad * l.precio_unitario * CASE WHEN p.precio_incluye_impuesto THEN 1 ELSE 1 + l.tasa_itbis END), 0)::numeric(14,2)::text

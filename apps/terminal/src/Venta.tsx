@@ -963,7 +963,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "aforo" && <Aforo ajustes={ajustes} aforo={aforo} onCambio={ponerAforo} onCerrar={() => setModal(null)} />}
       {modal === "barra" && <Barra ajustes={ajustes} onCerrar={() => setModal(null)} />}
       {modal === "cuentas" && idx && catalogo && (
-        <Cuentas ajustes={ajustes} catalogo={catalogo} nivel={nivelPrecio}
+        <Cuentas ajustes={ajustes} config={config} catalogo={catalogo} nivel={nivelPrecio}
           onCobrar={cobrarCuenta} onCerrar={() => setModal(null)} />
       )}
       {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}

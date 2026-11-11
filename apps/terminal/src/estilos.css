@@ -1360,3 +1360,14 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .modelo b { font-size: 13px; }
 .modelo small { color: var(--suave); font-size: 12px; }
 @media (max-width: 900px) { .plano .mesa { width: 98px; } }
+
+/* Reporte del salón */
+.barras-hora { display: grid; gap: 4px; }
+.barra-hora { display: grid; grid-template-columns: 70px minmax(40px, 1fr) 120px 60px; align-items: center; gap: 8px; font-size: 14px; }
+.barra-hora i { display: block; height: 14px; border-radius: 7px; background: var(--primario); }
+.barra-hora b { text-align: right; }
+.barra-hora small { color: var(--suave); }
+.tabla-reporte { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabla-reporte th { text-align: left; color: var(--suave); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--borde); }
+.tabla-reporte td { padding: 6px 8px; border-bottom: 1px solid var(--borde); }
+.mesa.reservada .mesa-icono, .mesa.reservada b { color: var(--cupon); }
