@@ -176,7 +176,11 @@ export function ConfigMesas({ ajustes, mesas, onGuardado, onCerrar }: { ajustes:
       <ZonasTabs zonas={zonas} actual={zona} onElegir={(z) => { setZona(z); setSel(null); }} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
         <span style={{ flex: 1 }} />
-        <input style={{ maxWidth: 160 }} placeholder="Nueva zona (Terraza…)" value={zonaNueva} maxLength={30} onChange={(e) => setZonaNueva(e.target.value)} />
+        {["Salón", "Terraza", "Barra"].map((t) => (
+          <button key={t} className="boton fantasma chico" title={`Agregar otro plano de ${t.toLowerCase()}`}
+            onClick={() => { let n = 1; let nombre = t; while (zonas.includes(nombre)) nombre = `${t} ${++n}`; setZona(nombre); setSel(null); }}>+ {t}</button>
+        ))}
+        <input style={{ maxWidth: 160 }} placeholder="Otra zona…" value={zonaNueva} maxLength={30} onChange={(e) => setZonaNueva(e.target.value)} />
         <button className="boton fantasma chico" disabled={!zonaNueva.trim()} onClick={() => { setZona(zonaNueva.trim()); setZonaNueva(""); setSel(null); }}>Crear zona</button>
       </div>
       <div className="modelos" role="group" aria-label="Agregar una mesa">
