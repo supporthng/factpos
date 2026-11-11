@@ -112,7 +112,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
   return (
     <>
       <div className="fila-acciones" style={{ marginBottom: 12 }}>
-        <input placeholder="Buscar cliente…" value={buscar} onChange={(e) => setBuscar(e.target.value)} style={{ maxWidth: 280 }} />
+        <input type="search" className="cli-buscar" placeholder="Buscar por nombre, RNC o dirección…" aria-label="Buscar cliente" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
         <span className="flex" />
         <button className="boton primario" onClick={() => setNuevo(!nuevo)}>Nuevo cliente</button>
       </div>
@@ -133,48 +133,57 @@ function Clientes({ planes }: { planes: Plan[] }) {
         ))}
       </div>
 
-      <div className="tabla-contenedor">
-        <table className="tabla apilada">
-          <thead><tr><th>Cliente</th><th>Plan</th><th>Licencia</th><th>Sucursales</th><th>Instalación</th><th>Consumo</th><th></th></tr></thead>
-          <tbody>
-            {lista.map((c) => (
-              <Fragment key={c.id}>
-                <tr className={c.activo ? "" : "inactiva"}>
-                  <td>
-                    <b>{c.nombre}</b>
-                    <div className="suave pequeno">{[c.rnc && `RNC ${c.rnc}`, c.contacto, c.telefono].filter(Boolean).join(" · ")}</div>
-                    <a href={`/${c.slug}/`} target="_blank" rel="noreferrer" className="mono pequeno">/{c.slug}/</a>
-                    {!c.apiUrl && <div className="texto-alerta pequeno">Su servidor principal todavía no se conectó</div>}
-                  </td>
-                  <td>{c.plan ?? <span className="suave">Sin plan</span>}
-                    {c.precioSucursal != null && c.sucursales ? <div className="suave pequeno">{rd(c.precioSucursal * c.sucursales)} / {c.periodo === "MENSUAL" ? "mes" : "año"}{c.precioEspecial != null ? " · precio especial" : ""}</div> : null}</td>
-                  <td>
-                    {c.estadoLicencia === "SUSPENDIDA" ? <span className="pastilla alerta">Suspendida</span>
-                      : c.estado ? <span className={`pastilla ${ESTADOS[c.estado].c}`}>{ESTADOS[c.estado].t}</span> : "—"}
-                    {c.vence && <div className="suave pequeno">Vence {fecha(c.vence)}</div>}
-                  </td>
-                  <td><Uso en={c.sucursalesEnUso} max={c.sucursales} /></td>
-                  <td>
-                    {c.activada
-                      ? <>Activada<div className={"pequeno " + (sinContacto(c) ? "texto-alerta" : "suave")}>Contacto {hace(c.ultimoContacto)}{c.versionApp ? ` · v${c.versionApp.replace(/\.0$/, "")}` : ""}</div></>
-                      : <span className="suave">Sin activar{c.clavePista ? ` (clave …${c.clavePista})` : ""}</span>}
-                  </td>
-                  <td className="pequeno">
-                    <div className={cerca((c.respaldoUsadoBytes ?? 0) / 1024 ** 3, 2 + (c.respaldoExtraGb ?? 0)) ? "texto-alerta" : ""}>Respaldos: {((c.respaldoUsadoBytes ?? 0) / 1024 ** 3).toFixed(2)} / {2 + (c.respaldoExtraGb ?? 0)} GB</div>
-                    <div className={(c.lectorCupo ?? 0) > 0 && cerca(c.lectorUsadas ?? 0, c.lectorCupo ?? 0) ? "texto-alerta" : ""}>Facturas IA: {c.lectorUsadas ?? 0} / {c.lectorCupo ?? 0}</div>
-                    {c.lectorPagoSolicitado ? <div className="texto-alerta"><b>Pide la IA de pago del lector</b></div> : null}
-                    {c.espacioSolicitadoGb ? <div className="texto-alerta"><b>Pide +{c.espacioSolicitadoGb} GB de respaldos</b></div> : null}
-                  </td>
-                  <td className="der"><button className="enlace" onClick={() => setAbierto(abierto === c.id ? null : c.id)}>{abierto === c.id ? "Cerrar" : "Administrar"}</button></td>
-                </tr>
-                {abierto === c.id && (
-                  <tr><td colSpan={7} className="detalle-cliente"><DetalleCliente key={`${c.vence}${c.sucursales}${c.planId}${c.estadoLicencia}`} c={c} planes={planes} onCambio={recargar} onClave={(k) => setClave({ cliente: c.nombre, clave: k })} /></td></tr>
-                )}
-              </Fragment>
-            ))}
-            {!lista.length && <tr><td colSpan={7} className="suave">{datos ? (todos.length ? "Ningún cliente coincide con el filtro." : "Todavía no hay clientes. Cree el primero con «Nuevo cliente».") : "Cargando…"}</td></tr>}
-          </tbody>
-        </table>
+      <div className="cli-grid">
+        {lista.map((c) => {
+          const sit = situacion(c);
+          const resp = (c.respaldoUsadoBytes ?? 0) / 1024 ** 3, respMax = 2 + (c.respaldoExtraGb ?? 0);
+          const ia = c.lectorUsadas ?? 0, iaMax = c.lectorCupo ?? 0;
+          const aviso = !c.apiUrl ? "Su servidor principal todavía no se conectó" : c.lectorPagoSolicitado ? "Pide la IA de pago del lector" : c.espacioSolicitadoGb ? `Pide +${c.espacioSolicitadoGb} GB de respaldos` : null;
+          return (
+            <article key={c.id} className={`cli-tarj sit-${sit}${c.activo ? "" : " inactiva"}${abierto === c.id ? " abierta" : ""}`}>
+              <header className="cli-cab">
+                <span className="cli-avatar" aria-hidden="true">{c.nombre.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</span>
+                <div className="cli-nombre">
+                  <b>{c.nombre}</b>
+                  <a href={`/${c.slug}/`} target="_blank" rel="noreferrer" className="mono pequeno">/{c.slug}/</a>
+                </div>
+                {c.estadoLicencia === "SUSPENDIDA" ? <span className="pastilla alerta">Suspendida</span>
+                  : !c.activada ? <span className="pastilla">Sin activar</span>
+                  : c.estado ? <span className={`pastilla ${ESTADOS[c.estado].c}`}>{ESTADOS[c.estado].t}</span> : null}
+              </header>
+              <div className="suave pequeno cli-sub">{[c.rnc && `RNC ${c.rnc}`, c.contacto, c.telefono].filter(Boolean).join(" · ") || "Sin datos de contacto"}</div>
+
+              <dl className="cli-datos">
+                <div><dt>Plan</dt><dd>{c.plan ?? <span className="suave">Sin plan</span>}{c.precioSucursal != null && c.sucursales ? <small>{rd(c.precioSucursal * c.sucursales)} / {c.periodo === "MENSUAL" ? "mes" : "año"}{c.precioEspecial != null ? " · especial" : ""}</small> : null}</dd></div>
+                <div><dt>Vence</dt><dd>{c.vence ? fecha(c.vence) : "—"}</dd></div>
+                <div><dt>Sucursales</dt><dd><Uso en={c.sucursalesEnUso} max={c.sucursales} /></dd></div>
+                <div><dt>Instalación</dt><dd>{c.activada
+                  ? <><span className={sinContacto(c) ? "texto-alerta" : ""}>Contacto {hace(c.ultimoContacto)}</span>{c.versionApp ? <small>v{c.versionApp.replace(/\.0$/, "")}</small> : null}</>
+                  : <span className="suave">Sin activar{c.clavePista ? ` (clave …${c.clavePista})` : ""}</span>}</dd></div>
+              </dl>
+
+              <div className="cli-medidores">
+                <div title="Espacio de respaldos usado">
+                  <span className={cerca(resp, respMax) ? "texto-alerta" : "suave"}>Respaldos {resp.toFixed(2)} / {respMax} GB</span>
+                  <i><b className={cerca(resp, respMax) ? "excedido" : ""} style={{ width: `${Math.min(100, Math.round((resp / respMax) * 100))}%` }} /></i>
+                </div>
+                <div title="Facturas leídas con IA este mes">
+                  <span className={iaMax > 0 && cerca(ia, iaMax) ? "texto-alerta" : "suave"}>Facturas IA {ia} / {iaMax}</span>
+                  <i><b className={iaMax > 0 && cerca(ia, iaMax) ? "excedido" : ""} style={{ width: `${iaMax ? Math.min(100, Math.round((ia / iaMax) * 100)) : 0}%` }} /></i>
+                </div>
+              </div>
+
+              {aviso && <div className="cli-aviso">{aviso}</div>}
+              <footer className="cli-pie">
+                <button className="boton" onClick={() => setAbierto(abierto === c.id ? null : c.id)}>{abierto === c.id ? "Cerrar" : "Administrar"}</button>
+              </footer>
+              {abierto === c.id && (
+                <div className="detalle-cliente cli-detalle"><DetalleCliente key={`${c.vence}${c.sucursales}${c.planId}${c.estadoLicencia}`} c={c} planes={planes} onCambio={recargar} onClave={(k) => setClave({ cliente: c.nombre, clave: k })} /></div>
+              )}
+            </article>
+          );
+        })}
+        {!lista.length && <p className="suave cli-vacio">{datos ? (todos.length ? "Ningún cliente coincide con el filtro." : "Todavía no hay clientes. Cree el primero con «Nuevo cliente».") : "Cargando…"}</p>}
       </div>
     </>
   );
