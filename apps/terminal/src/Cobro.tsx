@@ -29,8 +29,10 @@ export interface CobroLocal {
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, propinaLegal, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
+  /** Propina legal sugerida (10 % del consumo sin ITBIS) para cuentas de restaurante, bar o discoteca; el cliente puede no aceptarla */
+  propinaLegal?: string;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string; precioNuevo?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
   local?: CobroLocal;
@@ -54,6 +56,10 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   /** Abrir sola la búsqueda de clientes al entrar al cobro si el e-CF/NCF lo exige. Falso si el cajero ya la cerró sin elegir (si no, no se podría cerrar). */
   pedirClienteAlAbrir?: boolean;
 }) {
+  const [conPropina, setConPropina] = useState(true);
+  const propina = propinaLegal && conPropina && Number(propinaLegal) > 0 ? new Decimal(propinaLegal) : new Decimal(0);
+  /** Lo que paga el cliente: el total de la factura más la propina (si la acepta) */
+  const total = new Decimal(totalVenta).plus(propina).toFixed(2);
   const [tarjeta, setTarjeta] = useState(metodo === "TARJETA" ? total : "");
   const [forma, setForma] = useState<MetodoPago>(metodo);
   const [refTarjeta, setRefTarjeta] = useState("");
@@ -92,7 +98,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
   const motivoNoContingencia = cupon ? "Sin servidor no se aplican cupones: quite el cupón" :
     local?.hayDescuentos ? "Sin servidor no se aplican descuentos: quítelos" :
     n(credito).gt(0) ? "Sin servidor no se vende a crédito" :
-    tipoFactura !== "E32" ? "Sin servidor solo se permite factura electrónica de consumo E32" : "";
+    tipoFactura !== "E32" ? "Sin servidor solo se permite factura electrónica de consumo E32" :
+    propina.gt(0) ? "Sin servidor no se cobra propina legal: quítela" : "";
   const error = useMemo(() => {
     if (sinServidor && motivoNoContingencia) return motivoNoContingencia;
     if (otros.gt(total)) return "Los pagos superan el total";
@@ -141,7 +148,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
       const r = await api<ResultadoVenta>(ajustes.servidor, `/cajas/${ajustes.cajaId}/ventas`, {
         cuerpo: {
           ventaId, usuarioId: usuario.id, clienteId: cliente?.id, cuponCodigo: cupon?.codigo,
-          tipoDocumento: tipoFactura, items, pagos,
+          tipoDocumento: tipoFactura, items, pagos, propinaLegal: propina.gt(0) ? propina.toFixed(2) : undefined,
           autorizacionDescuento: aprobacionDescuento, autorizacionCredito: n(credito).gt(0) ? aprobCredito?.token : undefined, motivoDescuento, notas: notas || undefined,
         },
       });
@@ -179,6 +186,13 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total, items, aprobaci
         </div>
       )}
       <div className="cobro2">
+        {propinaLegal && Number(propinaLegal) > 0 && (
+          <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={conPropina} style={{ width: "auto" }}
+              onChange={(e) => { setConPropina(e.target.checked); setTarjeta(""); setTransferencia(""); setCredito(""); setRecibido(""); setForma("EFECTIVO"); onMetodo?.("EFECTIVO"); }} />
+            <span>Propina legal 10 %: <b>{rd(propinaLegal)}</b> <span className="suave">(factura {rd(totalVenta)} + propina)</span></span>
+          </label>
+        )}
         <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>
         <div className="cobro2-grid">
           <div className={"cobro2-col" + (forma === "MIXTO" ? " mixto" : "")}>

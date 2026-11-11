@@ -46,6 +46,7 @@ export async function reporteTurno(c: Q, turnoId: string) {
               COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -total ELSE total END), 0)::text AS total,
               COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -itbis ELSE itbis END), 0)::text AS itbis,
               COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN -descuento ELSE descuento END), 0)::text AS descuentos,
+              COALESCE(SUM(CASE WHEN tipo_documento IN ('E34','ANU') THEN 0 ELSE propina_legal END), 0)::text AS propinas,
               MIN(numero_interno) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS "primeraFactura",
               MAX(numero_interno) FILTER (WHERE tipo_documento NOT IN ('E34','ANU')) AS "ultimaFactura"
          FROM ventas WHERE turno_id = $1`,

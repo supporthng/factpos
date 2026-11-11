@@ -9,6 +9,8 @@ export interface VentaRegistrada {
   id: string; numero: string; tipoDocumento: "E31" | "E32" | "E34" | "ANU" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN"; numeroDocumento?: string | null; fecha: string;
   encfModificado?: string | null; motivo?: string | null;
   subtotal: string; descuento: string; itbis: string; total: string; cambio: string;
+  /** Propina legal cobrada además del total (no forma parte del comprobante fiscal) */
+  propinaLegal?: string;
   cupon: { codigo: string; total: string } | null;
   lineas: { descripcion: string; cantidad: string; precio: string; total: string; oferta: string | null; descuentoOferta: string; descuentoCupon: string; descuentoNivel?: string; nombreNivel?: string }[];
   pagos: { formaPago: string; monto: string; recibido?: string; cambio?: string; referencia?: string }[];
@@ -131,6 +133,12 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
           <div className="t-fila"><span>ITBIS</span><span>{rd(venta.itbis)}</span></div>
           {fmt.mostrarAhorro && Number(venta.descuento) > 0 && <div className="t-fila"><span>Usted ahorró</span><span>{rd(venta.descuento)}</span></div>}
           <div className="t-fila t-total"><span>TOTAL</span><span>{rd(venta.total)}</span></div>
+          {Number(venta.propinaLegal ?? 0) > 0 && (
+            <>
+              <div className="t-fila"><span>Propina legal 10 %</span><span>{rd(venta.propinaLegal!)}</span></div>
+              <div className="t-fila t-total"><span>TOTAL PAGADO</span><span>{rd((Number(venta.total) + Number(venta.propinaLegal)).toFixed(2))}</span></div>
+            </>
+          )}
           {venta.pagos.map((p, i) => (
             <div key={i} className="t-fila"><span>{PAGO[p.formaPago] ?? p.formaPago}{p.formaPago === "TARJETA" && p.referencia ? ` · Aprob. ${p.referencia}` : ""}</span><span>{rd(p.recibido ?? p.monto)}</span></div>
           ))}

@@ -902,6 +902,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "cobro" && cot.r && (
         <Cobro
           ajustes={ajustes} usuario={usuario} cliente={cliente} cupon={cupon} total={cot.r.totales.total}
+          propinaLegal={cuentaActiva ? new Decimal(cot.r.totales.subtotal).mul(0.1).toDecimalPlaces(2).toFixed(2) : undefined}
           items={lineas.map((l) => ({ presentacionId: l.prod.presentacionId, cantidad: l.cantidad, descuentoManual: l.descuentoManual, precioVariable: l.precioVariable, precioNuevo: l.precioCambiado }))}
           aprobacionDescuento={lineas.some((l) => l.descuentoManual) ? aprobacion?.token : undefined}
           motivoDescuento={lineas.filter((l) => l.motivoDescuento).map((l) => `${l.prod.nombre}: ${l.motivoDescuento}`).join("; ") || undefined}

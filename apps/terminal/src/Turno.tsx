@@ -20,7 +20,7 @@ const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleString("es-DO"
 interface Reporte {
   turno: { id: string; estado: string; abiertoEn: string; cerradoEn: string | null; fondoInicial: string; cajero: string; cerradoPor: string | null;
     caja: string; sucursal: string; declarado: Record<string, string> | null; diferencia: string | null; conteo: Record<string, number> | null; conteoApertura?: Record<string, number> | null; notas: string | null };
-  ventas: { facturas: string; creditoFiscal: string; total: string; itbis: string; descuentos: string; primeraFactura: string | null; ultimaFactura: string | null };
+  ventas: { facturas: string; creditoFiscal: string; total: string; itbis: string; descuentos: string; propinas?: string; primeraFactura: string | null; ultimaFactura: string | null };
   formasPago: { formaPago: string; monto: string; operaciones: number }[];
   anulaciones: { cantidad: number; monto: string };
   anuladas?: { numero: number; factura: number; monto: string; motivo: string | null; creadoEn: string; autorizadoPor: string | null }[];
@@ -73,6 +73,7 @@ function CuadreX({ ajustes, config }: { ajustes: Ajustes; config: ConfigCaja }) 
         <div><span>Vendido</span><b>{rd(r.ventas.total)}</b></div>
         <div><span>Anuladas</span><b>{r.anulaciones.cantidad}{r.anulaciones.cantidad > 0 && <small> · {rd(r.anulaciones.monto)}</small>}</b></div>
         <div><span>Descuentos</span><b>{rd(r.ventas.descuentos)}</b></div>
+        {Number(r.ventas.propinas ?? 0) > 0 && <div><span>Propina legal</span><b>{rd(r.ventas.propinas!)}</b></div>}
       </div>
       <div className="totales compacto">
         {r.formasPago.map((f) => <div key={f.formaPago}><span>{PAGO[f.formaPago] ?? f.formaPago} ({f.operaciones})</span><span>{rd(f.monto)}</span></div>)}
@@ -232,6 +233,7 @@ function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar }: { r: Repor
           <div className="t-fila"><span>Facturas emitidas</span><span>{r.ventas.facturas}</span></div>
           <div className="t-fila"><span>Anulaciones</span><span>{r.anulaciones.cantidad} · {rd(r.anulaciones.monto)}</span></div>
           <div className="t-fila"><span>Descuentos</span><span>{rd(r.ventas.descuentos)}</span></div>
+          {Number(r.ventas.propinas ?? 0) > 0 && <div className="t-fila"><span>Propina legal cobrada</span><span>{rd(r.ventas.propinas!)}</span></div>}
           <div className="t-fila"><span>ITBIS</span><span>{rd(r.ventas.itbis)}</span></div>
           <div className="t-fila t-total"><span>VENTA NETA</span><span>{rd(r.ventas.total)}</span></div>
           <div className="t-linea" />

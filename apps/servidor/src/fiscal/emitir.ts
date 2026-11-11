@@ -83,7 +83,7 @@ export async function emitirEcfVenta(
     comprador: v.cliente_id ? { rnc: rncComprador, nombre: v.cliente_nombre } : null,
     condicion: v.condicion,
     diasCredito: v.condicion === "CREDITO" ? Number(v.cliente_dias_credito ?? 0) : undefined,
-    pagos: pagos.map((p) => ({ formaPago: p.forma_pago, monto: p.monto })),
+    pagos: ajustarPagosAlTotal(pagos.map((p) => ({ formaPago: p.forma_pago as string, monto: p.monto as string })), v.total),
     lineas: items.map((i) => ({
       nombre: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precio_unitario, descuento: i.descuento,
       tasaItbis: i.tasa_itbis, base: new Decimal(i.total).minus(i.itbis).toFixed(2), itbis: i.itbis, total: i.total,
@@ -122,4 +122,20 @@ export async function emitirEcfVenta(
   );
 
   return { encf, codigoSeguridad: codigo, fechaFirma: ahora.toISOString(), urlQr: qr, modo, venceSecuencia };
+}
+
+/**
+ * Los pagos que van en el XML deben sumar el total del comprobante. Si el cliente pagó además la propina legal
+ * (que no forma parte del comprobante), se descuenta de los últimos pagos hasta igualar el total.
+ */
+export function ajustarPagosAlTotal(pagos: { formaPago: string; monto: string }[], total: string | number) {
+  let sobra = pagos.reduce((a, p) => a.plus(p.monto), new Decimal(0)).minus(total);
+  if (sobra.lte(0)) return pagos;
+  const salida = pagos.map((p) => ({ ...p }));
+  for (let i = salida.length - 1; i >= 0 && sobra.gt(0); i--) {
+    const quitar = Decimal.min(sobra, salida[i].monto);
+    salida[i].monto = new Decimal(salida[i].monto).minus(quitar).toFixed(2);
+    sobra = sobra.minus(quitar);
+  }
+  return salida.filter((p) => new Decimal(p.monto).gt(0));
 }
