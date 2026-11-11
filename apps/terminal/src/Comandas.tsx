@@ -10,13 +10,17 @@ import { imprimir } from "./imprimir";
 export interface Comanda {
   id: string; numero: string; estacion?: string; cuenta: string; mesa: string | null; creadaEn: string;
   estado?: string; impresaEn?: string | null; listaEn?: string | null;
+  /** tiempo de servicio (1 sale ya, 2 fuertes, 3 postres), segundos desde que se pidió y minutos para marcarla atrasada (los da el servidor) */
+  paso?: number; segundos?: number; alertaMinutos?: number;
   lineas: { descripcion: string; cantidad: string; persona: string | null; nota: string | null }[] | null;
 }
-interface Estacion { id: string; nombre: string; tipo: "BARRA" | "COCINA"; imprimeEnCaja: boolean; activa: boolean; categoriaIds: string[] }
+interface Estacion { id: string; nombre: string; tipo: "BARRA" | "COCINA"; imprimeEnCaja: boolean; activa: boolean; categoriaIds: string[]; alertaMinutos?: number }
+export const NOMBRE_PASO: Record<number, string> = { 1: "Entradas y bebidas", 2: "Platos fuertes", 3: "Postres" };
 interface Categoria { id: string; nombre: string }
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Santo_Domingo" });
-const minutos = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+/** Minutos que lleva esperando una comanda: usa el reloj del servidor (así no depende de la hora de esta pantalla) */
+const minutos = (c: Comanda) => Math.max(0, Math.floor((c.segundos ?? Math.max(0, (Date.now() - new Date(c.creadaEn).getTime()) / 1000)) / 60));
 const cant = (c: string) => String(Number(c));
 
 /** Ticket de la comanda: imprime solo (por la impresora de esta caja) y se quita. */
@@ -46,6 +50,7 @@ export function ComandaPapel({ comanda, onListo }: { comanda: Comanda; onListo: 
           <div className="t-fila"><span>Cuenta</span><b>{comanda.cuenta}</b></div>
           {comanda.mesa && <div className="t-fila"><span>Mesa</span><b>{comanda.mesa}</b></div>}
           <div className="t-fila"><span>Hora</span><span>{hora(comanda.creadaEn)}</span></div>
+          {(comanda.paso ?? 1) > 1 && <div className="t-centro"><b>TIEMPO {comanda.paso} · {(NOMBRE_PASO[comanda.paso ?? 1] ?? "").toUpperCase()}</b></div>}
           <div className="t-linea" />
           {[...grupos].map(([persona, ls]) => (
             <div key={persona} style={{ marginBottom: 6 }}>
@@ -155,8 +160,9 @@ export function Barra({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar: () =>
           <div className="barra-cola">
             {!pendientes.length && <p className="suave" style={{ gridColumn: "1 / -1" }}>No hay comandas pendientes en {estacion.nombre}.</p>}
             {pendientes.map((c) => (
-              <article key={c.id} className={"comanda" + (minutos(c.creadaEn) >= 10 ? " tarde" : "")}>
-                <header><b>#{c.numero} · {c.cuenta}</b><span>{minutos(c.creadaEn) === 0 ? "ahora" : `hace ${minutos(c.creadaEn)} min`}</span></header>
+              <article key={c.id} className={"comanda" + (minutos(c) >= (c.alertaMinutos ?? 10) * 1.5 ? " muy-tarde" : minutos(c) >= (c.alertaMinutos ?? 10) ? " tarde" : "")}>
+                <header><b>#{c.numero} · {c.mesa ?? c.cuenta}</b><span>{minutos(c) === 0 ? "ahora" : `hace ${minutos(c)} min`}</span></header>
+                {(c.paso ?? 1) > 1 && <div className="comanda-tiempo">Tiempo {c.paso} · {NOMBRE_PASO[c.paso ?? 1]}</div>}
                 <ul>{c.lineas?.map((l, i) => (
                   <li key={i}><b>{cant(l.cantidad)} × {l.descripcion}</b>{l.persona && <span className="suave"> · {l.persona}</span>}{l.nota && <div className="suave">» {l.nota}</div>}</li>
                 ))}</ul>
@@ -197,7 +203,7 @@ function ConfigEstaciones({ ajustes, estaciones, categorias, onGuardado, onCerra
   const guardar = async () => {
     setGuardando(true);
     try {
-      await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/estaciones`, { metodo: "PUT", cuerpo: { estaciones: lista.map((e) => ({ id: e.id || undefined, nombre: e.nombre, tipo: e.tipo, imprimeEnCaja: e.imprimeEnCaja, activa: true, categoriaIds: e.categoriaIds })) } });
+      await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/estaciones`, { metodo: "PUT", cuerpo: { estaciones: lista.map((e) => ({ id: e.id || undefined, nombre: e.nombre, tipo: e.tipo, imprimeEnCaja: e.imprimeEnCaja, alertaMinutos: e.alertaMinutos ?? 10, activa: true, categoriaIds: e.categoriaIds })) } });
       onGuardado();
     } catch (e) { setError((e as Error).message); }
     setGuardando(false);
@@ -214,6 +220,8 @@ function ConfigEstaciones({ ajustes, estaciones, categorias, onGuardado, onCerra
               <select value={e.tipo} onChange={(ev) => cambiar(i, { tipo: ev.target.value as Estacion["tipo"] })}><option value="BARRA">Barra</option><option value="COCINA">Cocina</option></select></label>
             <button className="enlace" onClick={() => setLista((l) => l.filter((_, j) => j !== i))}>Quitar</button>
           </div>
+          <label className="campo" style={{ maxWidth: 260 }}><span>Marcar atrasada después de (minutos)</span>
+            <input inputMode="numeric" value={String(e.alertaMinutos ?? 10)} onChange={(ev) => cambiar(i, { alertaMinutos: Math.max(1, Math.min(120, Number(ev.target.value.replace(/\D/g, "")) || 1)) })} /></label>
           <label style={{ display: "flex", gap: 6, alignItems: "center", margin: "6px 0", cursor: "pointer" }}>
             <input type="checkbox" checked={e.imprimeEnCaja} onChange={(ev) => cambiar(i, { imprimeEnCaja: ev.target.checked })} />
             Imprimir la comanda en la caja que envía <span className="suave">(si la impresora está en la caja y no en la barra)</span>
@@ -223,7 +231,7 @@ function ConfigEstaciones({ ajustes, estaciones, categorias, onGuardado, onCerra
           </div>
         </div>
       ))}
-      <button className="boton fantasma" onClick={() => setLista((l) => [...l, { id: "", nombre: "", tipo: "BARRA", imprimeEnCaja: false, activa: true, categoriaIds: [] }])}>+ Agregar estación</button>
+      <button className="boton fantasma" onClick={() => setLista((l) => [...l, { id: "", nombre: "", tipo: "BARRA", imprimeEnCaja: false, activa: true, categoriaIds: [], alertaMinutos: 10 }])}>+ Agregar estación</button>
       <button className="boton primario ancho" style={{ marginTop: 10 }} disabled={guardando || lista.some((e) => !e.nombre.trim())} onClick={guardar}>Guardar</button>
     </Modal>
   );
