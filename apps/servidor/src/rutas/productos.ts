@@ -74,7 +74,7 @@ export async function rutasProductos(app: FastifyInstance) {
                   'controlaStock', p.controla_stock OR p.tipo = 'COMBO', 'tipo', p.tipo,
                   'permiteSinExistencia', p.permite_sin_existencia,
                   'precioVariable', p.precio_variable, 'precioVariableMin', p.precio_variable_min::text,
-                  'precioVariableMax', p.precio_variable_max::text, 'nombreCorto', p.nombre_corto,
+                  'precioVariableMax', p.precio_variable_max::text, 'nombreCorto', p.nombre_corto, 'valeConsumos', p.vale_consumos,
                   'existencia', (CASE WHEN p.tipo = 'COMBO'
                                    THEN COALESCE((SELECT vc.cantidad FROM v_existencia_combos vc WHERE vc.combo_id = p.id AND vc.almacen_id = $3), 0)
                                    ELSE COALESCE(ex.cantidad, 0) END / pr.factor)::numeric(14,3)::text,

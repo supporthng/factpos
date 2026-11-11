@@ -14,6 +14,7 @@ import { repartirPorLotes } from "../lotes.js";
 import { asignarNumeroNoElectronico } from "../fiscal/numeracion-modalidades.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { datosTicket } from "./facturas.js";
+import { crearVales } from "../vales.js";
 import { exigirFuncion } from "./central-seguridad.js";
 
 /** «Sin comprobante» es una función de Seguridad (apagada por defecto): sin ella toda venta lleva comprobante. */
@@ -367,6 +368,9 @@ export async function registrarVenta(
      L.map((l) => l.descuentoNivel)],
   );
 
+  // Entradas con consumos incluidos: un vale por unidad (no aplica a ventas hechas sin servidor)
+  const vales = cont ? [] : await crearVales(c, ctx.sucursalId, ventaId, L.map((l) => ({ productoId: l.prod.productoId, descripcion: l.prod.nombre, cantidad: l.cantidad })));
+
   // Kardex en bloque (el trigger calcula saldo y costo por fila). Los combos descuentan sus componentes.
   const K: { productoId: string; cantidad: string }[] = [];
   for (const l of L) {
@@ -461,6 +465,7 @@ export async function registrarVenta(
     tipoDocumento: body.tipoDocumento,
     ...resumen(q),
     propinaLegal: propina.toFixed(2),
+    vales,
     pagos,
     cambio: pagos.reduce((a, p) => a.plus(p.cambio ?? 0), new Decimal(0)).toFixed(2),
     fiscal,

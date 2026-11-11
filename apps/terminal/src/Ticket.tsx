@@ -11,6 +11,8 @@ export interface VentaRegistrada {
   subtotal: string; descuento: string; itbis: string; total: string; cambio: string;
   /** Propina legal cobrada además del total (no forma parte del comprobante fiscal) */
   propinaLegal?: string;
+  /** Vales de consumo de las entradas vendidas (se canjean en la barra) */
+  vales?: { codigo: string; descripcion: string; consumos: number }[];
   cupon: { codigo: string; total: string } | null;
   lineas: { descripcion: string; cantidad: string; precio: string; total: string; oferta: string | null; descuentoOferta: string; descuentoCupon: string; descuentoNivel?: string; nombreNivel?: string }[];
   pagos: { formaPago: string; monto: string; recibido?: string; cambio?: string; referencia?: string }[];
@@ -144,6 +146,14 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
           ))}
           {Number(venta.cambio) > 0 && <div className="t-fila"><span>Cambio</span><span>{rd(venta.cambio)}</span></div>}
           {venta.notas && <div className="t-nota">Nota: {venta.notas}</div>}
+          {venta.vales?.map((v) => (
+            <div key={v.codigo} className="t-centro" style={{ border: "1px dashed #000", margin: "6px 0", padding: 4 }}>
+              <div><b>VALE DE CONSUMO</b></div>
+              <div>{v.descripcion}</div>
+              <div style={{ fontSize: "1.6em", fontWeight: 700, letterSpacing: 3 }}>{v.codigo}</div>
+              <div>{v.consumos} consumo(s) · canjear en la barra</div>
+            </div>
+          ))}
           <div className="t-linea" />
           <div className="t-centro">
             {venta.fiscal && (venta.contingencia || !venta.fiscal.codigoSeguridad) ? (

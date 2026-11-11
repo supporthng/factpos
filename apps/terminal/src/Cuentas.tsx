@@ -119,6 +119,9 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
   const [dividiendo, setDividiendo] = useState(false);
   const [anulando, setAnulando] = useState<LineaC | null>(null);
   const [regalando, setRegalando] = useState<LineaC | null>(null);
+  const [canjeando, setCanjeando] = useState<LineaC | null>(null);
+  const [codigoVale, setCodigoVale] = useState("");
+  const [infoVale, setInfoVale] = useState<string | null>(null);
   const [motivoTipo, setMotivoTipo] = useState("CASA");
   const [motivo, setMotivo] = useState("");
   const [uniendo, setUniendo] = useState(false);
@@ -155,6 +158,24 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
         <label>Motivo<input autoFocus value={motivo} maxLength={200} placeholder="Se equivocó de producto, el cliente no lo quiso…" onChange={(e) => setMotivo(e.target.value)} /></label>
         <PinSupervisor ajustes={ajustes} permiso="venta.anular" textoBoton="Autorizar y quitar" deshabilitado={motivo.trim().length < 3}
           onAprobado={(a) => { const l = anulando; const m = motivo.trim(); setAnulando(null); setMotivo(""); void accion(`${url}/lineas/${l.id}`, { anulada: true, autorizacion: a.token, motivo: m }, "PATCH"); }} />
+      </Modal>
+    );
+  }
+  if (canjeando) {
+    const cerrar = () => { setCanjeando(null); setCodigoVale(""); setInfoVale(null); };
+    const revisar = async () => {
+      try { const v = await api<{ descripcion: string; restantes: number }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/vales/${encodeURIComponent(codigoVale.trim())}`); setInfoVale(`${v.descripcion}: le quedan ${v.restantes} consumo(s)`); }
+      catch (e) { setInfoVale((e as Error).message); }
+    };
+    return (
+      <Modal titulo="Canjear vale de consumo" onCerrar={cerrar}>
+        <p><b>{Number(canjeando.cantidad)} × {canjeando.descripcion}</b> se paga con el vale: no se cobra y se descuenta del inventario.</p>
+        <label>Código del vale<input autoFocus value={codigoVale} maxLength={12} placeholder="K7M2QX" style={{ textTransform: "uppercase", letterSpacing: 2 }}
+          onChange={(e) => { setCodigoVale(e.target.value.toUpperCase()); setInfoVale(null); }} onKeyDown={(e) => e.key === "Enter" && codigoVale.trim().length >= 3 && void revisar()} /></label>
+        {infoVale && <p className="suave">{infoVale}</p>}
+        <button className="boton ancho" disabled={codigoVale.trim().length < 3} onClick={() => void revisar()}>Ver consumos del vale</button>
+        <button className="boton primario ancho" style={{ marginTop: 8 }} disabled={codigoVale.trim().length < 3}
+          onClick={() => { const l = canjeando; const c = codigoVale.trim(); cerrar(); void accion(`${url}/lineas/${l.id}/vale`, { codigo: c }); }}>Canjear</button>
       </Modal>
     );
   }
@@ -204,6 +225,7 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
                           {cuenta.asientos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                         </select>
                       )}
+                      <button className="enlace" disabled={ocupado} title="Pagar este producto con un vale de consumo" onClick={() => setCanjeando(l)}>Vale</button>
                       <button className="enlace" disabled={ocupado} title="Regalar este producto (supervisor)" onClick={() => setRegalando(l)}>Cortesía</button>
                       <button className="enlace" disabled={ocupado} onClick={() => (l.enviadaEn ? setAnulando(l) : void accion(`${url}/lineas/${l.id}`, { anulada: true }, "PATCH"))}>Quitar</button>
                     </span>

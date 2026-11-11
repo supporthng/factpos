@@ -145,6 +145,8 @@ export interface ProductoCatalogo {
   precioVariableMin?: string | null;
   precioVariableMax?: string | null;
   nombreCorto?: string | null;
+  /** Consumos incluidos (vale) por unidad vendida; 0 o ausente = sin vale */
+  valeConsumos?: number;
 }
 
 export interface OfertaCatalogo extends Oferta {

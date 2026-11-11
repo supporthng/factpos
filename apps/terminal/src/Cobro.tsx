@@ -29,7 +29,7 @@ export interface CobroLocal {
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, propinaLegal, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, propinaLegal, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, conVales = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   /** Propina legal sugerida (10 % del consumo sin ITBIS) para cuentas de restaurante, bar o discoteca; el cliente puede no aceptarla */
   propinaLegal?: string;
@@ -45,6 +45,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
   metodo?: MetodoPago;
   /** Observaciones de la venta */
   notas?: string;
+  /** La venta lleva entradas con vale de consumo: no se hace sin servidor (el vale se crea en el servidor) */
+  conVales?: boolean;
   /** Tipo de comprobante (se elige en la pantalla de venta o aquí) */
   tipo: TipoComprobante; onTipo: (t: TipoComprobante) => void;
   /** Un cliente elegido o creado aquí mismo (RNC con consulta a la DGII) */
@@ -110,7 +112,8 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
     local?.hayDescuentos ? "Sin servidor no se aplican descuentos: quítelos" :
     n(credito).gt(0) ? "Sin servidor no se vende a crédito" :
     tipoFactura !== "E32" ? "Sin servidor solo se permite factura electrónica de consumo E32" :
-    propina.gt(0) ? "Sin servidor no se cobra propina legal: quítela" : "";
+    propina.gt(0) ? "Sin servidor no se cobra propina legal: quítela" :
+    conVales ? "Sin servidor no se venden entradas con vale de consumo (el vale se crea en el servidor)" : "";
   const error = useMemo(() => {
     if (sinServidor && motivoNoContingencia) return motivoNoContingencia;
     if (otros.gt(total)) return "Los pagos superan el total";

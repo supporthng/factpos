@@ -65,7 +65,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const total = vivas.reduce((s, l) => s + totalLinea(l), 0);
     const sinAsiento = vivas.filter((l) => l.asientoId === null).reduce((s, l) => s + totalLinea(l), 0);
     const cortesias = (await pool.query(
-      `SELECT descripcion, cantidad::text AS cantidad, motivo_tipo AS "motivoTipo", motivo, valor::text AS valor FROM control_cuentas WHERE cuenta_id = $1 AND tipo = 'CORTESIA' ORDER BY creado_en`, [id])).rows;
+      `SELECT descripcion, cantidad::text AS cantidad, motivo_tipo AS "motivoTipo", motivo, valor::text AS valor FROM control_cuentas WHERE cuenta_id = $1 AND tipo IN ('CORTESIA','VALE') ORDER BY creado_en`, [id])).rows;
     return {
       ...c, cortesias, asientos: porAsiento, total: aMonto(total), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
       lineas: lineas.map((l) => ({ ...l, total: aMonto(totalLinea(l)) })),
@@ -165,7 +165,7 @@ export async function rutasCuentas(app: FastifyInstance) {
   /** Registra en el control (y sube a la central) una cortesía o una anulación de algo ya enviado. La cortesía descuenta el inventario. */
   const registrarControl = async (
     c: Parameters<Parameters<typeof enTransaccion>[0]>[0], sucursalId: string, cajaId: string, cuenta: { id: string; nombre: string },
-    lineaId: string, tipo: "CORTESIA" | "ANULACION", motivoTipo: string, motivo: string, usuarioId: string | null, autorizadoPor: string,
+    lineaId: string, tipo: "CORTESIA" | "ANULACION" | "VALE", motivoTipo: string, motivo: string, usuarioId: string | null, autorizadoPor: string | null,
   ) => {
     const l = (await c.query<FilaLinea & { productoId: string; factor: string; tipoProd: string; controlaStock: boolean; enviadaEn: string | null }>(
       `SELECT l.id, l.descripcion, l.cantidad::text AS cantidad, l.precio_unitario::text AS "precioUnitario", l.tasa_itbis::text AS "tasaItbis",
@@ -180,7 +180,7 @@ export async function rutasCuentas(app: FastifyInstance) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [id, sucursalId, tipo, cuenta.id, cuenta.nombre, cajaId, l.productoId, l.descripcion, l.cantidad, valor, motivoTipo, motivo || null, !!l.enviadaEn, usuarioId, autorizadoPor]);
     const kardexIds: string[] = [];
-    if (tipo === "CORTESIA") {
+    if (tipo !== "ANULACION") {
       const unidades = Number(l.cantidad) * Number(l.factor);
       const salidas: { productoId: string; cantidad: string }[] = [];
       if (l.tipoProd === "COMBO") {
@@ -197,7 +197,7 @@ export async function rutasCuentas(app: FastifyInstance) {
           `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario, documento_tipo, documento_id, motivo, usuario_id, lote_id)
            SELECT id, $2, $3, producto_id, 'CONSUMO_INTERNO', cantidad, 0, 'cortesia', $4, $5, $6, lote_id
              FROM unnest($1::uuid[], $7::uuid[], $8::numeric[], $9::uuid[]) AS t(id, producto_id, cantidad, lote_id)`,
-          [ids, sucursalId, almacenId, id, `Cortesía · ${motivoTipo}${motivo ? ` · ${motivo}` : ""}`, usuarioId, KL.map((k) => k.productoId), KL.map((k) => k.cantidad), KL.map((k) => k.loteId)]);
+          [ids, sucursalId, almacenId, id, `${tipo === "VALE" ? "Vale de consumo" : "Cortesía"} · ${motivoTipo}${motivo ? ` · ${motivo}` : ""}`, usuarioId, KL.map((k) => k.productoId), KL.map((k) => k.cantidad), KL.map((k) => k.loteId)]);
         await c.query(
           `UPDATE control_cuentas SET costo = COALESCE((SELECT -sum(k.cantidad * k.costo_unitario) FROM kardex_movimientos k WHERE k.id = ANY($2::uuid[])), 0)::numeric(14,2) WHERE id = $1`, [id, ids]);
       }
@@ -231,6 +231,46 @@ export async function rutasCuentas(app: FastifyInstance) {
       const nuevas = l.enviada ? [] : await crearComandas(c, ctx.sucursalId, id, usuarioDe(req), [lineaId]);
       await c.query("UPDATE cuenta_lineas SET anulada = TRUE WHERE id = $1", [lineaId]);
       await registrarControl(c, ctx.sucursalId, ctx.cajaId, cuenta, lineaId, "CORTESIA", b.motivoTipo, b.motivo, usuarioDe(req), aut.supervisorId);
+      return nuevas;
+    });
+    return { ...(await detalle(ctx.sucursalId, id)), comandas };
+  });
+
+  /** Consulta un vale de consumo por su código (cuántos consumos le quedan). */
+  app.get("/cajas/:cajaId/vales/:codigo", async (req) => {
+    const ctx = await preparar(req);
+    const { codigo } = z.object({ codigo: z.string().trim().min(3).max(12) }).parse(req.params);
+    const v = (await pool.query(
+      `SELECT codigo, descripcion, consumos, usados, (consumos - usados) AS restantes FROM vales_consumo WHERE sucursal_id = $1 AND codigo = $2`,
+      [ctx.sucursalId, codigo.toUpperCase()])).rows[0];
+    if (!v) throw new ErrorNegocio("Ese código de vale no existe", 404);
+    return v;
+  });
+
+  /**
+   * Canjear un vale de consumo: el producto de la cuenta se paga con los consumos del vale (no se cobra, sale su comanda, descuenta el
+   * inventario y queda en el reporte de control). El código del vale es la autorización; se gasta un consumo por unidad.
+   */
+  app.post("/cajas/:cajaId/cuentas/:id/lineas/:lineaId/vale", async (req) => {
+    const ctx = await preparar(req);
+    const { id, lineaId } = z.object({ id: uuid, lineaId: uuid }).parse(req.params);
+    const b = z.object({ codigo: z.string().trim().min(3).max(12) }).parse(req.body);
+    const cuenta = await cuentaDe(ctx.sucursalId, id);
+    const comandas = await enTransaccion(async (c) => {
+      const l = (await c.query<{ anulada: boolean; ventaId: string | null; enviada: boolean; cantidad: string }>(
+        `SELECT anulada, venta_id AS "ventaId", enviada_en IS NOT NULL AS enviada, cantidad::text AS cantidad FROM cuenta_lineas WHERE id = $1 AND cuenta_id = $2 FOR UPDATE`, [lineaId, id])).rows[0];
+      if (!l) throw new ErrorNegocio("Línea no encontrada", 404);
+      if (l.anulada || l.ventaId) throw new ErrorNegocio("Ese producto ya no está pendiente en la cuenta", 409);
+      const unidades = Number(l.cantidad);
+      if (!Number.isInteger(unidades)) throw new ErrorNegocio("Un vale solo se canjea por productos de cantidad entera", 400);
+      const vale = (await c.query<{ id: string; restantes: number }>(
+        `SELECT id, (consumos - usados) AS restantes FROM vales_consumo WHERE sucursal_id = $1 AND codigo = $2 FOR UPDATE`, [ctx.sucursalId, b.codigo.toUpperCase()])).rows[0];
+      if (!vale) throw new ErrorNegocio("Ese código de vale no existe", 404);
+      if (vale.restantes < unidades) throw new ErrorNegocio(vale.restantes <= 0 ? "Ese vale ya no tiene consumos" : `Al vale le quedan ${vale.restantes} consumo(s) y el producto es de ${unidades}`, 409);
+      await c.query("UPDATE vales_consumo SET usados = usados + $2 WHERE id = $1", [vale.id, unidades]);
+      const nuevas = l.enviada ? [] : await crearComandas(c, ctx.sucursalId, id, usuarioDe(req), [lineaId]);
+      await c.query("UPDATE cuenta_lineas SET anulada = TRUE WHERE id = $1", [lineaId]);
+      await registrarControl(c, ctx.sucursalId, ctx.cajaId, cuenta, lineaId, "VALE", "VALE", `Vale ${b.codigo.toUpperCase()}`, usuarioDe(req), null);
       return nuevas;
     });
     return { ...(await detalle(ctx.sucursalId, id)), comandas };
