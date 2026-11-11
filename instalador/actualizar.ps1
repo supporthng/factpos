@@ -66,6 +66,19 @@ try {
   }
   Get-ChildItem $Desde -File | Where-Object { $_.Name -notin ".env", "postgres-superusuario.txt" } | Copy-Item -Destination $Carpeta -Force
 
+  # La dirección del portal ahora es factpos.app: si el .env aún apunta a factpos.vercel.app (QR y enlaces), se corrige
+  try {
+    $envPath = Join-Path $Carpeta ".env"
+    if (Test-Path -LiteralPath $envPath) {
+      $lin = @(Get-Content -LiteralPath $envPath)
+      if ($lin | Where-Object { $_ -match '^FACTPOS_PORTAL_URL=https?://factpos\.vercel\.app/?\s*$' }) {
+        $lin = @($lin | ForEach-Object { if ($_ -match '^FACTPOS_PORTAL_URL=') { "FACTPOS_PORTAL_URL=https://factpos.app" } else { $_ } })
+        $lin | Set-Content -LiteralPath $envPath -Encoding UTF8
+        Write-Host "Dirección del portal actualizada a https://factpos.app"
+      }
+    }
+  } catch { Write-Host "No se pudo revisar FACTPOS_PORTAL_URL: $($_.Exception.Message)" }
+
   Estado "EN_CURSO" "Actualizando la base de datos" 85
   Push-Location $Carpeta
   & node apps\servidor\dist\migrar.js
