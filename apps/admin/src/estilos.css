@@ -1504,3 +1504,8 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .cert-paso.hecho .cert-num { background: var(--primario); border-color: var(--primario); color: #fff; }
 .cert-paso.en_curso .cert-num { border-color: #b45309; color: #b45309; background: var(--alerta-suave); }
 @media (max-width: 560px) { .ecf-campos { grid-template-columns: 1fr; } .cert-avance { flex-direction: column; text-align: center; } }
+
+.ip-cobros { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; }
+.ip-cobros .ip-cifra { cursor: default; }
+.ip-cobros .ip-cifra b { font-size: 26px; }
+@media (max-width: 720px) { .ip-cobros { grid-template-columns: 1fr; } }

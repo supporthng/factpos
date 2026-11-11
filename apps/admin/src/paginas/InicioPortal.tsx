@@ -8,6 +8,7 @@ export interface AccesoPortal { id: string; titulo: string; i: NombreIcono; text
 const ESTADO: Record<string, { t: string; c: string }> = {
   POR_VENCER: { t: "Por vencer", c: "aviso" }, GRACIA: { t: "En gracia", c: "alerta" }, VENCIDA: { t: "Vencida", c: "alerta" },
 };
+const rd = (v: number) => `RD$ ${v.toLocaleString("es-DO", { maximumFractionDigits: 0 })}`;
 const fecha = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-DO", { day: "numeric", month: "short", year: "numeric" });
 
 /**
@@ -17,6 +18,7 @@ const fecha = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("e
 export function InicioPortal({ accesos, irA }: { accesos: AccesoPortal[]; irA: (id: string) => void }) {
   const clientes = useDatos<ClienteResumen[]>("/central/portal/clientes");
   const pendientes = useDatos<SolicitudResumen[]>("/central/portal/instalaciones?estado=PENDIENTE");
+  const cobros = useDatos<{ cobrado: number; renovaciones: number; anterior: number; porVencer: number }>("/central/portal/cobros-mes");
   const lista = clientes.datos ?? [];
   const activos = lista.filter((c) => c.activo && c.estadoLicencia !== "SUSPENDIDA");
   const atencion = lista.filter((c) => c.activo && (c.estado === "VENCIDA" || c.estado === "GRACIA" || c.estado === "POR_VENCER"));
@@ -38,6 +40,14 @@ export function InicioPortal({ accesos, irA }: { accesos: AccesoPortal[]; irA: (
           </button>
         ))}
       </div>
+
+      {cobros.datos && (
+        <div className="ip-cifras ip-cobros">
+          <div className="ip-cifra" style={{ "--c": "#0f766e" } as React.CSSProperties}><b>{rd(cobros.datos.cobrado)}</b><span>Cobrado este mes ({cobros.datos.renovaciones} renovación{cobros.datos.renovaciones === 1 ? "" : "es"})</span></div>
+          <div className="ip-cifra" style={{ "--c": "#4f46e5" } as React.CSSProperties}><b>{rd(cobros.datos.anterior)}</b><span>Cobrado el mes pasado</span></div>
+          <div className="ip-cifra" style={{ "--c": "#b45309" } as React.CSSProperties}><b>{cobros.datos.porVencer}</b><span>Licencias que vencen en 30 días</span></div>
+        </div>
+      )}
 
       <div className="ip-cuerpo">
         <section className="ip-panel">

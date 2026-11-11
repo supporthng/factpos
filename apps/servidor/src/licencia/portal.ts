@@ -714,6 +714,20 @@ export async function rutasPortal(app: FastifyInstance) {
     return { ok: true };
   });
   /** Resumen del mes: uso de cada cliente contra su rango, alertas, ingreso, costo y margen (USD). */
+  /** Cobros del mes (renovaciones con monto registrado) y lo que vence en los próximos 30 días, para el Inicio del portal. */
+  app.get("/central/portal/cobros-mes", async () => {
+    const hoy = "(now() AT TIME ZONE 'America/Santo_Domingo')::date";
+    const r = await pool.query<{ cobrado: number; renovaciones: number; anterior: number; porVencer: number }>(
+      `SELECT COALESCE(SUM((e.detalle->>'monto')::numeric) FILTER (WHERE (e.creado_en AT TIME ZONE 'America/Santo_Domingo') >= date_trunc('month', ${hoy})), 0)::float AS cobrado,
+              COUNT(*) FILTER (WHERE (e.creado_en AT TIME ZONE 'America/Santo_Domingo') >= date_trunc('month', ${hoy}))::int AS renovaciones,
+              COALESCE(SUM((e.detalle->>'monto')::numeric) FILTER (WHERE (e.creado_en AT TIME ZONE 'America/Santo_Domingo') >= date_trunc('month', ${hoy}) - interval '1 month'
+                                                                    AND (e.creado_en AT TIME ZONE 'America/Santo_Domingo') < date_trunc('month', ${hoy})), 0)::float AS anterior,
+              (SELECT COUNT(*)::int FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id
+                WHERE c.activo AND l.estado = 'ACTIVA' AND l.vence BETWEEN ${hoy} AND ${hoy} + 30) AS "porVencer"
+         FROM portal_eventos e WHERE e.tipo = 'RENOVADA' AND e.detalle ? 'monto' AND e.detalle->>'monto' IS NOT NULL`);
+    return r.rows[0] ?? { cobrado: 0, renovaciones: 0, anterior: 0, porVencer: 0 };
+  });
+
   app.get("/central/portal/ecf-resumen", async () => {
     const mes = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 7);
     const [y, m] = mes.split("-").map(Number);
