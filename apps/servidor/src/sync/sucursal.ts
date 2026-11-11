@@ -56,7 +56,7 @@ export async function resolverCentral(log?: (m: string) => void): Promise<boolea
   const empresa = (process.env.FACTPOS_EMPRESA ?? "").trim().toLowerCase();
   if (!empresa || Date.now() - ultimaResolucion < 60_000) return false;
   ultimaResolucion = Date.now();
-  const portal = (process.env.FACTPOS_PORTAL_URL || "https://factpos.vercel.app").replace(/\/+$/, "");
+  const portal = (process.env.FACTPOS_PORTAL_URL || "https://factpos.app").replace(/\/+$/, "");
   try {
     const r = await fetch(`${portal}/licencias/cliente/${encodeURIComponent(empresa)}`, { signal: AbortSignal.timeout(15_000) });
     if (!r.ok) return false;

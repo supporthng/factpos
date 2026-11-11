@@ -7,7 +7,7 @@ param(
   [string]$Codigo = "",
   [string]$CentralUrl = "",
   [string]$Empresa = "",
-  [string]$Portal = "https://factpos.vercel.app"
+  [string]$Portal = "https://factpos.app"
 )
 $ErrorActionPreference = "Stop"
 function Fallar($m) { Write-Output $m; exit 1 }
