@@ -89,6 +89,37 @@ section{padding:76px 0}
 footer{padding:36px 0;border-top:1px solid var(--borde);color:var(--suave);font-size:14px}
 footer .cont{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between;align-items:center}
 footer a{text-decoration:none;color:var(--primario)}
+
+.vent{border-radius:16px;border:1px solid var(--borde);background:var(--panel);box-shadow:var(--sombra);overflow:hidden}
+.vent .bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--borde);background:var(--fondo)}
+.vent .bar i{width:10px;height:10px;border-radius:50%;background:var(--borde)}
+.vent .bar span{margin-left:10px;color:var(--suave);font-size:12.5px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{padding:8px 15px;border-radius:999px;border:1px solid var(--borde);background:var(--panel);color:var(--texto);font:inherit;font-size:14.5px;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--acento);border-color:var(--acento);color:#04211e}
+.pan{display:none;padding:20px;gap:18px;grid-template-columns:1fr 1fr;align-items:start}
+.pan.on{display:grid}
+.pan h3{margin:0 0 6px;font-size:21px}
+.pan p.t{margin:0 0 12px;color:var(--suave)}
+.pan ul{margin:0;padding:0;list-style:none;display:grid;gap:7px;font-size:15px}
+.pan li::before{content:"✓";color:var(--primario);font-weight:700;margin-right:8px}
+.mini{border:1px solid var(--borde);border-radius:12px;padding:14px;background:var(--fondo);font-size:13.5px}
+.mini .fila{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--borde)}
+.mini .fila:last-child{border-bottom:0}
+.mini .fila b{font-weight:600}
+.mini .tot{font-size:20px;font-weight:700;padding-top:10px;display:flex;justify-content:space-between}
+.mini .k{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.mini .k div{background:var(--panel);border:1px solid var(--borde);border-radius:10px;padding:10px}
+.mini .k span{display:block;color:var(--suave);font-size:12px}
+.mini .k b{font-size:19px}
+.mini .gr{display:flex;align-items:flex-end;gap:7px;height:92px}
+.mini .gr i{flex:1;border-radius:5px 5px 0 0;background:linear-gradient(var(--acento),var(--primario))}
+.mini .pi{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11.5px;font-weight:700;background:#e4f6ea;color:#15803d}
+.mini .pi.r{background:#fde8e8;color:#b91c1c}
+.mini .pi.a{background:#fff1e0;color:#b45309}
+.mini .bb{height:7px;border-radius:99px;background:var(--borde);overflow:hidden;width:90px}
+.mini .bb i{display:block;height:100%;background:var(--acento)}
+@media(max-width:860px){.pan.on{grid-template-columns:1fr}}
 @media(max-width:860px){.hero .cont{grid-template-columns:1fr}.cifras,.pasos{grid-template-columns:1fr}.nav nav{display:none}.nav .btn{margin-left:auto}.hero{padding:56px 0 64px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
@@ -96,7 +127,7 @@ footer a{text-decoration:none;color:var(--primario)}
 <body>
 <header class="nav"><div class="cont">
   <a class="logo" href="/"><img src="/iconos/factpos-192.png" alt="" width="32" height="32"><span>Fact<b>POS</b></span></a>
-  <nav><a href="#funciones">Funciones</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
+  <nav><a href="/demo">Demo</a><a href="#funciones">Funciones</a><a href="#pantallas">Pantallas</a><a href="#como">Cómo funciona</a><a href="#planes">Planes</a><a href="#contacto">Contacto</a></nav>
   <a class="btn p" href="/entrar#inicio">Iniciar sesión</a>
 </div></header>
 
@@ -105,7 +136,7 @@ footer a{text-decoration:none;color:var(--primario)}
     <span class="etq"><i></i>Facturación electrónica e-CF · DGII</span>
     <h1>Tu tienda, tus cajas y tu inventario <em>en un solo panel</em>.</h1>
     <p class="sub">Caja rápida, comprobantes fiscales electrónicos, varias sucursales y precios al instante. Cada tienda sigue vendiendo aunque se caiga el internet.</p>
-    <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><a class="btn s" href="#planes">Ver planes</a></div>
+    <div class="acc"><a class="btn p" href="/entrar#inicio">Iniciar sesión</a><a class="btn s" href="/demo">Probar la demo</a></div>
   </div>
   <div class="consola" aria-hidden="true">
     <div class="barra"><i></i><i></i><i></i></div>
@@ -139,6 +170,13 @@ footer a{text-decoration:none;color:var(--primario)}
   </div>
 </div></section>
 
+<section id="pantallas" style="padding-top:0"><div class="cont">
+  <div class="tit"><small>El sistema por dentro</small><h2>Sus pantallas principales</h2><p>Así se ven los módulos que usará cada día. Con datos de ejemplo.</p></div>
+  <div class="tabs" role="tablist"><button type="button" class=on data-t="caja">Caja</button><button type="button" data-t="panel">Panel</button><button type="button" data-t="inventario">Inventario</button><button type="button" data-t="ecf">Facturación electrónica</button><button type="button" data-t="clientes">Clientes y crédito</button><button type="button" data-t="precios">Verificador</button></div>
+  <div class="vent"><div class="bar"><i></i><i></i><i></i><span>factpos · Supermercado Ejemplo</span></div><div class="pan on" id="p-caja"><div><h3>Venta rápida y cobro sin complicarse</h3><p class="t">Caja</p><ul><li>Escaneo instantáneo y búsqueda por nombre</li><li>Pago mixto: efectivo, tarjeta y crédito</li><li>Descuentos con aprobación del supervisor</li><li>Ventas en pausa y delivery</li></ul></div><div class="mini"><div class="fila"><b>Cerveza 650 ml × 2</b><span>RD$ 300.00</span></div><div class="fila"><b>Arroz selecto 1 lb</b><span>RD$ 40.00</span></div><div class="fila"><b>Ron añejo 700 ml</b><span>RD$ 750.00</span></div><div class="fila"><span>ITBIS 18 %</span><span>RD$ 165.76</span></div><div class="tot"><span>Total</span><span>RD$ 1,090.00</span></div></div></div><div class="pan" id="p-panel"><div><h3>Cómo va el negocio de un vistazo</h3><p class="t">Panel</p><ul><li>Ventas del día y de la semana</li><li>Productos más vendidos</li><li>Alertas de existencias bajas</li><li>Todas las sucursales juntas o por separado</li></ul></div><div class="mini"><div class="k"><div><span>Ventas de la semana</span><b>RD$ 383,300</b></div><div><span>Facturas</span><b>142</b></div></div><div class="gr"><i style="height:45%"></i><i style="height:40%"></i><i style="height:52%"></i><i style="height:62%"></i><i style="height:82%"></i><i style="height:100%"></i><i style="height:70%"></i></div></div></div><div class="pan" id="p-inventario"><div><h3>Existencias exactas en cada sucursal</h3><p class="t">Inventario</p><ul><li>Kardex con costo promedio</li><li>Traspasos entre sucursales al costo</li><li>Conteos a ciegas y ajustes por merma</li><li>Lotes y fechas de vencimiento</li></ul></div><div class="mini"><div class="fila"><b>Cerveza 650 ml</b><span class="bb"><i style="width:80%"></i></span><span class="pi">240</span></div><div class="fila"><b>Refresco cola 2 L</b><span class="bb"><i style="width:55%"></i></span><span class="pi">48</span></div><div class="fila"><b>Habichuelas 15 oz</b><span class="bb"><i style="width:14%"></i></span><span class="pi r">10 · reponer</span></div><div class="fila"><b>Leche entera 1 L</b><span class="bb"><i style="width:11%"></i></span><span class="pi r">8 · reponer</span></div></div></div><div class="pan" id="p-ecf"><div><h3>e-CF firmados y enviados a la DGII</h3><p class="t">Facturación electrónica</p><ul><li>Comprobantes e-CF de consumo y crédito fiscal</li><li>Notas de crédito y anulación con PIN</li><li>Control de rangos de numeración</li><li>Reimpresión marcada como copia</li></ul></div><div class="mini"><div class="fila"><b>E320000016 · Ferretería El Progreso</b><span><span class="pi">Aceptado</span></span></div><div class="fila"><b>E320000015 · Contado</b><span><span class="pi">Aceptado</span></span></div><div class="fila"><b>E310000074 · Colmado Don Pepe</b><span><span class="pi">Aceptado</span></span></div><div class="fila"><b>E320000017 · Contado</b><span><span class="pi a">En cola</span></span></div></div></div><div class="pan" id="p-clientes"><div><h3>Quién debe cuánto, siempre claro</h3><p class="t">Clientes y crédito</p><ul><li>Límite de crédito por cliente</li><li>Abonos y estado de cuenta</li><li>Precios de detalle, mayorista y distribuidor</li><li>Historial de compras</li></ul></div><div class="mini"><div class="fila"><b>Colmado Don Pepe</b><span>Debe RD$ 18,450</span></div><div class="fila"><b>Ferretería El Progreso</b><span>Debe RD$ 27,900</span></div><div class="fila"><b>Restaurante La Esquina</b><span><span class="pi">Al día</span></span></div><div class="fila"><b>Total por cobrar</b><span>RD$ 46,350</span></div></div></div><div class="pan" id="p-precios"><div><h3>Precios al instante para el cliente</h3><p class="t">Verificador</p><ul><li>Pantallas en la tienda</li><li>Consulta desde el celular con un QR</li><li>Solo funciona estando dentro de la tienda</li><li>Ofertas visibles al consultar</li></ul></div><div class="mini"><div style="text-align:center;padding:10px 0"><b>Ron añejo 700 ml</b><div style="font-size:38px;font-weight:800;color:var(--primario);letter-spacing:-1px">RD$ 750.00</div><span style="color:var(--suave)">ITBIS incluido</span></div></div></div></div>
+  <p style="margin-top:18px"><a class="btn p" href="/demo">Probar la demo completa</a></p>
+</div></section>
+
 <section id="como" style="padding-top:0"><div class="cont">
   <div class="tit"><small>Cómo funciona</small><h2>Tres pasos para empezar</h2></div>
   <div class="pasos">
@@ -169,6 +207,11 @@ footer a{text-decoration:none;color:var(--primario)}
   var $ = function(id){ return document.getElementById(id); };
   function el(tag, cls, txt){ var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
   function rd(n){ return "RD$ " + Number(n).toLocaleString("es-DO", { maximumFractionDigits: 0 }); }
+  var tb = document.querySelectorAll(".tabs button");
+  Array.prototype.forEach.call(tb, function(b){ b.addEventListener("click", function(){
+    Array.prototype.forEach.call(tb, function(x){ x.classList.toggle("on", x === b); });
+    Array.prototype.forEach.call(document.querySelectorAll(".pan"), function(p){ p.classList.toggle("on", p.id === "p-" + b.getAttribute("data-t")); });
+  }); });
   fetch("/licencias/planes-web").then(function(r){ if (!r.ok) throw new Error("x"); return r.json(); }).then(function(d){
     var lista = $("planes-lista"); lista.textContent = "";
     var planes = (d.planes || []);
