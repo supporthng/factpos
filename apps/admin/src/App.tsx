@@ -543,26 +543,51 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
     } finally { setEntrando(false); }
   };
 
+  const seguro = typeof location !== "undefined" && location.protocol === "https:";
+  const host = typeof location !== "undefined" ? location.host : "";
+  const rol = enPortal ? "Portal de licencias" : CONFIG.cliente ?? "Administración";
   return (
-    <div className="entrar">
-      <form className="tarjeta-entrar" onSubmit={entrar}>
-        <span className="icono-entrar"><SimboloFactPOS tamano={84} fondo /></span>
-        <div className="marca grande">Fact<span>POS</span><small>{enPortal ? "Portal de licencias" : CONFIG.cliente ?? "Administración"}</small></div>
-        <label className="campo"><span>Usuario</span><input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoCapitalize="none" /></label>
-        <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
-        {empresas && <label className="campo"><span>Empresa</span>
-          <select value={rnc} onChange={(e) => setRnc(e.target.value)}>
-            {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.sucursales?.length ? `${x.nombre} · ${x.sucursales.join(", ")}` : `${x.nombre} · RNC ${x.rnc}`}</option>)}
-          </select>
-        </label>}
-        {pedirRnc && !empresas && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
-        {pedirCodigo && <label className="campo"><span>Código de verificación</span><input autoFocus value={codigo} onChange={(e) => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" /></label>}
-        {verServidor && <label className="campo"><span>Dirección de la central</span><input value={servidor} onChange={(e) => setServidor(e.target.value)} /></label>}
-        <button className="boton primario ancho" disabled={!usuario || !clave || entrando || (pedirCodigo && !codigo)}>{entrando ? "Entrando…" : "Entrar"}</button>
-        {msg && <p className="error">{msg}</p>}
-        <AgregarAInicio />
-        {!verServidor && !CONFIG.modo && <button type="button" className="enlace pequeno" onClick={() => setVerServidor(true)}>Otra central…</button>}
-      </form>
+    <div className="entrar entrar-dividida">
+      <aside className="entrar-lado" aria-hidden="true">
+        <div className="entrar-lado-marca"><SimboloFactPOS tamano={40} fondo /><span>Fact<b>POS</b></span></div>
+        <div className="entrar-lado-centro">
+          <h2>Ventas, inventario y facturación electrónica en un solo panel.</h2>
+          <p>Controla todas tus tiendas y cajas desde cualquier lugar, con respaldo y trabajo sin internet en cada sucursal.</p>
+          <pre className="entrar-consola"><code>
+<span className="c-suave">$</span> conectar <span className="c-acento">{host || "servidor"}</span>{"\n"}
+<span className={seguro ? "c-ok" : "c-alerta"}>{seguro ? "✔" : "!"}</span> {seguro ? "canal cifrado (TLS)" : "canal sin cifrar"}{"\n"}
+<span className="c-ok">✔</span> verificación en 2 pasos disponible{"\n"}
+<span className="c-suave">›</span> esperando credenciales<span className="cursor">_</span>
+          </code></pre>
+        </div>
+        <ul className="entrar-etiquetas">
+          <li>e-CF · DGII</li><li>Multi-sucursal</li><li>Funciona sin internet</li><li>Respaldos cifrados</li>
+        </ul>
+      </aside>
+      <main className="entrar-forma">
+        <form className="tarjeta-entrar" onSubmit={entrar}>
+          <span className="entrar-movil"><SimboloFactPOS tamano={56} fondo /></span>
+          <div className="entrar-titulo">
+            <small>{rol}</small>
+            <h1>Iniciar sesión</h1>
+          </div>
+          <label className="campo"><span>Usuario</span><input autoFocus value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
+          <label className="campo"><span>Contraseña</span><input type="password" value={clave} onChange={(e) => setClave(e.target.value)} autoComplete="current-password" /></label>
+          {empresas && <label className="campo"><span>Empresa</span>
+            <select value={rnc} onChange={(e) => setRnc(e.target.value)}>
+              {empresas.map((x) => <option key={x.rnc} value={x.rnc}>{x.sucursales?.length ? `${x.nombre} · ${x.sucursales.join(", ")}` : `${x.nombre} · RNC ${x.rnc}`}</option>)}
+            </select>
+          </label>}
+          {pedirRnc && !empresas && <label className="campo"><span>RNC de la empresa</span><input value={rnc} onChange={(e) => setRnc(e.target.value)} inputMode="numeric" /></label>}
+          {pedirCodigo && <label className="campo"><span>Código de verificación</span><input autoFocus value={codigo} onChange={(e) => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" /></label>}
+          {verServidor && <label className="campo"><span>Dirección de la central</span><input value={servidor} onChange={(e) => setServidor(e.target.value)} /></label>}
+          <button className="boton primario ancho" disabled={!usuario || !clave || entrando || (pedirCodigo && !codigo)}>{entrando ? "Entrando…" : "Entrar"}</button>
+          {msg && <p className="error">{msg}</p>}
+          <AgregarAInicio />
+          {!verServidor && !CONFIG.modo && <button type="button" className="enlace pequeno" onClick={() => setVerServidor(true)}>Otra central…</button>}
+          <p className="entrar-pie">{seguro ? "Conexión cifrada" : "Conexión sin cifrar"} · {host}</p>
+        </form>
+      </main>
     </div>
   );
 }
