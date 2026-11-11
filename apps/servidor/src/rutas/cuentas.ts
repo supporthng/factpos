@@ -22,7 +22,7 @@ const aMonto = (c: number) => (c / 100).toFixed(2);
 interface FilaLinea {
   id: string; asientoId: string | null; presentacionId: string; descripcion: string; cantidad: string;
   precioUnitario: string; tasaItbis: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null;
-  incluyeItbis?: boolean;
+  incluyeItbis?: boolean; padreId?: string | null; paso?: number;
 }
 
 /** Total de una línea en centavos (el precio guardado ya incluye el ITBIS si el producto lo trae incluido). */
@@ -42,8 +42,8 @@ export async function rutasCuentas(app: FastifyInstance) {
   const usuarioDe = (req: unknown) => ((req as { sesionCaja?: { u?: string } }).sesionCaja?.u) ?? null;
 
   const cuentaDe = async (sucursalId: string, id: string, abierta = true) => {
-    const c = (await pool.query<{ id: string; nombre: string; mesa: string | null; estado: string; numero: string; nota: string | null; abiertaEn: string }>(
-      `SELECT id, nombre, mesa, estado, numero::text, nota, abierta_en AS "abiertaEn" FROM cuentas WHERE id = $1 AND sucursal_id = $2`, [id, sucursalId])).rows[0];
+    const c = (await pool.query<{ id: string; nombre: string; mesa: string | null; estado: string; numero: string; nota: string | null; abiertaEn: string; pasoLiberado: number }>(
+      `SELECT id, nombre, mesa, estado, numero::text, nota, abierta_en AS "abiertaEn", paso_liberado AS "pasoLiberado" FROM cuentas WHERE id = $1 AND sucursal_id = $2`, [id, sucursalId])).rows[0];
     if (!c) throw new ErrorNegocio("Cuenta no encontrada", 404);
     if (abierta && c.estado !== "ABIERTA") throw new ErrorNegocio("La cuenta ya está cerrada", 409);
     return c;
@@ -56,7 +56,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const lineas = (await pool.query<FilaLinea>(
       `SELECT l.id, l.asiento_id AS "asientoId", l.presentacion_id AS "presentacionId", l.descripcion, l.cantidad::text AS cantidad,
               l.precio_unitario::text AS "precioUnitario", l.tasa_itbis::text AS "tasaItbis", l.nota, l.enviada_en AS "enviadaEn", l.anulada, l.venta_id AS "ventaId",
-              p.precio_incluye_impuesto AS "incluyeItbis"
+              p.precio_incluye_impuesto AS "incluyeItbis", l.padre_id AS "padreId", l.paso
          FROM cuenta_lineas l JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
         WHERE l.cuenta_id = $1 ORDER BY l.creada_en, l.id`, [id])).rows;
     // Pendientes de cobrar: ni anuladas ni cobradas ya
@@ -77,7 +77,10 @@ export async function rutasCuentas(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT c.id, c.nombre, c.mesa, c.numero::text, c.abierta_en AS "abiertaEn", u.nombre AS "abiertaPor",
               (SELECT count(*)::int FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS lineas,
-              (SELECT count(*)::int FROM cuenta_asientos a WHERE a.cuenta_id = c.id) AS asientos
+              (SELECT count(*)::int FROM cuenta_asientos a WHERE a.cuenta_id = c.id) AS asientos,
+              (SELECT COALESCE(sum(l.cantidad * l.precio_unitario * CASE WHEN p.precio_incluye_impuesto THEN 1 ELSE 1 + l.tasa_itbis END), 0)::numeric(14,2)::text
+                 FROM cuenta_lineas l JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
+                WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS total
          FROM cuentas c LEFT JOIN usuarios u ON u.id = c.abierta_por
         WHERE c.sucursal_id = $1 AND c.estado = 'ABIERTA' ORDER BY c.abierta_en`, [ctx.sucursalId]);
     return r.rows;
@@ -115,21 +118,53 @@ export async function rutasCuentas(app: FastifyInstance) {
     return detalle(ctx.sucursalId, id);
   });
 
-  /** Ordenar: agrega un producto a la cuenta, a un asiento (persona) o a toda la mesa. */
+  /**
+   * Ordenar: agrega un producto a la cuenta, a un asiento (persona) o a toda la mesa.
+   * Con modificadores: los de nota («término medio», «sin cebolla») van en la nota para la cocina; los que tienen cargo («extra queso»)
+   * se agregan como una línea hija del plato, con su propio precio, que lo sigue en la comanda, al moverlo y al quitarlo.
+   * `paso` es el tiempo de servicio (1 entradas y bebidas, 2 fuertes, 3 postres).
+   */
   app.post("/cajas/:cajaId/cuentas/:id/lineas", async (req, rep) => {
     const ctx = await preparar(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const b = z.object({ presentacionId: uuid, cantidad, asientoId: uuid.nullable().optional(), nota: z.string().trim().max(200).optional() }).parse(req.body);
+    const b = z.object({
+      presentacionId: uuid, cantidad, asientoId: uuid.nullable().optional(), nota: z.string().trim().max(200).optional(),
+      modificadores: z.array(uuid).max(20).optional(), paso: z.number().int().min(1).max(3).optional(),
+    }).parse(req.body);
     await cuentaDe(ctx.sucursalId, id);
     if (b.asientoId && !(await pool.query("SELECT 1 FROM cuenta_asientos WHERE id = $1 AND cuenta_id = $2", [b.asientoId, id])).rowCount) throw new ErrorNegocio("Ese asiento no es de la cuenta", 400);
     const p = (await pool.query<PresentacionVenta>(`${SQL_PRESENTACION} AND pr.id = $5`, [ctx.empresaId, ctx.sucursalId, ctx.almacenId, null, b.presentacionId])).rows[0];
     if (!p) throw new ErrorNegocio("Producto no encontrado o no disponible en esta sucursal", 404);
     if (p.precio === null && !p.precioVariable) throw new ErrorNegocio(`«${p.nombre}» no tiene precio`, 400);
-    await pool.query(
-      `INSERT INTO cuenta_lineas (id, cuenta_id, asiento_id, presentacion_id, descripcion, cantidad, precio_unitario, tasa_itbis, nota, creada_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [uuidv7(), id, b.asientoId ?? null, p.presentacionId, p.presentacion && p.presentacion !== "Unidad" ? `${p.nombre} (${p.presentacion})` : p.nombre,
-       b.cantidad, p.precio ?? "0", p.tasaItbis, b.nota ?? null, usuarioDe(req)]);
+    const ids = [...new Set(b.modificadores ?? [])];
+    const mods = ids.length
+      ? (await pool.query<{ nombre: string; presentacionId: string | null }>(
+        `SELECT nombre, presentacion_id AS "presentacionId" FROM modificadores WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND activo ORDER BY orden, nombre`, [ids, ctx.empresaId])).rows
+      : [];
+    if (mods.length !== ids.length) throw new ErrorNegocio("Un modificador ya no está disponible", 409);
+    const extras: { mod: string; p: PresentacionVenta }[] = [];
+    for (const m of mods) {
+      if (!m.presentacionId) continue;
+      const e = (await pool.query<PresentacionVenta>(`${SQL_PRESENTACION} AND pr.id = $5`, [ctx.empresaId, ctx.sucursalId, ctx.almacenId, null, m.presentacionId])).rows[0];
+      if (!e || e.precio === null) throw new ErrorNegocio(`«${m.nombre}» no está disponible o no tiene precio`, 409);
+      extras.push({ mod: m.nombre, p: e });
+    }
+    const nota = [...mods.filter((m) => !m.presentacionId).map((m) => m.nombre), ...(b.nota ? [b.nota] : [])].join(" · ") || null;
+    const paso = b.paso ?? 1;
+    await enTransaccion(async (c) => {
+      const padre = uuidv7();
+      await c.query(
+        `INSERT INTO cuenta_lineas (id, cuenta_id, asiento_id, presentacion_id, descripcion, cantidad, precio_unitario, tasa_itbis, nota, creada_por, paso)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [padre, id, b.asientoId ?? null, p.presentacionId, p.presentacion && p.presentacion !== "Unidad" ? `${p.nombre} (${p.presentacion})` : p.nombre,
+         b.cantidad, p.precio ?? "0", p.tasaItbis, nota, usuarioDe(req), paso]);
+      for (const x of extras) {
+        await c.query(
+          `INSERT INTO cuenta_lineas (id, cuenta_id, asiento_id, presentacion_id, descripcion, cantidad, precio_unitario, tasa_itbis, creada_por, padre_id, paso)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [uuidv7(), id, b.asientoId ?? null, x.p.presentacionId, `+ ${x.mod}`, b.cantidad, x.p.precio ?? "0", x.p.tasaItbis, usuarioDe(req), padre, paso]);
+      }
+    });
     rep.code(201);
     return detalle(ctx.sucursalId, id);
   });
@@ -138,27 +173,32 @@ export async function rutasCuentas(app: FastifyInstance) {
   app.patch("/cajas/:cajaId/cuentas/:id/lineas/:lineaId", async (req) => {
     const ctx = await preparar(req);
     const { id, lineaId } = z.object({ id: uuid, lineaId: uuid }).parse(req.params);
-    const b = z.object({ asientoId: uuid.nullable().optional(), cantidad: cantidad.optional(), anulada: z.boolean().optional(), autorizacion: z.string().max(2000).optional(), motivo: z.string().trim().max(200).optional() }).parse(req.body);
+    const b = z.object({ asientoId: uuid.nullable().optional(), cantidad: cantidad.optional(), paso: z.number().int().min(1).max(3).optional(), anulada: z.boolean().optional(), autorizacion: z.string().max(2000).optional(), motivo: z.string().trim().max(200).optional() }).parse(req.body);
     const cuenta = await cuentaDe(ctx.sucursalId, id);
     const l = (await pool.query<{ enviada: boolean }>("SELECT enviada_en IS NOT NULL AS enviada FROM cuenta_lineas WHERE id = $1 AND cuenta_id = $2", [lineaId, id])).rows[0];
     if (!l) throw new ErrorNegocio("Línea no encontrada", 404);
+    if (l.enviada && b.paso !== undefined) throw new ErrorNegocio("Ese producto ya salió: no se le puede cambiar el tiempo", 409);
     if (l.enviada && (b.anulada || b.cantidad !== undefined)) {
       const aut = verificarAutorizacion(b.autorizacion, "venta.anular", ctx.cajaId);
       // Quitar algo que ya salió a la barra o la cocina deja constancia: quién, quién lo autorizó y por qué
       if (b.anulada) {
         if (!b.motivo || b.motivo.length < 3) throw new ErrorNegocio("Escriba el motivo de la anulación", 400);
         await enTransaccion(async (c) => {
-          await c.query("UPDATE cuenta_lineas SET anulada = TRUE WHERE id = $1 AND cuenta_id = $2", [lineaId, id]);
-          await registrarControl(c, ctx.sucursalId, ctx.cajaId, cuenta, lineaId, "ANULACION", "OTRO", b.motivo!, usuarioDe(req), aut.supervisorId);
+          // Los extras con cargo del plato se quitan con él y cada uno queda en el control
+          const hijas = (await c.query<{ id: string }>("SELECT id FROM cuenta_lineas WHERE padre_id = $1 AND NOT anulada AND venta_id IS NULL", [lineaId])).rows;
+          await c.query("UPDATE cuenta_lineas SET anulada = TRUE WHERE (id = $1 OR padre_id = $1) AND cuenta_id = $2 AND venta_id IS NULL", [lineaId, id]);
+          for (const x of [lineaId, ...hijas.map((h) => h.id)]) await registrarControl(c, ctx.sucursalId, ctx.cajaId, cuenta, x, "ANULACION", "OTRO", b.motivo!, usuarioDe(req), aut.supervisorId);
         });
         return detalle(ctx.sucursalId, id);
       }
     }
     if (b.asientoId && !(await pool.query("SELECT 1 FROM cuenta_asientos WHERE id = $1 AND cuenta_id = $2", [b.asientoId, id])).rowCount) throw new ErrorNegocio("Ese asiento no es de la cuenta", 400);
+    // Los extras con cargo siguen a su plato: persona, cantidad, tiempo y anulación
     await pool.query(
       `UPDATE cuenta_lineas SET asiento_id = CASE WHEN $3::boolean THEN $4::uuid ELSE asiento_id END,
-              cantidad = COALESCE($5::numeric, cantidad), anulada = COALESCE($6::boolean, anulada) WHERE id = $1 AND cuenta_id = $2`,
-      [lineaId, id, "asientoId" in b, b.asientoId ?? null, b.cantidad ?? null, b.anulada ?? null]);
+              cantidad = COALESCE($5::numeric, cantidad), anulada = COALESCE($6::boolean, anulada), paso = COALESCE($7::smallint, paso)
+        WHERE (id = $1 OR padre_id = $1) AND cuenta_id = $2 AND venta_id IS NULL`,
+      [lineaId, id, "asientoId" in b, b.asientoId ?? null, b.cantidad ?? null, b.anulada ?? null, b.paso ?? null]);
     return detalle(ctx.sucursalId, id);
   });
 
@@ -284,6 +324,56 @@ export async function rutasCuentas(app: FastifyInstance) {
     // Cada estación (barra, cocina) recibe su comanda con lo nuevo; las categorías sin estación solo quedan marcadas como enviadas
     const comandas = await enTransaccion((c) => crearComandas(c, ctx.sucursalId, id, usuarioDe(req)));
     return { ...(await detalle(ctx.sucursalId, id)), comandas };
+  });
+
+  /** Pedir el siguiente tiempo (de entradas a fuertes, de fuertes a postres): libera y envía a cocina lo que estaba esperando. */
+  app.post("/cajas/:cajaId/cuentas/:id/siguiente-tiempo", async (req) => {
+    const ctx = await preparar(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const cuenta = await cuentaDe(ctx.sucursalId, id);
+    if (cuenta.pasoLiberado >= 3) throw new ErrorNegocio("Ya se pidieron todos los tiempos", 409);
+    const comandas = await enTransaccion(async (c) => {
+      await c.query("UPDATE cuentas SET paso_liberado = paso_liberado + 1 WHERE id = $1", [id]);
+      return crearComandas(c, ctx.sucursalId, id, usuarioDe(req));
+    });
+    return { ...(await detalle(ctx.sucursalId, id)), comandas };
+  });
+
+  /** Cambiar la cuenta de mesa. Si la mesa de destino está ocupada hay que unir las cuentas. */
+  app.post("/cajas/:cajaId/cuentas/:id/mesa", async (req) => {
+    const ctx = await preparar(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ mesa: z.string().trim().min(1).max(30) }).parse(req.body);
+    const cuenta = await cuentaDe(ctx.sucursalId, id);
+    if (cuenta.mesa === b.mesa) return detalle(ctx.sucursalId, id);
+    await enTransaccion(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(hashtext('cuentas:' || $1))", [ctx.sucursalId]);
+      const ocupada = (await c.query("SELECT 1 FROM cuentas WHERE sucursal_id = $1 AND estado = 'ABIERTA' AND mesa = $2 AND id <> $3", [ctx.sucursalId, b.mesa, id])).rowCount;
+      if (ocupada) throw new ErrorNegocio(`${b.mesa} está ocupada: use «Pasar productos» para juntarlos con esa cuenta`, 409);
+      // Si la cuenta se llamaba como su mesa («Mesa 4»), pasa a llamarse como la nueva
+      await c.query("UPDATE cuentas SET mesa = $2, nombre = CASE WHEN nombre = COALESCE(mesa, '') THEN $2 ELSE nombre END WHERE id = $1", [id, b.mesa]);
+    });
+    return detalle(ctx.sucursalId, id);
+  });
+
+  /** Pasar productos de esta cuenta a otra abierta (otra mesa, o de la barra a una mesa). Los extras van con su plato. */
+  app.post("/cajas/:cajaId/cuentas/:id/mover-lineas", async (req) => {
+    const ctx = await preparar(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ destinoId: uuid, lineaIds: z.array(uuid).min(1).max(200) }).parse(req.body);
+    if (b.destinoId === id) throw new ErrorNegocio("Elija otra cuenta", 400);
+    await cuentaDe(ctx.sucursalId, id);
+    await cuentaDe(ctx.sucursalId, b.destinoId);
+    const n = await enTransaccion(async (c) => {
+      // Los asientos son de cada cuenta: lo que pasa queda «para toda la mesa» de la nueva
+      const r = await c.query(
+        `UPDATE cuenta_lineas SET cuenta_id = $2, asiento_id = NULL
+          WHERE cuenta_id = $1 AND venta_id IS NULL AND NOT anulada AND ((id = ANY($3::uuid[]) AND padre_id IS NULL) OR padre_id = ANY($3::uuid[]))`,
+        [id, b.destinoId, b.lineaIds]);
+      return r.rowCount ?? 0;
+    });
+    if (!n) throw new ErrorNegocio("No había productos pendientes para pasar", 409);
+    return detalle(ctx.sucursalId, id);
   });
 
   /** Juntar otra cuenta abierta con esta (los asientos se conservan). */

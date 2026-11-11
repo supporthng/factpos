@@ -1298,7 +1298,27 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .barra-cabecera { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .barra-cola { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; align-content: start; }
 .comanda { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.comanda.tarde { border-color: var(--error); box-shadow: 0 0 0 1px var(--error) inset; }
+.comanda.tarde { border-color: var(--oferta); box-shadow: 0 0 0 2px var(--oferta) inset; }
+.comanda.muy-tarde { border-color: var(--error); box-shadow: 0 0 0 3px var(--error) inset; animation: comanda-late 1.4s ease-in-out infinite; }
+@keyframes comanda-late { 50% { background: color-mix(in srgb, var(--error) 14%, var(--panel)); } }
+.comanda-tiempo { font-weight: 700; font-size: 13px; color: var(--info); text-transform: uppercase; letter-spacing: .4px; }
+
+/* Salón: mapa de mesas */
+.mesas-zona { margin: 10px 0 4px; font-size: 13px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .5px; }
+.mesas-mapa { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+.mesa { display: flex; flex-direction: column; gap: 2px; text-align: left; min-height: 92px; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--borde); background: var(--panel); color: var(--texto); }
+.mesa b { font-size: 17px; }
+.mesa small { color: var(--suave); font-size: 12px; }
+.mesa.libre { border-style: dashed; }
+.mesa.libre b { color: var(--ok); }
+.mesa.ocupada { border-color: var(--info); background: color-mix(in srgb, var(--info) 8%, var(--panel)); }
+.mesa.larga { border-color: var(--oferta); background: color-mix(in srgb, var(--oferta) 10%, var(--panel)); }
+.mesa .mesa-total { margin-top: auto; font-weight: 800; }
+.mesa .mesa-espera { align-self: flex-start; font-size: 11px; font-weight: 700; background: var(--oferta); color: #fff; border-radius: 999px; padding: 1px 8px; }
+.linea-extra { padding-left: 18px; font-size: .92em; color: var(--suave); }
+.pasos { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pasos button { border: 1px solid var(--borde); background: var(--panel); color: var(--texto); border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 13px; }
+.pasos button.activa { background: var(--info); border-color: var(--info); color: #fff; }
 .comanda.lista { opacity: .6; }
 .comanda header { display: flex; justify-content: space-between; gap: 8px; }
 .comanda ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 18px; }

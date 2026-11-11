@@ -5,17 +5,18 @@ import { api, ErrorApi, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { ComandaPapel, type Comanda } from "./Comandas";
+import { ConfigMesas, ConfigModificadores, ElegirModificadores, MapaMesas, MoverCuenta, PASOS, type MesaC, type Modificador } from "./Salon";
 
 /**
  * Cuentas abiertas (restaurantes, bares, discotecas): mesas o clientes con varias personas («asientos»).
  * Se ordena a una persona o a toda la mesa, y la cuenta se divide ANTES de ordenar (cada quien con lo suyo)
  * o DESPUÉS (partes iguales, por monto o por producto). El cobro lo hace la venta normal de la caja.
  */
-interface LineaC { id: string; asientoId: string | null; descripcion: string; cantidad: string; total: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null; presentacionId: string }
+interface LineaC { id: string; asientoId: string | null; descripcion: string; cantidad: string; total: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null; presentacionId: string; padreId: string | null; paso: number }
 interface AsientoC { id: string; nombre: string; total: string }
 interface CortesiaC { descripcion: string; cantidad: string; motivoTipo: string; motivo: string | null; valor: string }
-interface CuentaC { cortesias?: CortesiaC[]; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
-interface Resumen { id: string; nombre: string; mesa: string | null; numero: string; lineas: number; asientos: number; abiertaEn: string }
+interface CuentaC { cortesias?: CortesiaC[]; pasoLiberado: number; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
+interface Resumen { id: string; nombre: string; mesa: string | null; numero: string; lineas: number; asientos: number; abiertaEn: string; total?: string }
 interface Parte { indice: number; nombre: string; consumo: string; propina: string; totalConPropina: string; lineas: string[] | null }
 interface Division { cuentaId: string; modo: string; total: string; partes: Parte[] }
 
@@ -41,11 +42,28 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
   /** Comandas que salen por la impresora de esta caja, y el aviso de adónde fue lo enviado */
   const [papeles, setPapeles] = useState<Comanda[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [mesas, setMesas] = useState<MesaC[]>([]);
+  const [modificadores, setModificadores] = useState<Modificador[]>([]);
+  const [config, setConfig] = useState<"MESAS" | "MODS" | null>(null);
 
   const cargarLista = useCallback(async () => {
     try { setLista(await api<Resumen[]>(ajustes.servidor, base)); setError(null); } catch (e) { setError((e as Error).message); }
-  }, [ajustes.servidor, base]);
+    // El mapa y los modificadores son opcionales: sin mesas creadas todo funciona como la lista de cuentas
+    api<MesaC[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/mesas`).then(setMesas).catch(() => setMesas([]));
+    api<Modificador[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`).then(setModificadores).catch(() => setModificadores([]));
+  }, [ajustes.servidor, ajustes.cajaId, base]);
   useEffect(() => { void cargarLista(); }, [cargarLista]);
+  // El mapa se mantiene al día mientras se mira (otras cajas abren y cierran mesas)
+  useEffect(() => {
+    if (cuenta) return;
+    const t = window.setInterval(() => { void cargarLista(); }, 15000);
+    return () => window.clearInterval(t);
+  }, [cuenta, cargarLista]);
+  const tocarMesa = async (m: MesaC) => {
+    if (m.cuentaId) { await abrir(m.cuentaId); return; }
+    try { setCuenta(await api<CuentaC>(ajustes.servidor, base, { cuerpo: { nombre: m.nombre, mesa: m.nombre, asientos: 0 } })); setError(null); }
+    catch (e) { setError((e as Error).message); }
+  };
 
   /** Ejecuta una acción del servidor que devuelve la cuenta actualizada. */
   const accion = async (ruta: string, cuerpo?: unknown, metodo?: string) => {
@@ -68,11 +86,13 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
   const papel = papeles[0] ? <ComandaPapel key={papeles[0].id} comanda={papeles[0]} onListo={() => setPapeles((p) => p.slice(1))} /> : null;
   if (cuenta) {
     return <><DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
-      accion={accion} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
+      accion={accion} modificadores={modificadores} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
   }
 
+  if (config === "MESAS") return <ConfigMesas ajustes={ajustes} mesas={mesas} onGuardado={() => { setConfig(null); void cargarLista(); }} onCerrar={() => setConfig(null)} />;
+  if (config === "MODS") return <ConfigModificadores ajustes={ajustes} catalogo={catalogo} actuales={modificadores} onGuardado={() => { setConfig(null); void cargarLista(); }} onCerrar={() => setConfig(null)} />;
   return (
-    <><Modal titulo="Cuentas abiertas" onCerrar={onCerrar}>
+    <><Modal titulo="Cuentas abiertas" onCerrar={onCerrar} ancho>
       {error && <p className="error">{error}</p>}
       {nueva ? (
         <form onSubmit={async (ev) => {
@@ -91,25 +111,40 @@ export function Cuentas({ ajustes, catalogo, nivel, onCobrar, onCerrar }: {
         </form>
       ) : (
         <>
-          <button className="boton primario ancho" onClick={() => setNueva({ nombre: "", asientos: "0" })}>+ Nueva cuenta</button>
-          {lista === null && !error && <p className="suave">Cargando…</p>}
-          {lista?.length === 0 && <p className="suave">No hay cuentas abiertas.</p>}
-          <div className="resultados">
-            {lista?.map((c) => (
-              <div key={c.id} className="factura">
-                <span><b>{c.nombre}</b> <span className="suave">· #{c.numero} · {c.lineas} producto(s){c.asientos ? ` · ${c.asientos} personas` : ""} · desde {hora(c.abiertaEn)}</span></span>
-                <span className="factura-acciones"><button className="boton primario" onClick={() => abrir(c.id)}>Abrir</button></span>
-              </div>
-            ))}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <button className="boton primario" onClick={() => setNueva({ nombre: "", asientos: "0" })}>+ Nueva cuenta</button>
+            <button className="boton fantasma chico" onClick={() => setConfig("MESAS")}>Mesas</button>
+            <button className="boton fantasma chico" onClick={() => setConfig("MODS")}>Modificadores</button>
           </div>
+          {lista === null && !error && <p className="suave">Cargando…</p>}
+          {mesas.length > 0 && <MapaMesas mesas={mesas} onMesa={(m) => void tocarMesa(m)} />}
+          {mesas.length === 0 && lista !== null && <p className="suave">Para ver el mapa del salón, un supervisor crea las mesas en «Mesas».</p>}
+          {lista?.length === 0 && mesas.length === 0 && <p className="suave">No hay cuentas abiertas.</p>}
+          {(() => {
+            const nombres = new Set(mesas.map((m) => m.nombre));
+            const otras = (lista ?? []).filter((c) => !c.mesa || !nombres.has(c.mesa));
+            return otras.length > 0 ? (
+              <>
+                {mesas.length > 0 && <div className="mesas-zona">Otras cuentas (barra, clientes)</div>}
+                <div className="resultados">
+                  {otras.map((c) => (
+                    <div key={c.id} className="factura">
+                      <span><b>{c.nombre}</b> <span className="suave">· #{c.numero} · {c.lineas} producto(s){c.asientos ? ` · ${c.asientos} personas` : ""} · desde {hora(c.abiertaEn)}{c.total ? ` · ${rd(c.total)}` : ""}</span></span>
+                      <span className="factura-acciones"><button className="boton primario" onClick={() => abrir(c.id)}>Abrir</button></span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null;
+          })()}
         </>
       )}
     </Modal>{papel}</>
   );
 }
 
-function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number;
+function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, onCobrar, onVolver, onCerrar }: {
+  ajustes: Ajustes; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[];
   error: string | null; aviso: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
@@ -125,6 +160,11 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
   const [motivoTipo, setMotivoTipo] = useState("CASA");
   const [motivo, setMotivo] = useState("");
   const [uniendo, setUniendo] = useState(false);
+  const [moviendo, setMoviendo] = useState(false);
+  /** Servicio por tiempos (entradas → fuertes → postres): cada plato sale a la cocina cuando se pide su tiempo */
+  const [tiempos, setTiempos] = useState(() => cuenta.pasoLiberado > 1 || cuenta.lineas.some((l) => l.paso > 1));
+  const [pasoNuevo, setPasoNuevo] = useState(1);
+  const [eligiendo, setEligiendo] = useState<ProductoCatalogo | null>(null);
 
   const vivas = cuenta.lineas.filter((l) => !l.anulada && !l.ventaId);
   const cobradas = cuenta.lineas.filter((l) => !l.anulada && l.ventaId).length;
@@ -133,9 +173,15 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
     ...cuenta.asientos.map((a) => ({ id: a.id, nombre: a.nombre, lineas: vivas.filter((l) => l.asientoId === a.id) })),
   ];
 
-  const agregar = (p: ProductoCatalogo) => {
+  const aplicables = (p: ProductoCatalogo) => modificadores.filter((m) => m.categoriaId === null || m.categoriaId === p.categoriaId);
+  const agregar = (p: ProductoCatalogo, extra?: { mods: string[]; nota: string; paso: number }) => {
     if (precioPara(p, nivel, catalogo.nivelPredeterminado).precio === null && !p.precioVariable) return;
-    void accion(`${url}/lineas`, { presentacionId: p.presentacionId, cantidad: "1", asientoId: destino });
+    // Un plato con modificadores pregunta cuáles lleva antes de cargarse
+    if (!extra && aplicables(p).length) { setEligiendo(p); return; }
+    void accion(`${url}/lineas`, {
+      presentacionId: p.presentacionId, cantidad: "1", asientoId: destino,
+      ...(extra?.mods.length ? { modificadores: extra.mods } : {}), ...(extra?.nota ? { nota: extra.nota } : {}), paso: extra?.paso ?? (tiempos ? pasoNuevo : 1),
+    });
   };
   /** Lo que ya tiene la cuenta pendiente de cada producto (se ve en la tarjeta del catálogo) */
   const enCuenta = useMemo(() => {
@@ -150,6 +196,14 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
     return true;
   };
 
+  if (eligiendo) {
+    return <ElegirModificadores titulo={eligiendo.nombre} mods={aplicables(eligiendo)} tiempos={tiempos} pasoInicial={pasoNuevo}
+      onCerrar={() => setEligiendo(null)} onListo={(r) => { const p = eligiendo; setEligiendo(null); agregar(p, r); }} />;
+  }
+  if (moviendo) {
+    return <MoverCuenta ajustes={ajustes} base={base} cuentaId={cuenta.id} accion={accion} onCerrar={() => setMoviendo(false)}
+      lineas={vivas.filter((l) => !l.padreId).map((l) => ({ id: l.id, descripcion: l.descripcion, cantidad: l.cantidad, total: l.total }))} />;
+  }
   if (dividiendo) return <DividirCuenta ajustes={ajustes} url={url} cuenta={cuenta} onCobrar={onCobrar} onVolver={() => setDividiendo(false)} />;
   if (anulando) {
     return (
@@ -209,14 +263,23 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
             <button onClick={async () => { const c = await accion(`${url}/asientos`, {}); if (c) setDestino(c.asientos[c.asientos.length - 1]?.id ?? null); }}>+ Persona</button>
           </div>
           <p className="suave" style={{ margin: "0 0 4px" }}>Lo que toque en el catálogo se carga a: <b>{destino ? cuenta.asientos.find((a) => a.id === destino)?.nombre ?? "" : "toda la mesa"}</b></p>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "0 0 6px" }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }} title="Entradas primero, luego fuertes y postres: cada tiempo sale a la cocina cuando se pide">
+              <input type="checkbox" checked={tiempos} disabled={vivas.some((l) => l.paso > 1 && !l.enviadaEn)} onChange={(e) => setTiempos(e.target.checked)} /> Servir por tiempos
+            </label>
+            {tiempos && <span className="pasos"><span className="suave">Lo que agregue sale en:</span>{PASOS.map(([n, t]) => <button key={n} className={pasoNuevo === n ? "activa" : ""} onClick={() => setPasoNuevo(n)}>{t}</button>)}</span>}
+          </div>
           <div className="cuenta-lineas">
             {grupos.filter((g) => g.id === null ? g.lineas.length > 0 : true).map((g) => (
               <div key={g.id ?? "mesa"} style={{ marginTop: 8 }}>
                 <b>{g.nombre}</b> <span className="suave">{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span>
                 {g.lineas.length === 0 && <p className="suave" style={{ margin: "2px 0" }}>Nada pedido todavía.</p>}
-                {g.lineas.map((l) => (
-                  <div key={l.id} className="factura">
-                    <span>{Number(l.cantidad)} × {l.descripcion}{l.enviadaEn ? <span className="suave"> · enviado</span> : null}</span>
+                {g.lineas.filter((l) => !l.padreId).map((l) => (
+                  <div key={l.id}>
+                  <div className="factura">
+                    <span>{Number(l.cantidad)} × {l.descripcion}{l.enviadaEn ? <span className="suave"> · enviado</span> : null}
+                      {l.nota ? <span className="suave"> · {l.nota}</span> : null}
+                      {tiempos && !l.enviadaEn ? <span className="suave"> · {PASOS.find(([n]) => n === l.paso)?.[1] ?? ""}{l.paso > cuenta.pasoLiberado ? " (espera)" : ""}</span> : null}</span>
                     <span className="factura-acciones">
                       <b>{rd(l.total)}</b>
                       {cuenta.asientos.length > 0 && (
@@ -225,10 +288,19 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
                           {cuenta.asientos.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                         </select>
                       )}
+                      {tiempos && !l.enviadaEn && (
+                        <select aria-label="Tiempo" value={l.paso} onChange={(e) => void accion(`${url}/lineas/${l.id}`, { paso: Number(e.target.value) }, "PATCH")}>
+                          {PASOS.map(([n, t]) => <option key={n} value={n}>{t}</option>)}
+                        </select>
+                      )}
                       <button className="enlace" disabled={ocupado} title="Pagar este producto con un vale de consumo" onClick={() => setCanjeando(l)}>Vale</button>
                       <button className="enlace" disabled={ocupado} title="Regalar este producto (supervisor)" onClick={() => setRegalando(l)}>Cortesía</button>
                       <button className="enlace" disabled={ocupado} onClick={() => (l.enviadaEn ? setAnulando(l) : void accion(`${url}/lineas/${l.id}`, { anulada: true }, "PATCH"))}>Quitar</button>
                     </span>
+                  </div>
+                  {vivas.filter((h) => h.padreId === l.id).map((h) => (
+                    <div key={h.id} className="factura linea-extra"><span>{h.descripcion}</span><span className="factura-acciones"><b>{rd(h.total)}</b></span></div>
+                  ))}
                   </div>
                 ))}
               </div>
@@ -238,7 +310,12 @@ function DetalleCuenta({ ajustes, base, cuenta, catalogo, nivel, error, aviso, o
           {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
           <p style={{ marginTop: 10 }}><b>Pendiente {rd(cuenta.total)}</b> <span className="suave">· propina legal 10 % {rd(cuenta.propinaLegal)}</span></p>
           <div className="pv-atajos pv-atajos-min" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-            <button disabled={ocupado || !vivas.some((l) => !l.enviadaEn)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra/cocina</button>
+            <button disabled={ocupado || !vivas.some((l) => !l.enviadaEn && l.paso <= cuenta.pasoLiberado)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra/cocina</button>
+            {tiempos && (
+              <button disabled={ocupado || cuenta.pasoLiberado >= 3} title="Libera y envía lo que esperaba su turno"
+                onClick={() => void accion(`${url}/siguiente-tiempo`)}>Pedir {cuenta.pasoLiberado === 1 ? "fuertes" : "postres"}</button>
+            )}
+            <button disabled={ocupado} onClick={() => setMoviendo(true)}>Mover / cambiar mesa</button>
             <button disabled={ocupado} onClick={() => setUniendo(true)}>Unir con otra</button>
             <button className="primario" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir y cobrar</button>
           </div>
