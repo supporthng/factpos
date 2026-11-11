@@ -196,6 +196,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
   const [tiempos, setTiempos] = useState(() => cuenta.pasoLiberado > 1 || cuenta.lineas.some((l) => l.paso > 1));
   const [pasoNuevo, setPasoNuevo] = useState(1);
   const [eligiendo, setEligiendo] = useState<ProductoCatalogo | null>(null);
+  const [notando, setNotando] = useState<{ l: LineaC; texto: string } | null>(null);
 
   const vivas = cuenta.lineas.filter((l) => !l.anulada && !l.ventaId);
   const cobradas = cuenta.lineas.filter((l) => !l.anulada && l.ventaId).length;
@@ -227,6 +228,17 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
     return true;
   };
 
+  if (notando) {
+    const guardarNota = () => { const n = notando; setNotando(null); void accion(`${url}/lineas/${n.l.id}`, { nota: n.texto.trim() }, "PATCH"); };
+    return (
+      <Modal titulo={`Indicación · ${notando.l.descripcion}`} onCerrar={() => setNotando(null)}>
+        <label>Para la cocina o la barra<input autoFocus value={notando.texto} maxLength={150} placeholder="Sin sal, bien cocida, alergia a…"
+          onChange={(e) => setNotando({ ...notando, texto: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") guardarNota(); }} /></label>
+        {notando.l.enviadaEn && <p className="suave">Este plato ya salió: se reenvía solo con la indicación marcada «CAMBIO» para que la cocina la vea.</p>}
+        <button className="boton primario ancho" onClick={guardarNota}>Guardar</button>
+      </Modal>
+    );
+  }
   if (eligiendo) {
     return <ElegirModificadores titulo={eligiendo.nombre} mods={aplicables(eligiendo)} reglas={gruposMod} tiempos={tiempos} pasoInicial={pasoNuevo}
       onCerrar={() => setEligiendo(null)} onListo={(r) => { const p = eligiendo; setEligiendo(null); agregar(p, r); }} />;
@@ -333,6 +345,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
                           {PASOS.map(([n, t]) => <option key={n} value={n}>{t}</option>)}
                         </select>
                       )}
+                      <button className="enlace" disabled={ocupado} title="Agregar o cambiar la indicación para la cocina" onClick={() => setNotando({ l, texto: (l.nota ?? "").replace(/^CAMBIO:\s*/i, "") })}>Nota</button>
                       <button className="enlace" disabled={ocupado} title="Pagar este producto con un vale de consumo" onClick={() => setCanjeando(l)}>Vale</button>
                       <button className="enlace" disabled={ocupado} title="Regalar este producto (supervisor)" onClick={() => setRegalando(l)}>Cortesía</button>
                       <button className="enlace" disabled={ocupado} onClick={() => (l.enviadaEn ? setAnulando(l) : void accion(`${url}/lineas/${l.id}`, { anulada: true }, "PATCH"))}>Quitar</button>

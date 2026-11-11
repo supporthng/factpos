@@ -190,7 +190,7 @@ export async function rutasCuentas(app: FastifyInstance) {
   app.patch("/cajas/:cajaId/cuentas/:id/lineas/:lineaId", async (req) => {
     const ctx = await preparar(req);
     const { id, lineaId } = z.object({ id: uuid, lineaId: uuid }).parse(req.params);
-    const b = z.object({ asientoId: uuid.nullable().optional(), cantidad: cantidad.optional(), paso: z.number().int().min(1).max(3).optional(), anulada: z.boolean().optional(), autorizacion: z.string().max(2000).optional(), motivo: z.string().trim().max(200).optional() }).parse(req.body);
+    const b = z.object({ asientoId: uuid.nullable().optional(), cantidad: cantidad.optional(), paso: z.number().int().min(1).max(3).optional(), anulada: z.boolean().optional(), nota: z.string().trim().max(200).optional(), autorizacion: z.string().max(2000).optional(), motivo: z.string().trim().max(200).optional() }).parse(req.body);
     const cuenta = await cuentaDe(ctx.sucursalId, id);
     const l = (await pool.query<{ enviada: boolean }>("SELECT enviada_en IS NOT NULL AS enviada FROM cuenta_lineas WHERE id = $1 AND cuenta_id = $2", [lineaId, id])).rows[0];
     if (!l) throw new ErrorNegocio("Línea no encontrada", 404);
@@ -208,6 +208,14 @@ export async function rutasCuentas(app: FastifyInstance) {
         });
         return detalle(ctx.sucursalId, id);
       }
+    }
+    if (b.nota !== undefined) {
+      // Cambiar la indicación de un plato. Si ya salió, vuelve a quedar pendiente y se reenvía marcada como CAMBIO para que la cocina la vea
+      const nueva = b.nota ? (l.enviada ? `CAMBIO: ${b.nota.replace(/^CAMBIO:\s*/i, "")}` : b.nota) : null;
+      await pool.query(
+        `UPDATE cuenta_lineas SET nota = $3, enviada_en = CASE WHEN $4::boolean AND $3 IS NOT NULL THEN NULL ELSE enviada_en END
+          WHERE id = $1 AND cuenta_id = $2 AND venta_id IS NULL AND NOT anulada`, [lineaId, id, nueva, l.enviada]);
+      if (b.asientoId === undefined && b.cantidad === undefined && b.paso === undefined && b.anulada === undefined) return detalle(ctx.sucursalId, id);
     }
     if (b.asientoId && !(await pool.query("SELECT 1 FROM cuenta_asientos WHERE id = $1 AND cuenta_id = $2", [b.asientoId, id])).rowCount) throw new ErrorNegocio("Ese asiento no es de la cuenta", 400);
     // Los extras con cargo siguen a su plato: persona, cantidad, tiempo y anulación
