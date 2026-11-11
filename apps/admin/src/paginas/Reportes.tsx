@@ -20,6 +20,7 @@ const REPORTES: Rep[] = [
   { id: "reposicion", titulo: "Reposición inteligente", grupo: "Inventario", desc: "Qué comprar según lo que se vende y lo que queda." },
   { id: "por-vencer", titulo: "Vencidos y por vencer", grupo: "Inventario", desc: "Lotes vencidos o que vencen en los próximos 60 días." },
   { id: "perdidas", titulo: "Pérdidas", grupo: "Inventario", fechas: true, desc: "Mermas, vencidos, ajustes de salida, consumo interno y faltantes de conteo: lo que se perdió y cuánto costó. No incluye entradas." },
+  { id: "entradas-noche", titulo: "Entradas por noche", grupo: "Ventas", fechas: true, desc: "Entradas vendidas de cada tipo e ingreso, por noche (de 6:00 a. m. a 6:00 a. m.). Requiere elegir la categoría de entradas en Datos de la empresa." },
   { id: "cortesias", titulo: "Cortesías y anulaciones de cuentas", grupo: "Control", fechas: true, desc: "Productos regalados y anulados después de enviarlos a la barra o cocina: quién, quién autorizó, motivo y valor." },
   { id: "ajustes", titulo: "Detalle de ajustes", grupo: "Inventario", fechas: true, desc: "Todos los ajustes de existencia: quién, cuándo y por qué." },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", desc: "Mercancía movida entre sucursales o almacenes." },
