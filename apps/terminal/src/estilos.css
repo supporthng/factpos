@@ -1335,3 +1335,4 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cuenta-lineas .factura b { font-size: 14px; }
 .cuenta-lineas .linea-extra { flex-wrap: nowrap; }
 .cuenta-lineas .linea-extra > span:first-child { flex: 1 1 auto; }
+.barra { width: 100%; align-self: stretch; }
