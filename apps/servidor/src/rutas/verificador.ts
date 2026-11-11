@@ -33,6 +33,10 @@ export const PRECISION_MAX_M = 100;
 /** Intentos fuera de la tienda por equipo antes de pausarlo, y cuánto dura la pausa. */
 const MAX_FUERA = 6, PAUSA_FUERA_MS = 10 * 60_000;
 const fuera = new Map<string, { n: number; hasta: number }>();
+/** Tope de consultas de precio por minuto de toda una sucursal (frena el barrido masivo de códigos aunque cambie de equipo) y de filas de bloqueo por equipo. */
+const MAX_PRECIOS_MIN = 300;
+const porSucursal = new Map<string, { n: number; hasta: number }>();
+const logueado = new Map<string, number>();
 /** Identificador corto y no reversible del equipo (la IP no se guarda). */
 const equipoCorto = (ip: string) => createHash("sha256").update(ip).digest("hex").slice(0, 8);
 /** Código del enlace/QR de una sucursal: 8 letras y números sin símbolos confusos. */
@@ -93,6 +97,11 @@ export async function rutasVerificador(app: FastifyInstance) {
     if (!r?.rows[0]?.ok) return rep.code(404).send({ error: "La consulta de precios por internet no está activada" });
     const equipo = equipoCorto(ip);
     const bloquear = (motivo: string, distanciaM?: number) => {
+      // Un mismo equipo y motivo se anota una vez por minuto: así nadie puede llenar la base de registros
+      const kLog = `${equipo}|${id}|${motivo}`;
+      if ((logueado.get(kLog) ?? 0) > ahora - 60_000) return;
+      logueado.set(kLog, ahora);
+      if (logueado.size > 5000) for (const [k, t] of logueado) if (t < ahora - 60_000) logueado.delete(k);
       pool.query("INSERT INTO consulta_movil_bloqueos (sucursal_id, motivo, distancia_m, equipo) VALUES ($1, $2, $3, $4)", [id, motivo, distanciaM ?? null, equipo]).catch(() => {});
       if (Math.random() < 0.01) pool.query("DELETE FROM consulta_movil_bloqueos WHERE creado_en < now() - interval '60 days'").catch(() => {});
     };
@@ -106,6 +115,9 @@ export async function rutasVerificador(app: FastifyInstance) {
     // Solo el precio de un producto exige estar en la tienda (la página, su configuración y el QR cargan desde cualquier lugar)
     if (/^\/verificador\/[0-9a-f-]{36}\/[^/?]+/i.test(req.url) || /^\/verificador\/ubicacion(\?|$)/.test(req.url)) {
       const { lat, lng, radio } = r.rows[0];
+      const g = porSucursal.get(id);
+      if (!g || g.hasta < ahora) porSucursal.set(id, { n: 1, hasta: ahora + 60_000 });
+      else if (++g.n > MAX_PRECIOS_MIN) return rep.code(429).send({ error: "Muchas consultas en este momento. Inténtalo en un minuto." });
       if (lat === null || lng === null) return rep.code(403).send({ error: "Esta tienda todavía no activó la consulta por ubicación. Pregunta el precio en caja." });
       const q = req.query as { lat?: string; lng?: string; pre?: string };
       const mLat = Number(q.lat), mLng = Number(q.lng), precision = Math.max(0, Number(q.pre) || 0), pre = Math.min(50, precision);
