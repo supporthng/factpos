@@ -1,6 +1,6 @@
 import { pool } from "../db.js";
 import { descifrarTexto } from "./certificado-guardado.js";
-import { simulado, dgii, pse, SinConexion, type Transmisor } from "./transmisor.js";
+import { simulado, dgii, transmisorPse, SinConexion, type Transmisor } from "./transmisor.js";
 import { encolarFilas } from "../sync/outbox.js";
 
 /**
@@ -13,11 +13,14 @@ import { encolarFilas } from "../sync/outbox.js";
 const LOTE = 25;
 
 async function transmisorDe(empresaId: string): Promise<Transmisor> {
-  const r = await pool.query("SELECT transmisor, ambiente, pse_url, pse_token FROM configuracion_fiscal WHERE empresa_id = $1", [empresaId]);
+  const r = await pool.query("SELECT transmisor, ambiente, pse_url, pse_token, pse_nombre FROM configuracion_fiscal WHERE empresa_id = $1", [empresaId]);
   const cfg = r.rows[0] ?? { transmisor: "SIMULADO", ambiente: "SIMULADO" };
   if (cfg.transmisor === "DGII" && cfg.ambiente !== "SIMULADO") return dgii(cfg.ambiente);
   // La dirección del proveedor la pone FactPOS (PSE_URL del servidor); la de la empresa solo manda si la tiene
-  if (cfg.transmisor === "PSE" && (cfg.pse_url || process.env.PSE_URL)) return pse(cfg.pse_url || process.env.PSE_URL!, undefined, cfg.pse_token ? descifrarTexto(cfg.pse_token) : undefined);
+  if (cfg.transmisor === "PSE") {
+    const t = transmisorPse(cfg, cfg.pse_token ? descifrarTexto(cfg.pse_token) : null);
+    if (t) return t;
+  }
   return simulado;
 }
 
@@ -27,7 +30,7 @@ export async function procesarCola(log: (m: string) => void = () => {}) {
   try {
     await c.query("BEGIN");
     const docs = await c.query(
-      `SELECT d.id, d.encf, d.tipo_ecf, d.modo_envio, d.xml_envio, d.estado, d.track_id, d.intentos,
+      `SELECT d.id, d.encf, d.tipo_ecf, d.modo_envio, d.xml_envio, d.xml AS xml_completo, d.estado, d.track_id, d.intentos,
               s.empresa_id, e.rnc
          FROM ecf_documentos d
          JOIN sucursales s ON s.id = d.sucursal_id JOIN empresas e ON e.id = s.empresa_id
@@ -40,7 +43,7 @@ export async function procesarCola(log: (m: string) => void = () => {}) {
     for (const d of docs.rows) {
       if (!transmisores.has(d.empresa_id)) transmisores.set(d.empresa_id, await transmisorDe(d.empresa_id));
       const t = transmisores.get(d.empresa_id)!;
-      const doc = { encf: d.encf, tipo: d.tipo_ecf, modo: d.modo_envio, xml: d.xml_envio, rncEmisor: d.rnc };
+      const doc = { encf: d.encf, tipo: d.tipo_ecf, modo: d.modo_envio, xml: d.xml_envio, xmlCompleto: d.xml_completo, rncEmisor: d.rnc };
       try {
         const r = d.track_id && ["EN_PROCESO", "ENVIADO"].includes(d.estado) ? await t.consultar(d.track_id, doc) : await t.enviar(doc);
         await c.query(
