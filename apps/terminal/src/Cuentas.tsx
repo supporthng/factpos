@@ -122,7 +122,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   if (pantalla === "REPORTE") return <ReporteSalon ajustes={ajustes} onCerrar={() => setPantalla(null)} />;
   if (pantalla === "MODS") return <ConfigModificadores ajustes={ajustes} catalogo={catalogo} actuales={modificadores} gruposActuales={gruposMod} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
   return (
-    <><Modal titulo="Cuentas abiertas" onCerrar={onCerrar} ancho>
+    <><Modal titulo="Salón · mesas y cuentas" onCerrar={onCerrar} ancho>
       {error && <p className="error">{error}</p>}
       {nueva ? (
         <form onSubmit={async (ev) => {
@@ -377,7 +377,11 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
                   onClick={() => void accion(`${url}/siguiente-tiempo`)}>Pedir {cuenta.pasoLiberado === 1 ? "fuertes" : "postres"}</button>
               )}
             </div>
-            <button className="cobrar-cuenta" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Cobrar o dividir la cuenta</button>
+            <div className="fila-cobro">
+              <button className="cobrar-cuenta" disabled={ocupado || !vivas.length}
+                onClick={() => onCobrar({ cuentaId: cuenta.id, titulo: cuenta.nombre, items: vivas.map((l) => ({ presentacionId: l.presentacionId, cantidad: String(Number(l.cantidad)) })), lineaIds: vivas.map((l) => l.id), parte: 1, partes: 1, propina: cuenta.propinaLegal })}>Cobrar</button>
+              <button className="dividir-cuenta" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir cuenta</button>
+            </div>
             <div className="fila-sec">
               <button disabled={ocupado || !vivas.length} title="Imprime la cuenta para que el cliente la revise antes de pagar" onClick={() => setPreCuenta(armarPreCuenta())}>Pre-cuenta</button>
               <button disabled={ocupado} onClick={() => setMoviendo(true)}>Mover / cambiar mesa</button>
