@@ -30,8 +30,8 @@ export interface PlanCobro {
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
 
-export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; catalogo: Catalogo; nivel: number;
+export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCobrar, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; catalogo: Catalogo; nivel: number; usuarioNombre?: string;
   onCobrar: (plan: PlanCobro) => void; onCerrar: () => void;
 }) {
   const base = `/cajas/${ajustes.cajaId}/cuentas`;
@@ -47,6 +47,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   const [modificadores, setModificadores] = useState<Modificador[]>([]);
   const [gruposMod, setGruposMod] = useState<GrupoMod[]>([]);
   const [agotados, setAgotados] = useState<Set<string>>(new Set());
+  // El mesero ve solo sus mesas (y las libres): se recuerda en esta caja
+  const [soloMias, setSoloMias] = useState(() => { try { return localStorage.getItem("factpos.soloMisMesas") === "1"; } catch { return false; } });
   const [pantalla, setPantalla] = useState<"MESAS" | "MODS" | "REPORTE" | "RESERVAS" | "LLEVAR" | "AGOTADOS" | null>(null);
   const [reservaMesa, setReservaMesa] = useState<MesaC | null>(null);
 
@@ -143,6 +145,12 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             <button className="boton primario" onClick={() => setNueva({ nombre: "", asientos: "0" })}>+ Nueva cuenta</button>
+            {usuarioNombre && mesas.length > 0 && (
+              <button className={"boton " + (soloMias ? "primario" : "fantasma")} title="Muestra solo las mesas libres y las que usted abrió"
+                onClick={() => { const v = !soloMias; setSoloMias(v); try { localStorage.setItem("factpos.soloMisMesas", v ? "1" : "0"); } catch { /* sin almacenamiento */ } }}>
+                {soloMias ? "Mis mesas ✓" : "Mis mesas"}
+              </button>
+            )}
             <button className="boton fantasma" onClick={() => setPantalla("LLEVAR")}>Para llevar / domicilio</button>
             <button className="boton fantasma" title="Platos que se acabaron: nadie los puede ordenar" onClick={() => setPantalla("AGOTADOS")}>Agotados{agotados.size ? ` (${agotados.size})` : ""}</button>
             <button className="boton fantasma" onClick={() => setPantalla("RESERVAS")}>Reservas</button>
@@ -151,7 +159,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
             <button className="boton fantasma chico" title="Ventas por mesero, por hora y por mesa (supervisor)" onClick={() => setPantalla("REPORTE")}>Reporte</button>
           </div>
           {lista === null && !error && <p className="suave">Cargando…</p>}
-          {mesas.length > 0 && <MapaMesas mesas={mesas} onMesa={(m) => void tocarMesa(m)} />}
+          {mesas.length > 0 && <MapaMesas mesas={soloMias && usuarioNombre ? mesas.filter((m) => !m.cuentaId || m.mesero === usuarioNombre) : mesas} onMesa={(m) => void tocarMesa(m)} />}
           {mesas.length === 0 && lista !== null && <p className="suave">Para ver el mapa del salón, un supervisor crea las mesas en «Mesas».</p>}
           {lista?.length === 0 && mesas.length === 0 && <p className="suave">No hay cuentas abiertas.</p>}
           {(() => {
