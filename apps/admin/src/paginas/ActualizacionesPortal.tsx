@@ -9,7 +9,7 @@ import { Aviso, Encabezado, useDatos, versionCliente } from "../ui";
  */
 interface Fila {
   licenciaId: string; cliente: string; plan: string | null; versionApp: string | null; ultimoContacto: string | null;
-  versionAprobada: string | null; estado: string; habilitada: boolean; alDia: boolean;
+  versionAprobada: string | null; permitido: boolean; estado: string; habilitada: boolean; alDia: boolean;
 }
 interface Datos { ultima: { version: string; notas: string | null; publicada: string | null } | null; todas: boolean; clientes: Fila[] }
 const fecha = (v: string | null) => (v ? new Date(v).toLocaleString("es-DO", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -21,9 +21,21 @@ export function ActualizacionesPortal() {
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
-  const pendientes = useMemo(() => (datos?.clientes ?? []).filter((c) => !c.habilitada && !c.alDia), [datos]);
+  const permitidos = useMemo(() => (datos?.clientes ?? []).filter((c) => c.permitido), [datos]);
+  const resto = useMemo(() => (datos?.clientes ?? []).filter((c) => !c.permitido), [datos]);
+  const pendientes = useMemo(() => resto.filter((c) => !c.habilitada && !c.alDia), [resto]);
   const alternar = (id: string) => setMarcados((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
 
+  const permitir = async (ids: string[], permitido: boolean) => {
+    if (!ids.length) return;
+    setOcupado(true); setMsg(null);
+    try {
+      await api("/central/portal/versiones/permitidos", { metodo: "PUT", cuerpo: { licenciaIds: ids, permitido } });
+      setMsg({ t: permitido ? `${ids.length} cliente(s) agregados a permitidos: recibirán cada versión nueva sin que se las envíes.` : `${ids.length} cliente(s) quitados de permitidos: volverán a necesitar que les envíes cada versión.`, tipo: "ok" });
+      setMarcados(new Set()); setN((x) => x + 1);
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    finally { setOcupado(false); }
+  };
   const enviar = async (ids: string[], retirar = false) => {
     if (!ids.length) return;
     setOcupado(true); setMsg(null);
@@ -43,6 +55,31 @@ export function ActualizacionesPortal() {
   };
 
   const u = datos?.ultima;
+  const tabla = (lista: Fila[], vacio: string) => (
+      <div className="tabla-contenedor">
+        <table className="tabla apilada">
+          <thead><tr><th></th><th>Cliente</th><th>Plan</th><th>Instalada</th><th>Último contacto</th><th>Estado</th></tr></thead>
+          <tbody>
+            {lista.map((c) => (
+              <tr key={c.licenciaId}>
+                <td><input type="checkbox" aria-label={`Marcar ${c.cliente}`} checked={marcados.has(c.licenciaId)} onChange={() => alternar(c.licenciaId)} /></td>
+                <td data-et="Cliente"><b>{c.cliente}</b></td>
+                <td data-et="Plan">{c.plan ?? "—"}</td>
+                <td data-et="Instalada">{c.versionApp ? `v${versionCliente(c.versionApp)}` : "—"}</td>
+                <td data-et="Último contacto">{fecha(c.ultimoContacto)}</td>
+                <td data-et="Estado">
+                  {c.alDia ? <span className="pastilla ok">Al día</span>
+                    : c.permitido ? <span className="pastilla ok">Permitido · pendiente de instalar</span>
+                    : c.habilitada ? <span className="pastilla ok">Enviada · pendiente de instalar</span>
+                    : <span className="pastilla alerta">Sin enviar</span>}
+                </td>
+              </tr>
+            ))}
+            {!lista.length && <tr><td colSpan={6} className="suave">{vacio}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+  );
   return (
     <>
       <Encabezado titulo="Envío de actualizaciones" descripcion="Elige a qué clientes les llega la versión publicada. Los demás siguen con la que tienen, sin avisos ni cambios.">
@@ -65,27 +102,16 @@ export function ActualizacionesPortal() {
         <button className="boton" disabled={ocupado || !pendientes.length} onClick={() => setMarcados(new Set(pendientes.map((c) => c.licenciaId)))}>Marcar los pendientes</button>
         <button className="boton" disabled={ocupado || !marcados.size} onClick={() => void enviar([...marcados], true)}>Retirar a los marcados</button>
       </div>
-      <div className="tabla-contenedor">
-        <table className="tabla apilada">
-          <thead><tr><th></th><th>Cliente</th><th>Plan</th><th>Instalada</th><th>Último contacto</th><th>Estado</th></tr></thead>
-          <tbody>
-            {(datos?.clientes ?? []).map((c) => (
-              <tr key={c.licenciaId}>
-                <td><input type="checkbox" aria-label={`Marcar ${c.cliente}`} checked={marcados.has(c.licenciaId)} onChange={() => alternar(c.licenciaId)} /></td>
-                <td data-et="Cliente"><b>{c.cliente}</b></td>
-                <td data-et="Plan">{c.plan ?? "—"}</td>
-                <td data-et="Instalada">{c.versionApp ? `v${versionCliente(c.versionApp)}` : "—"}</td>
-                <td data-et="Último contacto">{fecha(c.ultimoContacto)}</td>
-                <td data-et="Estado">
-                  {c.alDia ? <span className="pastilla ok">Al día</span>
-                    : c.habilitada ? <span className="pastilla ok">Enviada · pendiente de instalar</span>
-                    : <span className="pastilla alerta">Sin enviar</span>}
-                </td>
-              </tr>
-            ))}
-            {datos && !datos.clientes.length && <tr><td colSpan={6} className="suave">Todavía no hay clientes con licencia.</td></tr>}
-          </tbody>
-        </table>
+      <h3 style={{ margin: "16px 0 4px" }}>Clientes permitidos</h3>
+      <p className="suave pequeno" style={{ margin: "0 0 8px" }}>Reciben cada versión nueva automáticamente, sin que tengas que enviársela. Úsalo para tus clientes de confianza o de pruebas.</p>
+      {tabla(permitidos, "Ninguno todavía. Marca clientes abajo y pulsa «Agregar a permitidos».")}
+      <div className="fila-acciones" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+        <button className="boton" disabled={ocupado || !permitidos.some((c) => marcados.has(c.licenciaId))} onClick={() => void permitir(permitidos.filter((c) => marcados.has(c.licenciaId)).map((c) => c.licenciaId), false)}>Quitar de permitidos a los marcados</button>
+      </div>
+      <h3 style={{ margin: "16px 0 4px" }}>Demás clientes <span className="suave pequeno">(les envías cada versión tú)</span></h3>
+      {tabla(resto, "No hay más clientes.")}
+      <div className="fila-acciones" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+        <button className="boton" disabled={ocupado || !resto.some((c) => marcados.has(c.licenciaId))} onClick={() => void permitir(resto.filter((c) => marcados.has(c.licenciaId)).map((c) => c.licenciaId), true)}>Agregar a permitidos a los marcados</button>
       </div>
       {!datos && !error && <p className="suave">Cargando…</p>}
       <p className="suave pequeno">Cada habilitación es para la versión publicada en ese momento: cuando publiques otra más nueva, hay que enviarla de nuevo. Las sucursales siguen a su servidor principal.</p>
