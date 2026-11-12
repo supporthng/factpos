@@ -26,7 +26,7 @@ export function InicioPortal({ accesos, irA }: { accesos: AccesoPortal[]; irA: (
   const solicitudes = pendientes.datos ?? [];
   const n = (v: number | null) => (v == null ? "—" : String(v));
   const cifras = [
-    { t: "Clientes activos", v: clientes.datos ? activos.length : null, c: "#0f766e", ir: "clientes" },
+    { t: "Clientes activos", v: clientes.datos ? activos.length : null, c: "#1d4ed8", ir: "clientes" },
     { t: "Solicitudes por revisar", v: pendientes.datos ? solicitudes.length : null, c: "#b45309", ir: "clientes" },
     { t: "Licencias que requieren atención", v: clientes.datos ? atencion.length : null, c: "#b91c1c", ir: "clientes" },
     { t: "Sin activar", v: clientes.datos ? sinActivar : null, c: "#4f46e5", ir: "clientes" },
@@ -43,7 +43,7 @@ export function InicioPortal({ accesos, irA }: { accesos: AccesoPortal[]; irA: (
 
       {cobros.datos && (
         <div className="ip-cifras ip-cobros">
-          <div className="ip-cifra" style={{ "--c": "#0f766e" } as React.CSSProperties}><b>{rd(cobros.datos.cobrado)}</b><span>Cobrado este mes ({cobros.datos.renovaciones} renovación{cobros.datos.renovaciones === 1 ? "" : "es"})</span></div>
+          <div className="ip-cifra" style={{ "--c": "#1d4ed8" } as React.CSSProperties}><b>{rd(cobros.datos.cobrado)}</b><span>Cobrado este mes ({cobros.datos.renovaciones} renovación{cobros.datos.renovaciones === 1 ? "" : "es"})</span></div>
           <div className="ip-cifra" style={{ "--c": "#4f46e5" } as React.CSSProperties}><b>{rd(cobros.datos.anterior)}</b><span>Cobrado el mes pasado</span></div>
           <div className="ip-cifra" style={{ "--c": "#b45309" } as React.CSSProperties}><b>{cobros.datos.porVencer}</b><span>Licencias que vencen en 30 días</span></div>
         </div>
@@ -74,7 +74,7 @@ export function InicioPortal({ accesos, irA }: { accesos: AccesoPortal[]; irA: (
           <h2 className="titulo-seccion">Accesos</h2>
           <div className="ip-accesos">
             {accesos.map((a, k) => (
-              <button key={a.id} className="ip-acceso" style={{ "--c": ["#0f766e", "#4f46e5", "#b45309", "#0369a1", "#be185d"][k % 5] } as React.CSSProperties} onClick={() => irA(a.id)}>
+              <button key={a.id} className="ip-acceso" style={{ "--c": ["#1d4ed8", "#4f46e5", "#b45309", "#0369a1", "#be185d"][k % 5] } as React.CSSProperties} onClick={() => irA(a.id)}>
                 <span className="mosaico-icono"><Icono n={a.i} tamano={22} /></span>
                 <span className="mosaico-texto"><b>{a.titulo}</b><small>{a.texto}</small></span>
                 <span className="mosaico-flecha" aria-hidden="true">›</span>
