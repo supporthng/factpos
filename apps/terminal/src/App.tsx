@@ -536,7 +536,7 @@ const DENOMINACIONES = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
 function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, onCerrarSistema }: {
   ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: (fondo: string) => void; recargar: () => void; onSalir: () => void; onCerrarSistema: () => void;
 }) {
-  const [fondo, setFondo] = useState("2000");
+  const [fondo, setFondo] = useState("");
   /** Desglose de billetes y monedas: cantidad por denominación. Mientras haya algo contado, el fondo es la suma. */
   const [cant, setCant] = useState<Record<number, string>>({});
   const totalContado = DENOMINACIONES.reduce((a, d) => a + d * (parseInt(cant[d] || "0", 10) || 0), 0);
@@ -583,7 +583,7 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, on
         {hayConteo && <div className="desglose-total">Total contado: <b>{rd(totalContado)}</b></div>}
         {hayConteo && <button type="button" className="enlace" onClick={() => { setCant({}); setFondo(""); }}>Borrar el conteo</button>}
       </div>
-      <p className="suave">Fondo: {rd(fondo || 0)}</p>
+      <p className="suave">Fondo: {rd(fondo || 0)} <span className="pequeno">(el cajero digita o cuenta su monto; si no pone nada, abre en cero)</span></p>
       <button className="boton primario ancho" onClick={abrir}>Abrir turno</button>
       <button className="boton ancho" onClick={() => setConsultando(true)}>Consultar precios</button>
       <button className="enlace" style={{ marginTop: 10 }} onClick={onSalir}>← Volver a la pantalla del PIN</button>
