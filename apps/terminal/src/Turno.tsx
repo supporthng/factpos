@@ -34,11 +34,11 @@ export function TurnoCaja({ ajustes, config, usuario, turno, pausadas, onCerrado
   ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; turno: Turno; pausadas: number;
   onCerrado: () => void; onCerrar: () => void;
 }) {
-  const [pestana, setPestana] = useState<"x" | "mov" | "z" | "dia">("x");
+  const [pestana, setPestana] = useState<"x" | "mov" | "z" | "dia">("z");
   const [z, setZ] = useState<Reporte | null>(null);
 
   // Después de cerrar: el reporte Z, para imprimir y salir
-  if (z) return <ReporteImpreso r={z} config={config} titulo="CIERRE DE TURNO (Z)" onCerrar={onCerrado} textoCerrar="Terminar" />;
+  if (z) return <ReporteImpreso r={z} config={config} titulo="CIERRE DE TURNO (Z)" onCerrar={onCerrado} textoCerrar="Terminar" autoImprimir />;
 
   return (
     <Modal titulo="Turno y cuadre" onCerrar={onCerrar} ancho>
@@ -205,7 +205,13 @@ function CuadreDia({ ajustes }: { ajustes: Ajustes }) {
 }
 
 /* ---------- Reporte impreso (X o Z), ticket de 80 mm ---------- */
-function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar }: { r: Reporte; config: ConfigCaja; titulo: string; onCerrar: () => void; textoCerrar: string }) {
+function ReporteImpreso({ r, config, titulo, onCerrar, textoCerrar, autoImprimir }: { r: Reporte; config: ConfigCaja; titulo: string; onCerrar: () => void; textoCerrar: string; autoImprimir?: boolean }) {
+  // Al confirmar el cierre el reporte Z sale solo por la impresora (una sola vez, cuando ya se dibujó)
+  useEffect(() => {
+    if (!autoImprimir) return;
+    const t = setTimeout(() => imprimirDirecto(), 400);
+    return () => clearTimeout(t);
+  }, [autoImprimir]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); imprimirDirecto(); } };
     window.addEventListener("keydown", h);
