@@ -14,7 +14,7 @@ import { imprimir } from "./imprimir";
 export interface MesaC {
   id: string; nombre: string; zona: string; capacidad: number; posX: number | null; posY: number | null; forma: "CUADRADA" | "REDONDA" | "LARGA";
   reservaId: string | null; reservaNombre: string | null; reservaPara: string | null; reservaPersonas: number | null;
-  cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null;
+  cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null; pideCobro?: boolean;
 }
 export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; abreGrupo?: string | null; producto: string | null }
 export interface GrupoMod { nombre: string; obligatorio: boolean; maxOpciones: number }
@@ -111,6 +111,7 @@ export function MapaMesas({ mesas, onMesa }: { mesas: MesaC[]; onMesa: (m: MesaC
               <b>{m.nombre}</b>
               {ocupada
                 ? <><small>{m.mesero ?? ""}{m.mesero ? " · " : ""}{duracion(m.minutos ?? 0)}</small>
+                  {!!m.pideCobro && <span className="mesa-cobro">Pide cobrar</span>}
                   {!!m.esperando && <span className="mesa-espera">{m.esperando} sin enviar</span>}
                   <span className="mesa-total">{rd(m.total ?? "0")}</span></>
                 : reservada

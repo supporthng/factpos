@@ -566,6 +566,9 @@ export async function rutasCuentas(app: FastifyInstance) {
     await enTransaccion(async (c) => {
       await c.query("UPDATE cuenta_lineas SET venta_id = $3 WHERE cuenta_id = $1 AND id = ANY($2::uuid[]) AND venta_id IS NULL AND NOT anulada", [id, b.lineaIds, b.ventaId]);
       await c.query("INSERT INTO cuenta_ventas (cuenta_id, venta_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id, b.ventaId]);
+      // lo que ya se cobró deja de pedir cobro: el aviso del mesero se retira solo
+      await c.query(`UPDATE cuenta_asientos a SET pedido_cobro_en = NULL WHERE a.cuenta_id = $1 AND a.pedido_cobro_en IS NOT NULL
+                        AND NOT EXISTS (SELECT 1 FROM cuenta_lineas l WHERE l.asiento_id = a.id AND NOT l.anulada AND l.venta_id IS NULL)`, [id]);
       const quedan = (await c.query("SELECT count(*)::int AS n FROM cuenta_lineas WHERE cuenta_id = $1 AND NOT anulada AND venta_id IS NULL", [id])).rows[0].n;
       if (!quedan) await c.query("UPDATE cuentas SET estado = 'COBRADA', cerrada_en = now() WHERE id = $1", [id]);
     });

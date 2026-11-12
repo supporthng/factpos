@@ -469,7 +469,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     setLineas(nuevas); setSel(nuevas.length - 1); setCliente(null); setNotas(`Cuenta ${plan.titulo}`);
     setCuentaActiva(plan);
     // Una sola venta: se abre de una vez el cobro normal de la caja. Dividida: queda la parte cargada en el carrito
-    setModal(plan.partes === 1 ? "cobro" : null);
+    setModal(plan.partes === 1 || plan.directo ? "cobro" : null);
     avisar(plan.partes > 1 ? `${plan.titulo}: parte ${plan.parte} de ${plan.partes}. Cobre para continuar.` : `${plan.titulo} cargada. Cobre para cerrarla.`, "ok");
   };
 
