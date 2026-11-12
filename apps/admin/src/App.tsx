@@ -21,7 +21,7 @@ import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoti
 import { InicioPortal } from "./paginas/InicioPortal";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
 const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
-import { Actualizaciones, AvisoActualizacion } from "./paginas/Actualizaciones";
+import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
@@ -394,7 +394,6 @@ function AppInterna() {
           )}
 
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
-            {!enPortal && actualId !== "actualizaciones" && <AvisoActualizacion irA={() => setSeccion("actualizaciones")} />}
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
 
             {vista === "inicio" && (
