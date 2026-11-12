@@ -36,6 +36,8 @@ export function compararVersion(a: string, b: string) {
 
 interface Disponible { version: string; notas: string | null; publicada: string | null }
 let disponible: Disponible | null = null;
+/** El portal respondió, pero el proveedor todavía no le habilitó a esta empresa la versión publicada. */
+let retenida = false;
 let revisado = 0;
 /** Una actualización que lleva más de 15 minutos no va a terminar sola: se marca con error para poder reintentar. */
 const MAX_ACTUALIZANDO_MS = 15 * 60_000;
@@ -97,7 +99,7 @@ export async function revisarVersion(forzar = false): Promise<Disponible | null>
     const token = await tokenLicencia();
     const r = await fetch(`${PORTAL_URL()}/licencias/version`, { headers: token ? { "x-licencia": token } : {}, signal: AbortSignal.timeout(15_000) });
     // version null = el proveedor todavía no le habilitó la versión publicada a esta empresa
-    if (r.ok) { const d = (await r.json()) as { version: string | null; notas: string | null; publicada: string | null }; disponible = d.version ? (d as Disponible) : null; }
+    if (r.ok) { const d = (await r.json()) as { version: string | null; notas: string | null; publicada: string | null }; disponible = d.version ? (d as Disponible) : null; retenida = !d.version; }
   } catch { /* sin internet: se revisa luego */ }
   return disponible;
 }
@@ -264,7 +266,7 @@ export async function rutasActualizacion(app: FastifyInstance) {
     const actual = versionActual();
     return {
       actual: versionCorta(actual), disponible: d ? versionCorta(d.version) : null, notas: d?.notas ?? null, publicada: d?.publicada ?? null,
-      hayNueva: !!d && compararVersion(d.version, actual) > 0, proceso, puedeInstalar: process.platform === "win32" && !process.env.VERCEL,
+      hayNueva: !!d && compararVersion(d.version, actual) > 0, retenida: retenida && !d, proceso, puedeInstalar: process.platform === "win32" && !process.env.VERCEL,
       // Descargar actualizaciones exige una licencia activa (en la prueba no hay): la pantalla lo explica antes de pulsar «Instalar»
       licenciaActiva: !!(await tokenLicencia()),
       pruebaActualiza: !!(await politicaPortal())?.pruebaActualiza,
