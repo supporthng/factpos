@@ -61,10 +61,11 @@ export async function rutasSesionCaja(app: FastifyInstance) {
       throw new ErrorNegocio("PIN incorrecto", 401);
     }
     if (u.sucursales && !u.sucursales.includes(ctx.sucursalId)) throw new ErrorNegocio(`${u.nombre} no tiene acceso a esta sucursal`, 403);
-    if (!tienePermiso(u.permisos, "venta.crear")) throw new ErrorNegocio(`${u.nombre} no tiene permiso para vender en caja`, 403);
+    const soloSalon = !tienePermiso(u.permisos, "venta.crear") && tienePermiso(u.permisos, "salon.mesero");
+    if (!tienePermiso(u.permisos, "venta.crear") && !soloSalon) throw new ErrorNegocio(`${u.nombre} no tiene permiso para vender en caja`, 403);
     fallos.delete(llave);
     const token = crearToken({ t: "caja", u: u.id, e: ctx.empresaId, c: cajaId, n: u.nombre, p: u.permisos }, 16);
-    return { token, usuario: { id: u.id, nombre: u.nombre } };
+    return { token, usuario: { id: u.id, nombre: u.nombre, ...(soloSalon ? { soloSalon: true } : {}) } };
   });
 }
 

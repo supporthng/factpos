@@ -30,8 +30,8 @@ export interface PlanCobro {
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
 
-export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCobrar, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; catalogo: Catalogo; nivel: number; usuarioNombre?: string;
+export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, soloMesero, onCobrar, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; catalogo: Catalogo; nivel: number; usuarioNombre?: string; soloMesero?: boolean;
   onCobrar: (plan: PlanCobro) => void; onCerrar: () => void;
 }) {
   const base = `/cajas/${ajustes.cajaId}/cuentas`;
@@ -72,6 +72,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
     catch (e) { setError((e as Error).message); }
   };
   const tocarMesa = async (m: MesaC) => {
+    // El mesero entra a sus mesas y a las libres; las de otro mesero quedan bloqueadas
+    if (soloMesero && m.cuentaId && m.mesero !== usuarioNombre) { setError(`Esa mesa es de ${m.mesero ?? "otro mesero"}: solo el cajero o un supervisor puede entrar`); return; }
     if (m.cuentaId) { await abrir(m.cuentaId); return; }
     // Una mesa reservada pregunta si llegaron los de la reserva
     if (m.reservaId) { setReservaMesa(m); return; }
@@ -99,7 +101,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
   const papel = papeles[0] ? <ComandaPapel key={papeles[0].id} comanda={papeles[0]} onListo={() => setPapeles((p) => p.slice(1))} /> : null;
   if (cuenta) {
     return <><DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
-      accion={accion} modificadores={modificadores} gruposMod={gruposMod} agotados={agotados} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
+      accion={accion} modificadores={modificadores} gruposMod={gruposMod} agotados={agotados} soloMesero={soloMesero} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
   }
 
   if (pantalla === "MESAS") return <ConfigMesas ajustes={ajustes} mesas={mesas} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
@@ -154,9 +156,9 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
             <button className="boton fantasma" onClick={() => setPantalla("LLEVAR")}>Para llevar / domicilio</button>
             <button className="boton fantasma" title="Platos que se acabaron: nadie los puede ordenar" onClick={() => setPantalla("AGOTADOS")}>Agotados{agotados.size ? ` (${agotados.size})` : ""}</button>
             <button className="boton fantasma" onClick={() => setPantalla("RESERVAS")}>Reservas</button>
-            <button className="boton fantasma chico" onClick={() => setPantalla("MESAS")}>Diseñar salón</button>
-            <button className="boton fantasma chico" onClick={() => setPantalla("MODS")}>Modificadores</button>
-            <button className="boton fantasma chico" title="Ventas por mesero, por hora y por mesa (supervisor)" onClick={() => setPantalla("REPORTE")}>Reporte</button>
+            {!soloMesero && <button className="boton fantasma chico" onClick={() => setPantalla("MESAS")}>Diseñar salón</button>}
+            {!soloMesero && <button className="boton fantasma chico" onClick={() => setPantalla("MODS")}>Modificadores</button>}
+            {!soloMesero && <button className="boton fantasma chico" title="Ventas por mesero, por hora y por mesa (supervisor)" onClick={() => setPantalla("REPORTE")}>Reporte</button>}
           </div>
           {lista === null && !error && <p className="suave">Cargando…</p>}
           {mesas.length > 0 && <MapaMesas mesas={soloMias && usuarioNombre ? mesas.filter((m) => !m.cuentaId || m.mesero === usuarioNombre) : mesas} onMesa={(m) => void tocarMesa(m)} />}
@@ -185,8 +187,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
   );
 }
 
-function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, agotados, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[]; agotados: Set<string>;
+function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, agotados, soloMesero, onCobrar, onVolver, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[]; agotados: Set<string>; soloMesero?: boolean;
   error: string | null; aviso: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
@@ -385,11 +387,13 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
                   onClick={() => void accion(`${url}/siguiente-tiempo`)}>Pedir {cuenta.pasoLiberado === 1 ? "fuertes" : "postres"}</button>
               )}
             </div>
+            {soloMesero ? <p className="suave" style={{ margin: 0 }}>Para cobrar, pida la pre-cuenta y avise al cajero.</p> : (
             <div className="fila-cobro">
               <button className="cobrar-cuenta" disabled={ocupado || !vivas.length}
                 onClick={() => onCobrar({ cuentaId: cuenta.id, titulo: cuenta.nombre, items: vivas.map((l) => ({ presentacionId: l.presentacionId, cantidad: String(Number(l.cantidad)) })), lineaIds: vivas.map((l) => l.id), parte: 1, partes: 1, propina: cuenta.propinaLegal })}>Cobrar</button>
               <button className="dividir-cuenta" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir cuenta</button>
             </div>
+            )}
             <div className="fila-sec">
               <button disabled={ocupado || !vivas.length} title="Imprime la cuenta para que el cliente la revise antes de pagar" onClick={() => setPreCuenta(armarPreCuenta())}>Pre-cuenta</button>
               <button disabled={ocupado} onClick={() => setMoviendo(true)}>Mover / cambiar mesa</button>

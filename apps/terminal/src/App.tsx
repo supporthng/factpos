@@ -8,6 +8,7 @@ import { guardarCache, iniciarVigilancia, leerCache, recordarPin, usuarioPorPinS
 import { Venta, Modal, ConsultaPrecios } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { TurnoCaja } from "./Turno";
+import { PantallaMesero } from "./Mesero";
 import { temaTerminal, marcaEfectiva } from "@factpos/compartido";
 import { SimboloFactPOS } from "./Logo";
 
@@ -39,7 +40,7 @@ function aplicarMarca(m: ConfigCaja["marca"]) {
 let marcaActual: ConfigCaja["marca"] | null = null;
 // Al cambiar de tema claro/oscuro, los colores de la marca se recalculan para ese fondo
 window.addEventListener("factpos:tema", () => { if (marcaActual) aplicarMarca(marcaActual); });
-export interface Usuario { id: string; nombre: string; tienePin?: boolean }
+export interface Usuario { id: string; nombre: string; tienePin?: boolean; /** mesero: entra directo al salón, sin turno ni cobro */ soloSalon?: boolean }
 export interface Turno { id: string; abiertoEn: string; fondoInicial: string; usuarioId: string; usuario: string }
 
 /**
@@ -225,6 +226,7 @@ function AppInterna() {
   }
   if (!config) return <Pantalla><p className="suave">Conectando con el servidor…</p><button className="enlace" onClick={aprobadoSalir}>Cerrar FactPOS</button></Pantalla>;
   if (!usuario) return <><ElegirUsuario ajustes={ajustes} config={config} onElegir={setUsuario} onCerrar={() => setSaliendo(true)} onCambiar={() => setCambiando(true)} />{ventanaSalir}{ventanaCambiar}{ventanaMin}</>;
+  if (usuario.soloSalon) return <><PantallaMesero ajustes={ajustes} config={config} usuario={usuario} onSalir={salir} />{pantallaBloqueo}</>;
   if (turno === undefined) return <Pantalla><p className="suave">Cargando turno…</p></Pantalla>;
   if (turno === null) return <><AbrirTurno ajustes={ajustes} config={config} usuario={usuario} onSalir={salir} onCerrarSistema={() => setSaliendo(true)} onAbierto={(fondo) => { setBienvenida({ usuario: usuario.nombre, fondo }); setTurno(undefined); }} recargar={() => api<Turno | null>(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno`).then((t) => { setTurno(t); guardarCache(ajustes, "turno", t); })} />{ventanaSalir}</>;
 

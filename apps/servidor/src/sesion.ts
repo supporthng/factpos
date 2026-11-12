@@ -79,6 +79,7 @@ export const tienePermiso = (permisos: string[], p: string) => permisos.includes
 /** Lo que se puede marcar en cada rol (pantalla Usuarios y roles). */
 export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: string }[] = [
   { id: "venta.crear", grupo: "Caja", nombre: "Vender y abrir/cerrar su turno" },
+  { id: "salon.mesero", grupo: "Caja", nombre: "Mesero: entra con su PIN al salón, toma pedidos de sus mesas (y de las libres) y pide la pre-cuenta; no abre turno ni cobra" },
   { id: "venta.descuento", grupo: "Caja", nombre: "Aprobar descuentos" },
   { id: "venta.precio", grupo: "Caja", nombre: "Aprobar cambio de precio (los 3 precios definidos)" },
   { id: "venta.anular", grupo: "Caja", nombre: "Aprobar anulaciones" },
