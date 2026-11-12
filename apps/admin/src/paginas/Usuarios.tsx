@@ -282,6 +282,9 @@ function MatrizPermisos() {
 const PLANTILLA_ENCARGADO = ["venta.crear", "venta.descuento", "venta.precio", "venta.anular", "venta.corregir", "cliente.precio", "caja.retiro", "caja.gasto",
   "caja.salir", "cxc.abono", "admin.productos", "admin.precios", "admin.inventario", "admin.traspasos", "admin.recibir"];
 
+/** Rol «Mesero»: entra a la caja solo al salón con su PIN, toma pedidos de sus mesas y pide la pre-cuenta (no abre turno ni cobra). */
+const PLANTILLA_MESERO = ["salon.mesero"];
+
 function EditarRol({ rol, permisos, onCerrar, onListo }: { rol: Rol | null; permisos: Permiso[]; onCerrar: () => void; onListo: () => void }) {
   const [nombre, setNombre] = useState(rol?.nombre ?? "");
   const [marcados, setMarcados] = useState<Set<string>>(new Set(rol?.permisos ?? ["venta.crear"]));
@@ -301,6 +304,7 @@ function EditarRol({ rol, permisos, onCerrar, onListo }: { rol: Rol | null; perm
         <h2 style={{ marginTop: 0 }}>{rol ? `Rol ${rol.nombre}` : "Nuevo rol"}</h2>
         <label className="campo"><span>Nombre del rol</span><input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Encargado de tienda" /></label>
         {!rol && <button type="button" className="boton" style={{ marginBottom: 10 }} onClick={() => { setNombre("Encargado"); setMarcados(new Set(PLANTILLA_ENCARGADO)); }}>Usar plantilla «Encargado»</button>}
+        {!rol && <button type="button" className="boton" style={{ marginBottom: 10, marginLeft: 8 }} onClick={() => { setNombre("Mesero"); setMarcados(new Set(PLANTILLA_MESERO)); }}>Usar plantilla «Mesero»</button>}
         <div className="dos-col">
           {(["Caja", "Administración"] as const).map((g) => (
             <fieldset key={g} className="grupo-permisos">
