@@ -1371,3 +1371,35 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .tabla-reporte th { text-align: left; color: var(--suave); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--borde); }
 .tabla-reporte td { padding: 6px 8px; border-bottom: 1px solid var(--borde); }
 .mesa.reservada .mesa-icono, .mesa.reservada b { color: var(--cupon); }
+
+/* ---- Cuenta de mesa: panel de la derecha ordenado y con contraste ---- */
+.cuenta-lado { background: var(--panel); padding-left: 4px; }
+.cuenta-lado .pestanas { margin-bottom: 8px; }
+.cuenta-lado .pestanas button { color: var(--texto); background: var(--panel-2); border: 1px solid var(--borde); border-radius: 999px; padding: 6px 14px; }
+.cuenta-lado .pestanas button.activa { background: var(--primario); border-color: var(--primario); color: #fff; }
+.cuenta-destino { margin: 0 0 6px; color: var(--suave); font-size: 14px; }
+.cuenta-destino b { color: var(--texto); }
+.cuenta-tiempos { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 8px; }
+.cuenta-tiempos label { display: flex; gap: 6px; align-items: center; cursor: pointer; font-weight: 600; }
+.cuenta-grupo { margin-top: 8px; }
+.grupo-cab { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 2px; border-bottom: 2px solid var(--primario); margin-bottom: 4px; }
+.grupo-cab b { font-size: 15px; }
+.grupo-cab span { font-weight: 700; }
+.cuenta-lineas .factura { background: var(--panel); border-color: var(--borde); border-radius: 10px; margin-top: 6px; box-shadow: 0 1px 2px rgba(15,29,41,.06); }
+.cuenta-lineas .factura > span:first-child { font-weight: 600; color: var(--texto); }
+.cuenta-lineas .factura .suave { font-weight: 400; }
+.cuenta-resumen { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--tinta); color: #fff; border-radius: 12px; padding: 12px 16px; margin-top: 10px; }
+.cuenta-resumen span { display: flex; flex-direction: column; font-weight: 600; font-size: 15px; }
+.cuenta-resumen small { font-weight: 400; opacity: .75; font-size: 12px; }
+.cuenta-resumen b { font-size: 28px; letter-spacing: -.5px; }
+.cuenta-acciones { display: grid; gap: 8px; margin-top: 8px; }
+.cuenta-acciones button { min-height: 44px; border-radius: 10px; border: 1px solid var(--borde); background: var(--panel); color: var(--texto); font-weight: 700; padding: 6px 10px; }
+.cuenta-acciones button:disabled { opacity: .4; cursor: not-allowed; }
+.cuenta-acciones .fila-principal { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.cuenta-acciones .enviar { background: var(--info); border-color: var(--info); color: #fff; min-height: 50px; }
+.cuenta-acciones .cobrar-cuenta { background: var(--cobrar); border-color: var(--cobrar); color: #fff; min-height: 56px; font-size: 18px; }
+.cuenta-acciones .cobrar-cuenta:not(:disabled):hover { background: var(--cobrar-hover); }
+.cuenta-acciones .fila-sec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cuenta-acciones .fila-sec button { font-size: 13px; font-weight: 600; background: var(--panel-2); }
+.cuenta-catalogo .tarjeta-producto { border-color: #b9c4d0; box-shadow: 0 1px 3px rgba(15,29,41,.1); }
+.cuenta-catalogo .tarjeta-producto .nombre { font-weight: 700; }
