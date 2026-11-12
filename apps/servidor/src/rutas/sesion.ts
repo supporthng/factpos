@@ -6,6 +6,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
 import { hashPin } from "../autorizacion.js";
 import { esCodigoRecuperacion, huellaRecuperacion, nuevoSecreto, nuevosCodigosRecuperacion, uriOtp, verificarCodigo } from "../doble-factor.js";
+import { ipCliente } from "../seguridad-web.js";
 import { contextoCaja } from "../contexto.js";
 import { prepararAdminPortal } from "../licencia/admin-portal.js";
 import {
@@ -76,7 +77,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     const b = z.object({ usuario: z.string().trim().min(1).max(50), clave: z.string().min(1).max(200), rnc: z.string().trim().max(11).optional(), codigo: z.string().trim().max(20).optional() }).parse(req.body);
     const usuario = b.usuario.toLowerCase();
     const llave = `admin:${usuario}`;
-    const ip = `ip:${String(req.headers["cf-connecting-ip"] ?? req.ip)}`;
+    const ip = `ip:${ipCliente(req)}`;
     frenar(llave);
     frenar(ip, 20); // quien prueba muchos usuarios desde un mismo lugar
     if (config.modo === "portal") await prepararAdminPortal();

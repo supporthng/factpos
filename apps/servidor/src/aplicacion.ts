@@ -1,4 +1,5 @@
 import { contextoCaja } from "./contexto.js";
+import { protegerWeb } from "./seguridad-web.js";
 import { rutaConsultaMovil } from "./rutas/verificador.js";
 import { soloEnLaNube } from "./solo-en-la-nube.js";
 import { rutasActualizacion } from "./actualizacion.js";
@@ -77,6 +78,8 @@ export async function crearApp() {
   const app = Fastify({ logger: { level: process.env.NODE_ENV === "test" ? "warn" : "info" } });
 
   await app.register(cors, { origin: true });
+  // Cabeceras de seguridad y límite de peticiones por dirección (solo donde llega internet)
+  protegerWeb(app, { limitar: () => config.modo === "portal" || tunelActivo() });
 
   // Compresión de las respuestas (JSON, texto): el catálogo de una tienda pasa de megabytes a unos cientos de KB
   // y la caja lo recibe mucho antes, aunque la red sea lenta o esté ocupada.
