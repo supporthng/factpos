@@ -1405,3 +1405,10 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cuenta-catalogo .tarjeta-producto .nombre { font-weight: 700; }
 .cuenta-acciones .fila-cobro { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
 .cuenta-acciones .dividir-cuenta { min-height: 56px; border-color: var(--primario); color: var(--primario); }
+
+/* El mesero avisó que hay algo listo para cobrar */
+.mesa .mesa-cobro { align-self: flex-start; font-size: 11px; font-weight: 800; background: #16a34a; color: #fff; border-radius: 999px; padding: 1px 8px; animation: pulso-cobro 1.6s ease-in-out infinite; }
+.plano .mesa .mesa-cobro { font-size: 10px; padding: 0 7px; }
+@keyframes pulso-cobro { 50% { box-shadow: 0 0 0 4px rgba(22,163,74,.35); } }
+.aviso-cobro { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; background: rgba(22,163,74,.12); border: 1px solid #16a34a; border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+.aviso-cobro button { font-weight: 700; }

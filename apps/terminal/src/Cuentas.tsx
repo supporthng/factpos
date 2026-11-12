@@ -14,9 +14,9 @@ import type { ConfigCaja } from "./App";
  * o DESPUÉS (partes iguales, por monto o por producto). El cobro lo hace la venta normal de la caja.
  */
 interface LineaC { id: string; asientoId: string | null; descripcion: string; cantidad: string; total: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null; presentacionId: string; padreId: string | null; paso: number }
-interface AsientoC { id: string; nombre: string; total: string }
+interface AsientoC { id: string; nombre: string; total: string; pedidoCobro?: boolean }
 interface CortesiaC { descripcion: string; cantidad: string; motivoTipo: string; motivo: string | null; valor: string }
-interface CuentaC { cortesias?: CortesiaC[]; pasoLiberado: number; subtotal: string; itbis: string; nota: string | null; abiertaEn: string; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
+interface CuentaC { pedidoCobro?: boolean; cortesias?: CortesiaC[]; pasoLiberado: number; subtotal: string; itbis: string; nota: string | null; abiertaEn: string; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
 interface Resumen { id: string; nombre: string; nota?: string | null; mesa: string | null; numero: string; lineas: number; asientos: number; abiertaEn: string; total?: string }
 interface Parte { indice: number; nombre: string; consumo: string; propina: string; totalConPropina: string; lineas: string[] | null }
 interface Division { cuentaId: string; modo: string; total: string; partes: Parte[] }
@@ -26,12 +26,14 @@ export interface PlanCobro {
   cuentaId: string; titulo: string; items: { presentacionId: string; cantidad: string }[]; lineaIds: string[];
   /** cuántas partes se cobran por separado y cuál es esta (1 si es una sola venta) */
   parte: number; partes: number; propina: string;
+  /** el cajero la pidió desde un aviso del mesero: se abre el cobro de una vez aunque sea una parte */
+  directo?: boolean;
 }
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" });
 
-export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCobrar, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; catalogo: Catalogo; nivel: number; usuarioNombre?: string;
+export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, soloMesero, onCobrar, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; catalogo: Catalogo; nivel: number; usuarioNombre?: string; soloMesero?: boolean;
   onCobrar: (plan: PlanCobro) => void; onCerrar: () => void;
 }) {
   const base = `/cajas/${ajustes.cajaId}/cuentas`;
@@ -72,6 +74,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
     catch (e) { setError((e as Error).message); }
   };
   const tocarMesa = async (m: MesaC) => {
+    // El mesero entra a sus mesas y a las libres; las de otro mesero quedan bloqueadas
+    if (soloMesero && m.cuentaId && m.mesero !== usuarioNombre) { setError(`Esa mesa es de ${m.mesero ?? "otro mesero"}: solo el cajero o un supervisor puede entrar`); return; }
     if (m.cuentaId) { await abrir(m.cuentaId); return; }
     // Una mesa reservada pregunta si llegaron los de la reserva
     if (m.reservaId) { setReservaMesa(m); return; }
@@ -99,7 +103,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
   const papel = papeles[0] ? <ComandaPapel key={papeles[0].id} comanda={papeles[0]} onListo={() => setPapeles((p) => p.slice(1))} /> : null;
   if (cuenta) {
     return <><DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
-      accion={accion} modificadores={modificadores} gruposMod={gruposMod} agotados={agotados} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
+      accion={accion} modificadores={modificadores} gruposMod={gruposMod} agotados={agotados} soloMesero={soloMesero} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
   }
 
   if (pantalla === "MESAS") return <ConfigMesas ajustes={ajustes} mesas={mesas} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
@@ -154,9 +158,9 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
             <button className="boton fantasma" onClick={() => setPantalla("LLEVAR")}>Para llevar / domicilio</button>
             <button className="boton fantasma" title="Platos que se acabaron: nadie los puede ordenar" onClick={() => setPantalla("AGOTADOS")}>Agotados{agotados.size ? ` (${agotados.size})` : ""}</button>
             <button className="boton fantasma" onClick={() => setPantalla("RESERVAS")}>Reservas</button>
-            <button className="boton fantasma chico" onClick={() => setPantalla("MESAS")}>Diseñar salón</button>
-            <button className="boton fantasma chico" onClick={() => setPantalla("MODS")}>Modificadores</button>
-            <button className="boton fantasma chico" title="Ventas por mesero, por hora y por mesa (supervisor)" onClick={() => setPantalla("REPORTE")}>Reporte</button>
+            {!soloMesero && <button className="boton fantasma chico" onClick={() => setPantalla("MESAS")}>Diseñar salón</button>}
+            {!soloMesero && <button className="boton fantasma chico" onClick={() => setPantalla("MODS")}>Modificadores</button>}
+            {!soloMesero && <button className="boton fantasma chico" title="Ventas por mesero, por hora y por mesa (supervisor)" onClick={() => setPantalla("REPORTE")}>Reporte</button>}
           </div>
           {lista === null && !error && <p className="suave">Cargando…</p>}
           {mesas.length > 0 && <MapaMesas mesas={soloMias && usuarioNombre ? mesas.filter((m) => !m.cuentaId || m.mesero === usuarioNombre) : mesas} onMesa={(m) => void tocarMesa(m)} />}
@@ -185,8 +189,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, usuarioNombre, onCob
   );
 }
 
-function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, agotados, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[]; agotados: Set<string>;
+function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, agotados, soloMesero, onCobrar, onVolver, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[]; agotados: Set<string>; soloMesero?: boolean;
   error: string | null; aviso: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
@@ -194,6 +198,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
   /** A quién se carga lo que se pide: null = toda la mesa */
   const [destino, setDestino] = useState<string | null>(cuenta.asientos[0]?.id ?? null);
   const [dividiendo, setDividiendo] = useState(false);
+  const [repartiendo, setRepartiendo] = useState<LineaC | null>(null);
   const [anulando, setAnulando] = useState<LineaC | null>(null);
   const [regalando, setRegalando] = useState<LineaC | null>(null);
   const [canjeando, setCanjeando] = useState<LineaC | null>(null);
@@ -300,7 +305,32 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
       </Modal>
     );
   }
+  if (repartiendo) return <RepartirLinea linea={repartiendo} asientos={cuenta.asientos} ocupado={ocupado} error={error}
+    onRepartir={async (partes) => { const c = await accion(`${url}/lineas/${repartiendo.id}/repartir`, { partes }); if (c) setRepartiendo(null); }} onVolver={() => setRepartiendo(null)} />;
   if (uniendo) return <UnirCuenta ajustes={ajustes} base={base} actualId={cuenta.id} onElegir={(id) => { setUniendo(false); void accion(`${url}/unir`, { desdeId: id }); }} onVolver={() => setUniendo(false)} />;
+
+  /** Avisos del mesero que siguen pendientes (una persona o toda la mesa). */
+  const avisosCobro: { id: string | null; nombre: string }[] = [
+    ...(cuenta.pedidoCobro && vivas.length ? [{ id: null, nombre: "toda la mesa" }] : []),
+    ...cuenta.asientos.filter((a) => a.pedidoCobro).map((a) => ({ id: a.id, nombre: a.nombre })),
+  ];
+  const planDe = (lineas: LineaC[], titulo: string, parte: number, partes: number, directo: boolean): PlanCobro => ({
+    cuentaId: cuenta.id, titulo, items: lineas.map((l) => ({ presentacionId: l.presentacionId, cantidad: String(Number(l.cantidad)) })), lineaIds: lineas.map((l) => l.id),
+    parte, partes, propina: "0.00", directo,
+  });
+  /** Cobra solo lo de una persona; el servidor calcula su propina y se limpia el aviso al cobrarse. */
+  const cobrarAsiento = async (asientoId: string) => {
+    const a = cuenta.asientos.find((x) => x.id === asientoId);
+    const suyas = vivas.filter((l) => l.asientoId === asientoId);
+    if (!a || !suyas.length) return;
+    let propina = "0.00";
+    try {
+      const d = await api<Division>(ajustes.servidor, `${url}/dividir`, { cuerpo: { modo: "ASIENTOS" } });
+      propina = d.partes.find((p) => p.lineas?.some((id) => suyas.some((l) => l.id === id)))?.propina ?? "0.00";
+    } catch { /* se cobra sin propina de referencia */ }
+    onCobrar({ ...planDe(suyas, `${cuenta.nombre} · ${a.nombre}`, 1, 2, true), propina });
+  };
+  const cobrarTodo = () => onCobrar({ ...planDe(vivas, cuenta.nombre, 1, 1, true), propina: cuenta.propinaLegal });
 
   const armarPreCuenta = (): DatosPreCuenta => ({
     nombre: cuenta.nombre, mesa: cuenta.mesa, numero: cuenta.numero, nota: cuenta.nota, abiertaEn: cuenta.abiertaEn,
@@ -336,7 +366,13 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
           <div className="cuenta-lineas">
             {grupos.filter((g) => g.id === null ? g.lineas.length > 0 : true).map((g) => (
               <div key={g.id ?? "mesa"} className="cuenta-grupo">
-                <div className="grupo-cab"><b>{g.nombre}</b><span>{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span></div>
+                <div className="grupo-cab"><b>{g.nombre}</b><span>{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span>
+                  {g.id && g.lineas.some((l) => !l.padreId) && (() => {
+                    const a = cuenta.asientos.find((x) => x.id === g.id)!;
+                    return soloMesero
+                      ? <button className="enlace" disabled={ocupado} title="El cajero verá el aviso para cobrar solo esta cuenta" onClick={() => void accion(`${url}/pedir-cobro`, { asientoId: a.id, cancelar: !!a.pedidoCobro })}>{a.pedidoCobro ? "Aviso enviado ✓ (quitar)" : "Avisar al cajero"}</button>
+                      : <button className="enlace" disabled={ocupado} title="Cobrar solo lo de esta persona" onClick={() => cobrarAsiento(a.id)}>Cobrar solo esta cuenta</button>;
+                  })()}</div>
                 {g.lineas.length === 0 && <p className="suave" style={{ margin: "2px 0" }}>Nada pedido todavía.</p>}
                 {g.lineas.filter((l) => !l.padreId).map((l) => (
                   <div key={l.id}>
@@ -357,6 +393,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
                           {PASOS.map(([n, t]) => <option key={n} value={n}>{t}</option>)}
                         </select>
                       )}
+                      {cuenta.asientos.length > 0 && Number(l.cantidad) >= 2 && !soloMesero && <button className="enlace" disabled={ocupado} title="Repartir las unidades entre varias personas" onClick={() => setRepartiendo(l)}>Repartir</button>}
                       <button className="enlace" disabled={ocupado} title="Agregar o cambiar la indicación para la cocina" onClick={() => setNotando({ l, texto: (l.nota ?? "").replace(/^CAMBIO:\s*/i, "") })}>Nota</button>
                       <button className="enlace" disabled={ocupado} title="Pagar este producto con un vale de consumo" onClick={() => setCanjeando(l)}>Vale</button>
                       <button className="enlace" disabled={ocupado} title="Regalar este producto (supervisor)" onClick={() => setRegalando(l)}>Cortesía</button>
@@ -377,6 +414,12 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
             <span>Pendiente<small>propina legal 10 % · {rd(cuenta.propinaLegal)}</small></span>
             <b>{rd(cuenta.total)}</b>
           </div>
+          {avisosCobro.length > 0 && (
+            <div className="aviso-cobro">
+              <span>💵 El mesero pide cobrar: <b>{avisosCobro.map((a) => a.nombre).join(", ")}</b></span>
+              {!soloMesero && avisosCobro.length === 1 && <button className="boton primario" disabled={ocupado} onClick={() => (avisosCobro[0]!.id ? cobrarAsiento(avisosCobro[0]!.id) : cobrarTodo())}>Cobrar ahora</button>}
+            </div>
+          )}
           <div className="cuenta-acciones">
             <div className="fila-principal">
               <button className="enviar" disabled={ocupado || !vivas.some((l) => !l.enviadaEn && l.paso <= cuenta.pasoLiberado)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra / cocina</button>
@@ -385,11 +428,17 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
                   onClick={() => void accion(`${url}/siguiente-tiempo`)}>Pedir {cuenta.pasoLiberado === 1 ? "fuertes" : "postres"}</button>
               )}
             </div>
+            {soloMesero ? (
+              <div className="fila-cobro">
+                <button className="cobrar-cuenta" disabled={ocupado || !vivas.length} title="Avisa al cajero que la mesa quiere pagar" onClick={() => void accion(`${url}/pedir-cobro`, { cancelar: !!cuenta.pedidoCobro })}>{cuenta.pedidoCobro ? "Aviso enviado ✓ (quitar)" : "Avisar al cajero: cobrar la mesa"}</button>
+              </div>
+            ) : (
             <div className="fila-cobro">
               <button className="cobrar-cuenta" disabled={ocupado || !vivas.length}
                 onClick={() => onCobrar({ cuentaId: cuenta.id, titulo: cuenta.nombre, items: vivas.map((l) => ({ presentacionId: l.presentacionId, cantidad: String(Number(l.cantidad)) })), lineaIds: vivas.map((l) => l.id), parte: 1, partes: 1, propina: cuenta.propinaLegal })}>Cobrar</button>
               <button className="dividir-cuenta" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir cuenta</button>
             </div>
+            )}
             <div className="fila-sec">
               <button disabled={ocupado || !vivas.length} title="Imprime la cuenta para que el cliente la revise antes de pagar" onClick={() => setPreCuenta(armarPreCuenta())}>Pre-cuenta</button>
               <button disabled={ocupado} onClick={() => setMoviendo(true)}>Mover / cambiar mesa</button>
@@ -422,6 +471,36 @@ function UnirCuenta({ ajustes, base, actualId, onElegir, onVolver }: { ajustes: 
   );
 }
 
+/** Reparte las unidades de un producto entre varias personas (6 cervezas: 2 a Ana, 4 a Luis). Cada una se cobra aparte. */
+function RepartirLinea({ linea, asientos, ocupado, error, onRepartir, onVolver }: {
+  linea: LineaC; asientos: AsientoC[]; ocupado: boolean; error: string | null;
+  onRepartir: (partes: { asientoId: string | null; cantidad: string }[]) => void; onVolver: () => void;
+}) {
+  const total = Number(linea.cantidad);
+  const [cant, setCant] = useState<Record<string, string>>(() => ({ [linea.asientoId ?? ""]: String(total) }));
+  const filas = [{ id: "", nombre: "Toda la mesa" }, ...asientos.map((a) => ({ id: a.id, nombre: a.nombre }))];
+  const suma = filas.reduce((s, f) => s + (Number(cant[f.id]) || 0), 0);
+  const partes = filas.filter((f) => Number(cant[f.id]) > 0).map((f) => ({ asientoId: f.id || null, cantidad: String(Number(cant[f.id])) }));
+  const falta = total - suma;
+  return (
+    <Modal titulo="Repartir entre personas" onCerrar={onVolver}>
+      <p><b>{total} × {linea.descripcion}</b> ({rd(linea.total)}). Diga cuántas unidades es de cada quien: cada persona paga las suyas.</p>
+      <div className="resultados">
+        {filas.map((f) => (
+          <div key={f.id || "mesa"} className="factura"><span>{f.nombre}</span>
+            <input inputMode="numeric" style={{ width: 70 }} value={cant[f.id] ?? ""} placeholder="0"
+              onChange={(e) => setCant({ ...cant, [f.id]: e.target.value.replace(/\D/g, "").slice(0, 3) })} /></div>
+        ))}
+      </div>
+      <p className={falta === 0 ? "suave" : "error"}>{falta === 0 ? "Repartido completo." : falta > 0 ? `Faltan ${falta} por asignar.` : `Se pasó por ${-falta}.`}</p>
+      <p className="suave">Una sola unidad (una botella entre varios) no se parte: use «Dividir cuenta → Por producto» y márquela como compartida.</p>
+      {error && <p className="error">{error}</p>}
+      <button className="boton primario ancho" disabled={ocupado || falta !== 0 || partes.length < 2} onClick={() => onRepartir(partes)}>Repartir</button>
+      <button className="enlace" onClick={onVolver}>Cancelar</button>
+    </Modal>
+  );
+}
+
 type Modo = "ASIENTOS" | "IGUAL" | "MONTOS" | "PRODUCTOS";
 
 function DividirCuenta({ ajustes, url, cuenta, onCobrar, onVolver }: { ajustes: Ajustes; url: string; cuenta: CuentaC; onCobrar: (p: PlanCobro) => void; onVolver: () => void }) {
@@ -430,6 +509,7 @@ function DividirCuenta({ ajustes, url, cuenta, onCobrar, onVolver }: { ajustes: 
   const [personas, setPersonas] = useState("2");
   const [montos, setMontos] = useState<string[]>(["", ""]);
   const [asig, setAsig] = useState<Record<string, number>>({});
+  const [comp, setComp] = useState<Set<string>>(new Set());
   const [vista, setVista] = useState<Division | null>(null);
   const [error, setError] = useState<string | null>(null);
   const n = Math.max(1, Math.min(30, Number(personas) || 1));
@@ -440,13 +520,14 @@ function DividirCuenta({ ajustes, url, cuenta, onCobrar, onVolver }: { ajustes: 
     if (modo === "ASIENTOS") cuerpo = { modo };
     else if (modo === "IGUAL") cuerpo = { modo, partes: n };
     else if (modo === "MONTOS") cuerpo = { modo, montos: montos.map((m) => m || "0") };
-    else cuerpo = { modo, partes: n, asignacion: Object.fromEntries(vivas.map((l) => [l.id, asig[l.id] ?? 0])) };
+    else cuerpo = { modo, partes: n, asignacion: Object.fromEntries(vivas.map((l) => [l.id, asig[l.id] ?? 0])), compartidas: Object.fromEntries([...comp].map((id) => [id, Array.from({ length: n }, (_, i) => i)])) };
     try { setVista(await api<Division>(ajustes.servidor, `${url}/dividir`, { cuerpo })); } catch (e) { setError(e instanceof ErrorApi ? e.message : "No se pudo calcular"); }
   };
 
   const lineasDe = (ids: string[] | null) => (ids ? vivas.filter((l) => ids.includes(l.id)) : vivas);
   const itemsDe = (ids: string[] | null) => lineasDe(ids).map((l) => ({ presentacionId: l.presentacionId, cantidad: String(Number(l.cantidad)) }));
-  const porSeparado = modo === "ASIENTOS" || modo === "PRODUCTOS";
+  // Un producto compartido (una botella entre todos) no se parte en comprobantes: sale en una sola venta con varios pagos
+  const porSeparado = modo === "ASIENTOS" || (modo === "PRODUCTOS" && comp.size === 0);
 
   return (
     <Modal titulo={`Dividir ${cuenta.nombre}`} onCerrar={onVolver} ancho>
@@ -473,9 +554,12 @@ function DividirCuenta({ ajustes, url, cuenta, onCobrar, onVolver }: { ajustes: 
           {vivas.map((l) => (
             <div key={l.id} className="factura">
               <span>{Number(l.cantidad)} × {l.descripcion} <b>{rd(l.total)}</b></span>
-              <select value={asig[l.id] ?? 0} onChange={(e) => { setAsig({ ...asig, [l.id]: Number(e.target.value) }); setVista(null); }}>
-                {Array.from({ length: n }, (_, i) => <option key={i} value={i}>Persona {i + 1}</option>)}
-              </select>
+              <span className="factura-acciones">
+                <label className="suave" title="Se reparte en partes iguales entre todas las personas (p. ej. una botella)"><input type="checkbox" checked={comp.has(l.id)} onChange={(e) => { const c = new Set(comp); if (e.target.checked) c.add(l.id); else c.delete(l.id); setComp(c); setVista(null); }} /> Compartido</label>
+                <select disabled={comp.has(l.id)} value={asig[l.id] ?? 0} onChange={(e) => { setAsig({ ...asig, [l.id]: Number(e.target.value) }); setVista(null); }}>
+                  {Array.from({ length: n }, (_, i) => <option key={i} value={i}>Persona {i + 1}</option>)}
+                </select>
+              </span>
             </div>
           ))}
         </div>
@@ -503,6 +587,7 @@ function DividirCuenta({ ajustes, url, cuenta, onCobrar, onVolver }: { ajustes: 
           {modo === "ASIENTOS" && Number(cuenta.sinAsiento) > 0 && (
             <p className="error">Hay {rd(cuenta.sinAsiento)} pedidos para toda la mesa. Para cobrar por separado, pase cada producto a una persona (en la cuenta) o divida por producto.</p>
           )}
+          {modo === "PRODUCTOS" && comp.size > 0 && <p className="suave">Hay productos compartidos: se cobra todo en una sola venta, con el pago de cada persona como una forma de pago distinta.</p>}
           {porSeparado
             ? <p className="suave">Cada persona se cobra por separado, con su propio comprobante. La propina legal es de referencia: aún no sale en el comprobante.</p>
             : (

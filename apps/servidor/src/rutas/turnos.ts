@@ -118,7 +118,7 @@ export async function rutasTurnos(app: FastifyInstance) {
          JOIN roles ro ON ro.id = u.rol_id
          JOIN cajas ca ON ca.id = $1 JOIN sucursales s ON s.id = ca.sucursal_id
         WHERE u.empresa_id = s.empresa_id AND u.activo
-          AND ('*' = ANY(ro.permisos) OR 'venta.crear' = ANY(ro.permisos))
+          AND ('*' = ANY(ro.permisos) OR 'venta.crear' = ANY(ro.permisos) OR 'salon.mesero' = ANY(ro.permisos))
           AND (u.sucursales IS NULL OR s.id = ANY(u.sucursales))
         ORDER BY u.nombre`,
       [cajaId],

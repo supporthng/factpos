@@ -6,6 +6,7 @@ import { contextoCaja, SQL_PRESENTACION, type PresentacionVenta } from "../conte
 import { crearComandas } from "./comandas.js";
 import { repartirPorLotes } from "../lotes.js";
 import { verificarAutorizacion } from "../autorizacion.js";
+import { leerToken } from "../sesion.js";
 import { dividirPorAsientos, dividirPorLineas, dividirPorMontos, ErrorDivision, repartirIgual, repartirProporcional } from "./cuentas-division.js";
 
 /**
@@ -42,8 +43,8 @@ export async function rutasCuentas(app: FastifyInstance) {
   const usuarioDe = (req: unknown) => ((req as { sesionCaja?: { u?: string } }).sesionCaja?.u) ?? null;
 
   const cuentaDe = async (sucursalId: string, id: string, abierta = true) => {
-    const c = (await pool.query<{ id: string; nombre: string; mesa: string | null; estado: string; numero: string; nota: string | null; abiertaEn: string; pasoLiberado: number }>(
-      `SELECT id, nombre, mesa, estado, numero::text, nota, abierta_en AS "abiertaEn", paso_liberado AS "pasoLiberado" FROM cuentas WHERE id = $1 AND sucursal_id = $2`, [id, sucursalId])).rows[0];
+    const c = (await pool.query<{ id: string; nombre: string; mesa: string | null; estado: string; numero: string; nota: string | null; abiertaEn: string; pasoLiberado: number; pedidoCobro: boolean }>(
+      `SELECT id, nombre, mesa, estado, numero::text, nota, abierta_en AS "abiertaEn", paso_liberado AS "pasoLiberado", pedido_cobro_en IS NOT NULL AS "pedidoCobro" FROM cuentas WHERE id = $1 AND sucursal_id = $2`, [id, sucursalId])).rows[0];
     if (!c) throw new ErrorNegocio("Cuenta no encontrada", 404);
     if (abierta && c.estado !== "ABIERTA") throw new ErrorNegocio("La cuenta ya está cerrada", 409);
     return c;
@@ -51,8 +52,11 @@ export async function rutasCuentas(app: FastifyInstance) {
 
   const detalle = async (sucursalId: string, id: string) => {
     const c = await cuentaDe(sucursalId, id, false);
-    const asientos = (await pool.query<{ id: string; nombre: string; orden: number }>(
-      "SELECT id, nombre, orden FROM cuenta_asientos WHERE cuenta_id = $1 ORDER BY orden, id", [id])).rows;
+    const asientos = (await pool.query<{ id: string; nombre: string; orden: number; pedidoCobro: boolean }>(
+      `SELECT a.id, a.nombre, a.orden,
+              -- el aviso de cobro solo cuenta mientras la persona tenga algo pendiente
+              (a.pedido_cobro_en IS NOT NULL AND EXISTS (SELECT 1 FROM cuenta_lineas l WHERE l.asiento_id = a.id AND NOT l.anulada AND l.venta_id IS NULL)) AS "pedidoCobro"
+         FROM cuenta_asientos a WHERE a.cuenta_id = $1 ORDER BY a.orden, a.id`, [id])).rows;
     const lineas = (await pool.query<FilaLinea>(
       `SELECT l.id, l.asiento_id AS "asientoId", l.presentacion_id AS "presentacionId", l.descripcion, l.cantidad::text AS cantidad,
               l.precio_unitario::text AS "precioUnitario", l.tasa_itbis::text AS "tasaItbis", l.nota, l.enviada_en AS "enviadaEn", l.anulada, l.venta_id AS "ventaId",
@@ -74,6 +78,83 @@ export async function rutasCuentas(app: FastifyInstance) {
     };
   };
 
+  /** El mesero avisa al cajero que cobre una persona (asientoId) o toda la mesa. `cancelar` retira el aviso. */
+  app.post("/cajas/:cajaId/cuentas/:id/pedir-cobro", async (req) => {
+    const ctx = await preparar(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ asientoId: uuid.nullable().optional(), cancelar: z.boolean().optional() }).parse(req.body);
+    await cuentaDe(ctx.sucursalId, id);
+    const valor = b.cancelar ? null : new Date();
+    if (b.asientoId) {
+      if (!b.cancelar && !(await pool.query(
+        "SELECT 1 FROM cuenta_lineas WHERE cuenta_id = $1 AND asiento_id = $2 AND NOT anulada AND venta_id IS NULL LIMIT 1", [id, b.asientoId])).rowCount) {
+        throw new ErrorNegocio("Esa cuenta no tiene nada pendiente de cobrar", 400);
+      }
+      await pool.query("UPDATE cuenta_asientos SET pedido_cobro_en = $3 WHERE id = $1 AND cuenta_id = $2", [b.asientoId, id, valor]);
+    } else {
+      await pool.query("UPDATE cuentas SET pedido_cobro_en = $2 WHERE id = $1", [id, valor]);
+    }
+    return detalle(ctx.sucursalId, id);
+  });
+
+  /**
+   * Repartir un producto entre varias personas (o la mesa) por unidades enteras: 6 cervezas → 2 a una persona y 4 a otra.
+   * Los extras con cargo del plato se reparten con él. Lo ya cobrado o anulado no se toca.
+   */
+  app.post("/cajas/:cajaId/cuentas/:id/lineas/:lineaId/repartir", async (req) => {
+    const ctx = await preparar(req);
+    const { id, lineaId } = z.object({ id: uuid, lineaId: uuid }).parse(req.params);
+    const b = z.object({ partes: z.array(z.object({ asientoId: uuid.nullable(), cantidad })).min(2).max(30) }).parse(req.body);
+    await cuentaDe(ctx.sucursalId, id);
+    const l = (await pool.query<{ cantidad: string; padre: string | null; pesable: boolean }>(
+      `SELECT l.cantidad::text AS cantidad, l.padre_id AS padre, p.es_pesable AS pesable FROM cuenta_lineas l
+         JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
+        WHERE l.id = $1 AND l.cuenta_id = $2 AND NOT l.anulada AND l.venta_id IS NULL`, [lineaId, id])).rows[0];
+    if (!l) throw new ErrorNegocio("Línea no encontrada", 404);
+    if (l.padre) throw new ErrorNegocio("Un extra se reparte junto con su plato", 400);
+    const suma = b.partes.reduce((s, x) => s + Number(x.cantidad), 0);
+    if (Math.abs(suma - Number(l.cantidad)) > 0.0005) throw new ErrorNegocio(`Lo repartido (${suma}) debe sumar la cantidad del producto (${Number(l.cantidad)})`, 400);
+    if (!l.pesable && b.partes.some((x) => !Number.isInteger(Number(x.cantidad)))) throw new ErrorNegocio("Este producto se reparte por unidades enteras", 400);
+    for (const x of b.partes) {
+      if (x.asientoId && !(await pool.query("SELECT 1 FROM cuenta_asientos WHERE id = $1 AND cuenta_id = $2", [x.asientoId, id])).rowCount) throw new ErrorNegocio("Esa persona no es de la cuenta", 400);
+    }
+    await enTransaccion(async (c) => {
+      const hijas = (await c.query<{ id: string }>("SELECT id FROM cuenta_lineas WHERE padre_id = $1 AND NOT anulada AND venta_id IS NULL", [lineaId])).rows;
+      const [primera, ...resto] = b.partes;
+      await c.query("UPDATE cuenta_lineas SET asiento_id = $2, cantidad = $3 WHERE id = $1 OR (padre_id = $1 AND NOT anulada AND venta_id IS NULL)", [lineaId, primera!.asientoId, primera!.cantidad]);
+      const copiar = `INSERT INTO cuenta_lineas (id, cuenta_id, asiento_id, presentacion_id, descripcion, cantidad, precio_unitario, tasa_itbis, nota, enviada_en, creada_por, padre_id, paso)
+                      SELECT $2, cuenta_id, $3, presentacion_id, descripcion, $4, precio_unitario, tasa_itbis, nota, enviada_en, creada_por, $5, paso FROM cuenta_lineas WHERE id = $1`;
+      for (const x of resto) {
+        const nuevo = uuidv7();
+        await c.query(copiar, [lineaId, nuevo, x.asientoId, x.cantidad, null]);
+        for (const h of hijas) await c.query(copiar, [h.id, uuidv7(), x.asientoId, x.cantidad, nuevo]);
+      }
+    });
+    return detalle(ctx.sucursalId, id);
+  });
+
+  /**
+   * El mesero (rol con «salon.mesero» y sin «venta.crear») solo entra a las cuentas que abrió él: cada mesero maneja sus mesas.
+   * El cajero, el supervisor y el administrador entran a todas.
+   */
+  const soloMias = (req: { headers: Record<string, unknown> }): string | null => {
+    const t = leerToken(req.headers["x-sesion-caja"] as string | undefined);
+    const p = ((t as { p?: string[] } | null)?.p) ?? [];
+    return t && t.t === "caja" && !(p.includes("*") || p.includes("venta.crear")) ? t.u : null;
+  };
+  app.addHook("preHandler", async (req) => {
+    const yo = soloMias(req as never);
+    if (!yo) return;
+    const params = (req.params ?? {}) as { id?: string };
+    const body = (req.body ?? {}) as { desdeId?: string; destinoId?: string };
+    const ids = [params.id, body.desdeId, body.destinoId].filter((x): x is string => typeof x === "string" && uuid.safeParse(x).success);
+    for (const id of ids) {
+      const c = (await pool.query<{ abierta_por: string | null; mesero: string | null }>(
+        "SELECT c.abierta_por, u.nombre AS mesero FROM cuentas c LEFT JOIN usuarios u ON u.id = c.abierta_por WHERE c.id = $1", [id])).rows[0];
+      if (c && c.abierta_por !== yo) throw new ErrorNegocio(`Esa mesa es de ${c.mesero ?? "otro mesero"}: solo el cajero o un supervisor puede entrar`, 403);
+    }
+  });
+
   app.get("/cajas/:cajaId/cuentas", async (req) => {
     const ctx = await preparar(req);
     const r = await pool.query(
@@ -84,7 +165,7 @@ export async function rutasCuentas(app: FastifyInstance) {
                  FROM cuenta_lineas l JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
                 WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS total
          FROM cuentas c LEFT JOIN usuarios u ON u.id = c.abierta_por
-        WHERE c.sucursal_id = $1 AND c.estado = 'ABIERTA' ORDER BY c.abierta_en`, [ctx.sucursalId]);
+        WHERE c.sucursal_id = $1 AND c.estado = 'ABIERTA' AND ($2::uuid IS NULL OR c.abierta_por = $2) ORDER BY c.abierta_en`, [ctx.sucursalId, soloMias(req)]);
     return r.rows;
   });
 
@@ -485,6 +566,9 @@ export async function rutasCuentas(app: FastifyInstance) {
     await enTransaccion(async (c) => {
       await c.query("UPDATE cuenta_lineas SET venta_id = $3 WHERE cuenta_id = $1 AND id = ANY($2::uuid[]) AND venta_id IS NULL AND NOT anulada", [id, b.lineaIds, b.ventaId]);
       await c.query("INSERT INTO cuenta_ventas (cuenta_id, venta_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id, b.ventaId]);
+      // lo que ya se cobró deja de pedir cobro: el aviso del mesero se retira solo
+      await c.query(`UPDATE cuenta_asientos a SET pedido_cobro_en = NULL WHERE a.cuenta_id = $1 AND a.pedido_cobro_en IS NOT NULL
+                        AND NOT EXISTS (SELECT 1 FROM cuenta_lineas l WHERE l.asiento_id = a.id AND NOT l.anulada AND l.venta_id IS NULL)`, [id]);
       const quedan = (await c.query("SELECT count(*)::int AS n FROM cuenta_lineas WHERE cuenta_id = $1 AND NOT anulada AND venta_id IS NULL", [id])).rows[0].n;
       if (!quedan) await c.query("UPDATE cuentas SET estado = 'COBRADA', cerrada_en = now() WHERE id = $1", [id]);
     });
