@@ -144,9 +144,10 @@ function CerrarTurno({ ajustes, usuario, pausadas, onCerrado }: { ajustes: Ajust
           <div className="conteo-suma"><span>Efectivo contado</span><b>{rd(efectivo)}</b></div>
         </div>
         <div className="otros-cierre">
-          <label className="campo"><span>Total de vouchers de tarjeta</span>
+          <label className="campo"><span>Total de tarjetas (cierre del Verifone)</span>
             <input className="entrada-media" inputMode="decimal" value={tarjeta} placeholder="0.00" onChange={(e) => { setTarjeta(e.target.value.replace(/[^\d.]/g, "")); setConfirmar(false); }} />
           </label>
+          <p className="suave pequeno" style={{ margin: "-4px 0 8px" }}>Digite el monto del cierre de tarjetas de su Verifone (el total del lote de este turno).</p>
           <label className="campo"><span>Total de transferencias</span>
             <input className="entrada-media" inputMode="decimal" value={transferencia} placeholder="0.00" onChange={(e) => { setTransferencia(e.target.value.replace(/[^\d.]/g, "")); setConfirmar(false); }} />
           </label>
