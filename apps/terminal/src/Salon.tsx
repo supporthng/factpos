@@ -16,7 +16,7 @@ export interface MesaC {
   reservaId: string | null; reservaNombre: string | null; reservaPara: string | null; reservaPersonas: number | null;
   cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null; pideCobro?: boolean;
 }
-export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; abreGrupo?: string | null; producto: string | null }
+export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; abreGrupo?: string | null; producto: string | null; aplicaPresentacionId?: string | null; plato?: string | null }
 export interface GrupoMod { nombre: string; obligatorio: boolean; maxOpciones: number }
 export const PASOS: [number, string][] = [[1, "Ya"], [2, "Fuertes"], [3, "Postres"]];
 
@@ -235,7 +235,7 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
 }) {
   const [lista, setLista] = useState<Modificador[]>(actuales);
   const [reglas, setReglas] = useState<GrupoMod[]>(gruposActuales);
-  const [buscar, setBuscar] = useState<{ i: number; texto: string } | null>(null);
+  const [buscar, setBuscar] = useState<{ i: number; texto: string; plato?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const categorias = useMemo(() => {
@@ -259,7 +259,7 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
     setGuardando(true);
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`, {
-        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId, abreGrupo: m.abreGrupo || null })) },
+        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId, abreGrupo: m.abreGrupo || null, aplicaPresentacionId: m.aplicaPresentacionId || null })) },
       });
       onGuardado();
     } catch (e) { setError((e as Error).message); }
@@ -296,13 +296,16 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
                   {nombresGrupo.filter((g) => g !== m.grupo.trim()).map((g) => <option key={g} value={g}>{g}</option>)}
                 </select></label>
             )}
+            <p className="suave" style={{ margin: "6px 0 0" }}>{m.aplicaPresentacionId
+              ? <>Solo para el plato: <b>{m.plato}</b> <button className="enlace" onClick={() => cambiar(i, { aplicaPresentacionId: null, plato: null })}>quitar</button></>
+              : <button className="enlace" onClick={() => setBuscar({ i, texto: "", plato: true })}>Limitar a un plato en particular</button>}</p>
             {m.presentacionId && <p className="suave" style={{ margin: "6px 0 0" }}>Producto del extra: <b>{m.producto}</b> <button className="enlace" onClick={() => setBuscar({ i, texto: "" })}>cambiar</button></p>}
             {buscar?.i === i && (
               <div style={{ marginTop: 6 }}>
-                <input autoFocus placeholder="Buscar el producto del extra…" value={buscar.texto} onChange={(e) => setBuscar({ i, texto: e.target.value })} />
+                <input autoFocus placeholder={buscar.plato ? "Buscar el plato…" : "Buscar el producto del extra…"} value={buscar.texto} onChange={(e) => setBuscar({ i, texto: e.target.value })} />
                 {resultados.map((p) => (
                   <button key={p.presentacionId} className="boton fantasma ancho" style={{ justifyContent: "space-between", marginTop: 4 }}
-                    onClick={() => { cambiar(i, { presentacionId: p.presentacionId, producto: p.nombre }); setBuscar(null); }}>{p.nombre}</button>
+                    onClick={() => { cambiar(i, buscar.plato ? { aplicaPresentacionId: p.presentacionId, plato: p.nombre } : { presentacionId: p.presentacionId, producto: p.nombre }); setBuscar(null); }}>{p.nombre}</button>
                 ))}
                 <button className="enlace" onClick={() => setBuscar(null)}>Cancelar</button>
               </div>

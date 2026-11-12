@@ -222,7 +222,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
     ...cuenta.asientos.map((a) => ({ id: a.id, nombre: a.nombre, lineas: vivas.filter((l) => l.asientoId === a.id) })),
   ];
 
-  const aplicables = (p: ProductoCatalogo) => modificadores.filter((m) => m.categoriaId === null || m.categoriaId === p.categoriaId);
+  const aplicables = (p: ProductoCatalogo) => modificadores.filter((m) => (m.categoriaId === null || m.categoriaId === p.categoriaId) && (!m.aplicaPresentacionId || m.aplicaPresentacionId === p.presentacionId));
   const agregar = (p: ProductoCatalogo, extra?: { mods: string[]; nota: string; paso: number }) => {
     if (precioPara(p, nivel, catalogo.nivelPredeterminado).precio === null && !p.precioVariable) return;
     // Un plato con modificadores pregunta cuáles lleva antes de cargarse
