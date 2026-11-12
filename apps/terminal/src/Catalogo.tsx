@@ -21,8 +21,10 @@ function etiquetaOferta(o: Oferta) {
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo, servidor }: {
+export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo, servidor, agotados }: {
   servidor: string;
+  /** Platos que la cocina marcó como agotados hoy (presentacionId) */
+  agotados?: Set<string>;
   catalogo: Catalogo;
   nivel: number;
   enCarrito: Map<string, number>;
@@ -115,7 +117,8 @@ const TarjetaProducto = memo(function TarjetaProducto({ p, nivel, n, catalogo, s
       // La existencia ya viene expresada en la presentación (el servidor divide entre su factor): 48 tragos = 3 botellas
       const stock = Number(p.existencia ?? 0);
       const minimo = Number(p.minimo ?? 0);
-      const estado = !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
+      const marcado = !!agotados?.has(p.presentacionId);
+      const estado = marcado ? "agotado" : !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
       return (
         <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
           style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>

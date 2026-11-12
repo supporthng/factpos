@@ -664,3 +664,44 @@ export function PedidoParaLlevar({ onCrear, onCerrar }: { onCrear: (nombre: stri
     </Modal>
   );
 }
+
+/** Platos agotados hoy («86»): se marcan aquí y ninguna caja de la sucursal los deja ordenar hasta que se liberen. */
+export function AgotadosSalon({ ajustes, catalogo, agotados, onCambio, onCerrar }: {
+  ajustes: Ajustes; catalogo: Catalogo; agotados: Set<string>; onCambio: () => void; onCerrar: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [trabajando, setTrabajando] = useState<string | null>(null);
+  const cambiar = async (id: string, agotado: boolean) => {
+    setTrabajando(id); setError(null);
+    try { await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/agotados/${id}`, { metodo: "PUT", cuerpo: { agotado } }); onCambio(); }
+    catch (e) { setError((e as Error).message); }
+    setTrabajando(null);
+  };
+  const productos = catalogo.productos.filter((p) => p.categoria !== "Servicios");
+  const marcados = productos.filter((p) => agotados.has(p.presentacionId));
+  const texto = q.trim().toLowerCase();
+  const resultados = texto.length >= 2 ? productos.filter((p) => !agotados.has(p.presentacionId) && p.nombre.toLowerCase().includes(texto)).slice(0, 8) : [];
+  return (
+    <Modal titulo="Platos agotados hoy" onCerrar={onCerrar}>
+      <p className="suave">Un plato agotado no se puede ordenar en ninguna caja de esta sucursal hasta que lo libere.</p>
+      {error && <p className="error">{error}</p>}
+      <div style={{ maxHeight: "30vh", overflow: "auto", marginBottom: 8 }}>
+        {!marcados.length && <p className="suave">No hay platos agotados.</p>}
+        {marcados.map((p) => (
+          <div key={p.presentacionId} className="factura" style={{ marginTop: 6 }}>
+            <span><b>{p.nombre}</b></span>
+            <button className="boton primario chico" disabled={trabajando === p.presentacionId} onClick={() => void cambiar(p.presentacionId, false)}>Volvió a haber</button>
+          </div>
+        ))}
+      </div>
+      <input autoFocus value={q} placeholder="Buscar el plato que se acabó…" onChange={(e) => setQ(e.target.value)} />
+      {resultados.map((p) => (
+        <div key={p.presentacionId} className="factura" style={{ marginTop: 6 }}>
+          <span>{p.nombre}</span>
+          <button className="boton fantasma chico" disabled={trabajando === p.presentacionId} onClick={() => { setQ(""); void cambiar(p.presentacionId, true); }}>Marcar agotado</button>
+        </div>
+      ))}
+    </Modal>
+  );
+}

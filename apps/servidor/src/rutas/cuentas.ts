@@ -138,6 +138,9 @@ export async function rutasCuentas(app: FastifyInstance) {
     const p = (await pool.query<PresentacionVenta>(`${SQL_PRESENTACION} AND pr.id = $5`, [ctx.empresaId, ctx.sucursalId, ctx.almacenId, null, b.presentacionId])).rows[0];
     if (!p) throw new ErrorNegocio("Producto no encontrado o no disponible en esta sucursal", 404);
     if (p.precio === null && !p.precioVariable) throw new ErrorNegocio(`«${p.nombre}» no tiene precio`, 400);
+    if ((await pool.query("SELECT 1 FROM platos_agotados WHERE sucursal_id = $1 AND presentacion_id = $2", [ctx.sucursalId, b.presentacionId])).rowCount) {
+      throw new ErrorNegocio(`«${p.nombre}» está agotado hoy`, 409);
+    }
     const ids = [...new Set(b.modificadores ?? [])];
     const mods = ids.length
       ? (await pool.query<{ nombre: string; presentacionId: string | null }>(

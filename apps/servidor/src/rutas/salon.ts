@@ -246,4 +246,28 @@ export async function rutasSalon(app: FastifyInstance) {
     });
     return { ok: true };
   });
+
+  /** Platos agotados hoy en la sucursal («86»). Cualquier usuario de la caja puede marcarlos o liberarlos. */
+  app.get("/cajas/:cajaId/agotados", async (req) => {
+    const ctx = await preparar(req);
+    return (await pool.query(
+      `SELECT a.presentacion_id AS "presentacionId", p.nombre, a.marcado_en AS "marcadoEn"
+         FROM platos_agotados a JOIN presentaciones pr ON pr.id = a.presentacion_id JOIN productos p ON p.id = pr.producto_id
+        WHERE a.sucursal_id = $1 ORDER BY p.nombre`, [ctx.sucursalId])).rows;
+  });
+  app.put("/cajas/:cajaId/agotados/:presentacionId", async (req) => {
+    const ctx = await preparar(req);
+    const { presentacionId } = z.object({ presentacionId: uuid }).parse(req.params);
+    const { agotado } = z.object({ agotado: z.boolean() }).parse(req.body);
+    if (agotado) {
+      if (!(await pool.query("SELECT 1 FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id WHERE pr.id = $1 AND p.empresa_id = $2", [presentacionId, ctx.empresaId])).rowCount) {
+        throw new ErrorNegocio("Producto no encontrado", 404);
+      }
+      await pool.query(
+        "INSERT INTO platos_agotados (sucursal_id, presentacion_id, marcado_por) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [ctx.sucursalId, presentacionId, usuarioDe(req)]);
+    } else {
+      await pool.query("DELETE FROM platos_agotados WHERE sucursal_id = $1 AND presentacion_id = $2", [ctx.sucursalId, presentacionId]);
+    }
+    return { ok: true };
+  });
 }

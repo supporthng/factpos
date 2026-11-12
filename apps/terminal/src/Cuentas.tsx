@@ -5,7 +5,7 @@ import { api, ErrorApi, rd, type Ajustes } from "./api";
 import { Modal } from "./Venta";
 import { PinSupervisor } from "./Operaciones";
 import { ComandaPapel, type Comanda } from "./Comandas";
-import { ConfigMesas, ConfigModificadores, ElegirModificadores, MapaMesas, MoverCuenta, PASOS, PreCuentaPapel, ReporteSalon, ReservasSalon, PedidoParaLlevar, horaCorta, type DatosPreCuenta, type MesaC, type GrupoMod, type Modificador } from "./Salon";
+import { AgotadosSalon, ConfigMesas, ConfigModificadores, ElegirModificadores, MapaMesas, MoverCuenta, PASOS, PreCuentaPapel, ReporteSalon, ReservasSalon, PedidoParaLlevar, horaCorta, type DatosPreCuenta, type MesaC, type GrupoMod, type Modificador } from "./Salon";
 import type { ConfigCaja } from "./App";
 
 /**
@@ -46,7 +46,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   const [mesas, setMesas] = useState<MesaC[]>([]);
   const [modificadores, setModificadores] = useState<Modificador[]>([]);
   const [gruposMod, setGruposMod] = useState<GrupoMod[]>([]);
-  const [pantalla, setPantalla] = useState<"MESAS" | "MODS" | "REPORTE" | "RESERVAS" | "LLEVAR" | null>(null);
+  const [agotados, setAgotados] = useState<Set<string>>(new Set());
+  const [pantalla, setPantalla] = useState<"MESAS" | "MODS" | "REPORTE" | "RESERVAS" | "LLEVAR" | "AGOTADOS" | null>(null);
   const [reservaMesa, setReservaMesa] = useState<MesaC | null>(null);
 
   const cargarLista = useCallback(async () => {
@@ -55,6 +56,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
     api<MesaC[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/mesas`).then(setMesas).catch(() => setMesas([]));
     api<{ modificadores: Modificador[]; grupos: GrupoMod[] }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`)
       .then((r) => { setModificadores(r.modificadores); setGruposMod(r.grupos); }).catch(() => { setModificadores([]); setGruposMod([]); });
+    api<{ presentacionId: string }[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/agotados`).then((l) => setAgotados(new Set(l.map((x) => x.presentacionId)))).catch(() => undefined);
   }, [ajustes.servidor, ajustes.cajaId, base]);
   useEffect(() => { void cargarLista(); }, [cargarLista]);
   // El mapa se mantiene al día mientras se mira (otras cajas abren y cierran mesas)
@@ -95,11 +97,12 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   const papel = papeles[0] ? <ComandaPapel key={papeles[0].id} comanda={papeles[0]} onListo={() => setPapeles((p) => p.slice(1))} /> : null;
   if (cuenta) {
     return <><DetalleCuenta ajustes={ajustes} base={base} cuenta={cuenta} catalogo={catalogo} nivel={nivel} error={error} ocupado={ocupado}
-      accion={accion} modificadores={modificadores} gruposMod={gruposMod} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
+      accion={accion} modificadores={modificadores} gruposMod={gruposMod} agotados={agotados} config={config} onCobrar={onCobrar} onVolver={() => { setCuenta(null); setAviso(null); void cargarLista(); }} onCerrar={onCerrar} aviso={aviso} />{papel}</>;
   }
 
   if (pantalla === "MESAS") return <ConfigMesas ajustes={ajustes} mesas={mesas} onGuardado={() => { setPantalla(null); void cargarLista(); }} onCerrar={() => setPantalla(null)} />;
   if (pantalla === "RESERVAS") return <ReservasSalon ajustes={ajustes} mesas={mesas} onCerrar={() => { setPantalla(null); void cargarLista(); }} onSentada={(id) => { setPantalla(null); void abrir(id); }} />;
+  if (pantalla === "AGOTADOS") return <AgotadosSalon ajustes={ajustes} catalogo={catalogo} agotados={agotados} onCambio={() => void cargarLista()} onCerrar={() => setPantalla(null)} />;
   if (pantalla === "LLEVAR") return <PedidoParaLlevar onCerrar={() => setPantalla(null)} onCrear={(nombre, nota) => void crearCuenta({ nombre, nota: nota || undefined })} />;
   if (reservaMesa) {
     const m = reservaMesa;
@@ -141,6 +144,7 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             <button className="boton primario" onClick={() => setNueva({ nombre: "", asientos: "0" })}>+ Nueva cuenta</button>
             <button className="boton fantasma" onClick={() => setPantalla("LLEVAR")}>Para llevar / domicilio</button>
+            <button className="boton fantasma" title="Platos que se acabaron: nadie los puede ordenar" onClick={() => setPantalla("AGOTADOS")}>Agotados{agotados.size ? ` (${agotados.size})` : ""}</button>
             <button className="boton fantasma" onClick={() => setPantalla("RESERVAS")}>Reservas</button>
             <button className="boton fantasma chico" onClick={() => setPantalla("MESAS")}>Diseñar salón</button>
             <button className="boton fantasma chico" onClick={() => setPantalla("MODS")}>Modificadores</button>
@@ -173,8 +177,8 @@ export function Cuentas({ ajustes, config, catalogo, nivel, onCobrar, onCerrar }
   );
 }
 
-function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, onCobrar, onVolver, onCerrar }: {
-  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[];
+function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, aviso, ocupado, accion, modificadores, gruposMod, agotados, onCobrar, onVolver, onCerrar }: {
+  ajustes: Ajustes; config: ConfigCaja; base: string; cuenta: CuentaC; catalogo: Catalogo; nivel: number; modificadores: Modificador[]; gruposMod: GrupoMod[]; agotados: Set<string>;
   error: string | null; aviso: string | null; ocupado: boolean; accion: (ruta: string, cuerpo?: unknown, metodo?: string) => Promise<CuentaC | null>;
   onCobrar: (plan: PlanCobro) => void; onVolver: () => void; onCerrar: () => void;
 }) {
@@ -303,7 +307,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
     <Modal titulo={`${cuenta.nombre} · #${cuenta.numero}`} onCerrar={onCerrar} ancho clase="cuenta-ancha">
       <div className="cuenta-doble">
         <section className="cuenta-catalogo" aria-label="Productos">
-          <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivel} enCarrito={enCuenta} onAgregar={agregar} onCodigo={porCodigo} />
+          <VistaCatalogo servidor={ajustes.servidor} catalogo={catalogo} nivel={nivel} enCarrito={enCuenta} agotados={agotados} onAgregar={agregar} onCodigo={porCodigo} />
         </section>
         <section className="cuenta-lado" aria-label="Cuenta">
           <button className="enlace" onClick={onVolver}>← Todas las cuentas</button>
