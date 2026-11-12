@@ -104,6 +104,87 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
     return { pasos, listos: pasos.filter((x) => x.ok).length, total: pasos.length };
   });
 
+  /**
+   * Puesta en marcha completa: lo necesario para empezar a vender y lo recomendado, con lo que ya hay en cada paso.
+   * Los pasos «necesarios» (sin `opcional`) marcan el avance; los recomendados lo dejan completo.
+   */
+  app.get("/central/puesta-en-marcha", async (req) => {
+    const e = sesionAdmin(req).e;
+    const fila = async <T extends Record<string, any>>(sql: string): Promise<T | undefined> => {
+      try { return (await pool.query<T>(sql, [e])).rows[0]; } catch { return undefined; } // una tabla que falte no debe tumbar la lista
+    };
+    const [emp, fis, cert, aut, ncf, cajas, prod, usu, cli, correo, resp, marca, lic, mesas] = await Promise.all([
+      fila<{ rnc: string; razon_social: string }>("SELECT rnc, razon_social FROM empresas WHERE id = $1"),
+      fila<{ direccion_emisor: string; municipio: string | null; provincia: string | null; ambiente: string; transmisor: string }>(
+        "SELECT direccion_emisor, municipio, provincia, ambiente, transmisor FROM configuracion_fiscal WHERE empresa_id = $1"),
+      fila<{ vence: Date }>("SELECT vence FROM certificados_digitales WHERE empresa_id = $1 AND activo ORDER BY subido_en DESC LIMIT 1"),
+      fila<{ n: string }>("SELECT count(*) AS n FROM ecf_autorizaciones WHERE empresa_id = $1 AND vence_en >= current_date"),
+      fila<{ n: string }>(
+        `SELECT count(*) AS n FROM facturacion_rangos_ncf r JOIN sucursales s ON s.id = r.sucursal_id
+          WHERE s.empresa_id = $1 AND r.activo AND r.vence_en >= current_date AND r.siguiente <= r.hasta`),
+      fila<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND s.activo"),
+      fila<{ n: string }>("SELECT count(*) AS n FROM productos WHERE empresa_id = $1 AND activo"),
+      fila<{ n: string }>("SELECT count(*) AS n FROM usuarios WHERE empresa_id = $1 AND activo AND pin_hash IS NOT NULL"),
+      fila<{ n: string }>("SELECT count(*) AS n FROM clientes WHERE empresa_id = $1 AND activo"),
+      fila<{ prueba_ok: boolean | null; remitente_correo: string | null }>("SELECT prueba_ok, remitente_correo FROM configuracion_correo WHERE empresa_id = $1"),
+      fila<{ activo: boolean; nube_activa: boolean; carpeta_extra: string | null }>("SELECT activo, nube_activa, carpeta_extra FROM respaldo_config WHERE id = 1"),
+      fila<{ logo: string | null }>("SELECT logo FROM configuracion_marca WHERE empresa_id = $1"),
+      fila<{ token: string | null; prueba_desde: Date }>("SELECT token, prueba_desde FROM licencia WHERE id = 1"),
+      fila<{ n: string }>("SELECT count(*) AS n FROM mesas m JOIN sucursales s ON s.id = m.sucursal_id WHERE s.empresa_id = $1 AND m.activa"),
+    ]);
+    type Paso = { id: string; titulo: string; detalle: string; ir: string; listo: boolean; opcional?: boolean; estado?: string };
+    const n = (x?: { n: string }) => Number(x?.n ?? 0);
+    const plural = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+    const faltaDatos = [!emp?.rnc && "RNC", !fis?.direccion_emisor?.trim() && "dirección del emisor"].filter(Boolean) as string[];
+    const diasCert = cert ? Math.floor((new Date(cert.vence).getTime() - Date.now()) / 86400e3) : null;
+    const comprobantes = [n(ncf) > 0 && plural(n(ncf), "rango NCF vigente", "rangos NCF vigentes"), n(aut) > 0 && plural(n(aut), "rango e-CF vigente", "rangos e-CF vigentes")].filter(Boolean) as string[];
+    const ecfListo = !!cert && (diasCert ?? -1) >= 0 && !!fis && fis.transmisor !== "SIMULADO";
+    const pasos: Paso[] = [
+      { id: "empresa", titulo: "Datos de la empresa", ir: "empresa", listo: faltaDatos.length === 0,
+        detalle: "Nombre, RNC y dirección del emisor. Salen en las facturas y en los comprobantes.",
+        estado: faltaDatos.length ? `Falta: ${faltaDatos.join(", ")}` : emp?.razon_social },
+    ];
+    if (config.modo !== "portal") {
+      pasos.push({ id: "licencia", titulo: "Activar la licencia", ir: "licencia", listo: !!lic?.token,
+        detalle: "Escriba el código o pegue el archivo de licencia que le entregó su proveedor.",
+        estado: lic?.token ? "Licencia activa" : lic ? "En período de prueba" : undefined });
+    }
+    pasos.push(
+      { id: "comprobantes", titulo: "Comprobantes fiscales", ir: "fiscal", listo: comprobantes.length > 0,
+        detalle: "Cargue sus secuencias NCF autorizadas o los rangos de e-CF de la DGII para poder facturar.",
+        estado: comprobantes.length ? comprobantes.join(" · ") : "Todavía no se puede emitir comprobante fiscal" },
+      { id: "productos", titulo: "Productos y precios", ir: "productos", listo: n(prod) > 0,
+        detalle: "Cargue su catálogo uno por uno o importe una lista desde Excel.",
+        estado: n(prod) ? plural(n(prod), "producto activo", "productos activos") : "Ninguno todavía" },
+      { id: "cajas", titulo: "Cajas", ir: "sucursales", listo: n(cajas) > 0,
+        detalle: "Cree la caja de cada punto de venta y enlace el equipo donde se va a cobrar.",
+        estado: n(cajas) ? plural(n(cajas), "caja activa", "cajas activas") : "Ninguna todavía" },
+      { id: "usuarios", titulo: "Usuarios con PIN", ir: "usuarios", listo: n(usu) > 0,
+        detalle: "Cada cajero, mesero o supervisor entra a la caja con su PIN y su rol.",
+        estado: n(usu) ? plural(n(usu), "usuario con PIN", "usuarios con PIN") : "Ninguno todavía" },
+      { id: "clientes", titulo: "Clientes", ir: "clientela", listo: n(cli) > 0, opcional: true,
+        detalle: "Sus clientes frecuentes con RNC o cédula, para facturas con crédito fiscal y cuentas por cobrar.",
+        estado: n(cli) ? plural(n(cli), "cliente", "clientes") : "Ninguno todavía" },
+      { id: "ecf", titulo: "Facturación electrónica (e-CF)", ir: "fiscal", listo: ecfListo, opcional: true,
+        detalle: "Certificado digital, dirección del emisor y el proveedor o la DGII por donde se envían los e-CF.",
+        estado: ecfListo ? `Certificado vigente · ${fis?.transmisor === "PSE" ? "proveedor e-CF" : "DGII"} · ${fis?.ambiente}` : !cert ? "Sin certificado digital" : "En modo simulado: no se envía nada a la DGII" },
+      { id: "salon", titulo: "Salón y mesas", ir: "sucursales", listo: n(mesas) > 0, opcional: true,
+        detalle: "Para restaurantes y bares: las mesas de cada zona, para que el mesero tome pedidos y pida el cobro.",
+        estado: n(mesas) ? plural(n(mesas), "mesa", "mesas") : "Sin mesas (venta de mostrador)" },
+      { id: "marca", titulo: "Logo y apariencia", ir: "marca", listo: !!marca?.logo, opcional: true,
+        detalle: "Su logo y color en la caja, el ticket y la administración.",
+        estado: marca?.logo ? "Logo cargado" : "Sin logo" },
+      { id: "correo", titulo: "Correo electrónico", ir: "correo", listo: !!correo?.prueba_ok, opcional: true,
+        detalle: "La cuenta desde la que se envían facturas y avisos. Pruébela con «Enviar prueba».",
+        estado: correo?.prueba_ok ? correo.remitente_correo ?? "Configurado" : correo ? "Configurado sin probar" : "Sin configurar" },
+      { id: "respaldos", titulo: "Respaldos", ir: "respaldos", listo: !!resp?.activo && (!!resp.nube_activa || !!resp.carpeta_extra), opcional: true,
+        detalle: "Una copia diaria fuera de la caja: carpeta externa (USB, OneDrive, Google Drive) o la nube de FactPOS.",
+        estado: resp?.nube_activa ? "Copia cifrada en la nube" : resp?.carpeta_extra ? `Copia extra en ${resp.carpeta_extra}` : "Solo en este equipo" },
+    );
+    const necesarios = pasos.filter((x) => !x.opcional);
+    return { pasos, hechos: necesarios.filter((x) => x.listo).length, necesarios: necesarios.length };
+  });
+
   /** Pasa a otra empresa del grupo: devuelve una sesión nueva como administrador de esa empresa. */
   app.post("/central/empresas/cambiar", async (req) => {
     const s = sesionAdmin(req);
