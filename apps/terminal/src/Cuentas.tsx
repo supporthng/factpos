@@ -314,17 +314,17 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
             {cuenta.asientos.map((a) => <button key={a.id} className={destino === a.id ? "activa" : ""} onClick={() => setDestino(a.id)}>{a.nombre}</button>)}
             <button onClick={async () => { const c = await accion(`${url}/asientos`, {}); if (c) setDestino(c.asientos[c.asientos.length - 1]?.id ?? null); }}>+ Persona</button>
           </div>
-          <p className="suave" style={{ margin: "0 0 4px" }}>Lo que toque en el catálogo se carga a: <b>{destino ? cuenta.asientos.find((a) => a.id === destino)?.nombre ?? "" : "toda la mesa"}</b></p>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "0 0 6px" }}>
-            <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }} title="Entradas primero, luego fuertes y postres: cada tiempo sale a la cocina cuando se pide">
+          <p className="cuenta-destino">Se carga a: <b>{destino ? cuenta.asientos.find((a) => a.id === destino)?.nombre ?? "" : "toda la mesa"}</b></p>
+          <div className="cuenta-tiempos">
+            <label title="Entradas primero, luego fuertes y postres: cada tiempo sale a la cocina cuando se pide">
               <input type="checkbox" checked={tiempos} disabled={vivas.some((l) => l.paso > 1 && !l.enviadaEn)} onChange={(e) => setTiempos(e.target.checked)} /> Servir por tiempos
             </label>
             {tiempos && <span className="pasos"><span className="suave">Lo que agregue sale en:</span>{PASOS.map(([n, t]) => <button key={n} className={pasoNuevo === n ? "activa" : ""} onClick={() => setPasoNuevo(n)}>{t}</button>)}</span>}
           </div>
           <div className="cuenta-lineas">
             {grupos.filter((g) => g.id === null ? g.lineas.length > 0 : true).map((g) => (
-              <div key={g.id ?? "mesa"} style={{ marginTop: 8 }}>
-                <b>{g.nombre}</b> <span className="suave">{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span>
+              <div key={g.id ?? "mesa"} className="cuenta-grupo">
+                <div className="grupo-cab"><b>{g.nombre}</b><span>{g.id ? rd(cuenta.asientos.find((a) => a.id === g.id)?.total ?? 0) : rd(cuenta.sinAsiento)}</span></div>
                 {g.lineas.length === 0 && <p className="suave" style={{ margin: "2px 0" }}>Nada pedido todavía.</p>}
                 {g.lineas.filter((l) => !l.padreId).map((l) => (
                   <div key={l.id}>
@@ -361,17 +361,24 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
           </div>
           {!!cuenta.cortesias?.length && <p className="suave" style={{ margin: "6px 0 0" }}>Cortesías: {cuenta.cortesias.map((c) => `${Number(c.cantidad)} × ${c.descripcion}`).join(", ")}</p>}
           {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
-          <p style={{ marginTop: 10 }}><b>Pendiente {rd(cuenta.total)}</b> <span className="suave">· propina legal 10 % {rd(cuenta.propinaLegal)}</span></p>
-          <div className="pv-atajos pv-atajos-min" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-            <button disabled={ocupado || !vivas.some((l) => !l.enviadaEn && l.paso <= cuenta.pasoLiberado)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra/cocina</button>
-            {tiempos && (
-              <button disabled={ocupado || cuenta.pasoLiberado >= 3} title="Libera y envía lo que esperaba su turno"
-                onClick={() => void accion(`${url}/siguiente-tiempo`)}>Pedir {cuenta.pasoLiberado === 1 ? "fuertes" : "postres"}</button>
-            )}
-            <button disabled={ocupado} onClick={() => setMoviendo(true)}>Mover / cambiar mesa</button>
-            <button disabled={ocupado || !vivas.length} title="Imprime la cuenta para que el cliente la revise antes de pagar" onClick={() => setPreCuenta(armarPreCuenta())}>Pre-cuenta</button>
-            <button disabled={ocupado} onClick={() => setUniendo(true)}>Unir con otra</button>
-            <button className="primario" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Dividir y cobrar</button>
+          <div className="cuenta-resumen">
+            <span>Pendiente<small>propina legal 10 % · {rd(cuenta.propinaLegal)}</small></span>
+            <b>{rd(cuenta.total)}</b>
+          </div>
+          <div className="cuenta-acciones">
+            <div className="fila-principal">
+              <button className="enviar" disabled={ocupado || !vivas.some((l) => !l.enviadaEn && l.paso <= cuenta.pasoLiberado)} onClick={() => void accion(`${url}/enviar`)}>Enviar a barra / cocina</button>
+              {tiempos && (
+                <button className="enviar" disabled={ocupado || cuenta.pasoLiberado >= 3} title="Libera y envía lo que esperaba su turno"
+                  onClick={() => void accion(`${url}/siguiente-tiempo`)}>Pedir {cuenta.pasoLiberado === 1 ? "fuertes" : "postres"}</button>
+              )}
+            </div>
+            <button className="cobrar-cuenta" disabled={ocupado || !vivas.length} onClick={() => setDividiendo(true)}>Cobrar o dividir la cuenta</button>
+            <div className="fila-sec">
+              <button disabled={ocupado || !vivas.length} title="Imprime la cuenta para que el cliente la revise antes de pagar" onClick={() => setPreCuenta(armarPreCuenta())}>Pre-cuenta</button>
+              <button disabled={ocupado} onClick={() => setMoviendo(true)}>Mover / cambiar mesa</button>
+              <button disabled={ocupado} onClick={() => setUniendo(true)}>Unir con otra</button>
+            </div>
           </div>
         </section>
       </div>
