@@ -302,8 +302,12 @@ function Configuracion() {
   if (!c) return <p className="suave">Cargando…</p>;
   const guardar = async () => {
     try {
-      await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: c.pseUrl || null, pseNombre: c.pseNombre || null, ...(c.pseTokenNuevo !== undefined ? { pseToken: c.pseTokenNuevo || null } : {}), alertaRestantes: Number(c.alertaRestantes) } });
-      setC((x: any) => ({ ...x, pseTokenConfigurado: x.pseTokenNuevo !== undefined ? !!x.pseTokenNuevo : x.pseTokenConfigurado, pseTokenNuevo: undefined }));
+      const mseller = c.transmisor === "PSE" && /mseller/i.test(c.pseNombre ?? "");
+      const algunaMs = !!(c.msEmail || c.msClave || c.msKey);
+      if (mseller && algunaMs && !(c.msEmail && c.msClave && c.msKey)) { setMsg({ t: "Para MSeller escriba el correo, la clave y la API Key juntos", tipo: "error" }); return; }
+      const pseToken = mseller ? (algunaMs ? JSON.stringify({ email: c.msEmail.trim(), password: c.msClave, apiKey: c.msKey.trim() }) : undefined) : c.pseTokenNuevo;
+      await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: mseller ? "https://ecf.api.mseller.app" : (c.pseUrl || null), pseNombre: c.pseNombre || null, ...(pseToken !== undefined ? { pseToken: pseToken || null } : {}), alertaRestantes: Number(c.alertaRestantes) } });
+      setC((x: any) => ({ ...x, pseTokenConfigurado: pseToken !== undefined ? !!pseToken : x.pseTokenConfigurado, pseTokenNuevo: undefined, msEmail: undefined, msClave: undefined, msKey: undefined }));
       setMsg({ t: "Configuración guardada", tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
   };
@@ -341,12 +345,27 @@ function Configuracion() {
         <>
           <div className="dos-col">
             <label className="campo"><span>Proveedor (nombre, opcional)</span><input value={c.pseNombre ?? ""} onChange={(e) => setC({ ...c, pseNombre: e.target.value })} placeholder="Ej.: mseller" /></label>
-            <label className="campo"><span>Dirección del API del PSE</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>
+            {!/mseller/i.test(c.pseNombre ?? "") && <label className="campo"><span>Dirección del API del PSE</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>}
           </div>
-          <label className="campo"><span>Llave de API de esta empresa {c.pseTokenConfigurado && c.pseTokenNuevo === undefined ? "(guardada ✓)" : ""}</span>
-            <input type="password" autoComplete="off" value={c.pseTokenNuevo ?? ""} onChange={(e) => setC({ ...c, pseTokenNuevo: e.target.value })} placeholder={c.pseTokenConfigurado ? "Deje vacío para conservar la guardada" : "Pegue la llave que le dio el proveedor"} />
-          </label>
-          <p className="suave" style={{ marginTop: 0 }}>Cada empresa usa su propia cuenta con el proveedor. La llave se guarda cifrada. Guarde antes de probar.</p>
+          {/mseller/i.test(c.pseNombre ?? "") ? (
+            <>
+              <div className="dos-col">
+                <label className="campo"><span>Correo de la cuenta de MSeller de esta empresa</span><input type="email" autoComplete="off" value={c.msEmail ?? ""} onChange={(e) => setC({ ...c, msEmail: e.target.value })} /></label>
+                <label className="campo"><span>Clave de esa cuenta</span><input type="password" autoComplete="new-password" value={c.msClave ?? ""} onChange={(e) => setC({ ...c, msClave: e.target.value })} /></label>
+              </div>
+              <label className="campo"><span>API Key de esa cuenta {c.pseTokenConfigurado && c.msKey === undefined ? "(guardadas ✓)" : ""}</span>
+                <input type="password" autoComplete="off" value={c.msKey ?? ""} onChange={(e) => setC({ ...c, msKey: e.target.value })} placeholder={c.pseTokenConfigurado ? "Para cambiar las credenciales, escriba las tres" : "La que creó en MSeller (Configuración → API Key)"} />
+              </label>
+              <p className="suave" style={{ marginTop: 0 }}>Cada cliente tiene su propia cuenta y plan en MSeller, con su certificado (.p12) cargado allí. Se guardan cifradas. Guarde antes de probar. El ambiente (pruebas, certificación o producción) se elige arriba.</p>
+            </>
+          ) : (
+            <>
+              <label className="campo"><span>Llave de API de esta empresa {c.pseTokenConfigurado && c.pseTokenNuevo === undefined ? "(guardada ✓)" : ""}</span>
+                <input type="password" autoComplete="off" value={c.pseTokenNuevo ?? ""} onChange={(e) => setC({ ...c, pseTokenNuevo: e.target.value })} placeholder={c.pseTokenConfigurado ? "Deje vacío para conservar la guardada" : "Pegue la llave que le dio el proveedor"} />
+              </label>
+              <p className="suave" style={{ marginTop: 0 }}>Cada empresa usa su propia cuenta con el proveedor. La llave se guarda cifrada. Guarde antes de probar.</p>
+            </>
+          )}
           <button className="boton" onClick={probar}>Probar conexión</button>
         </>
       )}

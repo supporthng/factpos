@@ -5,7 +5,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { guardarCertificado, huellaEnUso, cifrarTexto, descifrarTexto } from "../fiscal/certificado-guardado.js";
 import { usarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
-import { dgii, pse } from "../fiscal/transmisor.js";
+import { dgii, transmisorPse } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
 import { firmarXml } from "../fiscal/firma.js";
@@ -59,7 +59,7 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
         pseToken: z.string().trim().max(2000).nullable().optional(), // undefined = no cambia; null o vacío = quitar
         alertaRestantes: z.number().int().min(0).default(500),
       })
-      .refine((x) => x.transmisor !== "PSE" || !!x.pseUrl, "Indique la dirección del PSE")
+      .refine((x) => x.transmisor !== "PSE" || !!x.pseUrl || /mseller/i.test(x.pseNombre ?? ""), "Indique la dirección del PSE")
       .refine((x) => (x.ambiente === "SIMULADO") === (x.transmisor === "SIMULADO"), "El transmisor simulado solo se usa en el ambiente simulado")
       .parse(req.body);
     const cambiaToken = b.pseToken !== undefined;
@@ -76,13 +76,15 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
 
   /** Prueba básica del proveedor e-CF de la empresa: se llega a su dirección y no rechaza la llave. */
   app.post("/central/fiscal/pse/probar", async (req) => {
-    const cf = (await pool.query<{ transmisor: string; pse_url: string | null; pse_token: string | null; pse_nombre: string | null }>(
-      "SELECT transmisor, pse_url, pse_token, pse_nombre FROM configuracion_fiscal WHERE empresa_id = $1", [empresaDe(req)])).rows[0];
-    const url = cf?.pse_url || process.env.PSE_URL;
-    if (!cf || cf.transmisor !== "PSE" || !url) throw new ErrorNegocio("Elija «Proveedor de servicios (PSE)», escriba su dirección y guarde antes de probar");
+    const cf = (await pool.query<{ transmisor: string; pse_url: string | null; pse_token: string | null; pse_nombre: string | null; ambiente: string }>(
+      "SELECT transmisor, pse_url, pse_token, pse_nombre, ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [empresaDe(req)])).rows[0];
+    const esMseller = /mseller/i.test(cf?.pse_nombre ?? "");
+    if (!cf || cf.transmisor !== "PSE" || (!esMseller && !(cf.pse_url || process.env.PSE_URL))) throw new ErrorNegocio("Elija «Proveedor de servicios (PSE)», escriba su dirección y guarde antes de probar");
     try {
-      await pse(url, undefined, cf.pse_token ? descifrarTexto(cf.pse_token) : undefined).probar!();
-      return { ok: true, mensaje: `Se llegó a ${new URL(url).host} y no rechazó la llave. Esta prueba no valida un envío de e-CF: pruebe en el sandbox del proveedor.` };
+      const t = transmisorPse(cf, cf.pse_token ? descifrarTexto(cf.pse_token) : null);
+      if (!t) throw new Error("Falta la dirección del proveedor");
+      await t.probar!();
+      return { ok: true, mensaje: esMseller ? "MSeller aceptó el correo, la clave y la API Key de esta empresa. Esta prueba no envía ningún e-CF." : `Se llegó al proveedor y no rechazó la llave. Esta prueba no valida un envío de e-CF: pruebe en el sandbox del proveedor.` };
     } catch (e) {
       return { ok: false, mensaje: (e as Error).message };
     }

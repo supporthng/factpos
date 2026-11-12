@@ -1,3 +1,4 @@
+import { ecfXmlAJson } from "./xml-a-json.js";
 import { firmarXml } from "./firma.js";
 
 /**
@@ -15,7 +16,8 @@ import { firmarXml } from "./firma.js";
  */
 export type EstadoDgii = "ACEPTADO" | "ACEPTADO_COND" | "RECHAZADO" | "EN_PROCESO";
 export interface Respuesta { estado: EstadoDgii; trackId?: string; mensajes?: unknown }
-export interface DocumentoEnvio { encf: string; tipo: string; modo: "ECF" | "RFCE"; xml: string; rncEmisor: string }
+/** `xmlCompleto`: el e-CF completo firmado (aunque lo que se transmita sea el resumen RFCE); lo usan los proveedores que reciben el comprobante entero. */
+export interface DocumentoEnvio { encf: string; tipo: string; modo: "ECF" | "RFCE"; xml: string; rncEmisor: string; xmlCompleto?: string }
 
 export interface Transmisor {
   enviar(d: DocumentoEnvio): Promise<Respuesta>;
@@ -197,4 +199,97 @@ export function pse(url: string, formatoBase: FormatoPse = formatoGenerico, toke
       return formato.leer(r.status, r.cuerpo);
     },
   };
+}
+
+
+// ---------------------------------------------------------------------
+/**
+ * MSeller (ecf.mseller.app): proveedor autorizado que recibe el e-CF en JSON, lo firma con el certificado de la cuenta
+ * de cada cliente y lo transmite a la DGII. Cada cliente tiene su cuenta (correo y clave), su plan y su API Key.
+ *   POST {base}/{entorno}/customer/authentication      → idToken (60 min) y refreshToken (30 días)
+ *   POST {base}/{entorno}/documentos-ecf               → envío (asíncrono)
+ *   GET  {base}/{entorno}/documentos-ecf?ecf={e-NCF}   → estado
+ *   POST {base}/{entorno}/customer/void-ncf            → anulación de rangos
+ */
+export interface CredencialesMseller { email: string; password: string; apiKey: string }
+export const MSELLER_URL = "https://ecf.api.mseller.app";
+const ENTORNO_MSELLER: Record<string, string> = { TESTECF: "TesteCF", CERTECF: "CerteCF", ECF: "eCF" };
+
+/** Las credenciales de una empresa se guardan cifradas como JSON en la llave del proveedor. */
+export function leerCredencialesMseller(texto: string | null | undefined): CredencialesMseller | null {
+  try {
+    const c = JSON.parse(texto ?? "");
+    return c?.email && c?.password && c?.apiKey ? { email: String(c.email), password: String(c.password), apiKey: String(c.apiKey) } : null;
+  } catch { return null; }
+}
+
+export function estadoMseller(v: unknown): EstadoDgii {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "aceptado") return "ACEPTADO";
+  if (s === "aceptado condicional") return "ACEPTADO_COND";
+  if (s === "rechazado") return "RECHAZADO";
+  return "EN_PROCESO";   // En Cola, Enviado a la DGII, En Proceso, No encontrado, Error: MSeller reintenta por su cuenta
+}
+
+export function mseller(cred: CredencialesMseller | null, ambiente: string, base = MSELLER_URL): Transmisor {
+  const entorno = ENTORNO_MSELLER[ambiente];
+  if (!entorno) throw new Error("MSeller se usa en los ambientes TesteCF, CerteCF o eCF");
+  if (!cred) throw new Error("Faltan las credenciales de MSeller (correo, clave y API Key) de esta empresa");
+  const url = (ruta: string) => `${base.replace(/\/$/, "")}/${entorno}${ruta}`;
+  let idToken = "", refresco = "", vence = 0;
+
+  const tokens = (c: any) => { idToken = c.idToken; if (c.refreshToken) refresco = c.refreshToken; vence = Date.now() + 55 * 60_000; };
+  async function autenticar() {
+    // Con refreshToken se renueva sin volver a mandar la clave; si falla, se entra de nuevo
+    if (refresco && idToken) {
+      try {
+        const sub = JSON.parse(Buffer.from(idToken.split(".")[1]!, "base64url").toString()).sub;
+        const r = await http(url("/customer/authentication"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refreshToken: refresco, username: sub }) });
+        if (r.status === 200 && r.cuerpo.idToken) return tokens(r.cuerpo);
+      } catch (e) { if (e instanceof SinConexion) throw e; }
+    }
+    const r = await http(url("/customer/authentication"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: cred!.email, password: cred!.password }) });
+    if (r.status !== 200 || !r.cuerpo.idToken) throw new SinConexion(`MSeller no aceptó el correo y la clave de esta empresa (${r.status}); se reintenta`);
+    tokens(r.cuerpo);
+  }
+  const cabeceras = () => ({ authorization: `Bearer ${idToken}`, "x-api-key": cred!.apiKey, "content-type": "application/json" });
+  async function conSesion(f: () => Promise<{ status: number; cuerpo: any }>) {
+    if (!idToken || Date.now() > vence) await autenticar();
+    let r = await f();
+    if (r.status === 401) { idToken = ""; await autenticar(); r = await f(); }
+    if (r.status === 401 || r.status === 403) throw new SinConexion(`MSeller no aceptó las credenciales o la API Key (${r.status}); se reintenta`);
+    return r;
+  }
+  const resultado = (c: any): Respuesta => ({ estado: estadoMseller(c?.status), trackId: c?.ecf ?? c?.ncf, mensajes: c });
+
+  return {
+    /** Comprueba el correo, la clave y la API Key: entra a MSeller y consulta un comprobante que no existe. */
+    async probar() {
+      await autenticar();
+      const r = await http(url("/documentos-ecf?ecf=E000000000000"), { method: "GET", headers: cabeceras() });
+      if (r.status === 401) throw new Error("MSeller no aceptó el acceso (401)");
+      if (r.status === 403) throw new Error("La API Key no es válida (403)");
+    },
+    async enviar(d) {
+      const xml = d.xmlCompleto ?? d.xml;
+      const r = await conSesion(() => http(url("/documentos-ecf"), { method: "POST", headers: cabeceras(), body: JSON.stringify(ecfXmlAJson(xml)) }));
+      if (r.status === 409) return { estado: "EN_PROCESO", trackId: d.encf, mensajes: r.cuerpo };   // ya lo tiene: se consulta
+      if (r.status >= 400) return { estado: "RECHAZADO", mensajes: r.cuerpo };
+      // securityCode y qr_url los genera MSeller con su firma: son los que deben ir en la representación impresa
+      return { estado: "EN_PROCESO", trackId: r.cuerpo?.ecf ?? d.encf, mensajes: r.cuerpo };
+    },
+    async consultar(trackId) {
+      const r = await conSesion(() => http(url(`/documentos-ecf?ecf=${encodeURIComponent(trackId)}`), { method: "GET", headers: cabeceras() }));
+      if (r.status === 404) return { estado: "EN_PROCESO", trackId, mensajes: r.cuerpo };
+      if (r.status >= 400) return { estado: "RECHAZADO", mensajes: r.cuerpo };
+      return resultado(r.cuerpo);
+    },
+  };
+}
+
+/** Elige el transmisor del proveedor (PSE) de una empresa según su nombre: MSeller tiene adaptador propio; los demás, el formato genérico. */
+export function transmisorPse(cfg: { pse_nombre?: string | null; pse_url?: string | null; pse_token?: string | null; ambiente?: string | null }, token: string | null): Transmisor | null {
+  if (/mseller/i.test(cfg.pse_nombre ?? "")) return mseller(leerCredencialesMseller(token), cfg.ambiente ?? "", cfg.pse_url || MSELLER_URL);
+  const url = cfg.pse_url || process.env.PSE_URL;
+  return url ? pse(url, undefined, token ?? undefined) : null;
 }
