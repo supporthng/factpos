@@ -58,12 +58,23 @@ function llavePrivada() {
 interface FilaLicencia {
   id: string; cliente_id: string; sucursales: number; modulos: string[]; vence: string; estado: string;
   instalacion_id: string | null; secreto_hash: string | null; slug: string; nombre: string; rnc: string | null; cliente_activo: boolean;
-  plan_nombre: string | null; plan_actualiza: boolean | null;
+  plan_nombre: string | null; plan_actualiza: boolean | null; version_aprobada: string | null;
 }
 const SELECT_LIC = `SELECT l.id, l.cliente_id, l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado,
                            l.instalacion_id, l.secreto_hash, c.slug, c.nombre, c.rnc, c.activo AS cliente_activo,
-                           p.nombre AS plan_nombre, p.permite_actualizaciones AS plan_actualiza
+                           p.nombre AS plan_nombre, p.permite_actualizaciones AS plan_actualiza, l.version_aprobada
                       FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id LEFT JOIN portal_planes p ON p.id = l.plan_id`;
+
+/** Compara «1.2.3» con «1.2.4»: negativo si a es menor. */
+const cmpVersion = (a: string, b: string) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
+/**
+ * ¿Esta licencia puede recibir la versión publicada? Solo si el proveedor se la habilitó (o activó «enviar a todos»).
+ * La habilitación es para una versión concreta: al publicarse otra más nueva, hay que habilitarla de nuevo.
+ */
+async function versionHabilitada(l: { version_aprobada: string | null }, version: string): Promise<boolean> {
+  const todas = (await pool.query<{ t: boolean }>("SELECT actualizar_todas AS t FROM portal_config WHERE id = 1")).rows[0]?.t;
+  return !!todas || (!!l.version_aprobada && cmpVersion(l.version_aprobada, version) >= 0);
+}
 
 function emitir(l: FilaLicencia, instalacion: string) {
   const datos: DatosLicencia = {
@@ -326,9 +337,18 @@ export async function rutasPortal(app: FastifyInstance) {
   });
 
   /** Última versión publicada de FactPOS (GitHub Releases con etiqueta v1.2.3). */
-  app.get("/licencias/version", async () => {
+  app.get("/licencias/version", async (req) => {
     const r = await ultimaVersion();
     if (!r) throw new ErrorNegocio("Todavía no hay versiones publicadas", 404);
+    // Con licencia: solo se anuncia la versión a quien el proveedor se la habilitó. Sin ella (prueba) sigue como antes.
+    const token = String(req.headers["x-licencia"] ?? "");
+    if (token) {
+      try {
+        const d = leerLicencia(token);
+        const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [d.id])).rows[0];
+        if (l && !(await versionHabilitada(l, r.version))) return { version: null, notas: null, publicada: null };
+      } catch { /* licencia ilegible: lo decide /descargar */ }
+    }
     return { version: r.version, notas: r.notas, publicada: r.publicada };
   });
 
@@ -353,6 +373,12 @@ export async function rutasPortal(app: FastifyInstance) {
       await evento(pool, { tipo: "PRUEBA_DESCARGA", detalle: { instalacion: instalacion.data } });
     }
     const v = await ultimaVersion();
+    // El paquete de actualización solo se entrega a quien el proveedor se la habilitó (los instaladores completos no se restringen)
+    const tipoPedido = String((req.query as { tipo?: string }).tipo ?? "");
+    if (token && v && tipoPedido !== "setup" && tipoPedido !== "caja") {
+      const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [leerLicencia(token).id])).rows[0];
+      if (l && !(await versionHabilitada(l, v.version))) throw new ErrorNegocio("Esta versión todavía no está habilitada para su empresa. Su proveedor se la enviará.", 403);
+    }
     // tipo=setup: el instalador completo (FactPOS-Setup-*.exe); por omisión, el paquete de actualización (.zip)
     const tipo = String((req.query as { tipo?: string }).tipo ?? "");
     if (tipo === "setup") {
@@ -452,6 +478,37 @@ export async function rutasPortal(app: FastifyInstance) {
   const usuarioDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-usuario-id"]);
 
   /** Instaladores vigentes (versión, fecha) y su enlace de descarga: todo lo que el proveedor entrega a sus clientes */
+  /** Actualizaciones por cliente: la versión publicada y a quiénes se les ha habilitado. */
+  app.get("/central/portal/versiones", async () => {
+    const v = await ultimaVersion().catch(() => null);
+    const todas = !!(await pool.query<{ t: boolean }>("SELECT actualizar_todas AS t FROM portal_config WHERE id = 1")).rows[0]?.t;
+    const filas = (await pool.query<{ licenciaId: string; cliente: string; plan: string | null; versionApp: string | null; ultimoContacto: string | null; versionAprobada: string | null; estado: string }>(
+      `SELECT l.id AS "licenciaId", c.nombre AS cliente, p.nombre AS plan, l.version_app AS "versionApp", l.ultimo_contacto AS "ultimoContacto",
+              l.version_aprobada AS "versionAprobada", l.estado
+         FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id LEFT JOIN portal_planes p ON p.id = l.plan_id
+        WHERE c.activo ORDER BY c.nombre`)).rows;
+    return {
+      ultima: v ? { version: v.version, notas: v.notas, publicada: v.publicada } : null, todas,
+      clientes: filas.map((f) => ({ ...f, habilitada: !!v && (todas || (!!f.versionAprobada && cmpVersion(f.versionAprobada, v.version) >= 0)),
+        alDia: !!v && !!f.versionApp && cmpVersion(f.versionApp.replace(/\.0$/, ""), v.version.replace(/\.0$/, "")) >= 0 })),
+    };
+  });
+  /** Habilita (o retira) la versión publicada para los clientes elegidos. */
+  app.post("/central/portal/versiones/habilitar", async (req) => {
+    const b = z.object({ licenciaIds: z.array(uuid).min(1).max(500), retirar: z.boolean().default(false) }).parse(req.body);
+    const v = await ultimaVersion();
+    if (!v) throw new ErrorNegocio("Todavía no hay una versión publicada", 404);
+    await pool.query("UPDATE portal_licencias SET version_aprobada = $2 WHERE id = ANY($1::uuid[])", [b.licenciaIds, b.retirar ? null : v.version]);
+    await evento(pool, { tipo: b.retirar ? "VERSION_RETIRADA" : "VERSION_HABILITADA", detalle: { version: v.version, licencias: b.licenciaIds.length }, usuarioId: usuarioDe(req) });
+    return { ok: true, version: v.version, licencias: b.licenciaIds.length };
+  });
+  /** Interruptor: enviar cada versión a todos los clientes automáticamente (apagado = solo a los elegidos). */
+  app.put("/central/portal/versiones/automatico", async (req) => {
+    const b = z.object({ todas: z.boolean() }).parse(req.body);
+    await pool.query("UPDATE portal_config SET actualizar_todas = $1, actualizado_en = now() WHERE id = 1", [b.todas]);
+    await evento(pool, { tipo: "VERSIONES_AUTOMATICO", detalle: { todas: b.todas }, usuarioId: usuarioDe(req) });
+    return { ok: true };
+  });
   app.get("/central/portal/instaladores", async () => listarInstaladores());
   app.get("/central/portal/instaladores/:id/enlace", async (req) => enlaceInstalador(z.object({ id: z.string().max(40) }).parse(req.params).id));
 
