@@ -94,8 +94,10 @@ export async function revisarVersion(forzar = false): Promise<Disponible | null>
   if (!forzar && Date.now() - revisado < 6 * 3600_000) return disponible;
   revisado = Date.now();
   try {
-    const r = await fetch(`${PORTAL_URL()}/licencias/version`, { signal: AbortSignal.timeout(15_000) });
-    if (r.ok) disponible = (await r.json()) as Disponible;
+    const token = await tokenLicencia();
+    const r = await fetch(`${PORTAL_URL()}/licencias/version`, { headers: token ? { "x-licencia": token } : {}, signal: AbortSignal.timeout(15_000) });
+    // version null = el proveedor todavía no le habilitó la versión publicada a esta empresa
+    if (r.ok) { const d = (await r.json()) as { version: string | null; notas: string | null; publicada: string | null }; disponible = d.version ? (d as Disponible) : null; }
   } catch { /* sin internet: se revisa luego */ }
   return disponible;
 }
