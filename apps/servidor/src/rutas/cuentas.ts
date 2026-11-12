@@ -244,6 +244,7 @@ export async function rutasCuentas(app: FastifyInstance) {
          JOIN presentaciones pr ON pr.id = $2
          JOIN productos pd ON pd.id = pr.producto_id
         WHERE g.empresa_id = $1 AND (m.categoria_id IS NULL OR m.categoria_id = pd.categoria_id)
+          AND (m.aplica_presentacion_id IS NULL OR m.aplica_presentacion_id = pr.id)
         GROUP BY g.nombre, g.obligatorio, g.max_opciones`, [ctx.empresaId, b.presentacionId, ids])).rows;
     // Grupos anidados: solo se preguntan (y se exigen) cuando alguna opción elegida los abre
     const hijos = new Set((await pool.query<{ g: string }>("SELECT DISTINCT abre_grupo AS g FROM modificadores WHERE empresa_id = $1 AND activo AND abre_grupo IS NOT NULL", [ctx.empresaId])).rows.map((x) => x.g));
