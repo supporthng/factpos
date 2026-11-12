@@ -1403,3 +1403,5 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 .cuenta-acciones .fila-sec button { font-size: 13px; font-weight: 600; background: var(--panel-2); }
 .cuenta-catalogo .tarjeta-producto { border-color: #b9c4d0; box-shadow: 0 1px 3px rgba(15,29,41,.1); }
 .cuenta-catalogo .tarjeta-producto .nombre { font-weight: 700; }
+.cuenta-acciones .fila-cobro { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+.cuenta-acciones .dividir-cuenta { min-height: 56px; border-color: var(--primario); color: var(--primario); }

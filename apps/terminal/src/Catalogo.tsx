@@ -21,8 +21,10 @@ function etiquetaOferta(o: Oferta) {
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo, servidor }: {
+export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo, servidor, agotados }: {
   servidor: string;
+  /** Platos que la cocina marcó como agotados hoy (presentacionId) */
+  agotados?: Set<string>;
   catalogo: Catalogo;
   nivel: number;
   enCarrito: Map<string, number>;
@@ -92,7 +94,7 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
 
       <div className="rejilla">
         {lista.map((p) => (
-          <TarjetaProducto key={p.presentacionId} p={p} nivel={nivel} n={enCarrito.get(p.presentacionId) ?? 0} catalogo={catalogo} servidor={servidor} onAgregar={agregarEstable} />
+          <TarjetaProducto key={p.presentacionId} p={p} nivel={nivel} n={enCarrito.get(p.presentacionId) ?? 0} catalogo={catalogo} servidor={servidor} onAgregar={agregarEstable} marcado={!!agotados?.has(p.presentacionId)} />
         ))}
         {!lista.length && <div className="vacio-catalogo">No hay productos que coincidan con “{q}”.</div>}
       </div>
@@ -105,7 +107,9 @@ export function VistaCatalogo({ catalogo, nivel, enCarrito, onAgregar, onCodigo,
  * cantidad en el carrito, nivel de precio o catálogo cambiaron, no las cientos de tarjetas del catálogo (en cajas modestas
  * eso hacía que el producto tardara varios segundos en aparecer en el carrito).
  */
-const TarjetaProducto = memo(function TarjetaProducto({ p, nivel, n, catalogo, servidor, onAgregar }: {
+const TarjetaProducto = memo(function TarjetaProducto({ p, nivel, n, catalogo, servidor, onAgregar, marcado }: {
+  /** La cocina lo marcó como agotado hoy */
+  marcado?: boolean;
   p: ProductoCatalogo; nivel: number; n: number; catalogo: Catalogo; servidor: string; onAgregar: (p: ProductoCatalogo) => void;
 }) {
       const precio = precioPara(p, nivel, catalogo.nivelPredeterminado).precio;
@@ -115,7 +119,7 @@ const TarjetaProducto = memo(function TarjetaProducto({ p, nivel, n, catalogo, s
       // La existencia ya viene expresada en la presentación (el servidor divide entre su factor): 48 tragos = 3 botellas
       const stock = Number(p.existencia ?? 0);
       const minimo = Number(p.minimo ?? 0);
-      const estado = !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
+      const estado = marcado ? "agotado" : !p.controlaStock ? null : stock <= 0 ? "agotado" : stock <= minimo ? "bajo" : "ok";
       return (
         <button key={p.presentacionId} className={"tarjeta-producto" + (n ? " en-carrito" : "") + (estado === "agotado" ? " agotado" : "")}
           style={{ "--cat": p.categoriaColor ?? "#64748b" } as React.CSSProperties} onClick={() => onAgregar(p)} disabled={precio === null && !p.precioVariable}>

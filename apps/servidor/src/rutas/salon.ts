@@ -119,9 +119,33 @@ export async function rutasSalon(app: FastifyInstance) {
       `SELECT EXTRACT(HOUR FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int AS hora, count(*)::int AS facturas, sum(v.total)::numeric(14,2)::text AS ventas
          FROM ventas v WHERE v.sucursal_id = $1 AND ${jornada("v.creado_en")} = $2::date AND ${valida}
         GROUP BY 1 ORDER BY ((EXTRACT(HOUR FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int) + 18) % 24`, [ctx.sucursalId, dia])).rows;
+    // Platos más vendidos y su ganancia (precio sin impuestos menos el costo de esa venta). Los extras con cargo cuentan como un producto más.
+    const platos = (await pool.query(
+      `SELECT vi.descripcion AS plato, sum(vi.cantidad)::numeric(14,1)::text AS cantidad,
+              sum(vi.total - vi.itbis - vi.isc)::numeric(14,2)::text AS ventas,
+              sum(vi.cantidad * vi.costo_unitario)::numeric(14,2)::text AS costo,
+              sum((vi.total - vi.itbis - vi.isc) - vi.cantidad * vi.costo_unitario)::numeric(14,2)::text AS ganancia
+         FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+        WHERE v.sucursal_id = $1 AND ${jornada("v.creado_en")} = $2::date AND ${valida}
+        GROUP BY vi.descripcion ORDER BY sum(vi.cantidad) DESC, sum(vi.total) DESC LIMIT 20`, [ctx.sucursalId, dia])).rows;
     const total = porHora.reduce((a: number, h: { ventas: string }) => a + Number(h.ventas), 0);
     const facturas = porHora.reduce((a: number, h: { facturas: number }) => a + h.facturas, 0);
-    return { fecha: dia, total: total.toFixed(2), facturas, porMesero, porMesa, porHora };
+    // Reparto de la propina legal: el pozo de meseros se divide según lo que cada uno cobró; los demás pozos se dividen entre su personal
+    const r = (await pool.query<{ m: string; c: string; b: string; o: string }>(
+      "SELECT pct_meseros::text AS m, pct_cocina::text AS c, pct_barra::text AS b, pct_otros::text AS o FROM propina_reparto WHERE sucursal_id = $1", [ctx.sucursalId])).rows[0]
+      ?? { m: "100", c: "0", b: "0", o: "0" };
+    const propinaTotal = porMesero.reduce((a: number, m: { propina: string }) => a + Number(m.propina), 0);
+    const pozo = (pct: string) => Math.round(propinaTotal * Number(pct)) / 100;
+    const pozoMeseros = pozo(r.m);
+    const reparto = {
+      pct: { meseros: Number(r.m), cocina: Number(r.c), barra: Number(r.b), otros: Number(r.o) },
+      propinaTotal: propinaTotal.toFixed(2),
+      meseros: porMesero.map((m: { mesero: string; propina: string }) => ({
+        mesero: m.mesero, monto: (propinaTotal > 0 ? (pozoMeseros * Number(m.propina)) / propinaTotal : 0).toFixed(2),
+      })),
+      cocina: pozo(r.c).toFixed(2), barra: pozo(r.b).toFixed(2), otros: pozo(r.o).toFixed(2),
+    };
+    return { fecha: dia, total: total.toFixed(2), facturas, porMesero, porMesa, porHora, reparto, platos };
   });
 
   const usuarioDe = (req: unknown) => ((req as { sesionCaja?: { u?: string } }).sesionCaja?.u) ?? null;
@@ -200,7 +224,7 @@ export async function rutasSalon(app: FastifyInstance) {
   app.get("/cajas/:cajaId/modificadores", async (req) => {
     const ctx = await preparar(req);
     const modificadores = (await pool.query(
-      `SELECT m.id, m.grupo, m.nombre, m.presentacion_id AS "presentacionId", m.categoria_id AS "categoriaId",
+      `SELECT m.id, m.grupo, m.nombre, m.presentacion_id AS "presentacionId", m.categoria_id AS "categoriaId", m.abre_grupo AS "abreGrupo",
               CASE WHEN m.presentacion_id IS NULL THEN NULL ELSE p.nombre END AS "producto"
          FROM modificadores m
          LEFT JOIN presentaciones pr ON pr.id = m.presentacion_id LEFT JOIN productos p ON p.id = pr.producto_id
@@ -218,6 +242,7 @@ export async function rutasSalon(app: FastifyInstance) {
       modificadores: z.array(z.object({
         id: uuid.optional(), grupo: z.string().trim().max(30).default(""), nombre: z.string().trim().min(1).max(40),
         presentacionId: uuid.nullable().default(null), categoriaId: uuid.nullable().default(null),
+        abreGrupo: z.string().trim().max(30).nullable().default(null),
       })).max(300),
       grupos: z.array(z.object({ nombre: z.string().trim().min(1).max(30), obligatorio: z.boolean(), maxOpciones: z.number().int().min(1).max(99) })).max(50).default([]),
     }).parse(req.body);
@@ -238,12 +263,49 @@ export async function rutasSalon(app: FastifyInstance) {
         const id = m.id ?? uuidv7();
         ids.push(id);
         await c.query(
-          `INSERT INTO modificadores (id, empresa_id, grupo, nombre, presentacion_id, categoria_id, orden, activo) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
-           ON CONFLICT (id) DO UPDATE SET grupo = $3, nombre = $4, presentacion_id = $5, categoria_id = $6, orden = $7, activo = TRUE WHERE modificadores.empresa_id = $2`,
-          [id, ctx.empresaId, m.grupo, m.nombre, m.presentacionId, m.categoriaId, i]);
+          `INSERT INTO modificadores (id, empresa_id, grupo, nombre, presentacion_id, categoria_id, orden, activo, abre_grupo) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8)
+           ON CONFLICT (id) DO UPDATE SET grupo = $3, nombre = $4, presentacion_id = $5, categoria_id = $6, orden = $7, activo = TRUE, abre_grupo = $8 WHERE modificadores.empresa_id = $2`,
+          [id, ctx.empresaId, m.grupo, m.nombre, m.presentacionId, m.categoriaId, i, m.abreGrupo || null]);
       }
       await c.query("UPDATE modificadores SET activo = FALSE WHERE empresa_id = $1 AND NOT (id = ANY($2::uuid[]))", [ctx.empresaId, ids]);
     });
+    return { ok: true };
+  });
+
+  /** Platos agotados hoy en la sucursal («86»). Cualquier usuario de la caja puede marcarlos o liberarlos. */
+  app.get("/cajas/:cajaId/agotados", async (req) => {
+    const ctx = await preparar(req);
+    return (await pool.query(
+      `SELECT a.presentacion_id AS "presentacionId", p.nombre, a.marcado_en AS "marcadoEn"
+         FROM platos_agotados a JOIN presentaciones pr ON pr.id = a.presentacion_id JOIN productos p ON p.id = pr.producto_id
+        WHERE a.sucursal_id = $1 ORDER BY p.nombre`, [ctx.sucursalId])).rows;
+  });
+  app.put("/cajas/:cajaId/agotados/:presentacionId", async (req) => {
+    const ctx = await preparar(req);
+    const { presentacionId } = z.object({ presentacionId: uuid }).parse(req.params);
+    const { agotado } = z.object({ agotado: z.boolean() }).parse(req.body);
+    if (agotado) {
+      if (!(await pool.query("SELECT 1 FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id WHERE pr.id = $1 AND p.empresa_id = $2", [presentacionId, ctx.empresaId])).rowCount) {
+        throw new ErrorNegocio("Producto no encontrado", 404);
+      }
+      await pool.query(
+        "INSERT INTO platos_agotados (sucursal_id, presentacion_id, marcado_por) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [ctx.sucursalId, presentacionId, usuarioDe(req)]);
+    } else {
+      await pool.query("DELETE FROM platos_agotados WHERE sucursal_id = $1 AND presentacion_id = $2", [ctx.sucursalId, presentacionId]);
+    }
+    return { ok: true };
+  });
+
+  /** Porcentajes del reparto de la propina legal (solo supervisor). Deben sumar 100. */
+  app.put("/cajas/:cajaId/salon/propina-reparto", async (req) => {
+    const ctx = await preparar(req);
+    exigirSupervisor(req, "Configurar el reparto de la propina");
+    const b = z.object({ meseros: z.number().min(0).max(100), cocina: z.number().min(0).max(100), barra: z.number().min(0).max(100), otros: z.number().min(0).max(100) }).parse(req.body);
+    if (Math.abs(b.meseros + b.cocina + b.barra + b.otros - 100) > 0.001) throw new ErrorNegocio("Los porcentajes deben sumar 100", 400);
+    await pool.query(
+      `INSERT INTO propina_reparto (sucursal_id, pct_meseros, pct_cocina, pct_barra, pct_otros) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (sucursal_id) DO UPDATE SET pct_meseros = $2, pct_cocina = $3, pct_barra = $4, pct_otros = $5`,
+      [ctx.sucursalId, b.meseros, b.cocina, b.barra, b.otros]);
     return { ok: true };
   });
 }

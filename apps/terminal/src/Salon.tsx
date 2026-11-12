@@ -16,7 +16,7 @@ export interface MesaC {
   reservaId: string | null; reservaNombre: string | null; reservaPara: string | null; reservaPersonas: number | null;
   cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null;
 }
-export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; producto: string | null }
+export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; abreGrupo?: string | null; producto: string | null }
 export interface GrupoMod { nombre: string; obligatorio: boolean; maxOpciones: number }
 export const PASOS: [number, string][] = [[1, "Ya"], [2, "Fuertes"], [3, "Postres"]];
 
@@ -258,7 +258,7 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
     setGuardando(true);
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`, {
-        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId })) },
+        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId, abreGrupo: m.abreGrupo || null })) },
       });
       onGuardado();
     } catch (e) { setError((e as Error).message); }
@@ -288,6 +288,13 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
                   <option value="con">Con cargo (un producto)</option>
                 </select></label>
             </div>
+            {nombresGrupo.filter((g) => g !== m.grupo.trim()).length > 0 && (
+              <label className="campo" style={{ marginTop: 6 }}><span>Al elegirla, pregunta además</span>
+                <select value={m.abreGrupo ?? ""} onChange={(e) => cambiar(i, { abreGrupo: e.target.value || null })}>
+                  <option value="">Nada más</option>
+                  {nombresGrupo.filter((g) => g !== m.grupo.trim()).map((g) => <option key={g} value={g}>{g}</option>)}
+                </select></label>
+            )}
             {m.presentacionId && <p className="suave" style={{ margin: "6px 0 0" }}>Producto del extra: <b>{m.producto}</b> <button className="enlace" onClick={() => setBuscar({ i, texto: "" })}>cambiar</button></p>}
             {buscar?.i === i && (
               <div style={{ marginTop: 6 }}>
@@ -340,19 +347,32 @@ export function ElegirModificadores({ titulo, mods, reglas, tiempos, pasoInicial
     for (const x of mods) m.set(x.grupo, [...(m.get(x.grupo) ?? []), x]);
     return [...m];
   }, [mods]);
+  const hijos = useMemo(() => new Set(mods.map((m) => m.abreGrupo).filter((g): g is string => !!g)), [mods]);
+  /** Un grupo que abre otra opción solo se muestra cuando esa opción está elegida; al desmarcarla se limpian sus respuestas */
+  const abiertos = (elegidas: string[]) => new Set(elegidas.map((id) => mods.find((m) => m.id === id)?.abreGrupo).filter((g): g is string => !!g));
+  const limpiar = (elegidas: string[]): string[] => {
+    let cur = elegidas;
+    for (;;) {
+      const ab = abiertos(cur);
+      const sig = cur.filter((id) => { const g = mods.find((m) => m.id === id)?.grupo ?? ""; return !hijos.has(g) || ab.has(g); });
+      if (sig.length === cur.length) return cur;
+      cur = sig;
+    }
+  };
   const reglaDe = (g: string) => reglas.find((r) => r.nombre === g);
-  const alternar = (id: string, g: string) => setSel((s) => {
+  const alternar = (id: string, g: string) => setSel((s) => limpiar((() => {
     if (s.includes(id)) return s.filter((x) => x !== id);
     const max = reglaDe(g)?.maxOpciones ?? 99;
     const delGrupo = s.filter((x) => mods.find((m) => m.id === x)?.grupo === g);
     // Con «una sola» la nueva opción reemplaza a la anterior; con un máximo mayor no deja pasar de ahí
     if (max === 1) return [...s.filter((x) => !delGrupo.includes(x)), id];
     return delGrupo.length >= max ? s : [...s, id];
-  });
-  const faltan = grupos.filter(([g]) => reglaDe(g)?.obligatorio && !sel.some((x) => mods.find((m) => m.id === x)?.grupo === g)).map(([g]) => g);
+  })()));
+  const visibles = grupos.filter(([g]) => !hijos.has(g) || abiertos(sel).has(g));
+  const faltan = visibles.filter(([g]) => reglaDe(g)?.obligatorio && !sel.some((x) => mods.find((m) => m.id === x)?.grupo === g)).map(([g]) => g);
   return (
     <Modal titulo={titulo} onCerrar={onCerrar}>
-      {grupos.map(([g, lista]) => (
+      {visibles.map(([g, lista]) => (
         <div key={g} style={{ marginBottom: 8 }}>
           {g && <div className="mesas-zona" style={{ margin: "4px 0" }}>{g}{reglaDe(g) && (
             <span className="suave"> · {reglaDe(g)!.obligatorio ? "obligatorio" : "opcional"}, {reglaDe(g)!.maxOpciones === 1 ? "elija 1" : reglaDe(g)!.maxOpciones < 99 ? `hasta ${reglaDe(g)!.maxOpciones}` : "las que quiera"}</span>)}</div>}
@@ -507,6 +527,8 @@ interface DatosReporte {
   porMesero: { mesero: string; cuentas: number; consumo: string; propina: string; minutosPromedio: number | null; cuentaPromedio: string }[];
   porMesa: { mesa: string; cuentas: number; consumo: string; minutosPromedio: number | null }[];
   porHora: { hora: number; facturas: number; ventas: string }[];
+  platos: { plato: string; cantidad: string; ventas: string; costo: string; ganancia: string }[];
+  reparto: { pct: { meseros: number; cocina: number; barra: number; otros: number }; propinaTotal: string; meseros: { mesero: string; monto: string }[]; cocina: string; barra: string; otros: string };
 }
 const horaTexto = (h: number) => `${h % 12 || 12} ${h >= 12 ? "p. m." : "a. m."}`;
 
@@ -515,6 +537,7 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
   const [fecha, setFecha] = useState("");
   const [datos, setDatos] = useState<DatosReporte | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recarga, setRecarga] = useState(0);
   useEffect(() => {
     let vivo = true;
     setError(null);
@@ -522,7 +545,14 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
       .then((d) => { if (vivo) { setDatos(d); if (!fecha) setFecha(d.fecha); } })
       .catch((e) => { if (vivo) setError((e as Error).message); });
     return () => { vivo = false; };
-  }, [ajustes.servidor, ajustes.cajaId, fecha]);
+  }, [ajustes.servidor, ajustes.cajaId, fecha, recarga]);
+  const [editando, setEditando] = useState<{ meseros: string; cocina: string; barra: string; otros: string } | null>(null);
+  const guardarReparto = async () => {
+    if (!editando) return;
+    const n = { meseros: Number(editando.meseros) || 0, cocina: Number(editando.cocina) || 0, barra: Number(editando.barra) || 0, otros: Number(editando.otros) || 0 };
+    try { await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/salon/propina-reparto`, { metodo: "PUT", cuerpo: n }); setEditando(null); setRecarga((x) => x + 1); }
+    catch (e) { setError((e as Error).message); }
+  };
   const max = Math.max(1, ...(datos?.porHora ?? []).map((h) => Number(h.ventas)));
   const mejor = (datos?.porHora ?? []).reduce<DatosReporte["porHora"][number] | null>((m, h) => (!m || Number(h.ventas) > Number(m.ventas) ? h : m), null);
   return (
@@ -546,6 +576,40 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
             <table className="tabla-reporte"><thead><tr><th>Mesero</th><th>Cuentas</th><th>Consumo</th><th>Promedio</th><th>Propina legal</th><th>Tiempo</th></tr></thead>
               <tbody>{datos.porMesero.map((m) => (
                 <tr key={m.mesero}><td>{m.mesero}</td><td>{m.cuentas}</td><td>{rd(m.consumo)}</td><td>{rd(m.cuentaPromedio)}</td><td>{rd(m.propina)}</td><td>{m.minutosPromedio === null ? "—" : duracion(m.minutosPromedio)}</td></tr>
+              ))}</tbody></table>
+          )}
+          <h4 style={{ margin: "14px 0 4px" }}>Reparto de la propina legal <span className="suave" style={{ fontWeight: 400 }}>({rd(datos.reparto.propinaTotal)} de la noche)</span></h4>
+          {Number(datos.reparto.propinaTotal) === 0 ? <p className="suave">No se cobró propina esa noche.</p> : (
+            <table className="tabla-reporte"><thead><tr><th>Quién</th><th>%</th><th>Monto</th></tr></thead>
+              <tbody>
+                {datos.reparto.meseros.map((m) => <tr key={m.mesero}><td>Mesero: {m.mesero}</td><td>{datos.reparto.pct.meseros}</td><td>{rd(m.monto)}</td></tr>)}
+                {datos.reparto.pct.cocina > 0 && <tr><td>Cocina (se divide entre su personal)</td><td>{datos.reparto.pct.cocina}</td><td>{rd(datos.reparto.cocina)}</td></tr>}
+                {datos.reparto.pct.barra > 0 && <tr><td>Barra (se divide entre su personal)</td><td>{datos.reparto.pct.barra}</td><td>{rd(datos.reparto.barra)}</td></tr>}
+                {datos.reparto.pct.otros > 0 && <tr><td>Otros (caja, limpieza…)</td><td>{datos.reparto.pct.otros}</td><td>{rd(datos.reparto.otros)}</td></tr>}
+              </tbody></table>
+          )}
+          {editando ? (
+            <div className="cobro2-bloque" style={{ marginTop: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {([["meseros", "Meseros %"], ["cocina", "Cocina %"], ["barra", "Barra %"], ["otros", "Otros %"]] as const).map(([k, t]) => (
+                  <label key={k} className="campo"><span>{t}</span>
+                    <input inputMode="numeric" value={editando[k]} onChange={(e) => setEditando({ ...editando, [k]: e.target.value.replace(/[^\d.]/g, "") })} /></label>
+                ))}
+              </div>
+              <p className="suave">Deben sumar 100. Cambiar el reparto afecta a todas las noches que se consulten.</p>
+              <button className="boton primario chico" onClick={() => void guardarReparto()}>Guardar reparto</button>{" "}
+              <button className="enlace" onClick={() => setEditando(null)}>Cancelar</button>
+            </div>
+          ) : (
+            <button className="enlace" onClick={() => setEditando({ meseros: String(datos.reparto.pct.meseros), cocina: String(datos.reparto.pct.cocina), barra: String(datos.reparto.pct.barra), otros: String(datos.reparto.pct.otros) })}>Cambiar el reparto</button>
+          )}
+          <h4 style={{ margin: "14px 0 4px" }}>Platos más vendidos y ganancia <span className="suave" style={{ fontWeight: 400 }}>(sin impuestos, contra el costo)</span></h4>
+          {!datos.platos.length ? <p className="suave">No hubo ventas esa noche.</p> : (
+            <table className="tabla-reporte"><thead><tr><th>Plato</th><th>Vendidos</th><th>Ventas</th><th>Costo</th><th>Ganancia</th><th>Margen</th></tr></thead>
+              <tbody>{datos.platos.map((x) => (
+                <tr key={x.plato}><td>{x.plato}</td><td>{Number(x.cantidad)}</td><td>{rd(x.ventas)}</td><td>{rd(x.costo)}</td>
+                  <td className={Number(x.ganancia) < 0 ? "negativo" : ""}>{rd(x.ganancia)}</td>
+                  <td>{Number(x.ventas) > 0 ? `${Math.round((Number(x.ganancia) / Number(x.ventas)) * 100)} %` : "—"}</td></tr>
               ))}</tbody></table>
           )}
           <h4 style={{ margin: "14px 0 4px" }}>Rotación por mesa</h4>
@@ -661,6 +725,47 @@ export function PedidoParaLlevar({ onCrear, onCerrar }: { onCrear: (nombre: stri
       {tipo === "Domicilio" && <label>Dirección<input value={f.direccion} maxLength={150} onChange={(e) => setF({ ...f, direccion: e.target.value })} /></label>}
       <button className="boton primario ancho" disabled={!ok}
         onClick={() => onCrear(`${tipo} · ${f.nombre.trim()}`, [f.telefono.trim() && `Tel. ${f.telefono.trim()}`, tipo === "Domicilio" && f.direccion.trim()].filter(Boolean).join(" · "))}>Abrir pedido</button>
+    </Modal>
+  );
+}
+
+/** Platos agotados hoy («86»): se marcan aquí y ninguna caja de la sucursal los deja ordenar hasta que se liberen. */
+export function AgotadosSalon({ ajustes, catalogo, agotados, onCambio, onCerrar }: {
+  ajustes: Ajustes; catalogo: Catalogo; agotados: Set<string>; onCambio: () => void; onCerrar: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [trabajando, setTrabajando] = useState<string | null>(null);
+  const cambiar = async (id: string, agotado: boolean) => {
+    setTrabajando(id); setError(null);
+    try { await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/agotados/${id}`, { metodo: "PUT", cuerpo: { agotado } }); onCambio(); }
+    catch (e) { setError((e as Error).message); }
+    setTrabajando(null);
+  };
+  const productos = catalogo.productos.filter((p) => p.categoria !== "Servicios");
+  const marcados = productos.filter((p) => agotados.has(p.presentacionId));
+  const texto = q.trim().toLowerCase();
+  const resultados = texto.length >= 2 ? productos.filter((p) => !agotados.has(p.presentacionId) && p.nombre.toLowerCase().includes(texto)).slice(0, 8) : [];
+  return (
+    <Modal titulo="Platos agotados hoy" onCerrar={onCerrar}>
+      <p className="suave">Un plato agotado no se puede ordenar en ninguna caja de esta sucursal hasta que lo libere.</p>
+      {error && <p className="error">{error}</p>}
+      <div style={{ maxHeight: "30vh", overflow: "auto", marginBottom: 8 }}>
+        {!marcados.length && <p className="suave">No hay platos agotados.</p>}
+        {marcados.map((p) => (
+          <div key={p.presentacionId} className="factura" style={{ marginTop: 6 }}>
+            <span><b>{p.nombre}</b></span>
+            <button className="boton primario chico" disabled={trabajando === p.presentacionId} onClick={() => void cambiar(p.presentacionId, false)}>Volvió a haber</button>
+          </div>
+        ))}
+      </div>
+      <input autoFocus value={q} placeholder="Buscar el plato que se acabó…" onChange={(e) => setQ(e.target.value)} />
+      {resultados.map((p) => (
+        <div key={p.presentacionId} className="factura" style={{ marginTop: 6 }}>
+          <span>{p.nombre}</span>
+          <button className="boton fantasma chico" disabled={trabajando === p.presentacionId} onClick={() => { setQ(""); void cambiar(p.presentacionId, true); }}>Marcar agotado</button>
+        </div>
+      ))}
     </Modal>
   );
 }
