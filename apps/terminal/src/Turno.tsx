@@ -10,7 +10,7 @@ import { imprimir as imprimirDirecto } from "./imprimir";
  * Turno de la caja registradora (F10):
  *  - Cuadre del turno (reporte X): cómo va, sin cerrar.
  *  - Cerrar turno (reporte Z): conteo CIEGO de billetes y monedas, más lo de
- *    tarjeta y transferencia. Lo esperado se muestra solo DESPUÉS de cerrar.
+ *    (tarjeta y transferencia las toma el sistema de las ventas). Lo esperado se muestra solo DESPUÉS de cerrar.
  *  - Cuadre de caja del día: todos los turnos de esta caja hoy.
  */
 const DENOMINACIONES = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
@@ -95,8 +95,6 @@ function CuadreX({ ajustes, config }: { ajustes: Ajustes; config: ConfigCaja }) 
 /* ---------- Cierre Z ---------- */
 function CerrarTurno({ ajustes, usuario, pausadas, onCerrado }: { ajustes: Ajustes; usuario: Usuario; pausadas: number; onCerrado: (r: Reporte) => void }) {
   const [conteo, setConteo] = useState<Record<string, string>>({});
-  const [tarjeta, setTarjeta] = useState("");
-  const [transferencia, setTransferencia] = useState("");
   const [notas, setNotas] = useState("");
   const [confirmar, setConfirmar] = useState(false);
   const [msg, setMsg] = useState("");
@@ -111,7 +109,7 @@ function CerrarTurno({ ajustes, usuario, pausadas, onCerrado }: { ajustes: Ajust
         cuerpo: {
           usuarioId: usuario.id,
           conteo: Object.fromEntries(Object.entries(conteo).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])),
-          tarjeta: (Number(tarjeta) || 0).toFixed(2), transferencia: (Number(transferencia) || 0).toFixed(2), notas: notas || null,
+          notas: notas || null,
         },
       });
       onCerrado(r);
@@ -129,7 +127,7 @@ function CerrarTurno({ ajustes, usuario, pausadas, onCerrado }: { ajustes: Ajust
   if (conexion.pendientes > 0) return <p className="error">Antes de cerrar deben enviarse {conexion.pendientes} venta(s) guardadas en esta caja{conexion.errores ? " (algunas tienen error: llame al servicio técnico)" : ""}.</p>;
   return (
     <div className="cierre">
-      <p className="suave">Cuente el dinero de la gaveta. Lo que el sistema espera se muestra después de cerrar.</p>
+      <p className="suave">Cuente el efectivo de la gaveta. Lo que el sistema espera se muestra después de cerrar.</p>
       <div className="cierre-columnas">
         <div className="conteo">
           <div className="conteo-titulo"><span>Billetes y monedas</span><span>Cantidad</span><span>Total</span></div>
@@ -144,14 +142,9 @@ function CerrarTurno({ ajustes, usuario, pausadas, onCerrado }: { ajustes: Ajust
           <div className="conteo-suma"><span>Efectivo contado</span><b>{rd(efectivo)}</b></div>
         </div>
         <div className="otros-cierre">
-          <label className="campo"><span>Total de vouchers de tarjeta</span>
-            <input className="entrada-media" inputMode="decimal" value={tarjeta} placeholder="0.00" onChange={(e) => { setTarjeta(e.target.value.replace(/[^\d.]/g, "")); setConfirmar(false); }} />
-          </label>
-          <label className="campo"><span>Total de transferencias</span>
-            <input className="entrada-media" inputMode="decimal" value={transferencia} placeholder="0.00" onChange={(e) => { setTransferencia(e.target.value.replace(/[^\d.]/g, "")); setConfirmar(false); }} />
-          </label>
+          <p className="suave">Las ventas con <b>tarjeta</b> y <b>transferencia</b> las toma el sistema de las ventas del turno: solo cuente el efectivo.</p>
           <label className="campo"><span>Notas (opcional)</span><input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Ej. billete de 500 roto" /></label>
-          <div className="declarado-total"><span>Total declarado</span><b>{rd(efectivo + (Number(tarjeta) || 0) + (Number(transferencia) || 0))}</b></div>
+          <div className="declarado-total"><span>Efectivo contado</span><b>{rd(efectivo)}</b></div>
           {msg && <p className="error">{msg}</p>}
           {!confirmar
             ? <button className="boton cobrar" onClick={() => setConfirmar(true)}>Cerrar turno</button>

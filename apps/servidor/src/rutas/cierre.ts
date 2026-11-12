@@ -142,8 +142,9 @@ export async function rutasCierre(app: FastifyInstance) {
       usuarioId: uuid,
       /** Cantidad de billetes/monedas por denominación: {"2000": 3, "500": 4} */
       conteo: z.record(z.enum(DENOMINACIONES.map(String) as [string, ...string[]]), z.number().int().min(0).max(100000)).default({}),
-      tarjeta: monto.default("0"),
-      transferencia: monto.default("0"),
+      // Si no se mandan, se toman de las ventas del turno (el cajero solo cuenta el efectivo)
+      tarjeta: monto.optional(),
+      transferencia: monto.optional(),
       notas: z.string().trim().max(300).nullable().default(null),
     }).parse(req.body);
 
@@ -153,7 +154,9 @@ export async function rutasCierre(app: FastifyInstance) {
       const rep = await reporteTurno(c, t.id);
       const efectivo = efectivoContado(b.conteo);
       const declarado: Record<string, string> = {
-        EFECTIVO: efectivo.toFixed(2), TARJETA: new Decimal(b.tarjeta).toFixed(2), TRANSFERENCIA: new Decimal(b.transferencia).toFixed(2),
+        EFECTIVO: efectivo.toFixed(2),
+        TARJETA: new Decimal(b.tarjeta ?? (rep.esperado as Record<string, string>).TARJETA ?? "0").toFixed(2),
+        TRANSFERENCIA: new Decimal(b.transferencia ?? (rep.esperado as Record<string, string>).TRANSFERENCIA ?? "0").toFixed(2),
       };
       const diferencia = diferenciaCierre(declarado as Record<(typeof CONTADAS)[number], string>, rep.esperado as Record<(typeof CONTADAS)[number], string>);
       await c.query(
