@@ -30,7 +30,7 @@ export async function rutasSalon(app: FastifyInstance) {
       `SELECT m.id, m.nombre, m.zona, m.capacidad, m.pos_x::float8 AS "posX", m.pos_y::float8 AS "posY", m.forma,
               c.id AS "cuentaId", c.abierta_en AS "abiertaEn", u.nombre AS mesero,
               floor(EXTRACT(EPOCH FROM (now() - c.abierta_en)) / 60)::int AS minutos,
-              c.productos, c.total, c.esperando,
+              c.productos, c.total, c.esperando, COALESCE(c."pideCobro", FALSE) AS "pideCobro",
               r.id AS "reservaId", r.nombre AS "reservaNombre", r.para AS "reservaPara", r.personas AS "reservaPersonas"
          FROM mesas m
          -- una reserva pendiente cercana (de 45 minutos atrás a 2 horas adelante) marca la mesa como reservada
@@ -41,6 +41,10 @@ export async function rutasSalon(app: FastifyInstance) {
          LEFT JOIN LATERAL (
            SELECT c.id, c.abierta_en, c.abierta_por,
                   (SELECT count(*)::int FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS productos,
+                  -- el mesero pidió cobrar una persona o la mesa, y todavía hay algo pendiente
+                  (EXISTS (SELECT 1 FROM cuenta_asientos a WHERE a.cuenta_id = c.id AND a.pedido_cobro_en IS NOT NULL
+                             AND EXISTS (SELECT 1 FROM cuenta_lineas l WHERE l.asiento_id = a.id AND NOT l.anulada AND l.venta_id IS NULL))
+                   OR (c.pedido_cobro_en IS NOT NULL AND EXISTS (SELECT 1 FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL))) AS "pideCobro",
                   -- pedidos que todavía no salieron (esperan su tiempo o falta enviarlos)
                   (SELECT count(*)::int FROM cuenta_lineas l WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL AND l.enviada_en IS NULL) AS esperando,
                   (SELECT COALESCE(sum(l.cantidad * l.precio_unitario * CASE WHEN p.precio_incluye_impuesto THEN 1 ELSE 1 + l.tasa_itbis END), 0)::numeric(14,2)::text
