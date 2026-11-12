@@ -468,7 +468,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
     if (faltan.length) return avisar("Hay productos de la cuenta que no están en el catálogo de esta caja. Actualice el catálogo.");
     setLineas(nuevas); setSel(nuevas.length - 1); setCliente(null); setNotas(`Cuenta ${plan.titulo}`);
     setCuentaActiva(plan);
-    setModal(null);
+    // Una sola venta: se abre de una vez el cobro normal de la caja. Dividida: queda la parte cargada en el carrito
+    setModal(plan.partes === 1 ? "cobro" : null);
     avisar(plan.partes > 1 ? `${plan.titulo}: parte ${plan.parte} de ${plan.partes}. Cobre para continuar.` : `${plan.titulo} cargada. Cobre para cerrarla.`, "ok");
   };
 
@@ -942,7 +943,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             const cta = cuentaActiva;
             if (cta) { // las líneas de la cuenta quedan ligadas a esta venta; si faltan partes, se vuelve a la cuenta
               const avisarCobrada = (n: number) => api<{ estado: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/cuentas/${cta.cuentaId}/cobrada`, { cuerpo: { ventaId: r.id, lineaIds: cta.lineaIds } })
-                .then((c) => { if (c.estado === "ABIERTA") setModal("cuentas"); })
+                .then((c) => { if (c.estado === "ABIERTA" || (config.tipoNegocio && config.tipoNegocio !== "TIENDA")) setModal("cuentas"); })
                 .catch(() => { if (n > 0) setTimeout(() => avisarCobrada(n - 1), 5000); });
               avisarCobrada(5);
             }
