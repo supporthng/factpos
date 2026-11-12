@@ -26,6 +26,7 @@ import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
 import { EstadoSistema } from "./paginas/InicioCifras";
+import { BarraPuesta, PuestaEnMarcha } from "./paginas/PuestaEnMarcha";
 const Inventario = lazy(() => import("./paginas/Inventario").then((m) => ({ default: m.Inventario })));
 const Productos = lazy(() => import("./paginas/Productos").then((m) => ({ default: m.Productos })));
 const Compras = lazy(() => import("./paginas/Compras").then((m) => ({ default: m.Compras })));
@@ -62,6 +63,7 @@ import { Icono, type NombreIcono } from "./Iconos";
 
 const SECCIONES = [
   { id: "resumen", titulo: "Resumen", grupo: "General", C: Resumen, i: "resumen", p: ["admin.reportes"] },
+  { id: "puesta", titulo: "Puesta en marcha", grupo: "General", C: PuestaEnMarcha, i: "conteos", p: ["admin.config"] },
   { id: "facturas", titulo: "Facturas", grupo: "Ventas", C: Facturas, i: "venta", p: ["admin.facturas"] },
   { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Ventas", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Ventas", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
@@ -137,6 +139,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType | Lazy
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
+  puesta: "Lo que falta para empezar a vender: empresa, comprobantes, productos, cajas y usuarios",
   ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
   pantallacliente: "Segunda pantalla de la caja: productos, total y ofertas del negocio",
   certificacion: "Avance de la certificación de FactPOS como software ante la DGII",
@@ -395,6 +398,7 @@ function AppInterna() {
 
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
+            {!enPortal && vista === "inicio" && <BarraPuesta />}
 
             {vista === "inicio" && (
               <>
