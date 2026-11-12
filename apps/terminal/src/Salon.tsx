@@ -507,6 +507,7 @@ interface DatosReporte {
   porMesero: { mesero: string; cuentas: number; consumo: string; propina: string; minutosPromedio: number | null; cuentaPromedio: string }[];
   porMesa: { mesa: string; cuentas: number; consumo: string; minutosPromedio: number | null }[];
   porHora: { hora: number; facturas: number; ventas: string }[];
+  reparto: { pct: { meseros: number; cocina: number; barra: number; otros: number }; propinaTotal: string; meseros: { mesero: string; monto: string }[]; cocina: string; barra: string; otros: string };
 }
 const horaTexto = (h: number) => `${h % 12 || 12} ${h >= 12 ? "p. m." : "a. m."}`;
 
@@ -515,6 +516,7 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
   const [fecha, setFecha] = useState("");
   const [datos, setDatos] = useState<DatosReporte | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recarga, setRecarga] = useState(0);
   useEffect(() => {
     let vivo = true;
     setError(null);
@@ -522,7 +524,14 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
       .then((d) => { if (vivo) { setDatos(d); if (!fecha) setFecha(d.fecha); } })
       .catch((e) => { if (vivo) setError((e as Error).message); });
     return () => { vivo = false; };
-  }, [ajustes.servidor, ajustes.cajaId, fecha]);
+  }, [ajustes.servidor, ajustes.cajaId, fecha, recarga]);
+  const [editando, setEditando] = useState<{ meseros: string; cocina: string; barra: string; otros: string } | null>(null);
+  const guardarReparto = async () => {
+    if (!editando) return;
+    const n = { meseros: Number(editando.meseros) || 0, cocina: Number(editando.cocina) || 0, barra: Number(editando.barra) || 0, otros: Number(editando.otros) || 0 };
+    try { await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/salon/propina-reparto`, { metodo: "PUT", cuerpo: n }); setEditando(null); setRecarga((x) => x + 1); }
+    catch (e) { setError((e as Error).message); }
+  };
   const max = Math.max(1, ...(datos?.porHora ?? []).map((h) => Number(h.ventas)));
   const mejor = (datos?.porHora ?? []).reduce<DatosReporte["porHora"][number] | null>((m, h) => (!m || Number(h.ventas) > Number(m.ventas) ? h : m), null);
   return (
@@ -547,6 +556,31 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
               <tbody>{datos.porMesero.map((m) => (
                 <tr key={m.mesero}><td>{m.mesero}</td><td>{m.cuentas}</td><td>{rd(m.consumo)}</td><td>{rd(m.cuentaPromedio)}</td><td>{rd(m.propina)}</td><td>{m.minutosPromedio === null ? "—" : duracion(m.minutosPromedio)}</td></tr>
               ))}</tbody></table>
+          )}
+          <h4 style={{ margin: "14px 0 4px" }}>Reparto de la propina legal <span className="suave" style={{ fontWeight: 400 }}>({rd(datos.reparto.propinaTotal)} de la noche)</span></h4>
+          {Number(datos.reparto.propinaTotal) === 0 ? <p className="suave">No se cobró propina esa noche.</p> : (
+            <table className="tabla-reporte"><thead><tr><th>Quién</th><th>%</th><th>Monto</th></tr></thead>
+              <tbody>
+                {datos.reparto.meseros.map((m) => <tr key={m.mesero}><td>Mesero: {m.mesero}</td><td>{datos.reparto.pct.meseros}</td><td>{rd(m.monto)}</td></tr>)}
+                {datos.reparto.pct.cocina > 0 && <tr><td>Cocina (se divide entre su personal)</td><td>{datos.reparto.pct.cocina}</td><td>{rd(datos.reparto.cocina)}</td></tr>}
+                {datos.reparto.pct.barra > 0 && <tr><td>Barra (se divide entre su personal)</td><td>{datos.reparto.pct.barra}</td><td>{rd(datos.reparto.barra)}</td></tr>}
+                {datos.reparto.pct.otros > 0 && <tr><td>Otros (caja, limpieza…)</td><td>{datos.reparto.pct.otros}</td><td>{rd(datos.reparto.otros)}</td></tr>}
+              </tbody></table>
+          )}
+          {editando ? (
+            <div className="cobro2-bloque" style={{ marginTop: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {([["meseros", "Meseros %"], ["cocina", "Cocina %"], ["barra", "Barra %"], ["otros", "Otros %"]] as const).map(([k, t]) => (
+                  <label key={k} className="campo"><span>{t}</span>
+                    <input inputMode="numeric" value={editando[k]} onChange={(e) => setEditando({ ...editando, [k]: e.target.value.replace(/[^\d.]/g, "") })} /></label>
+                ))}
+              </div>
+              <p className="suave">Deben sumar 100. Cambiar el reparto afecta a todas las noches que se consulten.</p>
+              <button className="boton primario chico" onClick={() => void guardarReparto()}>Guardar reparto</button>{" "}
+              <button className="enlace" onClick={() => setEditando(null)}>Cancelar</button>
+            </div>
+          ) : (
+            <button className="enlace" onClick={() => setEditando({ meseros: String(datos.reparto.pct.meseros), cocina: String(datos.reparto.pct.cocina), barra: String(datos.reparto.pct.barra), otros: String(datos.reparto.pct.otros) })}>Cambiar el reparto</button>
           )}
           <h4 style={{ margin: "14px 0 4px" }}>Rotación por mesa</h4>
           {datos.porMesa.length > 0 && (

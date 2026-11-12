@@ -121,7 +121,22 @@ export async function rutasSalon(app: FastifyInstance) {
         GROUP BY 1 ORDER BY ((EXTRACT(HOUR FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int) + 18) % 24`, [ctx.sucursalId, dia])).rows;
     const total = porHora.reduce((a: number, h: { ventas: string }) => a + Number(h.ventas), 0);
     const facturas = porHora.reduce((a: number, h: { facturas: number }) => a + h.facturas, 0);
-    return { fecha: dia, total: total.toFixed(2), facturas, porMesero, porMesa, porHora };
+    // Reparto de la propina legal: el pozo de meseros se divide según lo que cada uno cobró; los demás pozos se dividen entre su personal
+    const r = (await pool.query<{ m: string; c: string; b: string; o: string }>(
+      "SELECT pct_meseros::text AS m, pct_cocina::text AS c, pct_barra::text AS b, pct_otros::text AS o FROM propina_reparto WHERE sucursal_id = $1", [ctx.sucursalId])).rows[0]
+      ?? { m: "100", c: "0", b: "0", o: "0" };
+    const propinaTotal = porMesero.reduce((a: number, m: { propina: string }) => a + Number(m.propina), 0);
+    const pozo = (pct: string) => Math.round(propinaTotal * Number(pct)) / 100;
+    const pozoMeseros = pozo(r.m);
+    const reparto = {
+      pct: { meseros: Number(r.m), cocina: Number(r.c), barra: Number(r.b), otros: Number(r.o) },
+      propinaTotal: propinaTotal.toFixed(2),
+      meseros: porMesero.map((m: { mesero: string; propina: string }) => ({
+        mesero: m.mesero, monto: (propinaTotal > 0 ? (pozoMeseros * Number(m.propina)) / propinaTotal : 0).toFixed(2),
+      })),
+      cocina: pozo(r.c).toFixed(2), barra: pozo(r.b).toFixed(2), otros: pozo(r.o).toFixed(2),
+    };
+    return { fecha: dia, total: total.toFixed(2), facturas, porMesero, porMesa, porHora, reparto };
   });
 
   const usuarioDe = (req: unknown) => ((req as { sesionCaja?: { u?: string } }).sesionCaja?.u) ?? null;
@@ -268,6 +283,19 @@ export async function rutasSalon(app: FastifyInstance) {
     } else {
       await pool.query("DELETE FROM platos_agotados WHERE sucursal_id = $1 AND presentacion_id = $2", [ctx.sucursalId, presentacionId]);
     }
+    return { ok: true };
+  });
+
+  /** Porcentajes del reparto de la propina legal (solo supervisor). Deben sumar 100. */
+  app.put("/cajas/:cajaId/salon/propina-reparto", async (req) => {
+    const ctx = await preparar(req);
+    exigirSupervisor(req, "Configurar el reparto de la propina");
+    const b = z.object({ meseros: z.number().min(0).max(100), cocina: z.number().min(0).max(100), barra: z.number().min(0).max(100), otros: z.number().min(0).max(100) }).parse(req.body);
+    if (Math.abs(b.meseros + b.cocina + b.barra + b.otros - 100) > 0.001) throw new ErrorNegocio("Los porcentajes deben sumar 100", 400);
+    await pool.query(
+      `INSERT INTO propina_reparto (sucursal_id, pct_meseros, pct_cocina, pct_barra, pct_otros) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (sucursal_id) DO UPDATE SET pct_meseros = $2, pct_cocina = $3, pct_barra = $4, pct_otros = $5`,
+      [ctx.sucursalId, b.meseros, b.cocina, b.barra, b.otros]);
     return { ok: true };
   });
 }
