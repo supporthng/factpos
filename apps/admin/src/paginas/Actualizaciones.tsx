@@ -4,7 +4,7 @@ import { Aviso, Encabezado, Kpi, useDatos, versionCliente, versionNueva } from "
 
 /** Versión instalada de FactPOS y actualización con un clic (servidor principal o de sucursal). */
 interface Estado {
-  actual: string; disponible: string | null; notas: string | null; publicada: string | null; hayNueva: boolean; puedeInstalar: boolean; modo: string; licenciaActiva?: boolean; pruebaActualiza?: boolean;
+  actual: string; disponible: string | null; notas: string | null; publicada: string | null; hayNueva: boolean; retenida?: boolean; puedeInstalar: boolean; modo: string; licenciaActiva?: boolean; pruebaActualiza?: boolean;
   proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string } | null;
 }
 
@@ -58,7 +58,7 @@ export function Actualizaciones() {
           <div className="kpis">
             <Kpi titulo="Versión instalada" valor={versionCliente(d.actual)} detalle={`Compilación ${d.actual}`} />
             <Kpi titulo="Última publicada" valor={d.disponible ? versionCliente(d.disponible) : "—"} tono={d.hayNueva ? "alerta" : "ok"}
-              detalle={d.publicada ? `Compilación ${d.disponible} · ${new Date(d.publicada).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" })}` : "No se pudo consultar la versión publicada"} />
+              detalle={d.publicada ? `Compilación ${d.disponible} · ${new Date(d.publicada).toLocaleDateString("es-DO", { day: "numeric", month: "long", year: "numeric" })}` : d.retenida ? "Su proveedor aún no le ha enviado una versión nueva" : "No se pudo consultar la versión publicada"} />
           </div>
           {d.proceso && (
             <Aviso tipo={d.proceso.estado === "ERROR" ? "error" : "info"}
@@ -79,6 +79,8 @@ export function Actualizaciones() {
             </div>
           ) : d.disponible ? (
             <p className="suave">Tiene la versión más reciente publicada.</p>
+          ) : d.retenida ? (
+            <Aviso tipo="info" texto="Su proveedor todavía no le ha enviado una versión nueva. Cuando se la habilite, aparecerá aquí el botón para instalarla." />
           ) : (
             <Aviso tipo="info" texto="No se ha podido verificar si hay actualizaciones. Compruebe la conexión del servidor con el portal y que exista una publicación de instalador completada en GitHub Releases." />
           )}
