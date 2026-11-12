@@ -1,5 +1,6 @@
 import { uuidv7 } from "@factpos/compartido";
 import { enTransaccion } from "../db.js";
+import { createHash } from "node:crypto";
 import { hashClave } from "../sesion.js";
 
 /** Usuarios de la demostración que trae la base (admin / admin1234, cajera y supervisor): en el portal no deben poder entrar. */
@@ -14,6 +15,10 @@ let hecho: Promise<void> | null = null;
  *  - Si ese usuario no existe, lo crea como administrador total y lo marca para que cambie la contraseña al entrar.
  *    Si ya existe NO le toca la contraseña (así un reinicio no deshace el cambio que ya hizo).
  *  - Desactiva los usuarios de demostración (el portal no es una demo).
+ *  - Olvidó la contraseña: ponga en Vercel PORTAL_ADMIN_RESTABLECER=<un código cualquiera, nuevo> junto con una
+ *    PORTAL_ADMIN_CLAVE_INICIAL nueva (8 caracteres o más) y vuelva a desplegar. Al arrancar, esa clave pasa a ser la del
+ *    administrador y se le pide cambiarla al entrar. Cada código sirve UNA vez (se guarda su huella): dejarlo puesto no
+ *    vuelve a cambiar la contraseña; para otro restablecimiento use un código distinto.
  * Se llama antes de cada inicio de sesión pero trabaja una sola vez por arranque del servidor.
  */
 export function prepararAdminPortal(): Promise<void> {
@@ -33,6 +38,16 @@ async function trabajo() {
     const rol = (await c.query<{ id: string }>("SELECT id FROM roles WHERE empresa_id = $1 AND '*' = ANY(permisos) ORDER BY nombre LIMIT 1", [emp.id])).rows[0];
     if (!rol) return;
     const ya = await c.query("SELECT 1 FROM usuarios WHERE empresa_id = $1 AND lower(usuario) = $2", [emp.id, correo]);
+    const codigo = (process.env.PORTAL_ADMIN_RESTABLECER ?? "").trim();
+    if (ya.rowCount && codigo.length >= 6) {
+      const huella = createHash("sha256").update(codigo).digest("hex");
+      const nuevo = await c.query("INSERT INTO portal_restablecimientos (huella) VALUES ($1) ON CONFLICT DO NOTHING RETURNING 1", [huella]);
+      if (nuevo.rowCount) {
+        const u = (await c.query<{ id: string }>("UPDATE usuarios SET clave_hash = $3, activo = TRUE WHERE empresa_id = $1 AND lower(usuario) = $2 RETURNING id", [emp.id, correo, await hashClave(clave)])).rows[0];
+        if (u) await c.query("INSERT INTO usuarios_clave_temporal (usuario_id) VALUES ($1) ON CONFLICT DO NOTHING", [u.id]);
+        console.warn("[portal] contraseña del administrador restablecida con PORTAL_ADMIN_RESTABLECER");
+      }
+    }
     if (!ya.rowCount) {
       const id = uuidv7();
       await c.query("INSERT INTO usuarios (id, empresa_id, rol_id, nombre, usuario, clave_hash) VALUES ($1,$2,$3,'Administrador',$4,$5)", [id, emp.id, rol.id, correo, await hashClave(clave)]);
