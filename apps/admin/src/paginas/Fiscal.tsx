@@ -327,6 +327,7 @@ function Configuracion() {
   const guardar = async (probar = false) => {
     setOcupado(true); setMsg(null);
     try {
+      if ((c.direccionEmisor ?? "").trim().length < 5) throw new Error("Escriba primero la dirección del emisor (arriba): aparece en cada e-CF y es obligatoria");
       const pseToken = modo === "MSELLER" ? credenciales() : c.pseTokenNuevo;
       if (modo === "MSELLER" && !c.pseCuenta && pseToken === undefined) throw new Error("Escriba el correo, la contraseña y la API Key de la cuenta de MSeller");
       await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: modo === "MSELLER" ? "https://ecf.api.mseller.app" : (c.pseUrl || null), pseNombre: modo === "MSELLER" ? "MSeller" : (c.pseNombre || null), ...(pseToken !== undefined ? { pseToken: pseToken || null } : {}), alertaRestantes: Number(c.alertaRestantes) } });
@@ -360,7 +361,7 @@ function Configuracion() {
         <label className="campo"><span>RNC emisor</span><input value={c.rnc} disabled /></label>
         <label className="campo"><span>Razón social</span><input value={c.razonSocial} disabled /></label>
       </div>
-      <label className="campo"><span>Dirección del emisor (aparece en el e-CF)</span><input value={c.direccionEmisor} onChange={(e) => setC({ ...c, direccionEmisor: e.target.value })} /></label>
+      <label className="campo"><span>Dirección del emisor (aparece en el e-CF) <b style={{ color: "#b91c1c" }}>*</b></span><input value={c.direccionEmisor} onChange={(e) => setC({ ...c, direccionEmisor: e.target.value })} /></label>
       <div className="dos-col">
         {modo !== "NINGUNO" && (
           <label className="campo"><span>Ambiente de la DGII</span>
