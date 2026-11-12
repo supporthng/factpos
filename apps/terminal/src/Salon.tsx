@@ -16,7 +16,7 @@ export interface MesaC {
   reservaId: string | null; reservaNombre: string | null; reservaPara: string | null; reservaPersonas: number | null;
   cuentaId: string | null; abiertaEn: string | null; mesero: string | null; minutos: number | null; productos: number | null; total: string | null; esperando: number | null;
 }
-export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; producto: string | null }
+export interface Modificador { id: string; grupo: string; nombre: string; presentacionId: string | null; categoriaId: string | null; abreGrupo?: string | null; producto: string | null }
 export interface GrupoMod { nombre: string; obligatorio: boolean; maxOpciones: number }
 export const PASOS: [number, string][] = [[1, "Ya"], [2, "Fuertes"], [3, "Postres"]];
 
@@ -258,7 +258,7 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
     setGuardando(true);
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/modificadores`, {
-        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId })) },
+        metodo: "PUT", cuerpo: { grupos: reglas.filter((r) => nombresGrupo.includes(r.nombre) && (r.obligatorio || r.maxOpciones < 99)), modificadores: lista.map((m) => ({ id: m.id || undefined, grupo: m.grupo, nombre: m.nombre, presentacionId: m.presentacionId, categoriaId: m.categoriaId, abreGrupo: m.abreGrupo || null })) },
       });
       onGuardado();
     } catch (e) { setError((e as Error).message); }
@@ -288,6 +288,13 @@ export function ConfigModificadores({ ajustes, catalogo, actuales, gruposActuale
                   <option value="con">Con cargo (un producto)</option>
                 </select></label>
             </div>
+            {nombresGrupo.filter((g) => g !== m.grupo.trim()).length > 0 && (
+              <label className="campo" style={{ marginTop: 6 }}><span>Al elegirla, pregunta además</span>
+                <select value={m.abreGrupo ?? ""} onChange={(e) => cambiar(i, { abreGrupo: e.target.value || null })}>
+                  <option value="">Nada más</option>
+                  {nombresGrupo.filter((g) => g !== m.grupo.trim()).map((g) => <option key={g} value={g}>{g}</option>)}
+                </select></label>
+            )}
             {m.presentacionId && <p className="suave" style={{ margin: "6px 0 0" }}>Producto del extra: <b>{m.producto}</b> <button className="enlace" onClick={() => setBuscar({ i, texto: "" })}>cambiar</button></p>}
             {buscar?.i === i && (
               <div style={{ marginTop: 6 }}>
@@ -340,19 +347,32 @@ export function ElegirModificadores({ titulo, mods, reglas, tiempos, pasoInicial
     for (const x of mods) m.set(x.grupo, [...(m.get(x.grupo) ?? []), x]);
     return [...m];
   }, [mods]);
+  const hijos = useMemo(() => new Set(mods.map((m) => m.abreGrupo).filter((g): g is string => !!g)), [mods]);
+  /** Un grupo que abre otra opción solo se muestra cuando esa opción está elegida; al desmarcarla se limpian sus respuestas */
+  const abiertos = (elegidas: string[]) => new Set(elegidas.map((id) => mods.find((m) => m.id === id)?.abreGrupo).filter((g): g is string => !!g));
+  const limpiar = (elegidas: string[]): string[] => {
+    let cur = elegidas;
+    for (;;) {
+      const ab = abiertos(cur);
+      const sig = cur.filter((id) => { const g = mods.find((m) => m.id === id)?.grupo ?? ""; return !hijos.has(g) || ab.has(g); });
+      if (sig.length === cur.length) return cur;
+      cur = sig;
+    }
+  };
   const reglaDe = (g: string) => reglas.find((r) => r.nombre === g);
-  const alternar = (id: string, g: string) => setSel((s) => {
+  const alternar = (id: string, g: string) => setSel((s) => limpiar((() => {
     if (s.includes(id)) return s.filter((x) => x !== id);
     const max = reglaDe(g)?.maxOpciones ?? 99;
     const delGrupo = s.filter((x) => mods.find((m) => m.id === x)?.grupo === g);
     // Con «una sola» la nueva opción reemplaza a la anterior; con un máximo mayor no deja pasar de ahí
     if (max === 1) return [...s.filter((x) => !delGrupo.includes(x)), id];
     return delGrupo.length >= max ? s : [...s, id];
-  });
-  const faltan = grupos.filter(([g]) => reglaDe(g)?.obligatorio && !sel.some((x) => mods.find((m) => m.id === x)?.grupo === g)).map(([g]) => g);
+  })()));
+  const visibles = grupos.filter(([g]) => !hijos.has(g) || abiertos(sel).has(g));
+  const faltan = visibles.filter(([g]) => reglaDe(g)?.obligatorio && !sel.some((x) => mods.find((m) => m.id === x)?.grupo === g)).map(([g]) => g);
   return (
     <Modal titulo={titulo} onCerrar={onCerrar}>
-      {grupos.map(([g, lista]) => (
+      {visibles.map(([g, lista]) => (
         <div key={g} style={{ marginBottom: 8 }}>
           {g && <div className="mesas-zona" style={{ margin: "4px 0" }}>{g}{reglaDe(g) && (
             <span className="suave"> · {reglaDe(g)!.obligatorio ? "obligatorio" : "opcional"}, {reglaDe(g)!.maxOpciones === 1 ? "elija 1" : reglaDe(g)!.maxOpciones < 99 ? `hasta ${reglaDe(g)!.maxOpciones}` : "las que quiera"}</span>)}</div>}

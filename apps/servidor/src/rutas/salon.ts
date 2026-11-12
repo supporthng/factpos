@@ -224,7 +224,7 @@ export async function rutasSalon(app: FastifyInstance) {
   app.get("/cajas/:cajaId/modificadores", async (req) => {
     const ctx = await preparar(req);
     const modificadores = (await pool.query(
-      `SELECT m.id, m.grupo, m.nombre, m.presentacion_id AS "presentacionId", m.categoria_id AS "categoriaId",
+      `SELECT m.id, m.grupo, m.nombre, m.presentacion_id AS "presentacionId", m.categoria_id AS "categoriaId", m.abre_grupo AS "abreGrupo",
               CASE WHEN m.presentacion_id IS NULL THEN NULL ELSE p.nombre END AS "producto"
          FROM modificadores m
          LEFT JOIN presentaciones pr ON pr.id = m.presentacion_id LEFT JOIN productos p ON p.id = pr.producto_id
@@ -242,6 +242,7 @@ export async function rutasSalon(app: FastifyInstance) {
       modificadores: z.array(z.object({
         id: uuid.optional(), grupo: z.string().trim().max(30).default(""), nombre: z.string().trim().min(1).max(40),
         presentacionId: uuid.nullable().default(null), categoriaId: uuid.nullable().default(null),
+        abreGrupo: z.string().trim().max(30).nullable().default(null),
       })).max(300),
       grupos: z.array(z.object({ nombre: z.string().trim().min(1).max(30), obligatorio: z.boolean(), maxOpciones: z.number().int().min(1).max(99) })).max(50).default([]),
     }).parse(req.body);
@@ -262,9 +263,9 @@ export async function rutasSalon(app: FastifyInstance) {
         const id = m.id ?? uuidv7();
         ids.push(id);
         await c.query(
-          `INSERT INTO modificadores (id, empresa_id, grupo, nombre, presentacion_id, categoria_id, orden, activo) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
-           ON CONFLICT (id) DO UPDATE SET grupo = $3, nombre = $4, presentacion_id = $5, categoria_id = $6, orden = $7, activo = TRUE WHERE modificadores.empresa_id = $2`,
-          [id, ctx.empresaId, m.grupo, m.nombre, m.presentacionId, m.categoriaId, i]);
+          `INSERT INTO modificadores (id, empresa_id, grupo, nombre, presentacion_id, categoria_id, orden, activo, abre_grupo) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8)
+           ON CONFLICT (id) DO UPDATE SET grupo = $3, nombre = $4, presentacion_id = $5, categoria_id = $6, orden = $7, activo = TRUE, abre_grupo = $8 WHERE modificadores.empresa_id = $2`,
+          [id, ctx.empresaId, m.grupo, m.nombre, m.presentacionId, m.categoriaId, i, m.abreGrupo || null]);
       }
       await c.query("UPDATE modificadores SET activo = FALSE WHERE empresa_id = $1 AND NOT (id = ANY($2::uuid[]))", [ctx.empresaId, ids]);
     });

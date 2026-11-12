@@ -143,8 +143,8 @@ export async function rutasCuentas(app: FastifyInstance) {
     }
     const ids = [...new Set(b.modificadores ?? [])];
     const mods = ids.length
-      ? (await pool.query<{ nombre: string; presentacionId: string | null }>(
-        `SELECT nombre, presentacion_id AS "presentacionId" FROM modificadores WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND activo ORDER BY orden, nombre`, [ids, ctx.empresaId])).rows
+      ? (await pool.query<{ nombre: string; presentacionId: string | null; grupo: string; abreGrupo: string | null }>(
+        `SELECT nombre, presentacion_id AS "presentacionId", grupo, abre_grupo AS "abreGrupo" FROM modificadores WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND activo ORDER BY orden, nombre`, [ids, ctx.empresaId])).rows
       : [];
     if (mods.length !== ids.length) throw new ErrorNegocio("Un modificador ya no está disponible", 409);
     const extras: { mod: string; p: PresentacionVenta }[] = [];
@@ -164,7 +164,12 @@ export async function rutasCuentas(app: FastifyInstance) {
          JOIN productos pd ON pd.id = pr.producto_id
         WHERE g.empresa_id = $1 AND (m.categoria_id IS NULL OR m.categoria_id = pd.categoria_id)
         GROUP BY g.nombre, g.obligatorio, g.max_opciones`, [ctx.empresaId, b.presentacionId, ids])).rows;
+    // Grupos anidados: solo se preguntan (y se exigen) cuando alguna opción elegida los abre
+    const hijos = new Set((await pool.query<{ g: string }>("SELECT DISTINCT abre_grupo AS g FROM modificadores WHERE empresa_id = $1 AND activo AND abre_grupo IS NOT NULL", [ctx.empresaId])).rows.map((x) => x.g));
+    const abiertos = new Set(mods.map((m) => m.abreGrupo).filter((g): g is string => !!g));
+    for (const m of mods) if (hijos.has(m.grupo) && !abiertos.has(m.grupo)) throw new ErrorNegocio(`«${m.nombre}» no aplica a lo que eligió`, 400);
     for (const r of reglas) {
+      if (hijos.has(r.grupo) && !abiertos.has(r.grupo)) continue;
       const n = Number(r.elegidos);
       if (r.obligatorio && n < 1) throw new ErrorNegocio(`Falta elegir ${r.grupo.toLowerCase() || "una opción"} para «${p.nombre}»`, 400);
       if (n > r.max) throw new ErrorNegocio(`En ${r.grupo || "este grupo"} se puede elegir ${r.max === 1 ? "una sola opción" : `hasta ${r.max}`}`, 400);
