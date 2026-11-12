@@ -1550,3 +1550,13 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .barra-puesta-riel { flex: 1; min-width: 120px; height: 8px; border-radius: 999px; background: var(--primario-suave); overflow: hidden; }
 .barra-puesta-riel span { display: block; height: 100%; border-radius: 999px; background: var(--primario); }
 .barra-puesta-ir { font-weight: 700; color: var(--primario); }
+
+/* Tarjeta «Agrega FactPOS a tu inicio» (celular) */
+.tarjeta-agregar { margin-bottom: 14px; padding: 14px 16px; border: 1px solid var(--borde); border-radius: 18px; background: var(--panel); box-shadow: var(--sombra); }
+.tarjeta-agregar-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; }
+.tarjeta-agregar img { border-radius: 12px; flex: none; }
+.tarjeta-agregar-texto { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.tarjeta-agregar-texto b { font-size: 16px; }
+.tarjeta-agregar-texto span { font-size: 13.5px; color: var(--suave); }
+.tarjeta-agregar-botones { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.tarjeta-agregar-pasos { margin: 12px 0 0; padding-left: 22px; font-size: 14px; color: var(--texto); }
