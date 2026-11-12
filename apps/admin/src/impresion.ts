@@ -61,7 +61,7 @@ export async function imprimirCarta(doc: DocumentoCarta, sucursalId?: string | n
   const emp = await empresaParaImprimir(sucursalId);
   let qr = "";
   if (doc.fiscal?.urlQr) { try { qr = await QRCode.toDataURL(doc.fiscal.urlQr, { margin: 0, width: 220 }); } catch { /* sin QR */ } }
-  const color = getComputedStyle(document.documentElement).getPropertyValue("--primario").trim() || "#0f766e";
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--primario").trim() || "#2563eb";
   const f = doc.fiscal;
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(doc.titulo)} ${esc(doc.numero)}</title>
 <style>

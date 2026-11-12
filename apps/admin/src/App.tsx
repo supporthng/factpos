@@ -183,7 +183,7 @@ const DESCRIPCION: Record<string, string> = {
 };
 /** Las funciones principales del inicio, en este orden. */
 const GRUPOS: Record<string, { slug: string; i: NombreIcono; color: string; d: string }> = {
-  "General": { slug: "general", i: "resumen", color: "#0f766e", d: "Cómo va el día en todas las sucursales" },
+  "General": { slug: "general", i: "resumen", color: "#1d4ed8", d: "Cómo va el día en todas las sucursales" },
   "Ventas": { slug: "ventas", i: "venta", color: "#d97706", d: "Facturas, cotizaciones, pedidos, delivery y clientes" },
   "Inventario": { slug: "inventario", i: "productos", color: "#2563eb", d: "Productos, existencias, compras y traspasos" },
   "Precios": { slug: "precios", i: "precios", color: "#db2777", d: "Precios por nivel, ofertas y verificadores" },
@@ -194,10 +194,10 @@ const GRUPOS: Record<string, { slug: string; i: NombreIcono; color: string; d: s
   "Instaladores": { slug: "instaladores", i: "actualizaciones", color: "#ea580c", d: "Caja, servidor, verificador de precios y conexión remota" },
   "Cajas y equipos": { slug: "equipos", i: "ticket", color: "#0d9488", d: "Impresoras, ticket, pantalla del cliente y versiones" },
   "Sistema": { slug: "sistema", i: "ajustes", color: "#64748b", d: "Acceso remoto, seguridad, respaldos, licencia y actualizaciones" },
-  "Portal FactPOS": { slug: "portal", i: "clientes", color: "#0f766e", d: "Clientes, licencias y equipo del portal" },
+  "Portal FactPOS": { slug: "portal", i: "clientes", color: "#1d4ed8", d: "Clientes, licencias y equipo del portal" },
 };
 /** Cada opción lleva su propio color (en orden, para que las vecinas no se parezcan): así la pantalla no queda toda del mismo tono. */
-const PALETA_OPCIONES = ["#0f766e", "#2563eb", "#d97706", "#7c3aed", "#16a34a", "#db2777", "#0891b2", "#ea580c", "#4f46e5", "#65a30d"];
+const PALETA_OPCIONES = ["#1d4ed8", "#2563eb", "#d97706", "#7c3aed", "#16a34a", "#db2777", "#0891b2", "#ea580c", "#4f46e5", "#65a30d"];
 const datosGrupo = (g: string) => GRUPOS[g] ?? { slug: g.toLowerCase(), i: "resumen" as NombreIcono, color: "#475569", d: "" };
 
 const CATALOGO_VACIO: CatalogoAdmin = { sucursales: [], productos: [], categorias: [], usuarios: [] };
