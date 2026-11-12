@@ -538,9 +538,20 @@ const DENOMINACIONES = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
 function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, onCerrarSistema }: {
   ajustes: Ajustes; config: ConfigCaja; usuario: Usuario; onAbierto: (fondo: string) => void; recargar: () => void; onSalir: () => void; onCerrarSistema: () => void;
 }) {
-  const [fondo, setFondo] = useState("");
+  /** El conteo en curso se guarda en esta sesión: si la pantalla se recarga o vuelve del PIN, lo contado no se pierde. */
+  const claveConteo = `factpos.conteo-apertura.${ajustes.cajaId}.${usuario.id}`;
+  const conteoGuardado = (): Record<number, string> => {
+    try { const v = JSON.parse(sessionStorage.getItem(claveConteo) ?? "{}"); return v && typeof v === "object" ? v : {}; } catch { return {}; }
+  };
   /** Desglose de billetes y monedas: cantidad por denominación. Mientras haya algo contado, el fondo es la suma. */
-  const [cant, setCant] = useState<Record<number, string>>({});
+  const [cant, setCant] = useState<Record<number, string>>(conteoGuardado);
+  const [fondo, setFondo] = useState(() => {
+    const t = DENOMINACIONES.reduce((a, d) => a + d * (parseInt(conteoGuardado()[d] || "0", 10) || 0), 0);
+    return t > 0 ? String(t) : "";
+  });
+  useEffect(() => {
+    try { if (DENOMINACIONES.some((d) => (parseInt(cant[d] || "0", 10) || 0) > 0)) sessionStorage.setItem(claveConteo, JSON.stringify(cant)); else sessionStorage.removeItem(claveConteo); } catch { /* sin almacenamiento */ }
+  }, [cant]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalContado = DENOMINACIONES.reduce((a, d) => a + d * (parseInt(cant[d] || "0", 10) || 0), 0);
   const hayConteo = DENOMINACIONES.some((d) => (parseInt(cant[d] || "0", 10) || 0) > 0);
   const contar = (d: number, v: string) => {
@@ -555,6 +566,7 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, on
   const abrir = async () => {
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/turno/abrir`, { cuerpo: { usuarioId: usuario.id, fondoInicial: fondo || "0", ...(hayConteo ? { conteoApertura: Object.fromEntries(DENOMINACIONES.map((d) => [String(d), parseInt(cant[d] || "0", 10) || 0]).filter(([, n]) => (n as number) > 0)) } : {}) } });
+      try { sessionStorage.removeItem(claveConteo); } catch { /* sin almacenamiento */ }
       onAbierto(fondo || "0");
       recargar();
     } catch (e) {
@@ -567,7 +579,8 @@ function AbrirTurno({ ajustes, config, usuario, onAbierto, recargar, onSalir, on
       <h2>Abrir turno</h2>
       <label className="campo">
         <span>Fondo de caja (efectivo inicial)</span>
-        <input autoFocus inputMode="decimal" value={fondo} onChange={(e) => { setFondo(e.target.value.replace(/[^\d.]/g, "")); setCant({}); }}
+        <input autoFocus={!hayConteo} inputMode="decimal" value={fondo} readOnly={hayConteo} title={hayConteo ? "Se calcula del desglose de abajo. Pulse «Borrar el conteo» para digitar otro monto." : undefined}
+          onChange={(e) => { setFondo(e.target.value.replace(/[^\d.]/g, "")); setCant({}); }}
           onKeyDown={(e) => e.key === "Enter" && abrir()} />
       </label>
       <div className="desglose-turno">
