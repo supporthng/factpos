@@ -17,6 +17,7 @@ import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
 const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.Correo })));
 import { FranjaEmpresa, SelectorEmpresa } from "./paginas/Empresas";
 import { AgregarAInicio } from "./AgregarAInicio";
+import { TarjetaAgregar } from "./TarjetaAgregar";
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { InicioPortal } from "./paginas/InicioPortal";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
@@ -399,6 +400,7 @@ function AppInterna() {
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
             {!enPortal && vista === "inicio" && <BarraPuesta />}
+            {vista === "inicio" && <TarjetaAgregar />}
 
             {vista === "inicio" && (
               <>
