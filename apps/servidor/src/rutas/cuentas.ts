@@ -6,6 +6,7 @@ import { contextoCaja, SQL_PRESENTACION, type PresentacionVenta } from "../conte
 import { crearComandas } from "./comandas.js";
 import { repartirPorLotes } from "../lotes.js";
 import { verificarAutorizacion } from "../autorizacion.js";
+import { leerToken } from "../sesion.js";
 import { dividirPorAsientos, dividirPorLineas, dividirPorMontos, ErrorDivision, repartirIgual, repartirProporcional } from "./cuentas-division.js";
 
 /**
@@ -132,6 +133,28 @@ export async function rutasCuentas(app: FastifyInstance) {
     return detalle(ctx.sucursalId, id);
   });
 
+  /**
+   * El mesero (rol con «salon.mesero» y sin «venta.crear») solo entra a las cuentas que abrió él: cada mesero maneja sus mesas.
+   * El cajero, el supervisor y el administrador entran a todas.
+   */
+  const soloMias = (req: { headers: Record<string, unknown> }): string | null => {
+    const t = leerToken(req.headers["x-sesion-caja"] as string | undefined);
+    const p = ((t as { p?: string[] } | null)?.p) ?? [];
+    return t && t.t === "caja" && !(p.includes("*") || p.includes("venta.crear")) ? t.u : null;
+  };
+  app.addHook("preHandler", async (req) => {
+    const yo = soloMias(req as never);
+    if (!yo) return;
+    const params = (req.params ?? {}) as { id?: string };
+    const body = (req.body ?? {}) as { desdeId?: string; destinoId?: string };
+    const ids = [params.id, body.desdeId, body.destinoId].filter((x): x is string => typeof x === "string" && uuid.safeParse(x).success);
+    for (const id of ids) {
+      const c = (await pool.query<{ abierta_por: string | null; mesero: string | null }>(
+        "SELECT c.abierta_por, u.nombre AS mesero FROM cuentas c LEFT JOIN usuarios u ON u.id = c.abierta_por WHERE c.id = $1", [id])).rows[0];
+      if (c && c.abierta_por !== yo) throw new ErrorNegocio(`Esa mesa es de ${c.mesero ?? "otro mesero"}: solo el cajero o un supervisor puede entrar`, 403);
+    }
+  });
+
   app.get("/cajas/:cajaId/cuentas", async (req) => {
     const ctx = await preparar(req);
     const r = await pool.query(
@@ -142,7 +165,7 @@ export async function rutasCuentas(app: FastifyInstance) {
                  FROM cuenta_lineas l JOIN presentaciones pr ON pr.id = l.presentacion_id JOIN productos p ON p.id = pr.producto_id
                 WHERE l.cuenta_id = c.id AND NOT l.anulada AND l.venta_id IS NULL) AS total
          FROM cuentas c LEFT JOIN usuarios u ON u.id = c.abierta_por
-        WHERE c.sucursal_id = $1 AND c.estado = 'ABIERTA' ORDER BY c.abierta_en`, [ctx.sucursalId]);
+        WHERE c.sucursal_id = $1 AND c.estado = 'ABIERTA' AND ($2::uuid IS NULL OR c.abierta_por = $2) ORDER BY c.abierta_en`, [ctx.sucursalId, soloMias(req)]);
     return r.rows;
   });
 
