@@ -1,3 +1,4 @@
+import { ipCliente } from "../seguridad-web.js";
 import { createHash, createPrivateKey, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -281,7 +282,7 @@ export async function rutasPortal(app: FastifyInstance) {
 
     if (!ex) {
       if (!sol) throw new ErrorNegocio("Primero envíe la solicitud de activación con sus datos", 404);
-      limitarAltas(req.ip ?? "?");
+      limitarAltas(ipCliente(req));
       const secreto = randomBytes(24).toString("base64url");
       await pool.query(
         `INSERT INTO portal_instalaciones (id, secreto_hash, version_app, sucursales_en_uso, api_url, empresa, rnc, equipo, correo, telefono, contacto, plan_id, sucursales_solicitadas, mensaje)
@@ -406,7 +407,7 @@ export async function rutasPortal(app: FastifyInstance) {
    * Es pública (la página no tiene sesión), por eso va limitada por dirección y solo devuelve un enlace temporal.
    */
   app.post("/licencias/prospecto", async (req) => {
-    limitarAltas(req.ip ?? "?");
+    limitarAltas(ipCliente(req));
     const b = z.object({
       nombre: z.string().trim().min(2).max(80), negocio: z.string().trim().min(2).max(100),
       telefono: z.string().trim().min(7).max(30), correo: z.string().trim().email().max(120).optional().or(z.literal("")),
