@@ -5,7 +5,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { guardarCertificado, huellaEnUso, cifrarTexto, descifrarTexto } from "../fiscal/certificado-guardado.js";
 import { usarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
-import { dgii, transmisorPse } from "../fiscal/transmisor.js";
+import { dgii, transmisorPse, leerCredencialesMseller } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
 import { firmarXml } from "../fiscal/firma.js";
@@ -45,7 +45,11 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
          FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`,
       [e],
     );
-    return r.rows[0];
+    // De la cuenta de MSeller solo se muestra el correo y el final de la API Key; la clave nunca sale del servidor
+    let pseCuenta: { email: string; claveFin: string } | null = null;
+    const t = (await pool.query<{ t: string | null }>("SELECT pse_token AS t FROM configuracion_fiscal WHERE empresa_id = $1", [e])).rows[0]?.t;
+    if (t) { try { const c = leerCredencialesMseller(descifrarTexto(t)); if (c) pseCuenta = { email: c.email, claveFin: c.apiKey.slice(-4) }; } catch { /* no se pudo leer: se pedirá de nuevo */ } }
+    return { ...r.rows[0], pseCuenta };
   });
 
   app.put("/central/fiscal/config", async (req) => {

@@ -1509,3 +1509,11 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .ip-cobros .ip-cifra { cursor: default; }
 .ip-cobros .ip-cifra b { font-size: 26px; }
 @media (max-width: 720px) { .ip-cobros { grid-template-columns: 1fr; } }
+
+/* Facturación electrónica: elegir cómo emitir */
+.modos-ecf { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.modo-ecf { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--borde, #d8dde6); border-radius: 12px; background: var(--panel, #fff); cursor: pointer; font: inherit; color: inherit; }
+.modo-ecf span { font-size: 13px; opacity: .7; line-height: 1.35; }
+.modo-ecf:hover { border-color: #16a34a; }
+.modo-ecf.activo { border: 2px solid #16a34a; background: rgba(22,163,74,.08); padding: 11px 13px; }
+@media (max-width: 720px) { .dos-col { grid-template-columns: minmax(0, 1fr); } }
