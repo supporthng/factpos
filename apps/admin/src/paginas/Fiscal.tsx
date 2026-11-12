@@ -295,82 +295,128 @@ function Secuencias() {
   );
 }
 
+type ModoEcf = "NINGUNO" | "CERTIFICADO" | "MSELLER" | "OTRO";
+const MODOS_ECF: { id: ModoEcf; titulo: string; texto: string }[] = [
+  { id: "NINGUNO", titulo: "Todavía no", texto: "Sin e-CF. Se factura con NCF serie B o sin comprobante." },
+  { id: "CERTIFICADO", titulo: "Con certificado (automático)", texto: "FactPOS firma con tu certificado y envía cada e-CF a la DGII al emitir." },
+  { id: "MSELLER", titulo: "Con MSeller (proveedor)", texto: "MSeller firma con tu certificado y envía cada e-CF a la DGII al emitir." },
+];
+const modoDe = (c: any): ModoEcf => c.transmisor === "SIMULADO" ? "NINGUNO" : c.transmisor === "DGII" ? "CERTIFICADO" : /mseller/i.test(c.pseNombre ?? "") ? "MSELLER" : "OTRO";
+
 function Configuracion() {
   const [c, setC] = useState<any>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
-  useEffect(() => { api("/central/fiscal/config").then(setC); }, []);
+  const [ocupado, setOcupado] = useState(false);
+  const cargar = () => api("/central/fiscal/config").then(setC);
+  useEffect(() => { void cargar(); }, []);
   if (!c) return <p className="suave">Cargando…</p>;
-  const guardar = async () => {
-    try {
-      const mseller = c.transmisor === "PSE" && /mseller/i.test(c.pseNombre ?? "");
-      const algunaMs = !!(c.msEmail || c.msClave || c.msKey);
-      if (mseller && algunaMs && !(c.msEmail && c.msClave && c.msKey)) { setMsg({ t: "Para MSeller escriba el correo, la clave y la API Key juntos", tipo: "error" }); return; }
-      const pseToken = mseller ? (algunaMs ? JSON.stringify({ email: c.msEmail.trim(), password: c.msClave, apiKey: c.msKey.trim() }) : undefined) : c.pseTokenNuevo;
-      await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: mseller ? "https://ecf.api.mseller.app" : (c.pseUrl || null), pseNombre: c.pseNombre || null, ...(pseToken !== undefined ? { pseToken: pseToken || null } : {}), alertaRestantes: Number(c.alertaRestantes) } });
-      setC((x: any) => ({ ...x, pseTokenConfigurado: pseToken !== undefined ? !!pseToken : x.pseTokenConfigurado, pseTokenNuevo: undefined, msEmail: undefined, msClave: undefined, msKey: undefined }));
-      setMsg({ t: "Configuración guardada", tipo: "ok" });
-    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  const modo = modoDe(c);
+  const elegir = (m: ModoEcf) => setC({
+    ...c, msEmail: undefined, msClave: undefined, msKey: undefined,
+    transmisor: m === "NINGUNO" ? "SIMULADO" : m === "CERTIFICADO" ? "DGII" : "PSE",
+    ambiente: m === "NINGUNO" ? "SIMULADO" : c.ambiente === "SIMULADO" ? "TESTECF" : c.ambiente,
+    pseNombre: m === "MSELLER" ? "MSeller" : m === "OTRO" ? (/mseller/i.test(c.pseNombre ?? "") ? "" : c.pseNombre) : c.pseNombre,
+  });
+  const credenciales = () => {
+    const alguna = !!(c.msEmail || c.msClave || c.msKey);
+    if (!alguna) return undefined;
+    if (!(c.msEmail && c.msClave && c.msKey)) throw new Error("Para cambiar la cuenta de MSeller escriba el correo, la contraseña y la API Key juntos");
+    return JSON.stringify({ email: c.msEmail.trim(), password: c.msClave, apiKey: c.msKey.trim() });
   };
-  const probar = async () => {
+  /** Guarda la configuración; con `probar` prueba la conexión del proveedor enseguida. */
+  const guardar = async (probar = false) => {
+    setOcupado(true); setMsg(null);
     try {
-      const r = await api<{ ok: boolean; mensaje: string }>("/central/fiscal/pse/probar", { metodo: "POST" });
-      setMsg({ t: r.mensaje, tipo: r.ok ? "ok" : "error" });
+      const pseToken = modo === "MSELLER" ? credenciales() : c.pseTokenNuevo;
+      if (modo === "MSELLER" && !c.pseCuenta && pseToken === undefined) throw new Error("Escriba el correo, la contraseña y la API Key de la cuenta de MSeller");
+      await api("/central/fiscal/config", { metodo: "PUT", cuerpo: { direccionEmisor: c.direccionEmisor, ambiente: c.ambiente, transmisor: c.transmisor, pseUrl: modo === "MSELLER" ? "https://ecf.api.mseller.app" : (c.pseUrl || null), pseNombre: modo === "MSELLER" ? "MSeller" : (c.pseNombre || null), ...(pseToken !== undefined ? { pseToken: pseToken || null } : {}), alertaRestantes: Number(c.alertaRestantes) } });
+      await cargar();
+      if (probar) {
+        const r = await api<{ ok: boolean; mensaje: string }>("/central/fiscal/pse/probar", { metodo: "POST" });
+        setMsg({ t: r.mensaje, tipo: r.ok ? "ok" : "error" });
+      } else setMsg({ t: "Configuración guardada", tipo: "ok" });
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    finally { setOcupado(false); }
   };
+  const etiqueta = modo === "NINGUNO" ? "Sin e-CF" : modo === "CERTIFICADO" ? "Con certificado" : modo === "MSELLER" ? "Con MSeller" : `Con ${c.pseNombre || "proveedor"}`;
+  const ambienteTxt = ({ SIMULADO: "simulado", TESTECF: "pruebas", CERTECF: "certificación", ECF: "producción" } as Record<string, string>)[c.ambiente];
   return (
-    <div className="panel" style={{ maxWidth: 760 }}>
-      <div className="dos-col">
+    <div className="panel">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Facturación electrónica (e-CF)</h3>
+          <p className="suave" style={{ margin: "4px 0 12px" }}>Elige cómo vas a emitir los comprobantes electrónicos.</p>
+        </div>
+        <span className="pastilla ok">{etiqueta}{modo !== "NINGUNO" ? ` · ${ambienteTxt}` : ""}</span>
+      </div>
+      <div className="modos-ecf" role="radiogroup" aria-label="Cómo emitir e-CF">
+        {[...MODOS_ECF, ...(modo === "OTRO" ? [{ id: "OTRO" as ModoEcf, titulo: `Otro proveedor${c.pseNombre ? ` (${c.pseNombre})` : ""}`, texto: "Un proveedor que no es MSeller, con su dirección y llave." }] : [])].map((m) => (
+          <button key={m.id} type="button" role="radio" aria-checked={modo === m.id} className={"modo-ecf" + (modo === m.id ? " activo" : "")} onClick={() => elegir(m.id)}>
+            <b>{m.titulo}</b><span>{m.texto}</span>
+          </button>
+        ))}
+      </div>
+      <div className="dos-col" style={{ marginTop: 12 }}>
         <label className="campo"><span>RNC emisor</span><input value={c.rnc} disabled /></label>
         <label className="campo"><span>Razón social</span><input value={c.razonSocial} disabled /></label>
       </div>
       <label className="campo"><span>Dirección del emisor (aparece en el e-CF)</span><input value={c.direccionEmisor} onChange={(e) => setC({ ...c, direccionEmisor: e.target.value })} /></label>
       <div className="dos-col">
-        <label className="campo"><span>Ambiente</span>
-          <select value={c.ambiente} onChange={(e) => setC({ ...c, ambiente: e.target.value, transmisor: e.target.value === "SIMULADO" ? "SIMULADO" : c.transmisor === "SIMULADO" ? "PSE" : c.transmisor })}>
-            <option value="SIMULADO">Simulado (pruebas internas)</option>
-            <option value="TESTECF">Pruebas DGII (TesteCF)</option>
-            <option value="CERTECF">Certificación DGII (CerteCF)</option>
-            <option value="ECF">Producción</option>
-          </select>
-        </label>
-        <label className="campo"><span>Envío</span>
-          <select value={c.transmisor} disabled={c.ambiente === "SIMULADO"} onChange={(e) => setC({ ...c, transmisor: e.target.value })}>
-            {c.ambiente === "SIMULADO" && <option value="SIMULADO">Simulado</option>}
-            <option value="PSE">Proveedor de servicios (PSE)</option>
-            <option value="DGII">Directo a la DGII</option>
-          </select>
-        </label>
+        {modo !== "NINGUNO" && (
+          <label className="campo"><span>Ambiente de la DGII</span>
+            <select value={c.ambiente} onChange={(e) => setC({ ...c, ambiente: e.target.value })}>
+              <option value="TESTECF">Pruebas (TesteCF)</option>
+              <option value="CERTECF">Certificación (CerteCF)</option>
+              <option value="ECF">Producción</option>
+            </select>
+          </label>
+        )}
+        <label className="campo"><span>Avisar cuando queden menos de (e-NCF)</span><input inputMode="numeric" value={c.alertaRestantes} onChange={(e) => setC({ ...c, alertaRestantes: e.target.value.replace(/\D/g, "") })} /></label>
       </div>
-      {c.transmisor === "PSE" && (
-        <>
-          <div className="dos-col">
-            <label className="campo"><span>Proveedor (nombre, opcional)</span><input value={c.pseNombre ?? ""} onChange={(e) => setC({ ...c, pseNombre: e.target.value })} placeholder="Ej.: mseller" /></label>
-            {!/mseller/i.test(c.pseNombre ?? "") && <label className="campo"><span>Dirección del API del PSE</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>}
-          </div>
-          {/mseller/i.test(c.pseNombre ?? "") ? (
-            <>
-              <div className="dos-col">
-                <label className="campo"><span>Correo de la cuenta de MSeller de esta empresa</span><input type="email" autoComplete="off" value={c.msEmail ?? ""} onChange={(e) => setC({ ...c, msEmail: e.target.value })} /></label>
-                <label className="campo"><span>Clave de esa cuenta</span><input type="password" autoComplete="new-password" value={c.msClave ?? ""} onChange={(e) => setC({ ...c, msClave: e.target.value })} /></label>
-              </div>
-              <label className="campo"><span>API Key de esa cuenta {c.pseTokenConfigurado && c.msKey === undefined ? "(guardadas ✓)" : ""}</span>
-                <input type="password" autoComplete="off" value={c.msKey ?? ""} onChange={(e) => setC({ ...c, msKey: e.target.value })} placeholder={c.pseTokenConfigurado ? "Para cambiar las credenciales, escriba las tres" : "La que creó en MSeller (Configuración → API Key)"} />
-              </label>
-              <p className="suave" style={{ marginTop: 0 }}>Cada cliente tiene su propia cuenta y plan en MSeller, con su certificado (.p12) cargado allí. Se guardan cifradas. Guarde antes de probar. El ambiente (pruebas, certificación o producción) se elige arriba.</p>
-            </>
-          ) : (
-            <>
-              <label className="campo"><span>Llave de API de esta empresa {c.pseTokenConfigurado && c.pseTokenNuevo === undefined ? "(guardada ✓)" : ""}</span>
-                <input type="password" autoComplete="off" value={c.pseTokenNuevo ?? ""} onChange={(e) => setC({ ...c, pseTokenNuevo: e.target.value })} placeholder={c.pseTokenConfigurado ? "Deje vacío para conservar la guardada" : "Pegue la llave que le dio el proveedor"} />
-              </label>
-              <p className="suave" style={{ marginTop: 0 }}>Cada empresa usa su propia cuenta con el proveedor. La llave se guarda cifrada. Guarde antes de probar.</p>
-            </>
-          )}
-          <button className="boton" onClick={probar}>Probar conexión</button>
-        </>
+      {modo === "OTRO" && (
+        <div className="dos-col">
+          <label className="campo"><span>Proveedor (nombre)</span><input value={c.pseNombre ?? ""} onChange={(e) => setC({ ...c, pseNombre: e.target.value })} /></label>
+          <label className="campo"><span>Dirección del API del proveedor</span><input value={c.pseUrl ?? ""} onChange={(e) => setC({ ...c, pseUrl: e.target.value })} placeholder="https://api.proveedor.com" /></label>
+          <label className="campo"><span>Llave de API {c.pseTokenConfigurado && c.pseTokenNuevo === undefined ? "(guardada ✓)" : ""}</span>
+            <input type="password" autoComplete="off" value={c.pseTokenNuevo ?? ""} onChange={(e) => setC({ ...c, pseTokenNuevo: e.target.value })} placeholder={c.pseTokenConfigurado ? "Deje vacío para conservar la guardada" : "La llave que le dio el proveedor"} />
+          </label>
+        </div>
       )}
-      <label className="campo"><span>Avisar cuando queden menos de (e-NCF)</span><input inputMode="numeric" value={c.alertaRestantes} onChange={(e) => setC({ ...c, alertaRestantes: e.target.value.replace(/\D/g, "") })} /></label>
-      <button className="boton primario" onClick={guardar}>Guardar</button>
+      {modo === "MSELLER" && (
+        <div className="dos-col" style={{ alignItems: "start", marginTop: 4 }}>
+          <div className="panel" style={{ margin: 0 }}>
+            <h4 style={{ marginTop: 0 }}>Tu cuenta de MSeller</h4>
+            {c.pseCuenta
+              ? <p className="suave" style={{ marginTop: 0 }}>Conectado como <b>{c.pseCuenta.email}</b> · API Key terminada en <code>…{c.pseCuenta.claveFin}</code></p>
+              : <p className="suave" style={{ marginTop: 0 }}>Todavía no hay una cuenta conectada.</p>}
+            <label className="campo"><span>Correo de la cuenta</span><input type="email" autoComplete="off" value={c.msEmail ?? c.pseCuenta?.email ?? ""} onChange={(e) => setC({ ...c, msEmail: e.target.value })} /></label>
+            <label className="campo"><span>Contraseña</span><input type="password" autoComplete="new-password" value={c.msClave ?? ""} onChange={(e) => setC({ ...c, msClave: e.target.value })} placeholder={c.pseCuenta ? "Déjala vacía para no cambiarla" : ""} /></label>
+            <label className="campo"><span>API Key</span><input type="password" autoComplete="off" value={c.msKey ?? ""} onChange={(e) => setC({ ...c, msKey: e.target.value })} placeholder={c.pseCuenta ? "Déjala vacía para no cambiarla" : ""} /></label>
+            <p className="suave pequeno" style={{ marginTop: 0 }}>Se guarda cifrado en tu servidor. Al guardar se prueba la conexión.</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="boton primario" disabled={ocupado} onClick={() => void guardar(true)}>Guardar y probar</button>
+              {c.pseCuenta && <button className="boton" disabled={ocupado} onClick={() => void guardar(true)}>Probar conexión con MSeller</button>}
+            </div>
+          </div>
+          <div className="panel" style={{ margin: 0 }}>
+            <h4 style={{ marginTop: 0 }}>Cómo dejarlo listo</h4>
+            <ol className="suave" style={{ paddingLeft: 18, margin: 0, lineHeight: 1.6 }}>
+              <li>Crea tu cuenta en <b>ecf.mseller.app</b> con el RNC de la empresa.</li>
+              <li>Sube tu certificado <b>.p12</b> en su portal. MSeller firma con él.</li>
+              <li>Crea una <b>API Key</b> en su portal y pégala aquí junto con tu correo y contraseña.</li>
+              <li>Empieza en el ambiente <b>Pruebas</b>. Para facturar de verdad, completa la certificación de la DGII y cambia a <b>Producción</b>.</li>
+            </ol>
+            <p className="aviso-linea info" style={{ marginTop: 10 }}>La DGII exige que la persona del certificado esté delegada por la empresa en la Oficina Virtual (Delegación de Roles), también cuando se usa un proveedor.</p>
+          </div>
+        </div>
+      )}
+      {modo !== "MSELLER" && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button className="boton primario" disabled={ocupado} onClick={() => void guardar(false)}>Guardar</button>
+          {modo === "OTRO" && <button className="boton" disabled={ocupado} onClick={() => void guardar(true)}>Guardar y probar conexión</button>}
+        </div>
+      )}
+      {modo === "MSELLER" && <div style={{ marginTop: 8 }}><button className="boton" disabled={ocupado} onClick={() => void guardar(false)}>Guardar sin probar</button></div>}
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
     </div>
   );
