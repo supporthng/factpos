@@ -507,6 +507,7 @@ interface DatosReporte {
   porMesero: { mesero: string; cuentas: number; consumo: string; propina: string; minutosPromedio: number | null; cuentaPromedio: string }[];
   porMesa: { mesa: string; cuentas: number; consumo: string; minutosPromedio: number | null }[];
   porHora: { hora: number; facturas: number; ventas: string }[];
+  platos: { plato: string; cantidad: string; ventas: string; costo: string; ganancia: string }[];
   reparto: { pct: { meseros: number; cocina: number; barra: number; otros: number }; propinaTotal: string; meseros: { mesero: string; monto: string }[]; cocina: string; barra: string; otros: string };
 }
 const horaTexto = (h: number) => `${h % 12 || 12} ${h >= 12 ? "p. m." : "a. m."}`;
@@ -581,6 +582,15 @@ export function ReporteSalon({ ajustes, onCerrar }: { ajustes: Ajustes; onCerrar
             </div>
           ) : (
             <button className="enlace" onClick={() => setEditando({ meseros: String(datos.reparto.pct.meseros), cocina: String(datos.reparto.pct.cocina), barra: String(datos.reparto.pct.barra), otros: String(datos.reparto.pct.otros) })}>Cambiar el reparto</button>
+          )}
+          <h4 style={{ margin: "14px 0 4px" }}>Platos más vendidos y ganancia <span className="suave" style={{ fontWeight: 400 }}>(sin impuestos, contra el costo)</span></h4>
+          {!datos.platos.length ? <p className="suave">No hubo ventas esa noche.</p> : (
+            <table className="tabla-reporte"><thead><tr><th>Plato</th><th>Vendidos</th><th>Ventas</th><th>Costo</th><th>Ganancia</th><th>Margen</th></tr></thead>
+              <tbody>{datos.platos.map((x) => (
+                <tr key={x.plato}><td>{x.plato}</td><td>{Number(x.cantidad)}</td><td>{rd(x.ventas)}</td><td>{rd(x.costo)}</td>
+                  <td className={Number(x.ganancia) < 0 ? "negativo" : ""}>{rd(x.ganancia)}</td>
+                  <td>{Number(x.ventas) > 0 ? `${Math.round((Number(x.ganancia) / Number(x.ventas)) * 100)} %` : "—"}</td></tr>
+              ))}</tbody></table>
           )}
           <h4 style={{ margin: "14px 0 4px" }}>Rotación por mesa</h4>
           {datos.porMesa.length > 0 && (

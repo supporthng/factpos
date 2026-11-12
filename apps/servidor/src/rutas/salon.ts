@@ -119,6 +119,15 @@ export async function rutasSalon(app: FastifyInstance) {
       `SELECT EXTRACT(HOUR FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int AS hora, count(*)::int AS facturas, sum(v.total)::numeric(14,2)::text AS ventas
          FROM ventas v WHERE v.sucursal_id = $1 AND ${jornada("v.creado_en")} = $2::date AND ${valida}
         GROUP BY 1 ORDER BY ((EXTRACT(HOUR FROM v.creado_en AT TIME ZONE 'America/Santo_Domingo')::int) + 18) % 24`, [ctx.sucursalId, dia])).rows;
+    // Platos más vendidos y su ganancia (precio sin impuestos menos el costo de esa venta). Los extras con cargo cuentan como un producto más.
+    const platos = (await pool.query(
+      `SELECT vi.descripcion AS plato, sum(vi.cantidad)::numeric(14,1)::text AS cantidad,
+              sum(vi.total - vi.itbis - vi.isc)::numeric(14,2)::text AS ventas,
+              sum(vi.cantidad * vi.costo_unitario)::numeric(14,2)::text AS costo,
+              sum((vi.total - vi.itbis - vi.isc) - vi.cantidad * vi.costo_unitario)::numeric(14,2)::text AS ganancia
+         FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+        WHERE v.sucursal_id = $1 AND ${jornada("v.creado_en")} = $2::date AND ${valida}
+        GROUP BY vi.descripcion ORDER BY sum(vi.cantidad) DESC, sum(vi.total) DESC LIMIT 20`, [ctx.sucursalId, dia])).rows;
     const total = porHora.reduce((a: number, h: { ventas: string }) => a + Number(h.ventas), 0);
     const facturas = porHora.reduce((a: number, h: { facturas: number }) => a + h.facturas, 0);
     // Reparto de la propina legal: el pozo de meseros se divide según lo que cada uno cobró; los demás pozos se dividen entre su personal
@@ -136,7 +145,7 @@ export async function rutasSalon(app: FastifyInstance) {
       })),
       cocina: pozo(r.c).toFixed(2), barra: pozo(r.b).toFixed(2), otros: pozo(r.o).toFixed(2),
     };
-    return { fecha: dia, total: total.toFixed(2), facturas, porMesero, porMesa, porHora, reparto };
+    return { fecha: dia, total: total.toFixed(2), facturas, porMesero, porMesa, porHora, reparto, platos };
   });
 
   const usuarioDe = (req: unknown) => ((req as { sesionCaja?: { u?: string } }).sesionCaja?.u) ?? null;
