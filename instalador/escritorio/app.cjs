@@ -915,6 +915,12 @@ function mostrarEscritorio() {
   restaurarTeclado();
   try { execFile('reg', ['delete', CLAVE_DIRECTIVA, '/v', 'DisableTaskMgr', '/f'], { windowsHide: true }, () => {}); } catch {}
   try { spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(); } catch {}
+  // Red de seguridad contra la pantalla negra al salir: un «taskkill» que ya iba en camino puede matar el Explorador recién
+  // abierto. Un ayudante aparte, que sigue vivo cuando la caja ya se cerró, revisa unos segundos después y lo vuelve a abrir si falta.
+  try {
+    spawn('cmd.exe', ['/d', '/s', '/c', '"ping -n 4 127.0.0.1 >nul & tasklist /fi "imagename eq explorer.exe" | find /i "explorer.exe" >nul || start "" explorer.exe"'],
+      { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+  } catch {}
 }
 app.on('will-quit', mostrarEscritorio);
 process.on('exit', mostrarEscritorio);
