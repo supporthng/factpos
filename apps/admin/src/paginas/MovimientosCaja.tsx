@@ -1,3 +1,4 @@
+import { SelectorPeriodo } from "../periodos";
 import { useState } from "react";
 import { hoy, rd } from "../api";
 import { Encabezado, Kpi, SelectorSucursal, Tabla, useDatos } from "../ui";
@@ -18,6 +19,7 @@ export function MovimientosCaja() {
     <>
       <Encabezado titulo="Retiros y gastos de caja" descripcion="Dinero que entró o salió de las gavetas fuera de las ventas, con quién lo aprobó." />
       <div className="fila-acciones" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+        <SelectorPeriodo desde={desde} hasta={hasta} onCambio={(a, b) => { setDesde(a); setHasta(b); }} />
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         <SelectorSucursal valor={sucursal} onCambio={setSucursal} />

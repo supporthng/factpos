@@ -1,3 +1,4 @@
+import { SelectorPeriodo } from "../periodos";
 import { useState } from "react";
 import { api, esLocal, hoy, num, puede, rd } from "../api";
 import { imprimirCarta, imprimirHtml } from "../impresion";
@@ -84,6 +85,7 @@ export function Facturas() {
         {esLocal() && <button className="boton primario" onClick={() => setNueva(true)}>Nueva factura</button>}
       </Encabezado>
       <div className="fila-acciones" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+        <SelectorPeriodo desde={desde} hasta={hasta} onCambio={(a, b) => { setDesde(a); setHasta(b); }} />
         <input type="date" aria-label="Desde" value={desde} onChange={(e) => setDesde(e.target.value)} />
         <input type="date" aria-label="Hasta" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         <SelectorSucursal valor={sucursalId} onCambio={setSucursalId} />

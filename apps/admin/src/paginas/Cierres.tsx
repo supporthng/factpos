@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, hoy, rd } from "../api";
+import { SelectorPeriodo } from "../periodos";
 import { Aviso, Encabezado, Kpi, SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
 /**
@@ -35,6 +36,7 @@ export function Cierres() {
       </Encabezado>
       {error && <Aviso texto={error} />}
       <div className="fila-acciones" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+        <SelectorPeriodo desde={desde} hasta={hasta} onCambio={(a, b) => { setDesde(a); setHasta(b); }} />
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         <SelectorSucursal valor={sucursal} onCambio={setSucursal} />
