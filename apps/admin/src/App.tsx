@@ -135,12 +135,14 @@ const SECCIONES_PORTAL = [
   { id: "instaladores", titulo: "Instaladores", grupo: "Portal FactPOS", C: InstaladoresPortal, i: "actualizaciones", p: ["*"] },
   { id: "envios", titulo: "Envío de actualizaciones", grupo: "Portal FactPOS", C: ActualizacionesPortal, i: "actualizaciones", p: ["*"] },
   { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
+  { id: "correo", titulo: "Correo del portal", grupo: "Portal FactPOS", C: Correo, i: "correo", p: ["admin.config"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];
 type Item = { id: string; titulo: string; grupo: string; C: ComponentType | LazyExoticComponent<ComponentType>; i: NombreIcono; p: readonly string[] };
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
+  correo: "La cuenta desde la que el portal envía correos: códigos para recuperar la contraseña, avisos y reportes",
   puesta: "Lo que falta para empezar a vender: empresa, comprobantes, productos, cajas y usuarios",
   ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
   pantallacliente: "Segunda pantalla de la caja: productos, total y ofertas del negocio",
