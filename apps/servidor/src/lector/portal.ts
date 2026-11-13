@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 import { autorizarLicencia } from "../respaldo/portal.js";
-import { cuerpoGemini, leerRespuestaGemini, modelosGratis, ordenProveedores, type Proveedor } from "./proveedores.js";
+import { cuerpoGemini, elegirAlternos, leerRespuestaGemini, modelosGratis, ordenProveedores, type Proveedor } from "./proveedores.js";
 
 /**
  * Portal: LECTOR DE FACTURAS con IA (Claude).
@@ -127,29 +127,50 @@ export async function rutasPortalLector(app: FastifyInstance) {
           return uso;
         },
         gratis: async () => {
-          // Si el modelo principal está saturado (503) o sin cupo (429), se prueba el de respaldo antes de rendirse
-          const fallos: string[] = []; // por qué falló cada intento, para que el mensaje diga la causa real y no solo la última
+          // Google a veces responde «alta demanda» (503). Se reintenta con pausas crecientes; si el modelo sigue saturado,
+          // se prueban otros modelos «flash» que Google ofrezca ese día, antes de rendirse.
+          const fallos: string[] = []; // por qué falló cada intento, para que el mensaje diga la causa real
           const retirados = new Set<string>(); // modelos que Google ya no ofrece (404): no se vuelven a intentar
           const hasta = Date.now() + 58_000;
+          const pausas = [0, 3_000, 5_000, 8_000];
           // Por omisión Gemini razona poco ("low"): leer una factura no necesita pensar mucho y así responde en segundos, no en minutos.
           // LECTOR_GEMINI_PENSAMIENTO=minimal|low|medium|high lo cambia; vacío = el valor del propio Gemini.
-          const turnos = modelosGratis().flatMap((m) => [m, m, m]); // cada modelo hasta 3 veces (con pausa) si responde saturado
-          for (const [n, modelo] of turnos.entries()) {
-            if (Date.now() > hasta) break;
-            if (retirados.has(modelo)) continue;
-            if (n > 0 && turnos[n - 1] === modelo) await new Promise((r) => setTimeout(r, 2500));
+          const pensamiento = process.env.LECTOR_GEMINI_PENSAMIENTO ?? "low";
+          const intentar = async (modelo: string): Promise<"ok" | "saturado" | "retirado" | { datos: unknown }> => {
             const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
               method: "POST",
               headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
-              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema, pensamiento: process.env.LECTOR_GEMINI_PENSAMIENTO ?? "low" })),
+              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema, pensamiento })),
               signal: AbortSignal.timeout(Math.max(5_000, hasta - Date.now())), // lo que queda del tiempo total: una lectura lenta no se corta a la mitad
             }).catch((e) => { fallos.push(`${modelo}: ${(e as Error).message}`); return null; });
-            if (!r) continue;
+            if (!r) return "saturado";
             const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
-            if (r.status === 404) { retirados.add(modelo); fallos.push(`${modelo} ya no está disponible (cámbielo en LECTOR_MODELO_GRATIS / LECTOR_MODELO_GRATIS_RESPALDO)`); app.log.warn(`Gemini ${modelo}: ${d.error?.message ?? "404"}`); continue; }
-            if (r.status === 429 || r.status === 503 || r.status === 500) { const m = r.status === 429 ? "Se agotó el límite de lecturas gratuitas por ahora" : (d.error?.message ?? `HTTP ${r.status}`); fallos.push(`${modelo}: ${m}`); app.log.warn(`Gemini ${modelo}: ${m}`); continue; }
+            if (r.status === 404) { retirados.add(modelo); fallos.push(`${modelo} ya no está disponible`); app.log.warn(`Gemini ${modelo}: ${d.error?.message ?? "404"}`); return "retirado"; }
+            if (r.status === 429 || r.status === 503 || r.status === 500) {
+              const m = r.status === 429 ? "Se agotó el límite de lecturas gratuitas por ahora" : (d.error?.message ?? `HTTP ${r.status}`);
+              fallos.push(`${modelo}: ${m}`); app.log.warn(`Gemini ${modelo}: ${m}`); return "saturado";
+            }
             if (!r.ok) throw new Error(d.error?.message ?? `HTTP ${r.status}`);
-            return leerRespuestaGemini(d);
+            return { datos: leerRespuestaGemini(d) };
+          };
+          const probar = async (modelo: string, veces: number) => {
+            for (let i = 0; i < veces && Date.now() < hasta && !retirados.has(modelo); i++) {
+              if (pausas[i]) await new Promise((r) => setTimeout(r, pausas[i]));
+              const res = await intentar(modelo);
+              if (typeof res === "object") return res;
+            }
+            return null;
+          };
+          const configurados = modelosGratis();
+          for (const m of configurados) { const r = await probar(m, 4); if (r) return r.datos; }
+          if (Date.now() < hasta) {
+            const lista = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+              headers: { "x-goog-api-key": process.env.GEMINI_API_KEY! }, signal: AbortSignal.timeout(6_000),
+            }).then((x) => x.json()).then((x) => ((x as { models?: { name?: string; supportedGenerationMethods?: string[] }[] }).models ?? [])).catch(() => []);
+            for (const m of elegirAlternos(lista, configurados)) {
+              app.log.warn(`Lector de facturas: probando el modelo alterno ${m}`);
+              const r = await probar(m, 2); if (r) return r.datos;
+            }
           }
           throw new Error([...new Set(fallos)].join(" · ") || "Gemini no respondió");
         },
