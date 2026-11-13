@@ -142,7 +142,6 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType | Lazy
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
-  correo: "La cuenta desde la que el portal envía correos: códigos para recuperar la contraseña, avisos y reportes",
   puesta: "Lo que falta para empezar a vender: empresa, comprobantes, productos, cajas y usuarios",
   ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
   pantallacliente: "Segunda pantalla de la caja: productos, total y ofertas del negocio",
