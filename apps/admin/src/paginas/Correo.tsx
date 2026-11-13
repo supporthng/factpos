@@ -84,9 +84,9 @@ const esCorreo = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 const NOMBRE_TIPO: Record<Tipo, string> = { CIERRE_CAJA: "Cierre de caja", RESUMEN_DIARIO: "Resumen del día", INCIDENTES: "Incidente" };
 
 export function Correo() {
-  const { datos, recargar } = useDatos<{ config: Config | null; envios: Envio[]; cron: boolean; avisos?: { tipo: "error" | "info"; texto: string }[] }>("/central/correo");
+  const { datos, error, recargar } = useDatos<{ config: Config | null; envios: Envio[]; cron: boolean; avisos?: { tipo: "error" | "info"; texto: string }[] }>("/central/correo");
   const historial = useDatos<Enviado[]>("/central/correo/historial");
-  if (!datos) return <Encabezado titulo="Correo y envíos" descripcion="Cargando…" />;
+  if (!datos) return <><Encabezado titulo="Correo y envíos" descripcion={error ? "No se pudo cargar" : "Cargando…"} />{error && <Aviso texto={`No se pudo cargar el correo: ${error}`} />}</>;
   const lista = !!datos.config?.tieneClave && !!datos.config.remitenteCorreo;
   return (
     <>
