@@ -26,7 +26,7 @@ export function crearLimitador(max: number, ventanaMs: number) {
 }
 
 /** Rutas públicas (sin sesión) que se frenan con más fuerza: alguien podría usarlas para llenar la base o adivinar claves. */
-const RUTAS_ESTRICTAS = /^\/(licencias\/(activar|renovar|solicitar|prospecto|traslado\/)|central\/entrar|cajas\/[^/]+\/entrar)/;
+const RUTAS_ESTRICTAS = /^\/(licencias\/(activar|renovar|solicitar|prospecto|traslado\/)|central\/(entrar|recuperar\/)|cajas\/[^/]+\/entrar)/;
 
 /**
  * Cabeceras de seguridad en todas las respuestas y límite de peticiones por dirección.

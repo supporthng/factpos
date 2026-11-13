@@ -183,6 +183,18 @@ export function correoPrueba(m: Marca, usuario: string) {
   };
 }
 
+// ------------------------------------------------------------------ RECUPERAR CONTRASEÑA
+export function correoRecuperacion(m: Marca, nombre: string, codigo: string) {
+  const cuerpo = `<p style="font-size:15px;line-height:1.6;margin:0 0 14px">Hola ${esc(nombre)}, use este código para elegir una contraseña nueva. Vale 15 minutos y sirve una sola vez.</p>
+<p style="font-size:30px;letter-spacing:8px;font-weight:700;margin:0 0 14px;font-family:monospace">${esc(codigo)}</p>
+<p style="font-size:13px;line-height:1.6;margin:0;color:#64748b">Si usted no lo pidió, ignore este correo: su contraseña sigue igual.</p>`;
+  return {
+    asunto: "Código para recuperar su contraseña de FactPOS",
+    html: base(m, "Recupere su contraseña", "Código de un solo uso", cuerpo, ""),
+    texto: `Hola ${nombre}, su código para elegir una contraseña nueva es ${codigo}. Vale 15 minutos y sirve una sola vez. Si usted no lo pidió, ignore este correo.`,
+  };
+}
+
 /** Aviso de incidente al servicio técnico (mismo texto de Telegram, en HTML sencillo). */
 export function correoIncidente(m: Marca, texto: string) {
   const [primera, ...resto] = texto.split("\n");
