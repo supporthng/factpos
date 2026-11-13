@@ -3,6 +3,7 @@ import { Icono } from "../Iconos";
 import { extraerPaleta, temaAdmin, temaTerminal, contraste, marcaEfectiva } from "@factpos/compartido";
 import { api } from "../api";
 import { aplicarTemaAdmin } from "../tema";
+import { MODOS_TEMA, leerAjusteTema, guardarAjusteTema, type AjusteTema, type ModoTema } from "../modoTema";
 import { TAMANOS_ADMIN, leerTamanoAdmin, guardarTamanoAdmin, type TamanoAdmin } from "../escala";
 import { Aviso, Encabezado } from "../ui";
 
@@ -39,6 +40,8 @@ export function Marca() {
   const [m, setM] = useState<MarcaDatos | null>(null);
   const [paleta, setPaleta] = useState<string[]>([]);
   const [tamano, setTamano] = useState<TamanoAdmin>(leerTamanoAdmin());
+  const [tema, setTema] = useState<AjusteTema>(leerAjusteTema());
+  const cambiarTema = (p: Partial<AjusteTema>) => { const n = { ...tema, ...p }; setTema(n); guardarAjusteTema(n); };
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
   useEffect(() => { api<MarcaDatos>("/central/marca").then(setM); }, []);
@@ -85,6 +88,21 @@ export function Marca() {
             <button key={k} className={tamano === k ? "activo" : ""} onClick={() => { setTamano(k); guardarTamanoAdmin(k); }}>{TAMANOS_ADMIN[k].nombre}</button>
           ))}
         </div>
+      </div>
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <h3>Modo claro / oscuro</h3>
+        <p className="suave pequeno">Solo para este equipo. «Por horario» pone la pantalla oscura de noche y clara de día, sola.</p>
+        <div className="selector-modo">
+          {(Object.keys(MODOS_TEMA) as ModoTema[]).map((k) => (
+            <button key={k} className={tema.modo === k ? "activo" : ""} onClick={() => cambiarTema({ modo: k })}>{MODOS_TEMA[k]}</button>
+          ))}
+        </div>
+        {tema.modo === "horario" && (
+          <div className="fila-acciones" style={{ marginTop: 12 }}>
+            <label>Oscuro desde <input type="time" value={tema.desde} onChange={(e) => e.target.value && cambiarTema({ desde: e.target.value })} /></label>
+            <label>hasta <input type="time" value={tema.hasta} onChange={(e) => e.target.value && cambiarTema({ hasta: e.target.value })} /></label>
+          </div>
+        )}
       </div>
       <div className="marca-grid">
         <div className="panel">

@@ -4,8 +4,10 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./estilos.css";
 import { iniciarEscalaAdmin } from "./escala";
+import { iniciarModoTema } from "./modoTema";
 
 iniciarEscalaAdmin();
+iniciarModoTema();
 
 
 createRoot(document.getElementById("root")!).render(
