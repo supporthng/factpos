@@ -304,6 +304,15 @@ export function ConfirmarCancelar({ articulos, total, onConfirmar, onCerrar }: {
 export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCerrar: () => void }) {
   const [principal, setPrincipal] = useState<{ activo: boolean; url: string | null } | null>(null);
   useEffect(() => { estadoPrincipal().then(setPrincipal); }, []);
+  // Estaciones de comandas (cocina, barra…) de esta sucursal: cada una puede salir por su propia impresora
+  const [estaciones, setEstaciones] = useState<{ id: string; nombre: string }[]>([]);
+  useEffect(() => {
+    const a = leerAjustes();
+    if (!a || !hayModuloImpresion()) return;
+    api<{ estaciones: { id: string; nombre: string; activa: boolean }[] }>(a.servidor, `/cajas/${a.cajaId}/estaciones`)
+      .then((r) => setEstaciones(r.estaciones.filter((x) => x.activa).map((x) => ({ id: x.id, nombre: x.nombre }))))
+      .catch(() => setEstaciones([])); // sin comandas en esta empresa: no hay nada que asignar
+  }, []);
   const cambiarPrincipal = async (activo: boolean) => {
     const a = leerAjustes();
     if (a) await fijarPrincipal(a, activo);
@@ -314,7 +323,7 @@ export function AjustesTerminal({ config, onCerrar }: { config: ConfigCaja; onCe
       <p className="suave">{config.nombre} · {config.sucursal}</p>
       <TamanoPantalla />
       <VistaInicialCaja cajaId={config.id} />
-      {hayModuloImpresion() && <ImpresionTerminal />}
+      {hayModuloImpresion() && <ImpresionTerminal estaciones={estaciones} />}
       <div className="campo">
         <span>Pantalla del cliente</span>
         <div><button className="boton" onClick={abrirPantallaCliente}>Abrir pantalla del cliente</button></div>
