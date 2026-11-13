@@ -49,6 +49,7 @@ const ComprobantesNcf = lazy(() => import("./paginas/Fiscal").then((m) => ({ def
 const Fiscal = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.Fiscal })));
 const Sucursales = lazy(() => import("./paginas/Sucursales").then((m) => ({ default: m.Sucursales })));
 const Marca = lazy(() => import("./paginas/Marca").then((m) => ({ default: m.Marca })));
+const PanelMseller = lazy(() => import("./paginas/PanelMseller").then((m) => ({ default: m.PanelMseller })));
 const DatosEmpresa = lazy(() => import("./paginas/DatosEmpresa").then((m) => ({ default: m.DatosEmpresa })));
 const PantallaCliente = lazy(() => import("./paginas/PantallaCliente").then((m) => ({ default: m.PantallaCliente })));
 const Respaldos = lazy(() => import("./paginas/Respaldos").then((m) => ({ default: m.Respaldos })));
@@ -132,6 +133,7 @@ const SECCIONES_PORTAL = [
   { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, i: "clientes", p: ["*"] },
   { id: "certificacion", titulo: "Certificación DGII", grupo: "Portal FactPOS", C: CertificacionDgii, i: "fiscal", p: ["*"] },
   { id: "ecfplanes", titulo: "Facturación electrónica", grupo: "Portal FactPOS", C: FacturacionElectronica, i: "fiscal", p: ["*"] },
+  { id: "mseller", titulo: "MSeller", grupo: "Portal FactPOS", C: PanelMseller, i: "fiscal", p: ["*"] },
   { id: "instaladores", titulo: "Instaladores", grupo: "Portal FactPOS", C: InstaladoresPortal, i: "actualizaciones", p: ["*"] },
   { id: "envios", titulo: "Envío de actualizaciones", grupo: "Portal FactPOS", C: ActualizacionesPortal, i: "actualizaciones", p: ["*"] },
   { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
@@ -145,6 +147,7 @@ const DESCRIPCION: Record<string, string> = {
   puesta: "Lo que falta para empezar a vender: empresa, comprobantes, productos, cajas y usuarios",
   ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
   pantallacliente: "Segunda pantalla de la caja: productos, total y ofertas del negocio",
+  mseller: "Clientes que facturan con MSeller: plan, conexión y comprobantes del mes",
   certificacion: "Avance de la certificación de FactPOS como software ante la DGII",
   facturas: "Buscar facturas, reimprimir, modificar y anular (con permiso de supervisor)",
   pedidos: "Pedidos al por mayor: se envían a una caja, se alistan y se facturan",
