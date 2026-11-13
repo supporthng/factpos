@@ -65,7 +65,7 @@ export async function rutasCentralCxc(app: FastifyInstance) {
     const { clienteId } = z.object({ clienteId: uuid }).parse(req.params);
     const empresaId = empresaDe(req);
     const c = await pool.query(
-      `SELECT c.id, c.nombre, c.documento, c.tipo_documento AS "tipoDocumento", c.telefono, c.direccion,
+      `SELECT c.id, c.nombre, c.documento, c.tipo_documento AS "tipoDocumento", c.telefono, c.correo, c.direccion,
               c.limite_credito AS "limiteCredito", c.dias_credito AS "diasCredito",
               a.saldo, a.al_dia AS "alDia", a.vencido_30 AS "vencido30", a.vencido_60 AS "vencido60", a.vencido_mas AS "vencidoMas",
               e.nombre_comercial AS empresa, e.rnc AS "rncEmpresa"
