@@ -246,6 +246,8 @@ export async function crearApp() {
   if (config.modo === "portal") {
     await app.register(rutasInicio);
     await app.register(rutasSesionCentral);
+    await app.register(rutasRecuperarClave); // «¿Olvidó su contraseña?» (código por correo)
+    await app.register(rutasCentralCorreo); // la cuenta de correo del portal (Correo del portal)
     await app.register(rutasPortal);
     await app.register(rutasPortalRespaldo);
     await app.register(rutasPortalLector);
