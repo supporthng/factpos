@@ -34,6 +34,7 @@ export function Cxc() {
         <Kpi titulo="Al día" valor={rd(t?.alDia ?? 0)} tono="ok" />
         <Kpi titulo="Vencido" valor={rd(t?.vencido ?? 0)} tono={Number(t?.vencido) > 0 ? "alerta" : undefined} />
       </div>
+      <Seguimiento onVer={setVer} recarga={recarga} />
       <div className="fila-acciones" style={{ marginBottom: 12 }}>
         <input placeholder="Buscar cliente o documento" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320 }} />
         <label className="interruptor"><input type="checkbox" checked={vencidos} onChange={(e) => setVencidos(e.target.checked)} /><span>Solo con deuda vencida</span></label>
@@ -62,7 +63,7 @@ export function Cxc() {
 function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; onCerrar: () => void; onCambio: () => void }) {
   const { datos: d, recargar } = useDatos<any>(`/central/cxc/${clienteId}`);
   const fac = useDatos<FacturaPend[]>(`/central/cxc/${clienteId}/facturas`);
-  const [accion, setAccion] = useState<"abono" | "ajuste" | "credito" | null>(null);
+  const [accion, setAccion] = useState<"abono" | "ajuste" | "credito" | "enviar" | "promesa" | null>(null);
   const [facturaElegida, setFacturaElegida] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const [anulando, setAnulando] = useState<{ id: string; monto: string } | null>(null);
@@ -88,6 +89,8 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
             <button className="boton primario chico" onClick={() => setAccion("abono")}>Registrar abono</button>
             <button className="boton chico" onClick={() => setAccion("ajuste")}>Ajuste</button>
             <button className="boton chico" onClick={() => setAccion("credito")}>Límite</button>
+            <button className="boton chico" onClick={() => setAccion("promesa")}>Promesa de pago</button>
+            {Number(d.saldo) > 0 && <button className="boton chico" onClick={() => setAccion("enviar")}>Enviar</button>}
           </>}
           <button className="boton chico" disabled={!d} onClick={() => window.print()}>Imprimir</button>
           <button className="boton chico" onClick={onCerrar}>Cerrar</button>
@@ -110,6 +113,8 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
             {accion === "abono" && <FormAbono key={facturaElegida ?? "cuenta"} clienteId={clienteId} saldo={d.saldo} facturas={fac.datos ?? []} inicial={facturaElegida} onListo={listo} />}
             {accion === "ajuste" && <FormAjuste clienteId={clienteId} onListo={listo} />}
             {accion === "credito" && <FormCredito clienteId={clienteId} limite={d.limiteCredito} dias={d.diasCredito} onListo={listo} />}
+            {accion === "enviar" && <FormEnviar clienteId={clienteId} d={d} onListo={listo} />}
+            {accion === "promesa" && <FormPromesa clienteId={clienteId} onListo={listo} />}
           </div>
         )}
         {d && (
@@ -317,5 +322,103 @@ function DarCredito({ onCerrar, onListo }: { onCerrar: () => void; onListo: (cli
         <div className="acciones-modal"><button className="boton" onClick={onCerrar}>Cerrar</button></div>
       </div>
     </div>
+  );
+}
+
+
+/** Promesas de pago pendientes y vencidas de todos los clientes: lo que hay que seguir. */
+function Seguimiento({ onVer, recarga }: { onVer: (id: string) => void; recarga: number }) {
+  const { datos, recargar } = useDatos<{ id: string; clienteId: string; cliente: string; telefono: string | null; monto: string; fecha: string; nota: string | null; estado: string }[]>("/central/cxc-promesas", [recarga]);
+  if (!datos?.length) return null;
+  const vencidas = datos.filter((p) => p.estado === "VENCIDA").length;
+  const dia = (v: string) => new Date(`${v}T12:00:00`).toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit" });
+  return (
+    <div className="panel" style={{ marginBottom: 14 }}>
+      <h3 style={{ margin: "0 0 6px" }}>Promesas de pago {vencidas > 0 && <span className="texto-alerta">· {vencidas} sin cumplir</span>}</h3>
+      <Tabla
+        filas={datos}
+        clave={(p) => p.id}
+        vacio=""
+        columnas={[
+          { titulo: "Cliente", valor: (p) => <button className="enlace" onClick={() => onVer(p.clienteId)}><b>{p.cliente}</b></button> },
+          { titulo: "Prometió", valor: (p) => rd(p.monto), der: true },
+          { titulo: "Para el", valor: (p) => dia(p.fecha) },
+          { titulo: "Estado", valor: (p) => (p.estado === "VENCIDA" ? <span className="texto-alerta">Sin cumplir</span> : "Pendiente") },
+          { titulo: "Nota", valor: (p) => p.nota ?? "" },
+          { titulo: "", valor: (p) => puede("admin.cxc") && <button className="boton fantasma chico" aria-label="Cancelar promesa" title="Cancelar promesa" onClick={async () => { await api(`/central/cxc-promesas/${p.id}`, { metodo: "DELETE" }); recargar(); }}>✕</button> },
+        ]}
+      />
+    </div>
+  );
+}
+
+/** Enviar el estado de cuenta al cliente por correo, o abrir WhatsApp con el mensaje listo. */
+function FormEnviar({ clienteId, d, onListo }: { clienteId: string; d: any; onListo: (t: string) => void }) {
+  const [para, setPara] = useState<string>(d.correo ?? "");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const vencido = Number(d.vencido30 ?? 0) + Number(d.vencido60 ?? 0) + Number(d.vencidoMas ?? 0);
+  const texto = `Hola, ${d.nombre}. Le escribimos de ${d.empresa}: su saldo pendiente es ${rd(d.saldo)}${vencido > 0 ? ` (de los cuales ${rd(vencido)} están vencidos)` : ""}. ¿Cuándo podría realizar el pago? Gracias.`;
+  const digitos = String(d.telefono ?? "").replace(/\D/g, "");
+  const wa = digitos.length >= 10 ? `https://wa.me/${digitos.length === 10 ? "1" + digitos : digitos}?text=${encodeURIComponent(texto)}` : null;
+  const enviar = async () => {
+    setError(""); setEnviando(true);
+    try { await api(`/central/cxc/${clienteId}/enviar-estado`, { cuerpo: { para: para.trim() } }); onListo(`Estado de cuenta enviado a ${para.trim()}.`); }
+    catch (e) { setError((e as Error).message); } finally { setEnviando(false); }
+  };
+  return (
+    <>
+      <b>Enviar el estado de cuenta</b>
+      <p className="suave pequeno" style={{ margin: "4px 0 8px" }}>Por correo va el detalle de lo que debe y sus facturas pendientes. Por WhatsApp se abre la conversación con un recordatorio ya escrito.</p>
+      <label className="campo"><span>Correo del cliente</span><input type="email" value={para} onChange={(e) => setPara(e.target.value)} placeholder="cliente@correo.com" /></label>
+      {error && <Aviso texto={error} />}
+      <div className="fila-acciones">
+        <button className="boton primario" disabled={enviando || !para.includes("@")} onClick={enviar}>{enviando ? "Enviando…" : "Enviar por correo"}</button>
+        {wa ? <a className="boton" href={wa} target="_blank" rel="noreferrer">Abrir WhatsApp</a> : <span className="suave pequeno">Para WhatsApp el cliente necesita un teléfono.</span>}
+      </div>
+    </>
+  );
+}
+
+/** Anotar cuándo y cuánto prometió pagar el cliente, y ver las anteriores. */
+function FormPromesa({ clienteId, onListo }: { clienteId: string; onListo: (t: string) => void }) {
+  const { datos, recargar } = useDatos<{ id: string; monto: string; fecha: string; nota: string | null; estado: string }[]>(`/central/cxc/${clienteId}/promesas`);
+  const [monto, setMonto] = useState("");
+  const [cuando, setCuando] = useState("");
+  const [nota, setNota] = useState("");
+  const [error, setError] = useState("");
+  const guardar = async () => {
+    setError("");
+    try { await api(`/central/cxc/${clienteId}/promesas`, { cuerpo: { monto: Number(monto).toFixed(2), fecha: cuando, nota: nota || undefined } }); onListo("Promesa de pago anotada."); }
+    catch (e) { setError((e as Error).message); }
+  };
+  const ETQ: Record<string, string> = { PENDIENTE: "Pendiente", CUMPLIDA: "Cumplida", VENCIDA: "Sin cumplir", CANCELADA: "Cancelada" };
+  return (
+    <>
+      <b>Promesa de pago</b>
+      <div className="fila-acciones" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label className="campo"><span>Monto prometido</span><input className="numero" inputMode="decimal" value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+        <label className="campo"><span>Para el día</span><input type="date" value={cuando} onChange={(e) => setCuando(e.target.value)} /></label>
+        <label className="campo flex"><span>Nota (opcional)</span><input value={nota} maxLength={200} onChange={(e) => setNota(e.target.value)} placeholder="Ej. paga cuando cobre el viernes" /></label>
+        <button className="boton primario" disabled={!(Number(monto) > 0) || !cuando} onClick={guardar}>Anotar</button>
+      </div>
+      {error && <Aviso texto={error} />}
+      {!!datos?.length && (
+        <table className="tabla" style={{ marginTop: 10 }}>
+          <thead><tr><th>Para el</th><th className="der">Monto</th><th>Estado</th><th>Nota</th><th /></tr></thead>
+          <tbody>
+            {datos.map((p) => (
+              <tr key={p.id}>
+                <td>{new Date(`${p.fecha}T12:00:00`).toLocaleDateString("es-DO")}</td>
+                <td className="der">{rd(p.monto)}</td>
+                <td>{p.estado === "VENCIDA" ? <span className="texto-alerta">{ETQ[p.estado]}</span> : ETQ[p.estado]}</td>
+                <td className="suave">{p.nota ?? ""}</td>
+                <td>{(p.estado === "PENDIENTE" || p.estado === "VENCIDA") && <button className="enlace" onClick={async () => { await api(`/central/cxc-promesas/${p.id}`, { metodo: "DELETE" }); recargar(); }}>Cancelar</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }

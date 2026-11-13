@@ -253,3 +253,32 @@ export function correoVencimiento(m: Marca, cliente: string, vence: string, dias
     texto: `Hola, ${cliente}. Su licencia de FactPOS ${cuando} (${vence}). Para renovarla, responda este correo o comuníquese con nosotros.`,
   };
 }
+
+
+// ------------------------------------------------------------------ ESTADO DE CUENTA (para el cliente)
+export interface EstadoCuentaCorreo {
+  cliente: string; saldo: number; alDia: number; vencido: number;
+  facturas: { documento: string; fecha: string; vence: string; pendiente: number }[];
+}
+export function correoEstadoCuenta(m: Marca, c: EstadoCuentaCorreo, mensaje?: string) {
+  const dia = (v: string) => new Date(v).toLocaleDateString("es-DO", { ...zona, day: "2-digit", month: "2-digit", year: "numeric" });
+  const filas = c.facturas.map((f) => [esc(f.documento), dia(f.fecha), dia(f.vence), rd(f.pendiente)]);
+  const cuerpo = `
+<p style="font-size:15px;line-height:1.6;margin:0 0 14px">${mensaje ? esc(mensaje).replace(/\n/g, "<br>") : `Estimado(a) ${esc(c.cliente)}: le enviamos el detalle de su cuenta con nosotros.`}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin:0 0 14px">
+  <tr><td style="padding:3px 6px;color:${COLOR.suave}">Al día</td><td align="right" style="padding:3px 6px;width:140px">${rd(c.alDia)}</td></tr>
+  <tr><td style="padding:3px 6px;color:${COLOR.suave}">Vencido</td><td align="right" style="padding:3px 6px;color:${c.vencido > 0 ? COLOR.rojo : COLOR.texto}">${rd(c.vencido)}</td></tr>
+  <tr><td style="padding:6px;font-weight:700;font-size:16px">Total a pagar</td><td align="right" style="padding:6px;font-weight:700;font-size:16px">${rd(c.saldo)}</td></tr>
+</table>
+${filas.length ? tabla(["Factura", "Fecha", "Vence", "Pendiente"], filas, 3) : ""}`;
+  const texto = [
+    `${m.empresa} · Estado de cuenta`, `Cliente: ${c.cliente}`, "",
+    ...c.facturas.map((f) => `- ${f.documento}: vence ${dia(f.vence)} · pendiente ${rd(f.pendiente)}`), "",
+    `Al día ${rd(c.alDia)} · Vencido ${rd(c.vencido)} · TOTAL ${rd(c.saldo)}`,
+  ].join("\n");
+  return {
+    asunto: `Estado de cuenta de ${m.empresa}`,
+    html: base(m, "Estado de cuenta", esc(c.cliente), cuerpo, "Si ya realizó el pago, ignore este mensaje. Para cualquier duda, responda este correo.", true),
+    texto,
+  };
+}
