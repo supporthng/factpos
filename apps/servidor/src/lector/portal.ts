@@ -130,6 +130,8 @@ export async function rutasPortalLector(app: FastifyInstance) {
           // Si el modelo principal está saturado (503) o sin cupo (429), se prueba el de respaldo antes de rendirse
           let ultimo = "Gemini no respondió";
           const hasta = Date.now() + 58_000;
+          // Por omisión Gemini razona poco ("low"): leer una factura no necesita pensar mucho y así responde en segundos, no en minutos.
+          // LECTOR_GEMINI_PENSAMIENTO=minimal|low|medium|high lo cambia; vacío = el valor del propio Gemini.
           const turnos = modelosGratis().flatMap((m) => [m, m, m]); // cada modelo hasta 3 veces (con pausa) si responde saturado
           for (const [n, modelo] of turnos.entries()) {
             if (Date.now() > hasta) break;
@@ -137,7 +139,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
             const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
               method: "POST",
               headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
-              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema, pensamiento: process.env.LECTOR_GEMINI_PENSAMIENTO })),
+              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema, pensamiento: process.env.LECTOR_GEMINI_PENSAMIENTO ?? "low" })),
               signal: AbortSignal.timeout(Math.max(5_000, hasta - Date.now())), // lo que queda del tiempo total: una lectura lenta no se corta a la mitad
             }).catch((e) => { ultimo = `${modelo}: ${(e as Error).message}`; return null; });
             if (!r) continue;
