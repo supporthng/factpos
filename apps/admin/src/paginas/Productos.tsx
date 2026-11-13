@@ -904,7 +904,7 @@ function ComboFicha({ f, cambiar, productos, id, tasa }: { f: Ficha; cambiar: (p
     setElegido("");
   };
   const costoTotal = f.componentes.reduce((a, c) => a + n(c.cantidad) * n(c.costo), 0);
-  const precio1 = n(f.precios["1"]);
+  const precio1 = n(f.presentaciones[0]?.precios["1"]);
   const mg = precio1 > 0 ? margen(precio1, costoTotal, tasa, f.precioIncluyeItbis) : null;
   return (
     <div className="panel">
