@@ -132,7 +132,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
           const fallos: string[] = []; // por qué falló cada intento, para que el mensaje diga la causa real
           const retirados = new Set<string>(); // modelos que Google ya no ofrece (404): no se vuelven a intentar
           const hasta = Date.now() + 58_000;
-          const pausas = [0, 3_000, 5_000, 8_000];
+          const pausas = [0, 4_000];
           // Por omisión Gemini razona poco ("low"): leer una factura no necesita pensar mucho y así responde en segundos, no en minutos.
           // LECTOR_GEMINI_PENSAMIENTO=minimal|low|medium|high lo cambia; vacío = el valor del propio Gemini.
           const pensamiento = process.env.LECTOR_GEMINI_PENSAMIENTO ?? "low";
@@ -141,7 +141,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
               method: "POST",
               headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
               body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema, pensamiento })),
-              signal: AbortSignal.timeout(Math.max(5_000, hasta - Date.now())), // lo que queda del tiempo total: una lectura lenta no se corta a la mitad
+              signal: AbortSignal.timeout(Math.min(25_000, Math.max(5_000, hasta - Date.now()))), // tope por intento: uno colgado no se come todo el tiempo y deja probar otro modelo
             }).catch((e) => { fallos.push(`${modelo}: ${(e as Error).message}`); return null; });
             if (!r) return "saturado";
             const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
@@ -162,7 +162,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
             return null;
           };
           const configurados = modelosGratis();
-          for (const m of configurados) { const r = await probar(m, 4); if (r) return r.datos; }
+          for (const m of configurados) { const r = await probar(m, 2); if (r) return r.datos; }
           if (Date.now() < hasta) {
             const lista = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
               headers: { "x-goog-api-key": process.env.GEMINI_API_KEY! }, signal: AbortSignal.timeout(6_000),
@@ -171,6 +171,8 @@ export async function rutasPortalLector(app: FastifyInstance) {
               app.log.warn(`Lector de facturas: probando el modelo alterno ${m}`);
               const r = await probar(m, 2); if (r) return r.datos;
             }
+            // Última oportunidad: el principal otra vez, por si la saturación ya pasó
+            for (const m of configurados) { const r = await probar(m, 2); if (r) return r.datos; }
           }
           throw new Error([...new Set(fallos)].join(" · ") || "Gemini no respondió");
         },
