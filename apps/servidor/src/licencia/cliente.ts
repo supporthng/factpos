@@ -90,7 +90,27 @@ async function usoEcf() {
         WHERE estado IN ('ENVIADO','ACEPTADO','ACEPTADO_COND')
           AND creado_en >= date_trunc('month', now() AT TIME ZONE 'America/Santo_Domingo') AT TIME ZONE 'America/Santo_Domingo' - interval '1 month'
         GROUP BY 1`);
-    return { meses: r.rows.map((x) => ({ mes: x.mes, emitidos: x.n })) };
+    return { meses: r.rows.map((x) => ({ mes: x.mes, emitidos: x.n })), conexion: await conexionEcf() };
+  } catch { return undefined; }
+}
+
+/** Cómo está conectada la facturación electrónica de este cliente (sin ninguna clave ni dato de la empresa). */
+async function conexionEcf() {
+  try {
+    const c = (await pool.query<{ transmisor: string; ambiente: string; proveedor: string | null; credenciales: boolean }>(
+      `SELECT transmisor, ambiente, lower(pse_nombre) AS proveedor, (pse_token IS NOT NULL AND pse_token <> '') AS credenciales
+         FROM configuracion_fiscal ORDER BY actualizado_en DESC LIMIT 1`)).rows[0];
+    if (!c) return undefined;
+    const e = (await pool.query<{ aceptados: number; rechazados: number; pendientes: number }>(
+      `SELECT COUNT(*) FILTER (WHERE estado IN ('ACEPTADO','ACEPTADO_COND'))::int AS aceptados,
+              COUNT(*) FILTER (WHERE estado = 'RECHAZADO')::int AS rechazados,
+              COUNT(*) FILTER (WHERE estado IN ('PENDIENTE','ENVIADO','EN_PROCESO','CONTINGENCIA'))::int AS pendientes
+         FROM ecf_documentos
+        WHERE creado_en >= date_trunc('month', now() AT TIME ZONE 'America/Santo_Domingo') AT TIME ZONE 'America/Santo_Domingo'`)).rows[0];
+    return {
+      transmisor: c.transmisor, ambiente: c.ambiente, proveedor: /mseller/.test(c.proveedor ?? "") ? "mseller" : c.proveedor ? "otro" : null,
+      credenciales: c.credenciales, aceptados: e?.aceptados ?? 0, rechazados: e?.rechazados ?? 0, pendientes: e?.pendientes ?? 0,
+    };
   } catch { return undefined; }
 }
 

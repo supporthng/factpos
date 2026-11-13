@@ -113,10 +113,18 @@ const contacto = z.object({
   sucursalesEnUso: z.number().int().min(0).max(9999).optional(),
   apiUrl: z.string().url().max(200).optional(),
   /** Comprobantes e-CF emitidos por mes (la nube del cliente reporta el mes actual y el anterior) */
-  ecf: z.object({ meses: z.array(z.object({ mes: z.string().regex(/^\d{4}-\d{2}$/), emitidos: z.number().int().min(0).max(10_000_000) })).max(3) }).optional(),
+  ecf: z.object({
+    meses: z.array(z.object({ mes: z.string().regex(/^\d{4}-\d{2}$/), emitidos: z.number().int().min(0).max(10_000_000) })).max(3),
+    /** Cómo está conectada su facturación electrónica (proveedor, ambiente, resultados del mes) */
+    conexion: z.object({
+      transmisor: z.string().max(12), ambiente: z.string().max(12), proveedor: z.enum(["mseller", "otro"]).nullable(), credenciales: z.boolean(),
+      aceptados: z.number().int().min(0).max(10_000_000), rechazados: z.number().int().min(0).max(10_000_000), pendientes: z.number().int().min(0).max(10_000_000),
+    }).optional(),
+  }).optional(),
 });
 
 async function guardarUsoEcf(licenciaId: string, ecf: z.infer<typeof contacto>["ecf"]) {
+  if (ecf?.conexion) await pool.query("UPDATE portal_licencias SET ecf_conexion = $2, ecf_conexion_en = now() WHERE id = $1", [licenciaId, JSON.stringify(ecf.conexion)]);
   for (const m of ecf?.meses ?? [])
     await pool.query(
       `INSERT INTO portal_ecf_uso (licencia_id, mes, emitidos) VALUES ($1,$2,$3)
@@ -148,6 +156,7 @@ export async function rutasPortal(app: FastifyInstance) {
          VALUES ($1,'ASIGNADA',$2,$3,$4,$5,$6,now())
          ON CONFLICT (id) DO UPDATE SET estado = 'ASIGNADA', secreto_hash = $2, version_app = $3, sucursales_en_uso = $4, licencia_id = $6, resuelta_en = now(), ultimo_contacto = now()`,
         [b.instalacionId, huella(secreto), b.version ?? null, b.sucursalesEnUso ?? null, b.apiUrl ?? null, l.id]);
+      if (b.ecf?.conexion) await c.query("UPDATE portal_licencias SET ecf_conexion = $2, ecf_conexion_en = now() WHERE id = $1", [l.id, JSON.stringify(b.ecf.conexion)]);
       for (const m of b.ecf?.meses ?? [])
         await c.query(`INSERT INTO portal_ecf_uso (licencia_id, mes, emitidos) VALUES ($1,$2,$3)
                        ON CONFLICT (licencia_id, mes) DO UPDATE SET emitidos = EXCLUDED.emitidos, actualizado_en = now()`, [l.id, m.mes, m.emitidos]);
@@ -802,12 +811,15 @@ export async function rutasPortal(app: FastifyInstance) {
     const filas = (await pool.query<{
       clienteId: string; slug: string; cliente: string; planId: string | null; plan: string | null; maxMes: number | null; costoUsd: number | null;
       precioPlan: number | null; precioEspecial: number | null; actual: number | null; previo: number | null; ultimo: string | null;
+      conexion: { transmisor: string; ambiente: string; proveedor: "mseller" | "otro" | null; credenciales: boolean; aceptados: number; rechazados: number; pendientes: number } | null;
+      conexionEn: string | null; planCodigo: string | null;
     }>(
       `SELECT c.id AS "clienteId", c.slug, c.nombre AS cliente, l.ecf_plan_id AS "planId", p.nombre AS plan, p.max_mes AS "maxMes",
               p.costo_usd::float AS "costoUsd", p.precio_usd::float AS "precioPlan", l.ecf_precio_usd::float AS "precioEspecial",
               (SELECT emitidos FROM portal_ecf_uso u WHERE u.licencia_id = l.id AND u.mes = $1) AS actual,
               (SELECT emitidos FROM portal_ecf_uso u WHERE u.licencia_id = l.id AND u.mes = $2) AS previo,
-              (SELECT MAX(actualizado_en) FROM portal_ecf_uso u WHERE u.licencia_id = l.id) AS ultimo
+              (SELECT MAX(actualizado_en) FROM portal_ecf_uso u WHERE u.licencia_id = l.id) AS ultimo,
+              l.ecf_conexion AS conexion, l.ecf_conexion_en AS "conexionEn", p.codigo AS "planCodigo"
          FROM portal_clientes c JOIN portal_licencias l ON l.cliente_id = c.id LEFT JOIN portal_ecf_planes p ON p.id = l.ecf_plan_id
         WHERE c.activo ORDER BY c.nombre`, [mes, anterior])).rows;
     const clientes = filas.map((f) => {
@@ -826,7 +838,7 @@ export async function rutasPortal(app: FastifyInstance) {
         precioEspecial: f.precioEspecial, precioUsd: precio, costoUsd: costo, margenUsd: Math.round((precio - costo) * 100) / 100,
         actual, anterior: previo, pct: f.maxMes ? Math.round((actual / f.maxMes) * 100) : null, estado,
         dosMesesExcedido: !!sugerir, sugerido: siguiente ? { id: siguiente.id, nombre: siguiente.nombre } : null,
-        ultimoReporte: f.ultimo,
+        ultimoReporte: f.ultimo, conexion: f.conexion, conexionEn: f.conexionEn, esMseller: /^ms-/.test(f.planCodigo ?? "") || f.conexion?.proveedor === "mseller",
       };
     });
     const activos = clientes.filter((x) => x.planId);
