@@ -8,7 +8,7 @@ import { imprimir } from "./imprimir";
  * La estación lo ve en su pantalla (cola con «Listo») y/o sale impreso (en la caja que envía, o en la pantalla de la estación).
  */
 export interface Comanda {
-  id: string; numero: string; estacion?: string; cuenta: string; mesa: string | null; creadaEn: string;
+  id: string; numero: string; estacion?: string; estacionId?: string; cuenta: string; mesa: string | null; creadaEn: string;
   estado?: string; impresaEn?: string | null; listaEn?: string | null;
   /** tiempo de servicio (1 sale ya, 2 fuertes, 3 postres), segundos desde que se pidió y minutos para marcarla atrasada (los da el servidor) */
   paso?: number; segundos?: number; alertaMinutos?: number;
@@ -30,7 +30,7 @@ export function ComandaPapel({ comanda, onListo }: { comanda: Comanda; onListo: 
     const t = window.setTimeout(() => {
       if (hecho.current) return;
       hecho.current = true;
-      imprimir();
+      imprimir(comanda.estacionId);
       window.setTimeout(onListo, 600);
     }, 200);
     return () => window.clearTimeout(t);

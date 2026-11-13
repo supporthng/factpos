@@ -130,7 +130,7 @@ export async function rutasComandas(app: FastifyInstance) {
     const ctx = await preparar(req);
     const f = z.object({ estacionId: uuid }).parse(req.query);
     const r = await pool.query(
-      `SELECT c.id, c.numero::text, c.estado, c.creada_en AS "creadaEn", c.impresa_en AS "impresaEn", c.lista_en AS "listaEn", c.paso,
+      `SELECT c.id, c.estacion_id AS "estacionId", c.numero::text, c.estado, c.creada_en AS "creadaEn", c.impresa_en AS "impresaEn", c.lista_en AS "listaEn", c.paso,
               -- el reloj lo da el servidor: así el atraso no depende de la hora de cada pantalla
               floor(EXTRACT(EPOCH FROM (COALESCE(c.lista_en, now()) - c.creada_en)))::int AS "segundos",
               (SELECT e.alerta_minutos FROM estaciones e WHERE e.id = c.estacion_id) AS "alertaMinutos",

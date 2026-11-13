@@ -626,8 +626,14 @@ function openCustomer() {
 // Qué impresora usa esta terminal y qué pasó en los últimos intentos (para revisar errores como «el papel sale largo» desde Configuración).
 const IMP_CFG = path.join(app.getPath('userData'), 'impresion.json');
 const IMP_LOG = path.join(app.getPath('userData'), 'impresion.log');
-let impCfg = { impresora: '', ancho: 80 };
-try { const c = JSON.parse(fs.readFileSync(IMP_CFG, 'utf8')); if (c && typeof c === 'object') impCfg = { impresora: String(c.impresora || ''), ancho: c.ancho === 58 ? 58 : 80 }; } catch {}
+// estaciones: impresora propia de cada estación de comandas (cocina, barra…), por id de estación; las demás salen por `impresora`
+function limpiarEstaciones(e) {
+  const o = {};
+  if (e && typeof e === 'object') for (const k of Object.keys(e).slice(0, 40)) { if (/^[0-9a-f-]{8,40}$/i.test(k) && typeof e[k] === 'string' && e[k]) o[k] = e[k].slice(0, 200); }
+  return o;
+}
+let impCfg = { impresora: '', ancho: 80, estaciones: {} };
+try { const c = JSON.parse(fs.readFileSync(IMP_CFG, 'utf8')); if (c && typeof c === 'object') impCfg = { impresora: String(c.impresora || ''), ancho: c.ancho === 58 ? 58 : 80, estaciones: limpiarEstaciones(c.estaciones) }; } catch {}
 const registroImp = [];
 function anotarImpresion(r) {
   const fila = { en: new Date().toISOString(), impresora: impCfg.impresora || '(predeterminada)', ancho: impCfg.ancho, ...r };
@@ -642,16 +648,17 @@ async function midoTicket(wc) {
     return mm > 20 && mm < 2000 ? mm : 0;
   } catch { return 0; }
 }
-function opcionesImp(mm) {
+function opcionesImp(mm, impresora) {
   const o = { silent: true, printBackground: false, margins: { marginType: 'none' } };
-  if (impCfg.impresora) o.deviceName = impCfg.impresora;
+  const destino = impresora === undefined ? impCfg.impresora : impresora;
+  if (destino) o.deviceName = destino;
   if (mm) o.pageSize = { width: impCfg.ancho * 1000, height: (mm + 8) * 1000 };   // micras: el largo exacto del ticket
   return o;
 }
 // Imprime el contenido de una ventana con la impresora elegida; resuelve { ok, motivo }.
-function imprimirVentana(wc, mm) {
+function imprimirVentana(wc, mm, impresora) {
   return new Promise(resolve => {
-    try { wc.print(opcionesImp(mm), (ok, motivo) => resolve({ ok: !!ok, motivo: ok ? '' : String(motivo || 'no se pudo imprimir') })); }
+    try { wc.print(opcionesImp(mm, impresora), (ok, motivo) => resolve({ ok: !!ok, motivo: ok ? '' : String(motivo || 'no se pudo imprimir') })); }
     catch (e) { resolve({ ok: false, motivo: String(e && e.message || e) }); }
   });
 }
@@ -661,24 +668,25 @@ function registrarImpresionIpc() {
     if (!deLaCaja(e)) return null;
     let lista = [];
     try { lista = (await mainWindow.webContents.getPrintersAsync()).map(p => ({ nombre: p.name, mostrar: p.displayName || p.name, descripcion: p.description || '', predeterminada: !!p.isDefault, estado: p.status })); } catch {}
-    return { impresoras: lista, impresora: impCfg.impresora, ancho: impCfg.ancho, registro: registroImp };
+    return { impresoras: lista, impresora: impCfg.impresora, ancho: impCfg.ancho, estaciones: impCfg.estaciones, registro: registroImp };
   });
   ipcMain.handle('factpos:impresion-guardar', async (e, c) => {
     if (!deLaCaja(e) || !c) return false;
-    impCfg = { impresora: typeof c.impresora === 'string' ? c.impresora.slice(0, 200) : '', ancho: c.ancho === 58 ? 58 : 80 };
+    impCfg = { impresora: typeof c.impresora === 'string' ? c.impresora.slice(0, 200) : '', ancho: c.ancho === 58 ? 58 : 80, estaciones: limpiarEstaciones(c.estaciones) };
     try { fs.writeFileSync(IMP_CFG, JSON.stringify(impCfg)); } catch {}
     return true;
   });
-  ipcMain.handle('factpos:impresion-prueba', async e => {
+  ipcMain.handle('factpos:impresion-prueba', async (e, elegida) => {
     if (!deLaCaja(e)) return { ok: false, motivo: 'no permitido' };
+    const destino = typeof elegida === 'string' && elegida ? elegida.slice(0, 200) : impCfg.impresora;
     const w = new BrowserWindow({ show: false, width: 400, height: 600, webPreferences: { sandbox: true } });
     try {
-      const lineas = ['FactPOS · Prueba de impresión', new Date().toLocaleString('es-DO'), 'Impresora: ' + (impCfg.impresora || '(predeterminada)'), 'Papel: ' + impCfg.ancho + ' mm', '------------------------------', 'Si ve este texto completo y el papel', 'se corta justo debajo de la última línea,', 'la impresión está bien configurada.', '------------------------------', 'Fin de la prueba'];
+      const lineas = ['FactPOS · Prueba de impresión', new Date().toLocaleString('es-DO'), 'Impresora: ' + (destino || '(predeterminada)'), 'Papel: ' + impCfg.ancho + ' mm', '------------------------------', 'Si ve este texto completo y el papel', 'se corta justo debajo de la última línea,', 'la impresión está bien configurada.', '------------------------------', 'Fin de la prueba'];
       const html = `<!doctype html><meta charset="utf-8"><body style="margin:0"><div id="ticket" style="width:${impCfg.ancho - 8}mm;padding:2mm 4mm;font:12px Consolas,monospace">${lineas.map(l => `<div>${l.replace(/[<&]/g, '')}</div>`).join('')}</div>`;
       await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
       const mm = await midoTicket(w.webContents);
-      const r = await imprimirVentana(w.webContents, mm);
-      anotarImpresion({ origen: 'prueba', mm, ...r });
+      const r = await imprimirVentana(w.webContents, mm, destino);
+      anotarImpresion({ origen: 'prueba', mm, impresora: destino || '(predeterminada)', ...r });
       return { ...r, mm };
     } catch (x) { const r = { ok: false, motivo: String(x && x.message || x) }; anotarImpresion({ origen: 'prueba', mm: 0, ...r }); return r; }
     finally { try { w.destroy(); } catch {} }
@@ -700,11 +708,20 @@ function openMain(onShown) {
       // Se pide una página del largo exacto del ticket: el controlador suele traer un largo de papel fijo y sale papel en blanco de sobra.
       (async () => {
         let css = null;
+        // Una comanda trae el id de su estación: si esta terminal le asignó una impresora, sale por ella; si no, por la de la caja
+        const propia = typeof modo === 'string' && modo ? (impCfg.estaciones[modo] || '') : '';
+        const destino = propia || impCfg.impresora;
+        const origen = typeof modo === 'string' && modo ? 'comanda' : 'ticket';
         try {
           if (impCfg.ancho === 58) css = await win.webContents.insertCSS('@media print { #ticket { width: 50mm !important; } }');
           const mm = await midoTicket(win.webContents);
-          const r = await imprimirVentana(win.webContents, mm);
-          anotarImpresion({ origen: 'ticket', mm, ...r });
+          let r = await imprimirVentana(win.webContents, mm, destino);
+          anotarImpresion({ origen, mm, impresora: destino || '(predeterminada)', ...r });
+          // La impresora de la estación está apagada o no responde: la comanda sale por la de la caja en vez de perderse
+          if (!r.ok && propia && !win.isDestroyed()) {
+            r = await imprimirVentana(win.webContents, mm, impCfg.impresora);
+            anotarImpresion({ origen: 'comanda (respaldo)', mm, impresora: impCfg.impresora || '(predeterminada)', ...r });
+          }
           if (!r.ok && !win.isDestroyed()) { try { win.webContents.print({ silent: false, printBackground: false }); } catch {} }
         } catch (x) {
           anotarImpresion({ origen: 'ticket', mm: 0, ok: false, motivo: String(x && x.message || x) });
