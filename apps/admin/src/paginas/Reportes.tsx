@@ -28,11 +28,18 @@ const REPORTES: Rep[] = [
   { id: "anulaciones-cajero", titulo: "Anulaciones por cajero", grupo: "Control", fechas: true, desc: "Cuántas anulaciones hace cada cajero por día. Sirve para detectar abusos." },
   { id: "cierres-caja", titulo: "Cierres de caja", grupo: "Operación", fechas: true, desc: "Cuadre de cada turno: esperado, contado y diferencia." },
   { id: "delivery", titulo: "Delivery", grupo: "Operación", fechas: true, desc: "Pedidos a domicilio y su estado." },
+  { id: "rotacion-abc", titulo: "Rotación y clasificación ABC", grupo: "Inventario", desc: "Ventas de los últimos 90 días: A es el 80 % de la venta, B el siguiente 15 % y C el resto; con días de inventario y rotación anual." },
+  { id: "stock-muerto", titulo: "Stock muerto (sin movimiento)", grupo: "Inventario", desc: "Productos con existencia que no se venden hace más de 60 días (o nunca): el dinero parado en mercancía." },
+  { id: "margen-categoria", titulo: "Margen por categoría", grupo: "Inventario", fechas: true, desc: "Venta, costo, utilidad y margen de cada categoría en el período." },
+  { id: "margen-proveedor", titulo: "Margen por proveedor", grupo: "Inventario", fechas: true, desc: "Venta, costo, utilidad y margen según el proveedor principal de cada producto." },
+  { id: "consumo-insumos", titulo: "Consumo de insumos (recetas)", grupo: "Inventario", fechas: true, desc: "De los insumos de recetas y combos: lo gastado al vender, las mermas y el faltante o sobrante de los conteos." },
+  { id: "cartera", titulo: "Cartera por antigüedad", grupo: "Cuentas por cobrar", desc: "Lo que debe cada cliente: al día y vencido a 1-30, 31-60, 61-90 y más de 90 días, con su parte de la cartera." },
+  { id: "cobros", titulo: "Cobros a clientes", grupo: "Cuentas por cobrar", fechas: true, desc: "Abonos recibidos: día, cliente, quién cobró y forma de pago." },
   { id: "saldo-clientes", titulo: "Saldo de clientes (fiado)", grupo: "Operación", desc: "Lo que cada cliente debe en este momento." },
   { id: "historial-ventas", titulo: "Ventas del sistema anterior", grupo: "Historial anterior", fechas: true, desc: "Ventas importadas de WilPOS. Son solo de consulta: no son facturas de FactPOS." },
   { id: "historial-ventas-producto", titulo: "Productos vendidos (sistema anterior)", grupo: "Historial anterior", fechas: true, desc: "Cuánto se vendió de cada producto en el historial importado." },
 ];
-const GRUPOS = ["Ventas", "Inventario", "Control", "Operación", "Historial anterior"];
+const GRUPOS = ["Ventas", "Inventario", "Cuentas por cobrar", "Control", "Operación", "Historial anterior"];
 
 const dia = (d: Date) => d.toISOString().slice(0, 10);
 const sumar = (f: string, n: number) => dia(new Date(new Date(`${f}T12:00:00Z`).getTime() + n * 86400e3));
@@ -53,7 +60,7 @@ const RANGOS: [string, string][] = [["hoy", "Hoy"], ["ayer", "Ayer"], ["semana",
 
 // Columnas técnicas que no se muestran
 const OCULTAR = new Set(["sucursal_id", "almacen_id", "producto_id", "caja_id", "turno_id", "categoria_id", "empresa_id", "oferta_id", "cliente_id", "id"]);
-const DINERO = /venta|total|valor|monto|costo|utilidad|descuento|itbis|saldo|limite|precio|cargos|ticket|devoluciones|diferencia|efectivo|tarjeta|transferencia|credito/i;
+const DINERO = /venta|al_dia|vencido|cartera|cobrado|total|valor|monto|costo|utilidad|descuento|itbis|saldo|limite|precio|cargos|ticket|devoluciones|diferencia|efectivo|tarjeta|transferencia|credito/i;
 const SIGLAS: Record<string, string> = { itbis: "ITBIS", isc: "ISC", sku: "SKU", ncf: "NCF", rnc: "RNC", encf: "e-NCF" };
 /** "venta_total" → "Venta total"; "itbis" → "ITBIS" */
 const etiqueta = (c: string) => {

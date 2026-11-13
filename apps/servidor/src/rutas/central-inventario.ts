@@ -81,7 +81,7 @@ async function crearAjuste(
 }
 
 // Reportes disponibles: nombre → vista y filtros que admite
-const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: boolean; orden?: string }> = {
+const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: boolean; empresa?: boolean; orden?: string }> = {
   "ventas-diarias": { vista: "rpt_ventas_diarias", fecha: true, sucursal: true, orden: "fecha DESC" },
   "utilidad-productos": { vista: "rpt_utilidad_producto", fecha: true, sucursal: true, orden: "utilidad DESC" },
   // Unidades vendidas de cada producto por día o por mes (la consulta propia está en el manejador de abajo)
@@ -112,6 +112,14 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "anulaciones": { vista: "rpt_control_anulaciones", fecha: true, sucursal: true, orden: "hora DESC" },
   "anulaciones-cajero": { vista: "rpt_control_anulaciones_cajero", fecha: true, sucursal: true, orden: "fecha DESC, anulaciones DESC" },
   "cierres-caja": { vista: "rpt_cierres_caja", fecha: true, sucursal: true, orden: "cerrado_en DESC" },
+  "rotacion-abc": { vista: "rpt_rotacion_abc", sucursal: true, orden: "venta_neta_90d DESC" },
+  "stock-muerto": { vista: "rpt_stock_muerto", sucursal: true, orden: "valor DESC" },
+  // Se agrupan en el manejador de abajo (por categoría o por proveedor, y por insumo)
+  "margen-categoria": { vista: "rpt_margen_base", fecha: true, sucursal: true },
+  "margen-proveedor": { vista: "rpt_margen_base", fecha: true, sucursal: true },
+  "consumo-insumos": { vista: "rpt_consumo_insumos", fecha: true, sucursal: true },
+  "cartera": { vista: "rpt_cartera", empresa: true, orden: "cartera DESC" },
+  "cobros": { vista: "rpt_cobros", fecha: true, sucursal: true, orden: "fecha DESC, cobrado DESC" },
 };
 
 function enviarCsv(rep: FastifyReply, nombre: string, filas: Record<string, unknown>[]) {
@@ -606,6 +614,7 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         cond.push(`sucursal_id = ANY($${params.length}::uuid[])`);
       }
     }
+    if (def.empresa) { params.push(empresaDe(req)); cond.push(`empresa_id = $${params.length}`); }
     if (def.fecha && f.desde) { params.push(f.desde); cond.push(`fecha >= $${params.length}::date`); }
     if (def.fecha && f.hasta) { params.push(f.hasta); cond.push(`fecha <= $${params.length}::date`); }
 
@@ -615,6 +624,27 @@ export async function rutasCentralInventario(app: FastifyInstance) {
                 SUM(unidades) AS unidades, SUM(venta_neta) AS venta_neta
            FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
           GROUP BY sku, nombre HAVING SUM(unidades) > 0 ORDER BY 1 LIMIT 200`,
+        params,
+      );
+      return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
+    }
+    if (nombre === "margen-categoria" || nombre === "margen-proveedor") {
+      const g = nombre === "margen-categoria" ? "categoria" : "proveedor";
+      const v = await pool.query(
+        `SELECT ${g}, SUM(unidades) AS unidades, SUM(venta_neta) AS venta_neta, SUM(costo) AS costo, SUM(utilidad) AS utilidad,
+                CASE WHEN SUM(venta_neta) = 0 THEN NULL ELSE ROUND(100 * SUM(utilidad) / SUM(venta_neta), 2) END AS margen_pct
+           FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
+          GROUP BY 1 HAVING SUM(venta_neta) <> 0 ORDER BY SUM(utilidad) DESC`,
+        params,
+      );
+      return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
+    }
+    if (nombre === "consumo-insumos") {
+      const v = await pool.query(
+        `SELECT sku, nombre, unidad, SUM(consumo_teorico) AS consumo_teorico, SUM(mermas) AS mermas,
+                SUM(faltante_sobrante) AS faltante_sobrante, SUM(costo_consumo) AS costo_consumo
+           FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
+          GROUP BY sku, nombre, unidad ORDER BY SUM(costo_consumo) DESC, nombre LIMIT 5000`,
         params,
       );
       return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
