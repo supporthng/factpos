@@ -5,6 +5,7 @@ import { soloEnLaNube } from "./solo-en-la-nube.js";
 import { rutasActualizacion } from "./actualizacion.js";
 import { permitidoPorTunel, tunelActivo, vieneDelTunel } from "./tunel.js";
 import { rutasCentralCorreo } from "./rutas/central-correo.js";
+import { rutasRecuperarClave } from "./rutas/recuperar-clave.js";
 import { rutasCentralAlta } from "./rutas/central-alta.js";
 import { rutasPortal } from "./licencia/portal.js";
 import { rutasPortalRespaldo } from "./respaldo/portal.js";
@@ -143,7 +144,7 @@ export async function crearApp() {
       // Se hace en la nube: el servidor la reenvía solo (después de revisar la sesión y los permisos de aquí)
       const reenviar = config.modo === "sucursal" && syncActiva() && metodo !== "GET" && metodo !== "HEAD" && soloEnLaNube(metodo, ruta);
       if (reenviar && ruta.startsWith("/central/alta/")) return rep.code(409).send({ error: "El alta de equipos se hace en la Administración en la nube." });
-      if (ruta === "/central/entrar" || ruta === "/central/sync/subir" || ruta === "/central/sync/admin" || ruta === "/central/sync/equipo" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
+      if (ruta === "/central/entrar" || ruta === "/central/recuperar/solicitar" || ruta === "/central/recuperar/confirmar" || ruta === "/central/sync/subir" || ruta === "/central/sync/admin" || ruta === "/central/sync/equipo" || ruta === "/central/sync/cambios" || ruta === "/central/sync/certificado" || ruta === "/central/vigilancia"
         || ruta === "/central/dispositivo/solicitar" || ruta === "/central/dispositivo/estado" || ruta === "/central/alta/solicitar" || ruta === "/central/alta/estado" || ruta === "/central/alta/canjear" || ruta === "/central/alta/verificar" || ruta === "/central/inicio") return;
       const s = leerSesionAdmin(req);
       if (!s) return rep.code(401).send({ error: "Inicie sesión en la administración", sesion: true });
@@ -300,6 +301,7 @@ export async function crearApp() {
     await app.register(rutasCentralEmpresas);
     await app.register(rutasCentralIncidentes);
     await app.register(rutasCentralCorreo);
+    await app.register(rutasRecuperarClave);
     if (config.modo === "central") await app.register(rutasCentralAlta);
     if (config.modo === "central") await app.register(rutasDgiiPublico);
     // La licencia se activa en la nube; una tienda que trabaja sola la activa aquí mismo

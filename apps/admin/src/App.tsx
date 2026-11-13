@@ -18,6 +18,7 @@ const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.C
 import { FranjaEmpresa, SelectorEmpresa } from "./paginas/Empresas";
 import { AgregarAInicio } from "./AgregarAInicio";
 import { TarjetaAgregar } from "./TarjetaAgregar";
+import { RecuperarClave } from "./RecuperarClave";
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { InicioPortal } from "./paginas/InicioPortal";
 import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
@@ -529,6 +530,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
   const [codigo, setCodigo] = useState("");
   const [msg, setMsg] = useState(error);
   const [entrando, setEntrando] = useState(false);
+  const [recuperando, setRecuperando] = useState(false);
   // Nube recién instalada (base vacía): se configura la empresa y el primer usuario
   const [inicio, setInicio] = useState<{ necesitaConfigurar: boolean; pideClave: boolean } | null>(null);
   useEffect(() => {
@@ -577,6 +579,7 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
         </ul>
       </aside>
       <main className="entrar-forma">
+        {recuperando ? <RecuperarClave servidor={servidor} usuarioInicial={usuario} onVolver={(m) => { setRecuperando(false); if (m) setMsg(m); }} /> : (
         <form className="tarjeta-entrar" onSubmit={entrar}>
           <span className="entrar-movil"><SimboloFactPOS tamano={56} fondo /></span>
           <div className="entrar-titulo">
@@ -594,11 +597,13 @@ function Entrar({ error, onListo }: { error: string; onListo: (s: Sesion) => voi
           {pedirCodigo && <label className="campo"><span>Código de verificación</span><input autoFocus value={codigo} onChange={(e) => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" /></label>}
           {verServidor && <label className="campo"><span>Dirección de la central</span><input value={servidor} onChange={(e) => setServidor(e.target.value)} /></label>}
           <button className="boton primario ancho" disabled={!usuario || !clave || entrando || (pedirCodigo && !codigo)}>{entrando ? "Entrando…" : "Entrar"}</button>
-          {msg && <p className="error">{msg}</p>}
+          {msg && <p className={/^Listo/.test(msg) ? "suave" : "error"}>{msg}</p>}
+          <button type="button" className="enlace pequeno" onClick={() => { setMsg(""); setRecuperando(true); }}>¿Olvidó su contraseña?</button>
           <AgregarAInicio />
           {!verServidor && !CONFIG.modo && <button type="button" className="enlace pequeno" onClick={() => setVerServidor(true)}>Otra central…</button>}
           <p className="entrar-pie">{seguro ? "Conexión cifrada" : "Conexión sin cifrar"} · {host}</p>
         </form>
+        )}
       </main>
     </div>
   );
