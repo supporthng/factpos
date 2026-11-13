@@ -49,3 +49,18 @@ export function leerRespuestaGemini(d: unknown): Record<string, unknown> {
   if (!f.items.every((i) => i && typeof i === "object" && typeof (i as { descripcion?: unknown }).descripcion === "string")) throw new Error("Gemini devolvió productos sin descripción");
   return { ...f, columnas: Array.isArray(f.columnas) ? f.columnas : [], preciosIncluyenItbis: f.preciosIncluyenItbis === true };
 }
+
+/**
+ * Modelos Gemini «flash» que Google ofrece hoy (de la lista que devuelve su API), para usarlos cuando el configurado está saturado.
+ * Solo nombres estables (sin «preview», «image», «tts»…), los más nuevos primero y «flash» antes que «flash-lite».
+ */
+export function elegirAlternos(lista: { name?: string; supportedGenerationMethods?: string[] }[], excluir: string[], max = 3): string[] {
+  const vistos = new Set(excluir);
+  return lista
+    .map((m) => ({ nombre: (m.name ?? "").replace(/^models\//, ""), ok: (m.supportedGenerationMethods ?? []).includes("generateContent") }))
+    .filter((m) => m.ok && /^gemini-\d+(\.\d+)?-flash(-lite)?$/.test(m.nombre) && !vistos.has(m.nombre))
+    .map((m) => ({ ...m, version: parseFloat(m.nombre.split("-")[1]), lite: m.nombre.endsWith("-lite") }))
+    .sort((a, b) => b.version - a.version || Number(a.lite) - Number(b.lite))
+    .slice(0, max)
+    .map((m) => m.nombre);
+}

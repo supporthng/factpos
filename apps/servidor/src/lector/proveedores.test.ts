@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cuerpoGemini, leerRespuestaGemini, modelosGratis, ordenProveedores } from "./proveedores.js";
+import { cuerpoGemini, elegirAlternos, leerRespuestaGemini, modelosGratis, ordenProveedores } from "./proveedores.js";
 
 describe("orden de proveedores del lector", () => {
   const g = { GEMINI_API_KEY: "g" }, a = { ANTHROPIC_API_KEY: "a" };
@@ -59,5 +59,26 @@ describe("modelos gratuitos", () => {
     expect(modelosGratis({})).toEqual(["gemini-3.8-flash"]);
     expect(modelosGratis({ LECTOR_MODELO_GRATIS_RESPALDO: "otro" })).toEqual(["gemini-3.8-flash", "otro"]);
     expect(modelosGratis({ LECTOR_MODELO_GRATIS: "x", LECTOR_MODELO_GRATIS_RESPALDO: "x" })).toEqual(["x"]);
+  });
+});
+
+describe("modelos alternos de Gemini", () => {
+  const g = ["generateContent"];
+  const lista = [
+    { name: "models/gemini-3.8-flash", supportedGenerationMethods: g },
+    { name: "models/gemini-3.8-flash-lite", supportedGenerationMethods: g },
+    { name: "models/gemini-3.5-flash", supportedGenerationMethods: g },
+    { name: "models/gemini-2.5-flash", supportedGenerationMethods: g },
+    { name: "models/gemini-3.8-flash-image", supportedGenerationMethods: g },
+    { name: "models/gemini-3.9-flash-preview", supportedGenerationMethods: g },
+    { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] },
+    { name: "models/gemini-3.0-flash", supportedGenerationMethods: ["countTokens"] },
+  ];
+  it("excluye el ya probado, los no estables y los que no generan; los más nuevos primero", () => {
+    expect(elegirAlternos(lista, ["gemini-3.8-flash"])).toEqual(["gemini-3.8-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]);
+  });
+  it("respeta el máximo y una lista vacía", () => {
+    expect(elegirAlternos(lista, [], 1)).toEqual(["gemini-3.8-flash"]);
+    expect(elegirAlternos([], [])).toEqual([]);
   });
 });
