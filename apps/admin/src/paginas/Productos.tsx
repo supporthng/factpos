@@ -24,7 +24,7 @@ interface Ficha {
   presentaciones: Presentacion[];
   sucursales: { sucursalId: string; sucursal?: string; existencia?: string; stockMinimo: string; stockMaximo: string | null; ubicacion: string | null; activo: boolean }[];
   proveedores: { proveedorId: string; nombre?: string; codigoProveedor: string | null; ultimoCosto: string | null; principal: boolean }[];
-  componentes: { productoId: string; nombre?: string; sku?: string; cantidad: string }[];
+  componentes: { productoId: string; nombre?: string; sku?: string; cantidad: string; unidad?: string; costo?: string }[];
   historialPrecios?: { fecha: string; presentacion: string; nivel: number; anterior: string | null; nuevo: string | null; usuario: string | null }[];
 }
 interface Auxiliares {
@@ -290,7 +290,7 @@ function Editor({ id, borrador, pestanaInicial, aux, recargarAux, onCerrar, onAb
             {pestanas.map((p) => <button key={p.id} className={pestana === p.id ? "activa" : ""} onClick={() => setPestana(p.id)}>{p.t}</button>)}
           </div>
           {pestana === "principal" && <Principal f={f} cambiar={cambiar} nuevo={!id} id={id} setMsg={setMsg} tasa={tasa} />}
-          {pestana === "principal" && f.tipo === "COMBO" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} />}
+          {pestana === "principal" && f.tipo === "COMBO" && <ComboFicha f={f} cambiar={cambiar} productos={productos} id={id} tasa={tasa} />}
           {pestana === "general" && <General f={f} cambiar={cambiar} id={id} aux={aux} recargarAux={recargarAux} setMsg={setMsg} />}
           {pestana === "precios" && <PreciosFicha f={f} cambiar={cambiar} tasa={tasa} costo={costoUnidad} aux={aux} />}
           {pestana === "inventario" && <InventarioFicha f={f} cambiar={cambiar} id={id} tipo={f.tipo} alAgregar={refrescarExistencia} />}
@@ -889,37 +889,50 @@ function ProveedoresFicha({ f, cambiar, aux, recargarAux }: { f: Ficha; cambiar:
 }
 
 /* ---------- Combo ---------- */
-function ComboFicha({ f, cambiar, productos, id }: { f: Ficha; cambiar: (p: Partial<Ficha>) => void; productos: { id: string; nombre: string; sku: string }[]; id: string | null }) {
+function ComboFicha({ f, cambiar, productos, id, tasa }: { f: Ficha; cambiar: (p: Partial<Ficha>) => void; productos: { id: string; nombre: string; sku: string }[]; id: string | null; tasa: number }) {
   const [elegido, setElegido] = useState("");
-  const agregar = (pid: string) => {
+  const agregar = async (pid: string) => {
     const p = productos.find((x) => x.id === pid);
     if (!p || pid === id || f.componentes.some((c) => c.productoId === pid)) return;
-    const componentes = [...f.componentes, { productoId: pid, nombre: p.nombre, sku: p.sku, cantidad: "1" }];
+    // Trae su costo y su unidad para mostrar el costo de la receta
+    const d = await api<{ costoReferencia?: string | number; unidadBase?: string }>(`/central/productos/${pid}`).catch(() => null);
+    const componentes = [...f.componentes, { productoId: pid, nombre: p.nombre, sku: p.sku, cantidad: "1", unidad: d?.unidadBase, costo: d?.costoReferencia != null ? String(d.costoReferencia) : undefined }];
     // El nombre del combo se arma solo con sus componentes mientras no se haya escrito uno propio
     const auto = (l: typeof componentes) => l.map((c) => c.nombre).join(" + ").slice(0, 120);
     const sugerido = !f.nombre.trim() || f.nombre === auto(f.componentes);
     cambiar(sugerido ? { componentes, nombre: auto(componentes) } : { componentes });
     setElegido("");
   };
+  const costoTotal = f.componentes.reduce((a, c) => a + n(c.cantidad) * n(c.costo), 0);
+  const precio1 = n(f.precios["1"]);
+  const mg = precio1 > 0 ? margen(precio1, costoTotal, tasa, f.precioIncluyeItbis) : null;
   return (
     <div className="panel">
-      <div className="encabezado-sub"><h3>Componentes del combo</h3></div>
+      <div className="encabezado-sub"><h3>Componentes del combo / receta</h3></div>
       <p className="suave pequeno">Al vender el combo se descuenta del inventario cada componente. La existencia del combo es lo que alcanza con sus componentes, y su costo es la suma de ellos.</p>
       <div style={{ maxWidth: 420, marginBottom: 12 }}><SelectorProducto valor={elegido} onCambio={agregar} placeholder="Agregar producto al combo…" /></div>
       {f.componentes.length ? (
         <table className="tabla tabla-edicion">
-          <thead><tr><th>Producto</th><th className="der">Cantidad</th><th /></tr></thead>
+          <thead><tr><th>Producto</th><th className="der">Cantidad</th><th className="der">Costo</th><th /></tr></thead>
           <tbody>
             {f.componentes.map((c, i) => (
               <tr key={c.productoId}>
-                <td><b>{c.nombre}</b> <span className="suave">{c.sku}</span></td>
+                <td><b>{c.nombre}</b> <span className="suave">{c.sku}{c.unidad ? ` · en ${c.unidad}` : ""}</span></td>
                 <td className="der" style={{ width: 120 }}><input className="numero" inputMode="decimal" value={c.cantidad} onChange={(e) => cambiar({ componentes: f.componentes.map((x, j) => (j === i ? { ...x, cantidad: e.target.value.replace(/[^\d.]/g, "") } : x)) })} /></td>
+                <td className="der suave">{n(c.costo) > 0 ? (n(c.cantidad) * n(c.costo)).toFixed(2) : "—"}</td>
                 <td><button className="boton fantasma" onClick={() => cambiar({ componentes: f.componentes.filter((_, j) => j !== i) })} aria-label="Quitar">✕</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : <p className="texto-alerta pequeno">Agregue al menos un componente.</p>}
+      {f.componentes.length > 0 && (
+        <p className="pequeno" style={{ marginTop: 10 }}>
+          <b>Costo de la receta: RD$ {costoTotal.toFixed(2)}</b>
+          {mg != null && <> · Margen con el precio 1: <b>{mg.toFixed(1)}%</b></>}
+        </p>
+      )}
+      <p className="suave pequeno">Licores por onza: cree el licor con unidad base «oz» y la botella como presentación (una de 750 ml ≈ 25 oz). Luego ponga aquí 1.5 (oz) por trago y cada venta descuenta de la botella.</p>
     </div>
   );
 }

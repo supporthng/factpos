@@ -303,7 +303,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
         [id],
       ),
       pool.query(
-        `SELECT pc.componente_id AS "productoId", p.nombre, p.sku, pc.cantidad::text AS cantidad
+        `SELECT pc.componente_id AS "productoId", p.nombre, p.sku, pc.cantidad::text AS cantidad, p.unidad_base AS unidad, p.costo_promedio::text AS costo
            FROM producto_componentes pc JOIN productos p ON p.id = pc.componente_id WHERE pc.combo_id = $1 ORDER BY p.nombre`,
         [id],
       ),
