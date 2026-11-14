@@ -38,6 +38,7 @@ export function Inventario() {
       </div>
       <Aviso texto={error} />
       <Tabla
+        tarjetas
         filas={datos ?? []}
         clave={(f) => f.productoId}
         columnas={[
