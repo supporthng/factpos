@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { normalizarAlias } from "../rutas/central-compras.js";
+import { esUnidadSuelta } from "./unidad.js";
 import { llamarPortal } from "../licencia/cliente.js";
 import { credencialesPortal } from "../respaldo/respaldo.js";
 
@@ -162,7 +163,8 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       const emp = unidadesPorEmpaque(i);
       let unidades = i.cantidad;
       const ut = Number(i.unidadesTotales);
-      if (ut > 0 && (Math.abs(ut - i.cantidad) < 1e-6 || (emp && Math.abs(ut - i.cantidad * emp) < 1e-6))) unidades = ut;
+      if (esUnidadSuelta(i.unidad)) unidades = i.cantidad; // «12 UND»: ya son unidades; el «X30X1» del nombre es solo lo que trae la caja
+      else if (ut > 0 && (Math.abs(ut - i.cantidad) < 1e-6 || (emp && Math.abs(ut - i.cantidad * emp) < 1e-6))) unidades = ut;
       else if (emp && esEmpaque(i.unidad)) unidades = i.cantidad * emp;
       const porEmpaque = unidades > i.cantidad + 1e-6 ? unidades / i.cantidad : 1; // unidades que trae cada empaque cobrado
       const costoUnidad = unidades > 0 ? neto / unidades : 0;
