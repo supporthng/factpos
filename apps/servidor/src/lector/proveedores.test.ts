@@ -94,12 +94,14 @@ describe("Groq como segundo lector gratuito", () => {
   it("la petición lleva la imagen en base64 y pide JSON", () => {
     const c = cuerpoGroq({ modelo: "m", tipo: "image/jpeg", datos: "AAA", instrucciones: "reglas", esquema: { type: "object" } });
     expect(c.model).toBe("m");
-    expect(c.response_format).toEqual({ type: "json_object" });
+    expect("response_format" in c).toBe(false);
     expect(JSON.stringify(c.messages[1])).toContain("data:image/jpeg;base64,AAA");
   });
   it("lee el JSON aunque venga con <think> y rechaza lo vacío", () => {
     const ok = { choices: [{ message: { content: '<think>hmm</think>{"items":[{"descripcion":"A"}]}' }, finish_reason: "stop" }] };
     expect((leerRespuestaGroq(ok).items as unknown[]).length).toBe(1);
     expect(() => leerRespuestaGroq({ choices: [{ message: { content: "" } }] })).toThrow(/Groq/);
+    const conTexto = { choices: [{ message: { content: 'Aquí está:\n```json\n{"items":[{"descripcion":"B"}]}\n```\nListo.' } }] };
+    expect((leerRespuestaGroq(conTexto).items as unknown[]).length).toBe(1);
   });
 });
