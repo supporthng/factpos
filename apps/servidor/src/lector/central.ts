@@ -5,7 +5,7 @@ import { z } from "zod";
 import { pool } from "../db.js";
 import { normalizarAlias } from "../rutas/central-compras.js";
 import { compararTamano, sinTamano, tamanoDe } from "./tamano.js";
-import { esUnidadSuelta } from "./unidad.js";
+import { cantidadSegunPrecio, esUnidadSuelta } from "./unidad.js";
 import { llamarPortal } from "../licencia/cliente.js";
 import { credencialesPortal } from "../respaldo/respaldo.js";
 
@@ -149,7 +149,11 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
 
     const tasa = f.itbis && f.subtotal && f.subtotal > 0 ? Math.min(0.18, Math.max(0, f.itbis / f.subtotal)) : 0.18;
     let sumaNeto = 0;
-    const items = f.items.map((i) => {
+    const items = f.items.map((i0) => {
+      // Si la IA leyó mal la cantidad («2» en vez de «15»), el precio impreso la corrige: importe sin ITBIS ÷ precio
+      const neto0 = i0.netoSinItbis && i0.netoSinItbis > 0 ? i0.netoSinItbis : i0.itbisLinea && i0.itbisLinea > 0 ? i0.itbisLinea / tasa : !f.preciosIncluyenItbis && i0.importe && i0.importe > 0 ? i0.importe : null;
+      const qCorr = esUnidadSuelta(i0.unidad) ? cantidadSegunPrecio(i0.cantidad, i0.precioUnitario, neto0, i0.descuento, i0.impuestoSelectivo) : null;
+      const i = qCorr ? { ...i0, cantidad: qCorr } : i0;
       const cod = (i.codigo ?? "").trim();
       const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod) ?? porAlias.get(normalizarAlias(nombreLimpio(i.nombre || i.descripcion, cod))) ?? porAlias.get(normalizarAlias(nombreLimpio(i.descripcion, cod))) ?? porAlias.get(normalizarAlias(i.descripcion)); // por el nombre limpio (el que se guarda) y, si no, por el original
       let elegido = exacto ? porId.get(exacto) : undefined;
@@ -185,6 +189,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       let costo = i.cantidad > 0 ? neto / i.cantidad : 0; // sin empaque: por lo cobrado (ya con descuento e impuesto selectivo)
       let porUnidad = false;
       const partes: string[] = [];
+      if (qCorr) partes.push(`cantidad ${qCorr} (la leída era ${i0.cantidad}; importe ÷ precio ${i0.precioUnitario})`);
       if (porEmpaque > 1) partes.push(`${i.cantidad} × empaque de ${Math.round(porEmpaque * 100) / 100} (${i.unidad ?? ""}) = ${unidades} unidades`.replace(" ()", ""));
       if (i.descuento && i.descuento > 0) partes.push(`descuento −${i.descuento}`);
       if (i.impuestoSelectivo && i.impuestoSelectivo > 0) partes.push(`incluye selectivo +${i.impuestoSelectivo}`);
