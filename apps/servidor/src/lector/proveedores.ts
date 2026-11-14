@@ -83,9 +83,32 @@ export function cuerpoGroq(args: { modelo: string; tipo: string; datos: string; 
   };
 }
 
-/** Del texto que devolvió el modelo, se queda con el objeto JSON: quita <think>, bloques de código y cualquier texto alrededor */
+/** Cierre del objeto que abre en `desde` (respeta comillas y escapes); -1 si no cierra */
+function cierreObjeto(t: string, desde: number): number {
+  let nivel = 0, dentro = false;
+  for (let i = desde; i < t.length; i++) {
+    const c = t[i];
+    if (dentro) { if (c === "\\") i++; else if (c === '"') dentro = false; continue; }
+    if (c === '"') dentro = true;
+    else if (c === "{") nivel++;
+    else if (c === "}" && --nivel === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * Del texto que devolvió el modelo, se queda con el objeto JSON de la factura: quita <think>, bloques de código y texto alrededor,
+ * y tolera comas sobrantes. Entre varios objetos posibles elige el primero que tenga «items».
+ */
 export function extraerJson(texto: string): string {
   const t = texto.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<think>[\s\S]*$/i, "").trim();
+  let n = 0;
+  for (let i = t.indexOf("{"); i >= 0 && n < 8; i = t.indexOf("{", i + 1), n++) {
+    const f = cierreObjeto(t, i);
+    if (f < 0) continue;
+    const cand = t.slice(i, f + 1).replace(/,(\s*[}\]])/g, "$1");
+    try { const o = JSON.parse(cand) as { items?: unknown }; if (Array.isArray(o.items)) return cand; } catch { /* siguiente */ }
+  }
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
   return a >= 0 && b > a ? t.slice(a, b + 1) : t;
 }
@@ -96,5 +119,9 @@ export function leerRespuestaGroq(d: unknown): Record<string, unknown> {
   const texto = extraerJson(r.choices?.[0]?.message?.content ?? "");
   const adaptado = { candidates: [{ content: { parts: [{ text: texto }] }, finishReason: r.choices?.[0]?.finish_reason === "length" ? "MAX_TOKENS" : "STOP" }] };
   try { return leerRespuestaGemini(adaptado); }
-  catch (e) { throw new Error((e as Error).message.replace(/Gemini/g, "Groq")); }
+  catch (e) {
+    const m = (e as Error).message.replace(/Gemini/g, "Groq");
+    // Para poder diagnosticar: se muestra el inicio de lo que respondió cuando no era JSON
+    throw new Error(/no es JSON/.test(m) ? `${m} («${texto.replace(/\s+/g, " ").slice(0, 70)}…», ${texto.length} caracteres)` : m);
+  }
 }
