@@ -190,7 +190,9 @@ export async function rutasPortalLector(app: FastifyInstance) {
               signal: AbortSignal.timeout(25_000),
             }).catch((e) => { ultimo = `${MODELO_GROQ()}: ${(e as Error).message}`; return null; });
             if (!r) continue;
-            const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
+            const d = (await r.json().catch(() => ({}))) as { error?: { message?: string; failed_generation?: string } };
+            // Si Groq no logra armar el JSON, devuelve lo que generó: se intenta leer de ahí
+            if (r.status === 400 && d.error?.failed_generation) { try { return leerRespuestaGroq({ choices: [{ message: { content: d.error.failed_generation } }] }); } catch { /* se informa abajo */ } }
             if (r.status === 429 || r.status >= 500) { ultimo = r.status === 429 ? "Groq: se agotó el límite de lecturas gratuitas por ahora" : (d.error?.message ?? `Groq: HTTP ${r.status}`); continue; }
             if (!r.ok) throw new Error(`Groq: ${d.error?.message ?? `HTTP ${r.status}`}`);
             return leerRespuestaGroq(d);

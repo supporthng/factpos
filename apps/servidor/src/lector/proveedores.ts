@@ -70,13 +70,12 @@ export function elegirAlternos(lista: { name?: string; supportedGenerationMethod
 
 export const MODELO_GROQ = (env: { LECTOR_MODELO_GROQ?: string } = process.env) => env.LECTOR_MODELO_GROQ || "qwen/qwen3.8-27b";
 
-/** Petición a Groq (formato compatible con OpenAI): la imagen va en base64 y se pide la respuesta como JSON */
+/** Petición a Groq (formato compatible con OpenAI): la imagen va en base64. No se usa su «modo JSON»: rechaza respuestas que no sean JSON perfecto; se extrae el JSON del texto */
 export function cuerpoGroq(args: { modelo: string; tipo: string; datos: string; instrucciones: string; esquema: unknown }) {
   return {
     model: args.modelo,
     temperature: 0,
     max_tokens: 8192,
-    response_format: { type: "json_object" },
     messages: [
       { role: "system", content: `${args.instrucciones}\nResponde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` },
       { role: "user", content: [{ type: "image_url", image_url: { url: `data:${args.tipo};base64,${args.datos}` } }, { type: "text", text: "Lea esta factura de compra." }] },
@@ -84,10 +83,17 @@ export function cuerpoGroq(args: { modelo: string; tipo: string; datos: string; 
   };
 }
 
-/** Saca el JSON de la respuesta de Groq (quita un posible bloque <think>) y aplica las mismas comprobaciones que con Gemini */
+/** Del texto que devolvió el modelo, se queda con el objeto JSON: quita <think>, bloques de código y cualquier texto alrededor */
+export function extraerJson(texto: string): string {
+  const t = texto.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<think>[\s\S]*$/i, "").trim();
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  return a >= 0 && b > a ? t.slice(a, b + 1) : t;
+}
+
+/** Saca el JSON de la respuesta de Groq y aplica las mismas comprobaciones que con Gemini */
 export function leerRespuestaGroq(d: unknown): Record<string, unknown> {
   const r = d as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
-  const texto = (r.choices?.[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const texto = extraerJson(r.choices?.[0]?.message?.content ?? "");
   const adaptado = { candidates: [{ content: { parts: [{ text: texto }] }, finishReason: r.choices?.[0]?.finish_reason === "length" ? "MAX_TOKENS" : "STOP" }] };
   try { return leerRespuestaGemini(adaptado); }
   catch (e) { throw new Error((e as Error).message.replace(/Gemini/g, "Groq")); }
