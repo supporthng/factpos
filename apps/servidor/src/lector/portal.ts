@@ -39,7 +39,8 @@ const HERRAMIENTA = {
           properties: {
             codigo: { type: ["string", "null"], description: "Código INTERNO del proveedor para este producto (columna «Código», «Item», «Material», «SAP», «Artículo»)" },
             codigoBarras: { type: ["string", "null"], description: "Código de barras estándar (EAN-13, UPC-A de 12 o GTIN de 8 a 14 dígitos) SOLO si la factura lo imprime (columna «Código de barras», «EAN», o debajo de la descripción). Solo dígitos. No lo confundas con el código interno." },
-            descripcion: { type: "string" },
+            descripcion: { type: "string", description: "El texto de la descripción tal como está impreso" },
+            nombre: { type: ["string", "null"], description: "SOLO el nombre del producto y su presentación o tamaño, sin el código y SIN la notación de empaque (xN, x12x1, XA1…). Aplica a TODOS los productos. Ej.: «300028208-CHEETOS CORN JUMBO PUFF 9OZX12X1» → «CHEETOS CORN JUMBO PUFF 9OZ»; «300055371-CARIBAS AJO CS 110GX30X1» → «CARIBAS AJO CS 110G»; «JW BLUE 6x75 CL» se deja igual porque ahí 75 CL es la presentación." },
             cantidad: { type: "number" },
             unidad: { type: ["string", "null"], description: "Texto de la columna de unidad / presentación tal como está impreso (p. ej. «15x22 oz», «70cl», «CAJA»)" },
             unidadesTotales: { type: ["number", "null"], description: "Cuántas unidades sueltas (botellas, latas, fundas…) llegaron en TOTAL en esta línea. Si la cantidad está en cajas/paquetes: cantidad × unidades por empaque. Si la cantidad ya está en botellas/unidades, es igual a la cantidad." },
