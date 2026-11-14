@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { api, rd, num, sesionActual } from "../api";
+import { api, rd, num, sesionActual, sucursalPropia } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
 import { FotosProductos } from "./FotosProductos";
 import { useFuncionSeguridad } from "../seguridad";
-import { Aviso, Encabezado, SelectorProducto, Tabla, useCatalogo, useDatos } from "../ui";
+import { Aviso, Encabezado, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
 
 /* ---------- Tipos ---------- */
 type Tipo = "INVENTARIABLE" | "SERVICIO" | "COMBO";
@@ -162,15 +162,23 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [estado, setEstado] = useState("activos");
+  const { sucursales } = useCatalogo();
+  // Productos y existencia de UNA sucursal (la caja solo vende lo que hay en SU almacén). La existencia de todas se ve en Inventario.
+  // Abre en la sucursal desde la que se entra (la de este servidor); se puede cambiar a otra sin que se recuerde para la próxima vez
+  const [suc, setSucursal] = useState<string>(() => sucursalPropia() ?? "");
+  const sucValida = sucursales.find((s) => s.id === suc)?.id ?? sucursales.find((s) => s.id === sucursalPropia())?.id ?? sucursales[0]?.id ?? "";
+  const elegirSucursal = setSucursal;
   const [buscar, setBuscar] = useState("");
   useEffect(() => { const t = setTimeout(() => setBuscar(q), 250); return () => clearTimeout(t); }, [q]);
-  const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}`;
+  const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}${sucValida ? `&sucursalId=${sucValida}` : ""}`;
   const { datos, error, recargar } = useDatos<FilaLista[]>(ruta);
   useEffect(() => { if (version) recargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resumen = useDatos<{ productos: number; inventariables: number; conExistencia: number; sinExistencia: number; unidades: string; valor: string }>(sucValida ? `/central/productos/resumen?sucursalId=${sucValida}` : null);
+  useEffect(() => { if (version) resumen.recargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
-      <Encabezado titulo="Productos" descripcion="Ficha, códigos, los 3 niveles de precio, proveedores y combos. La existencia de cada sucursal se ve aquí y se corrige con un ajuste.">
+      <Encabezado titulo="Productos" descripcion="Ficha, códigos, los 3 niveles de precio, proveedores y combos. Aquí ve los productos y la existencia de una sucursal; la de todas está en Inventario.">
         <button className="boton" onClick={onFotos} title="Buscar en internet la foto de los productos sin foto, por su código de barras">Buscar fotos</button>
         <button className="boton" onClick={onImportar} title="Cargar su inventario desde Excel o CSV">Importar desde Excel</button>
         <button className="boton primario" onClick={onNuevo}>Nuevo producto</button>
@@ -184,8 +192,18 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
         <select value={estado} onChange={(e) => setEstado(e.target.value)}>
           <option value="activos">Activos</option><option value="inactivos">Inactivos</option><option value="todos">Todos</option>
         </select>
+        {sucursales.length > 1 && <SelectorSucursal valor={sucValida} onCambio={elegirSucursal} todas={false} />}
         <span className="suave pequeno">{datos ? `${datos.length} producto(s)` : ""}</span>
       </div>
+      {resumen.datos && (
+        <div className="resumen-sucursal" style={{ display: "flex", flexWrap: "wrap", gap: "8px 24px", margin: "4px 0 12px" }}>
+          <span><b>{resumen.datos.productos.toLocaleString("es-DO")}</b> <span className="suave">productos en {sucursales.find((s) => s.id === sucValida)?.nombre ?? "la sucursal"}</span></span>
+          <span><b>{resumen.datos.conExistencia.toLocaleString("es-DO")}</b> <span className="suave">con existencia</span></span>
+          <span><b className={resumen.datos.sinExistencia ? "texto-alerta" : ""}>{resumen.datos.sinExistencia.toLocaleString("es-DO")}</b> <span className="suave">sin existencia</span></span>
+          <span><b>{num(resumen.datos.unidades, 0)}</b> <span className="suave">unidades</span></span>
+          <span><b>{rd(resumen.datos.valor)}</b> <span className="suave">valor al costo</span></span>
+        </div>
+      )}
       <Aviso texto={error} />
       {creado && <Aviso texto={creado} tipo="ok" />}
       {datos && (
@@ -208,7 +226,7 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
               const m = margen(n(f.precio), n(f.costo), n(f.tasa), f.incluye ?? true);
               return m === null ? <span className="suave">—</span> : <span className={m < 10 ? "texto-alerta" : m >= 25 ? "texto-ok" : ""} title="Ganancia sobre la venta sin ITBIS">{m.toFixed(1)}%</span>;
             } },
-            { titulo: "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
+            { titulo: sucValida ? `Existencia · ${sucursales.find((s) => s.id === sucValida)?.nombre ?? ""}` : "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
             { titulo: "Estado", ocultoMovil: true, valor: (f) => (f.activo ? <span className="texto-ok">Activo</span> : <span className="suave">Inactivo</span>) },
           ]}
         />

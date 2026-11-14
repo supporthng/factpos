@@ -7,7 +7,7 @@ import { pool, ErrorNegocio } from "../db.js";
 import { hashPin } from "../autorizacion.js";
 import { esCodigoRecuperacion, huellaRecuperacion, nuevoSecreto, nuevosCodigosRecuperacion, uriOtp, verificarCodigo } from "../doble-factor.js";
 import { ipCliente } from "../seguridad-web.js";
-import { contextoCaja } from "../contexto.js";
+import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { prepararAdminPortal } from "../licencia/admin-portal.js";
 import {
   PERMISOS, claveSegura, crearToken, hashClave, leerToken, puedeAdministrar, tienePermiso, verificarClave, type SesionAdmin,
@@ -146,7 +146,7 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     );
     if (!r.rowCount) throw new ErrorNegocio("Su usuario fue desactivado", 401);
     const u = r.rows[0];
-    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa }, modo: config.modo, debeCambiarClave: await esClaveTemporal(u.id) };
+    return { usuario: { id: u.id, nombre: u.nombre, permisos: u.permisos, sucursales: u.sucursales }, empresa: { id: u.empresaId, nombre: u.empresa }, modo: config.modo, sucursalPropia: sucursalPropia(), debeCambiarClave: await esClaveTemporal(u.id) };
   });
 
   // ------------------------------------------------------------- Verificación en dos pasos (cada usuario, la suya)

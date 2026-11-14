@@ -224,7 +224,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
 
   /** Lista para la pantalla de productos. */
   app.get("/central/productos", async (req) => {
-    const f = z.object({ q: z.string().trim().max(60).optional(), categoriaId: uuid.optional(), estado: z.enum(["activos", "inactivos", "todos"]).default("activos") }).parse(req.query);
+    const f = z.object({ q: z.string().trim().max(60).optional(), categoriaId: uuid.optional(), estado: z.enum(["activos", "inactivos", "todos"]).default("activos"), sucursalId: uuid.optional() }).parse(req.query);
     const r = await pool.query(
       `SELECT p.id, p.sku, p.nombre, p.marca, p.tipo, p.activo, p.imagen IS NOT NULL AS "tieneImagen",
               COALESCE((SELECT i.tasa FROM impuestos i WHERE i.id = p.impuesto_id), 0) AS tasa, p.precio_incluye_impuesto AS "incluye",
@@ -235,7 +235,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
               (SELECT cb.codigo FROM presentaciones pr JOIN codigos_barra cb ON cb.presentacion_id = pr.id AND cb.activo
                 WHERE pr.producto_id = p.id ORDER BY pr.es_principal DESC, pr.factor, cb.codigo LIMIT 1) AS barras,
               (SELECT COUNT(*) FROM presentaciones pr WHERE pr.producto_id = p.id) AS presentaciones,
-              COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.producto_id = p.id), 0) AS existencia,
+              COALESCE((SELECT SUM(e.cantidad) FROM existencias e JOIN almacenes a ON a.id = e.almacen_id WHERE e.producto_id = p.id AND ($5::uuid IS NULL OR a.sucursal_id = $5)), 0) AS existencia, -- de la sucursal pedida, o el total
               CASE WHEN p.tipo = 'COMBO'
                    THEN (SELECT COALESCE(SUM(pc.cantidad * cp.costo_promedio), 0) FROM producto_componentes pc JOIN productos cp ON cp.id = pc.componente_id WHERE pc.combo_id = p.id)
                    ELSE COALESCE((SELECT SUM(e.cantidad * e.costo_promedio) / NULLIF(SUM(e.cantidad), 0)
@@ -247,10 +247,35 @@ export async function rutasCentralProductos(app: FastifyInstance) {
                            WHERE pr.producto_id = p.id AND cb.codigo = $2))
           AND ($3::uuid IS NULL OR p.categoria_id = $3)
           AND ($4 = 'todos' OR p.activo = ($4 = 'activos'))
+          -- en una sucursal solo sus productos (misma regla de la caja: oculto solo si ahí está desactivado)
+          AND ($5::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM producto_sucursal ps WHERE ps.producto_id = p.id AND ps.sucursal_id = $5 AND NOT ps.activo))
         ORDER BY p.nombre LIMIT 500`,
-      [empresaDe(req), f.q || null, f.categoriaId ?? null, f.estado],
+      [empresaDe(req), f.q || null, f.categoriaId ?? null, f.estado, f.sucursalId ?? null],
     );
     return r.rows;
+  });
+
+  /** Resumen del inventario de UNA sucursal: cuántos productos tiene, cuántos con y sin existencia, unidades y valor al costo. */
+  app.get("/central/productos/resumen", async (req) => {
+    const { sucursalId } = z.object({ sucursalId: uuid }).parse(req.query);
+    const r = await pool.query(
+      `WITH prod AS (
+         SELECT p.id, p.tipo, COALESCE(SUM(e.cantidad), 0) AS cant, COALESCE(SUM(e.cantidad * e.costo_promedio), 0) AS valor
+           FROM productos p
+           LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id IN (SELECT id FROM almacenes WHERE sucursal_id = $2)
+          WHERE p.empresa_id = $1 AND p.activo
+            AND NOT EXISTS (SELECT 1 FROM producto_sucursal ps WHERE ps.producto_id = p.id AND ps.sucursal_id = $2 AND NOT ps.activo)
+          GROUP BY p.id, p.tipo)
+       SELECT COUNT(*)::int AS productos,
+              COUNT(*) FILTER (WHERE tipo = 'INVENTARIABLE')::int AS inventariables,
+              COUNT(*) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant > 0)::int AS "conExistencia",
+              COUNT(*) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant <= 0)::int AS "sinExistencia",
+              COALESCE(SUM(cant) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant > 0), 0)::text AS unidades,
+              COALESCE(SUM(valor) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant > 0), 0)::text AS valor
+         FROM prod`,
+      [empresaDe(req), sucursalId],
+    );
+    return r.rows[0];
   });
 
   /** Ficha completa para editar. */
