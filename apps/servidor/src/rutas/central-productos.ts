@@ -247,6 +247,8 @@ export async function rutasCentralProductos(app: FastifyInstance) {
                            WHERE pr.producto_id = p.id AND cb.codigo = $2))
           AND ($3::uuid IS NULL OR p.categoria_id = $3)
           AND ($4 = 'todos' OR p.activo = ($4 = 'activos'))
+          -- en una sucursal solo sus productos (misma regla de la caja: oculto solo si ahí está desactivado)
+          AND ($5::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM producto_sucursal ps WHERE ps.producto_id = p.id AND ps.sucursal_id = $5 AND NOT ps.activo))
         ORDER BY p.nombre LIMIT 500`,
       [empresaDe(req), f.q || null, f.categoriaId ?? null, f.estado, f.sucursalId ?? null],
     );

@@ -3,7 +3,7 @@ import { api, rd, num, sesionActual } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
 import { FotosProductos } from "./FotosProductos";
 import { useFuncionSeguridad } from "../seguridad";
-import { Aviso, Encabezado, SelectorProducto, Tabla, useCatalogo, useDatos } from "../ui";
+import { Aviso, Encabezado, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
 
 /* ---------- Tipos ---------- */
 type Tipo = "INVENTARIABLE" | "SERVICIO" | "COMBO";
@@ -163,9 +163,9 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
   const [cat, setCat] = useState("");
   const [estado, setEstado] = useState("activos");
   const { sucursales } = useCatalogo();
-  // La existencia de la lista es la de la sucursal elegida (la caja solo vende lo que hay en SU almacén); "" = total de todas
+  // Productos y existencia de UNA sucursal (la caja solo vende lo que hay en SU almacén). La existencia de todas se ve en Inventario.
   const [suc, setSucursal] = useState(() => { try { return localStorage.getItem("productos.sucursal") ?? ""; } catch { return ""; } });
-  const sucValida = sucursales.some((s) => s.id === suc) ? suc : sucursales.length === 1 ? sucursales[0]!.id : "";
+  const sucValida = sucursales.find((s) => s.id === suc)?.id ?? sucursales[0]?.id ?? "";
   const elegirSucursal = (v: string) => { setSucursal(v); try { localStorage.setItem("productos.sucursal", v); } catch { /* sin almacenamiento */ } };
   const [buscar, setBuscar] = useState("");
   useEffect(() => { const t = setTimeout(() => setBuscar(q), 250); return () => clearTimeout(t); }, [q]);
@@ -175,7 +175,7 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
 
   return (
     <>
-      <Encabezado titulo="Productos" descripcion="Ficha, códigos, los 3 niveles de precio, proveedores y combos. La existencia de cada sucursal se ve aquí y se corrige con un ajuste.">
+      <Encabezado titulo="Productos" descripcion="Ficha, códigos, los 3 niveles de precio, proveedores y combos. Aquí ve los productos y la existencia de una sucursal; la de todas está en Inventario.">
         <button className="boton" onClick={onFotos} title="Buscar en internet la foto de los productos sin foto, por su código de barras">Buscar fotos</button>
         <button className="boton" onClick={onImportar} title="Cargar su inventario desde Excel o CSV">Importar desde Excel</button>
         <button className="boton primario" onClick={onNuevo}>Nuevo producto</button>
@@ -189,12 +189,7 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
         <select value={estado} onChange={(e) => setEstado(e.target.value)}>
           <option value="activos">Activos</option><option value="inactivos">Inactivos</option><option value="todos">Todos</option>
         </select>
-        {sucursales.length > 1 && (
-          <select value={sucValida} onChange={(e) => elegirSucursal(e.target.value)} title="La existencia de la lista es la de esta sucursal">
-            <option value="">Existencia: todas las sucursales</option>
-            {sucursales.map((s) => <option key={s.id} value={s.id}>Existencia: {s.nombre}</option>)}
-          </select>
-        )}
+        {sucursales.length > 1 && <SelectorSucursal valor={sucValida} onCambio={elegirSucursal} todas={false} />}
         <span className="suave pequeno">{datos ? `${datos.length} producto(s)` : ""}</span>
       </div>
       <Aviso texto={error} />
