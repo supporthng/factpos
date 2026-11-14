@@ -13,6 +13,10 @@ export const enPortal = CONFIG.modo === "portal";
 let modo: string | null = null;
 export const fijarModoServidor = (m: string | null) => { modo = m; };
 export const esLocal = () => modo === "sucursal";
+/** La sucursal de ESTE servidor (la tienda desde la que se abre la administración); null en la nube o si no se sabe */
+let sucursalPropiaId: string | null = null;
+export const fijarSucursalPropia = (id: string | null) => { sucursalPropiaId = id; };
+export const sucursalPropia = () => sucursalPropiaId;
 // Cada cliente guarda su sesión aparte (todas las páginas comparten el dominio del portal)
 const CLAVE = CONFIG.slug ? `factpos.admin:${CONFIG.slug}` : enPortal ? "factpos.admin:portal" : "factpos.admin";
 

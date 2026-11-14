@@ -21,7 +21,7 @@ import { TarjetaAgregar } from "./TarjetaAgregar";
 import { RecuperarClave } from "./RecuperarClave";
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { InicioPortal } from "./paginas/InicioPortal";
-import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, leerSesion, puede, type Sesion } from "./api";
+import { api, CONFIG, enPortal, esLocal, fijarModoServidor, fijarSesion, fijarSucursalPropia, leerSesion, puede, type Sesion } from "./api";
 const Portal = lazy(() => import("./paginas/Portal").then((m) => ({ default: m.Portal })));
 import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
@@ -242,8 +242,8 @@ function AppInterna() {
   useEffect(() => {
     if (!sesion) return;
     // Permisos al día (si el administrador cambió el rol, se refleja al abrir)
-    api<{ usuario: { permisos: string[]; nombre: string; sucursales: string[] | null }; modo?: string; debeCambiarClave?: boolean }>("/central/sesion")
-      .then((r) => { setDebeCambiar(!!r.debeCambiarClave); fijarModoServidor(r.modo ?? null); fijarSesion({ ...sesion, permisos: r.usuario.permisos, nombre: r.usuario.nombre, sucursales: r.usuario.sucursales }); setRefresco((x) => x + 1); })
+    api<{ usuario: { permisos: string[]; nombre: string; sucursales: string[] | null }; modo?: string; sucursalPropia?: string | null; debeCambiarClave?: boolean }>("/central/sesion")
+      .then((r) => { setDebeCambiar(!!r.debeCambiarClave); fijarModoServidor(r.modo ?? null); fijarSucursalPropia(r.sucursalPropia ?? null); fijarSesion({ ...sesion, permisos: r.usuario.permisos, nombre: r.usuario.nombre, sucursales: r.usuario.sucursales }); setRefresco((x) => x + 1); })
       .catch(() => {});
     if (enPortal) { setCatalogo(CATALOGO_VACIO); return; }
     api<CatalogoAdmin>("/central/catalogo").then(setCatalogo).catch((e) => setError(e.message));

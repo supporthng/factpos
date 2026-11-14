@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, rd, num, sesionActual } from "../api";
+import { api, rd, num, sesionActual, sucursalPropia } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
 import { FotosProductos } from "./FotosProductos";
 import { useFuncionSeguridad } from "../seguridad";
@@ -164,9 +164,10 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
   const [estado, setEstado] = useState("activos");
   const { sucursales } = useCatalogo();
   // Productos y existencia de UNA sucursal (la caja solo vende lo que hay en SU almacén). La existencia de todas se ve en Inventario.
-  const [suc, setSucursal] = useState(() => { try { return localStorage.getItem("productos.sucursal") ?? ""; } catch { return ""; } });
-  const sucValida = sucursales.find((s) => s.id === suc)?.id ?? sucursales[0]?.id ?? "";
-  const elegirSucursal = (v: string) => { setSucursal(v); try { localStorage.setItem("productos.sucursal", v); } catch { /* sin almacenamiento */ } };
+  // Abre en la sucursal desde la que se entra (la de este servidor); se puede cambiar a otra sin que se recuerde para la próxima vez
+  const [suc, setSucursal] = useState<string>(() => sucursalPropia() ?? "");
+  const sucValida = sucursales.find((s) => s.id === suc)?.id ?? sucursales.find((s) => s.id === sucursalPropia())?.id ?? sucursales[0]?.id ?? "";
+  const elegirSucursal = setSucursal;
   const [buscar, setBuscar] = useState("");
   useEffect(() => { const t = setTimeout(() => setBuscar(q), 250); return () => clearTimeout(t); }, [q]);
   const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}${sucValida ? `&sucursalId=${sucValida}` : ""}`;
