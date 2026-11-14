@@ -203,12 +203,16 @@ export async function rutasPortalLector(app: FastifyInstance) {
       };
       // Se intenta en orden; si el gratuito falla o se agota y hay opción de pago, se usa esa
       let factura: unknown, usado: Proveedor | null = null, ultimoError: Error | null = null;
+      const bitacora: string[] = []; // lo que fue pasando, para mostrarlo en pantalla
+      const NOMBRE: Record<Proveedor, string> = { gratis: "Gemini", groq: "Groq", pago: "Claude (pago)" };
+      const inicio = Date.now();
       for (const p of orden) {
-        try { factura = await leer[p](); usado = p; break; }
-        catch (e) { ultimoError = e as Error; app.log.warn(`Lector de facturas (${p}): ${(e as Error).message}`); }
+        const t0 = Date.now();
+        try { factura = await leer[p](); usado = p; bitacora.push(`${NOMBRE[p]} leyó la factura en ${Math.round((Date.now() - t0) / 1000)} s`); break; }
+        catch (e) { ultimoError = e as Error; bitacora.push(`${NOMBRE[p]} no pudo (${Math.round((Date.now() - t0) / 1000)} s): ${(e as Error).message.replace(/\s+/g, " ").slice(0, 150)}`); app.log.warn(`Lector de facturas (${p}): ${(e as Error).message}`); }
       }
       if (!usado) throw ultimoError ?? new Error("Sin proveedor disponible");
-      return { factura, proveedor: usado, cupo: l.lector_cupo, usadas: reservado.rows[0].usadas as number };
+      return { factura, proveedor: usado, cupo: l.lector_cupo, usadas: reservado.rows[0].usadas as number, bitacora, segundos: Math.round((Date.now() - inicio) / 1000) };
     } catch (e) {
       await devolver();
       app.log.warn(`Lector de facturas: ${(e as Error).message}`);

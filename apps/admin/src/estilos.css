@@ -1575,3 +1575,10 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .pend-linea { border-bottom: 1px solid var(--borde); padding: 8px 0; }
 .pend-linea:last-child { border-bottom: 0; }
 .pend-cab .der, .pend-fila .der { text-align: right; }
+
+/* Progreso de la lectura de factura */
+.lectura-pasos ul, .lectura-detalle ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.lectura-pasos li, .lectura-detalle li { padding: 2px 0; font-size: 14px; }
+.lectura-pasos li.hecho { color: var(--suave); }
+.lectura-pasos li.actual { font-weight: 600; }
+.lectura-detalle summary { cursor: pointer; margin: 6px 0; }

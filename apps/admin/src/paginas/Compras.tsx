@@ -308,6 +308,9 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   const lector = useDatos<{ cupo: number; usadas: number; disponible: boolean; pagoAutorizado?: boolean; pagoSolicitado?: boolean; error?: string }>("/central/compras/lector/estado");
   const [leyendo, setLeyendo] = useState(false);
   const [progreso, setProgreso] = useState("");
+  const [pasosLectura, setPasosLectura] = useState<{ texto: string; en: number }[]>([]); // lo que va haciendo la lectura
+  const [ahora, setAhora] = useState(Date.now());
+  useEffect(() => { if (!leyendo) return; const t = setInterval(() => setAhora(Date.now()), 1000); return () => clearInterval(t); }, [leyendo]);
   const [pend, setPend] = useState<ItemLeido[]>(() => (borrador?.datos?.pend as ItemLeido[] | undefined) ?? []);
   const [leidaInfo, setLeidaInfo] = useState<string>("");
 
@@ -351,9 +354,10 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
     const { trabajoId } = await api<{ trabajoId: string }>("/central/compras/leer-factura", { cuerpo: { tipo, datos } });
     for (let i = 0; i < 60; i++) {
       await new Promise((ok) => setTimeout(ok, 3000));
-      let est: { estado: string; resultado?: FacturaLeida; error?: string };
+      let est: { estado: string; resultado?: FacturaLeida; error?: string; pasos?: { texto: string; en: number }[] };
       try { est = await api(`/central/compras/leer-factura/${trabajoId}`); }
       catch (e) { if (/conexi/i.test((e as Error).message)) continue; throw e; } // un corte breve del celular no cancela la lectura
+      if (est.pasos) setPasosLectura(est.pasos);
       if (est.estado === "ERROR") throw new Error(est.error ?? "No se pudo leer la factura");
       if (est.estado === "LISTO" && est.resultado) return est.resultado;
     }
@@ -363,7 +367,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   /** Una o varias fotos/PDF (las páginas de una misma factura): cada una se lee y se suma a la compra */
   const leerFactura = async (archivos: File[]) => {
     if (!archivos.length) return;
-    setLeyendo(true); setMsg(""); setLeidaInfo(""); setPend([]);
+    setLeyendo(true); setMsg(""); setLeidaInfo(""); setPend([]); setPasosLectura([]);
     let lineasLeidas = 0, ultima: FacturaLeida | undefined;
     try {
       for (let k = 0; k < archivos.length; k++) {
@@ -543,7 +547,24 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
           {pidioPago && !pidioPago.startsWith("Solicitud") ? <span className="texto-error"> {pidioPago}</span> : null}
         </p>
       )) : null}
-      {leyendo && <Aviso tipo="info" texto="Leyendo la factura con IA… tarda entre 15 y 40 segundos. Puede ir llenando los datos mientras tanto." />}
+      {leyendo && (
+        <div className="panel lectura-pasos" role="status">
+          <b>Leyendo la factura con IA… tarda entre 15 y 40 segundos. Puede ir llenando los datos mientras tanto.</b>
+          <ul>
+            {pasosLectura.map((p, i) => {
+              const ultimo = i === pasosLectura.length - 1;
+              return <li key={i} className={ultimo ? "actual" : "hecho"}>{ultimo ? "⏳" : "✓"} {p.texto}{ultimo ? ` · ${Math.max(0, Math.round((ahora - p.en) / 1000))} s` : ""}</li>;
+            })}
+            {!pasosLectura.length && <li className="actual">⏳ Preparando la foto…</li>}
+          </ul>
+        </div>
+      )}
+      {!leyendo && pasosLectura.length > 0 && (
+        <details className="lectura-detalle suave pequeno">
+          <summary>Cómo se leyó esta factura</summary>
+          <ul>{pasosLectura.map((p, i) => <li key={i}>✓ {p.texto}</li>)}</ul>
+        </details>
+      )}
       <Aviso texto={msg} />
       {leidaInfo && <p className="texto-ok">{leidaInfo}</p>}
       {guardado && <p className="suave pequeno">Esta compra se guarda sola como borrador: puede seguirla desde la PC u otro equipo en Compras › «Compras en borrador».</p>}
