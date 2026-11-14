@@ -15,7 +15,7 @@ import { credencialesPortal } from "../respaldo/respaldo.js";
  */
 const uuid = z.string().uuid();
 
-interface Trabajo { empresaId: string; creado: number; estado: "LEYENDO" | "LISTO" | "ERROR"; resultado?: unknown; error?: string; codigo?: number }
+interface Trabajo { empresaId: string; creado: number; estado: "LEYENDO" | "LISTO" | "ERROR"; resultado?: unknown; error?: string; codigo?: number; pasos: { texto: string; en: number }[] }
 const trabajos = new Map<string, Trabajo>();
 
 interface Leida {
@@ -80,9 +80,9 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     const empresaId = empresaDe(req);
     for (const [k, t] of trabajos) if (Date.now() - t.creado > 15 * 60_000) trabajos.delete(k);
     const id = randomUUID();
-    const t: Trabajo = { empresaId, creado: Date.now(), estado: "LEYENDO" };
+    const t: Trabajo = { empresaId, creado: Date.now(), estado: "LEYENDO", pasos: [{ texto: `Foto recibida (${Math.round((b.datos.length * 3) / 4 / 1024)} KB)`, en: Date.now() }] };
     trabajos.set(id, t);
-    leer(empresaId, b).then(
+    leer(empresaId, b, (texto) => t.pasos.push({ texto, en: Date.now() })).then(
       (resultado) => { t.estado = "LISTO"; t.resultado = resultado; },
       (e) => { t.estado = "ERROR"; t.error = (e as Error).message || "No se pudo leer la factura"; t.codigo = (e as { statusCode?: number }).statusCode; },
     );
@@ -93,15 +93,18 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const t = trabajos.get(id);
     if (!t || t.empresaId !== empresaDe(req)) return reply.code(404).send({ error: "La lectura ya no está disponible. Vuelva a cargar la factura." });
-    if (t.estado === "LEYENDO") return { estado: "LEYENDO" };
+    if (t.estado === "LEYENDO") return { estado: "LEYENDO", pasos: t.pasos, desde: t.creado };
     trabajos.delete(id);
-    if (t.estado === "ERROR") return { estado: "ERROR", error: t.error, codigo: t.codigo };
-    return { estado: "LISTO", resultado: t.resultado };
+    if (t.estado === "ERROR") return { estado: "ERROR", error: t.error, codigo: t.codigo, pasos: t.pasos };
+    return { estado: "LISTO", resultado: t.resultado, pasos: t.pasos };
   });
 
-  async function leer(empresaId: string, b: { tipo: string; datos: string }) {
-    const r = await llamarPortal<{ factura: Leida; cupo: number; usadas: number }>("/licencias/lector/leer", { ...(await credencialesPortal()), tipo: b.tipo, datos: b.datos }, 70_000);
+  async function leer(empresaId: string, b: { tipo: string; datos: string }, paso: (texto: string) => void) {
+    paso("Enviada al lector de FactPOS; la IA está leyendo la factura…");
+    const r = await llamarPortal<{ factura: Leida; cupo: number; usadas: number; bitacora?: string[] }>("/licencias/lector/leer", { ...(await credencialesPortal()), tipo: b.tipo, datos: b.datos }, 70_000);
     const f = r.factura;
+    for (const x of r.bitacora ?? []) paso(x);
+    paso(`Se leyeron ${f.items.length} líneas; buscando el proveedor y emparejando con su inventario…`);
 
     // ---- Proveedor: por RNC, si no por nombre parecido
     const provs = (await pool.query<{ id: string; nombre: string; rnc: string | null }>("SELECT id, nombre, rnc FROM proveedores WHERE empresa_id = $1 AND activo", [empresaId])).rows;
