@@ -549,7 +549,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
         <div className="panel">
           <h3>Líneas de la factura sin emparejar ({pend.length})</h3>
           <p className="suave">No se encontró el producto en su inventario. Elija el que corresponde o créelo aquí mismo con «Crear producto nuevo».</p>
-          <div className="pend-cab"><span>Nombre o descripción</span><span className="der">Cantidad</span><span className="der">Precio o costo</span></div>
+          <div className="pend-cab"><span>Nombre o descripción</span><span className="der">Cantidad</span><span className="der">Costo sin ITBIS</span></div>
           {pend.map((it, i) => (
             <div key={i} className="pend-linea">
               <div className="pend-fila">
