@@ -1,3 +1,4 @@
+import { nombreLimpio } from "./nombre.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -145,7 +146,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
     let sumaNeto = 0;
     const items = f.items.map((i) => {
       const cod = (i.codigo ?? "").trim();
-      const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod) ?? porAlias.get(normalizarAlias(i.descripcion));
+      const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod) ?? porAlias.get(normalizarAlias(nombreLimpio(i.descripcion, cod))) ?? porAlias.get(normalizarAlias(i.descripcion)); // por el nombre limpio (el que se guarda) y, si no, por el original
       let elegido = exacto ? porId.get(exacto) : undefined;
       let confianza: "CODIGO" | "NOMBRE" | "NINGUNA" = elegido ? "CODIGO" : "NINGUNA";
       const sugeridos = catalogo.map((c) => ({ c, s: parecido(i.descripcion, `${c.nombre} ${c.presentacion === "Unidad" ? "" : c.presentacion}`) }))
@@ -182,7 +183,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       const empaque = partes.length ? partes.join(" · ") : null;
       sumaNeto += neto;
       return {
-        codigo: cod || null, codigoBarras: barras(i)[0] ?? null, descripcion: i.descripcion, unidad: i.unidad ?? null,
+        codigo: cod || null, codigoBarras: barras(i)[0] ?? null, descripcion: nombreLimpio(i.descripcion, cod), unidad: i.unidad ?? null,
         cantidad: Math.round(cantidad * 10000) / 10000, costo: Math.round(costo * 10000) / 10000, importe: i.importe ?? null, porUnidad, empaque,
         presentacionId: elegido?.presentacionId ?? null, producto: elegido ? { nombre: elegido.nombre, presentacion: elegido.presentacion, factor: elegido.factor } : null,
         confianza, sugeridos: sugeridos.filter((x) => x.c.presentacionId !== elegido?.presentacionId).map((x) => x.c),
