@@ -32,7 +32,7 @@ export const modelosGratis = (env: { LECTOR_MODELO_GRATIS?: string; LECTOR_MODEL
 /** Cuerpo de la petición a Gemini: la misma factura y las mismas reglas, con el esquema escrito en las instrucciones */
 export function cuerpoGemini(args: { tipo: string; datos: string; instrucciones: string; esquema: unknown; pensamiento?: string }) {
   return {
-    systemInstruction: { parts: [{ text: `${args.instrucciones}\nResponde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` }] },
+    systemInstruction: { parts: [{ text: `${sinHerramienta(args.instrucciones)}\nResponde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` }] },
     contents: [{ role: "user", parts: [{ inlineData: { mimeType: args.tipo, data: args.datos } }, { text: "Lea esta factura de compra." }] }],
     generationConfig: { responseMimeType: "application/json", temperature: 0, maxOutputTokens: 8192, ...(args.pensamiento ? { thinkingConfig: { thinkingLevel: args.pensamiento } } : {}) },
   };
@@ -70,6 +70,9 @@ export function elegirAlternos(lista: { name?: string; supportedGenerationMethod
 
 export const MODELO_GROQ = (env: { LECTOR_MODELO_GROQ?: string } = process.env) => env.LECTOR_MODELO_GROQ || "qwen/qwen3.8-27b";
 
+/** Las instrucciones están escritas para Claude («llama a la herramienta…»); Gemini y Groq no tienen herramienta y la imitan con etiquetas */
+export const sinHerramienta = (t: string) => t.replace(/Responde SIEMPRE y ÚNICAMENTE llamando a la herramienta registrar_factura[^.]*\./i, "").trim();
+
 /** Petición a Groq (formato compatible con OpenAI): la imagen va en base64. No se usa su «modo JSON»: rechaza respuestas que no sean JSON perfecto; se extrae el JSON del texto */
 export function cuerpoGroq(args: { modelo: string; tipo: string; datos: string; instrucciones: string; esquema: unknown }) {
   return {
@@ -77,7 +80,7 @@ export function cuerpoGroq(args: { modelo: string; tipo: string; datos: string; 
     temperature: 0,
     max_tokens: 8192,
     messages: [
-      { role: "system", content: `${args.instrucciones}\nResponde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` },
+      { role: "system", content: `${sinHerramienta(args.instrucciones)}\nNo hay herramientas ni funciones: no uses etiquetas XML ni llamadas. Responde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` },
       { role: "user", content: [{ type: "image_url", image_url: { url: `data:${args.tipo};base64,${args.datos}` } }, { type: "text", text: "Lea esta factura de compra." }] },
     ],
   };
@@ -96,12 +99,25 @@ function cierreObjeto(t: string, desde: number): number {
   return -1;
 }
 
+/** Algunos modelos imitan una llamada a función: <parameter name="items">[…]</parameter>. Se arma el objeto con esos parámetros. */
+function desdeParametros(t: string): string | null {
+  if (!/<parameter\s+name="/i.test(t)) return null;
+  const obj: Record<string, unknown> = {};
+  for (const m of t.matchAll(/<parameter\s+name="([^"]+)"\s*>([\s\S]*?)(?=<\/parameter>|<parameter\s+name="|$)/gi)) {
+    const v = m[2].trim().replace(/,(\s*[}\]])/g, "$1");
+    try { obj[m[1]] = JSON.parse(v); } catch { obj[m[1]] = v; }
+  }
+  return Array.isArray(obj.items) ? JSON.stringify(obj) : null;
+}
+
 /**
  * Del texto que devolvió el modelo, se queda con el objeto JSON de la factura: quita <think>, bloques de código y texto alrededor,
  * y tolera comas sobrantes. Entre varios objetos posibles elige el primero que tenga «items».
  */
 export function extraerJson(texto: string): string {
   const t = texto.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<think>[\s\S]*$/i, "").trim();
+  const porParametros = desdeParametros(t);
+  if (porParametros) return porParametros;
   let n = 0;
   for (let i = t.indexOf("{"); i >= 0 && n < 8; i = t.indexOf("{", i + 1), n++) {
     const f = cierreObjeto(t, i);

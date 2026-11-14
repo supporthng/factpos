@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cuerpoGemini, cuerpoGroq, elegirAlternos, leerRespuestaGemini, leerRespuestaGroq, modelosGratis, ordenProveedores } from "./proveedores.js";
+import { cuerpoGemini, cuerpoGroq, sinHerramienta, elegirAlternos, leerRespuestaGemini, leerRespuestaGroq, modelosGratis, ordenProveedores } from "./proveedores.js";
 
 describe("orden de proveedores del lector", () => {
   const g = { GEMINI_API_KEY: "g" }, a = { ANTHROPIC_API_KEY: "a" };
@@ -106,5 +106,21 @@ describe("Groq como segundo lector gratuito", () => {
     const conLlavesEnTexto = { choices: [{ message: { content: 'Uso {a, b} como ejemplo. Resultado: {"items":[{"descripcion":"C",},]} fin {x}' } }] };
     expect((leerRespuestaGroq(conLlavesEnTexto).items as unknown[]).length).toBe(1);
     expect(() => leerRespuestaGroq({ choices: [{ message: { content: "Factura de FritoLay, total 8763" } }] })).toThrow(/no es JSON.*FritoLay/);
+  });
+});
+
+describe("Groq imitando una llamada a función", () => {
+  it("se arma el objeto con los <parameter name=…>", () => {
+    const txt = '<parameter name="proveedor">{"nombre":"FritoLay","rnc":"1"}</parameter>\n<parameter name="numero">8258</parameter>\n<parameter name="items">[{"descripcion":"A","cantidad":2},]</parameter>';
+    const f = leerRespuestaGroq({ choices: [{ message: { content: txt } }] });
+    expect((f.items as unknown[]).length).toBe(1);
+    expect((f.proveedor as { nombre: string }).nombre).toBe("FritoLay");
+  });
+  it("las instrucciones ya no piden llamar a una herramienta", () => {
+    const base = "Reglas. Responde SIEMPRE y ÚNICAMENTE llamando a la herramienta registrar_factura con el resultado; no escribas texto.";
+    expect(sinHerramienta(base)).toBe("Reglas.");
+    const c = cuerpoGroq({ modelo: "m", tipo: "image/jpeg", datos: "A", instrucciones: base, esquema: {} });
+    expect(JSON.stringify(c.messages[0])).not.toContain("llamando a la herramienta");
+    expect(JSON.stringify(cuerpoGemini({ tipo: "image/jpeg", datos: "A", instrucciones: base, esquema: {} }))).not.toContain("llamando a la herramienta");
   });
 });
