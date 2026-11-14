@@ -1568,3 +1568,10 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .tarjeta-agregar-texto span { font-size: 13.5px; color: var(--suave); }
 .tarjeta-agregar-botones { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .tarjeta-agregar-pasos { margin: 12px 0 0; padding-left: 22px; font-size: 14px; color: var(--texto); }
+
+/* Líneas de factura sin emparejar: nombre, cantidad y precio con encabezados */
+.pend-cab, .pend-fila { display: grid; grid-template-columns: minmax(0, 1fr) 72px 112px; gap: 10px; align-items: start; }
+.pend-cab { font-size: 12px; color: var(--suave); text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--borde); padding: 8px 0 4px; margin-top: 8px; }
+.pend-linea { border-bottom: 1px solid var(--borde); padding: 8px 0; }
+.pend-linea:last-child { border-bottom: 0; }
+.pend-cab .der, .pend-fila .der { text-align: right; }
