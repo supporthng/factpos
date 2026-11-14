@@ -162,9 +162,14 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [estado, setEstado] = useState("activos");
+  const { sucursales } = useCatalogo();
+  // La existencia de la lista es la de la sucursal elegida (la caja solo vende lo que hay en SU almacén); "" = total de todas
+  const [suc, setSucursal] = useState(() => { try { return localStorage.getItem("productos.sucursal") ?? ""; } catch { return ""; } });
+  const sucValida = sucursales.some((s) => s.id === suc) ? suc : sucursales.length === 1 ? sucursales[0]!.id : "";
+  const elegirSucursal = (v: string) => { setSucursal(v); try { localStorage.setItem("productos.sucursal", v); } catch { /* sin almacenamiento */ } };
   const [buscar, setBuscar] = useState("");
   useEffect(() => { const t = setTimeout(() => setBuscar(q), 250); return () => clearTimeout(t); }, [q]);
-  const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}`;
+  const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}${sucValida ? `&sucursalId=${sucValida}` : ""}`;
   const { datos, error, recargar } = useDatos<FilaLista[]>(ruta);
   useEffect(() => { if (version) recargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -184,6 +189,12 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
         <select value={estado} onChange={(e) => setEstado(e.target.value)}>
           <option value="activos">Activos</option><option value="inactivos">Inactivos</option><option value="todos">Todos</option>
         </select>
+        {sucursales.length > 1 && (
+          <select value={sucValida} onChange={(e) => elegirSucursal(e.target.value)} title="La existencia de la lista es la de esta sucursal">
+            <option value="">Existencia: todas las sucursales</option>
+            {sucursales.map((s) => <option key={s.id} value={s.id}>Existencia: {s.nombre}</option>)}
+          </select>
+        )}
         <span className="suave pequeno">{datos ? `${datos.length} producto(s)` : ""}</span>
       </div>
       <Aviso texto={error} />
@@ -208,7 +219,7 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
               const m = margen(n(f.precio), n(f.costo), n(f.tasa), f.incluye ?? true);
               return m === null ? <span className="suave">—</span> : <span className={m < 10 ? "texto-alerta" : m >= 25 ? "texto-ok" : ""} title="Ganancia sobre la venta sin ITBIS">{m.toFixed(1)}%</span>;
             } },
-            { titulo: "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
+            { titulo: sucValida ? `Existencia · ${sucursales.find((s) => s.id === sucValida)?.nombre ?? ""}` : "Existencia", der: true, valor: (f) => (f.tipo === "INVENTARIABLE" ? num(f.existencia, Number(f.existencia) % 1 ? 2 : 0) : <span className="suave">—</span>) },
             { titulo: "Estado", ocultoMovil: true, valor: (f) => (f.activo ? <span className="texto-ok">Activo</span> : <span className="suave">Inactivo</span>) },
           ]}
         />
