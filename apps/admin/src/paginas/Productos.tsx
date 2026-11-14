@@ -172,6 +172,8 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
   const ruta = `/central/productos?estado=${estado}${buscar ? `&q=${encodeURIComponent(buscar)}` : ""}${cat ? `&categoriaId=${cat}` : ""}${sucValida ? `&sucursalId=${sucValida}` : ""}`;
   const { datos, error, recargar } = useDatos<FilaLista[]>(ruta);
   useEffect(() => { if (version) recargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resumen = useDatos<{ productos: number; inventariables: number; conExistencia: number; sinExistencia: number; unidades: string; valor: string }>(sucValida ? `/central/productos/resumen?sucursalId=${sucValida}` : null);
+  useEffect(() => { if (version) resumen.recargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -192,6 +194,15 @@ function Listado({ onAbrir, onNuevo, onImportar, onFotos, aux, version, creado }
         {sucursales.length > 1 && <SelectorSucursal valor={sucValida} onCambio={elegirSucursal} todas={false} />}
         <span className="suave pequeno">{datos ? `${datos.length} producto(s)` : ""}</span>
       </div>
+      {resumen.datos && (
+        <div className="resumen-sucursal" style={{ display: "flex", flexWrap: "wrap", gap: "8px 24px", margin: "4px 0 12px" }}>
+          <span><b>{resumen.datos.productos.toLocaleString("es-DO")}</b> <span className="suave">productos en {sucursales.find((s) => s.id === sucValida)?.nombre ?? "la sucursal"}</span></span>
+          <span><b>{resumen.datos.conExistencia.toLocaleString("es-DO")}</b> <span className="suave">con existencia</span></span>
+          <span><b className={resumen.datos.sinExistencia ? "texto-alerta" : ""}>{resumen.datos.sinExistencia.toLocaleString("es-DO")}</b> <span className="suave">sin existencia</span></span>
+          <span><b>{num(resumen.datos.unidades, 0)}</b> <span className="suave">unidades</span></span>
+          <span><b>{rd(resumen.datos.valor)}</b> <span className="suave">valor al costo</span></span>
+        </div>
+      )}
       <Aviso texto={error} />
       {creado && <Aviso texto={creado} tipo="ok" />}
       {datos && (

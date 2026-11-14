@@ -255,6 +255,29 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     return r.rows;
   });
 
+  /** Resumen del inventario de UNA sucursal: cuántos productos tiene, cuántos con y sin existencia, unidades y valor al costo. */
+  app.get("/central/productos/resumen", async (req) => {
+    const { sucursalId } = z.object({ sucursalId: uuid }).parse(req.query);
+    const r = await pool.query(
+      `WITH prod AS (
+         SELECT p.id, p.tipo, COALESCE(SUM(e.cantidad), 0) AS cant, COALESCE(SUM(e.cantidad * e.costo_promedio), 0) AS valor
+           FROM productos p
+           LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id IN (SELECT id FROM almacenes WHERE sucursal_id = $2)
+          WHERE p.empresa_id = $1 AND p.activo
+            AND NOT EXISTS (SELECT 1 FROM producto_sucursal ps WHERE ps.producto_id = p.id AND ps.sucursal_id = $2 AND NOT ps.activo)
+          GROUP BY p.id, p.tipo)
+       SELECT COUNT(*)::int AS productos,
+              COUNT(*) FILTER (WHERE tipo = 'INVENTARIABLE')::int AS inventariables,
+              COUNT(*) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant > 0)::int AS "conExistencia",
+              COUNT(*) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant <= 0)::int AS "sinExistencia",
+              COALESCE(SUM(cant) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant > 0), 0)::text AS unidades,
+              COALESCE(SUM(valor) FILTER (WHERE tipo = 'INVENTARIABLE' AND cant > 0), 0)::text AS valor
+         FROM prod`,
+      [empresaDe(req), sucursalId],
+    );
+    return r.rows[0];
+  });
+
   /** Ficha completa para editar. */
   app.get("/central/productos/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
