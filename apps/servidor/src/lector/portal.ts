@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 import { autorizarLicencia } from "../respaldo/portal.js";
-import { cuerpoGemini, elegirAlternos, leerRespuestaGemini, modelosGratis, ordenProveedores, type Proveedor } from "./proveedores.js";
+import { cuerpoGemini, cuerpoGroq, elegirAlternos, leerRespuestaGemini, leerRespuestaGroq, MODELO_GROQ, modelosGratis, ordenProveedores, type Proveedor } from "./proveedores.js";
 
 /**
  * Portal: LECTOR DE FACTURAS con IA (Claude).
@@ -10,7 +10,8 @@ import { cuerpoGemini, elegirAlternos, leerRespuestaGemini, modelosGratis, orden
  * valida la licencia y descuenta del cupo mensual que el proveedor asignó a esa licencia (lector_cupo, 0 = apagado).
  *   ANTHROPIC_API_KEY   LECTOR_MODELO (por omisión claude-sonnet-5-5)            → opción de pago (Claude)
  *   GEMINI_API_KEY      LECTOR_MODELO_GRATIS                                         → opción gratuita (Google Gemini, con límites)
- *   LECTOR_PROVEEDOR    auto (gratis primero y, si falla, pago) | gratis | pago
+ *   GROQ_API_KEY        LECTOR_MODELO_GROQ (qwen/qwen3.8-27b)                       → segunda opción gratuita (Groq, solo fotos), después de Gemini
+ *   LECTOR_PROVEEDOR    auto (gratis, luego Groq y, si falla, pago) | gratis (Gemini y Groq) | groq | pago
  */
 const MODELO = () => process.env.LECTOR_MODELO || "claude-sonnet-5-5";
 const MAX_BYTES = 3 * 1024 * 1024;          // el portal (Vercel) acepta cuerpos de ~4.5 MB; base64 agrega un tercio
@@ -131,7 +132,8 @@ export async function rutasPortalLector(app: FastifyInstance) {
           // se prueban otros modelos «flash» que Google ofrezca ese día, antes de rendirse.
           const fallos: string[] = []; // por qué falló cada intento, para que el mensaje diga la causa real
           const retirados = new Set<string>(); // modelos que Google ya no ofrece (404): no se vuelven a intentar
-          const hasta = Date.now() + 58_000;
+          // Con Groq de respaldo, Gemini se queda con la mitad del tiempo para que Groq alcance a responder dentro del límite de la función
+          const hasta = Date.now() + (process.env.GROQ_API_KEY ? 30_000 : 58_000);
           const pausas = [0, 4_000];
           // Por omisión Gemini razona poco ("low"): leer una factura no necesita pensar mucho y así responde en segundos, no en minutos.
           // LECTOR_GEMINI_PENSAMIENTO=minimal|low|medium|high lo cambia; vacío = el valor del propio Gemini.
@@ -175,6 +177,25 @@ export async function rutasPortalLector(app: FastifyInstance) {
             for (const m of configurados) { const r = await probar(m, 2); if (r) return r.datos; }
           }
           throw new Error([...new Set(fallos)].join(" · ") || "Gemini no respondió");
+        },
+        groq: async () => {
+          if (b.tipo === "application/pdf") throw new Error("Groq solo lee fotos, no PDF");
+          let ultimo = "Groq no respondió";
+          for (let i = 0; i < 2; i++) {
+            if (i) await new Promise((r) => setTimeout(r, 3_000));
+            const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { authorization: `Bearer ${process.env.GROQ_API_KEY}`, "content-type": "application/json" },
+              body: JSON.stringify(cuerpoGroq({ modelo: MODELO_GROQ(), tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema })),
+              signal: AbortSignal.timeout(25_000),
+            }).catch((e) => { ultimo = `${MODELO_GROQ()}: ${(e as Error).message}`; return null; });
+            if (!r) continue;
+            const d = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
+            if (r.status === 429 || r.status >= 500) { ultimo = r.status === 429 ? "Groq: se agotó el límite de lecturas gratuitas por ahora" : (d.error?.message ?? `Groq: HTTP ${r.status}`); continue; }
+            if (!r.ok) throw new Error(`Groq: ${d.error?.message ?? `HTTP ${r.status}`}`);
+            return leerRespuestaGroq(d);
+          }
+          throw new Error(ultimo);
         },
       };
       // Se intenta en orden; si el gratuito falla o se agota y hay opción de pago, se usa esa
