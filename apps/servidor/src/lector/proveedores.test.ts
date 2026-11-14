@@ -103,5 +103,8 @@ describe("Groq como segundo lector gratuito", () => {
     expect(() => leerRespuestaGroq({ choices: [{ message: { content: "" } }] })).toThrow(/Groq/);
     const conTexto = { choices: [{ message: { content: 'Aquí está:\n```json\n{"items":[{"descripcion":"B"}]}\n```\nListo.' } }] };
     expect((leerRespuestaGroq(conTexto).items as unknown[]).length).toBe(1);
+    const conLlavesEnTexto = { choices: [{ message: { content: 'Uso {a, b} como ejemplo. Resultado: {"items":[{"descripcion":"C",},]} fin {x}' } }] };
+    expect((leerRespuestaGroq(conLlavesEnTexto).items as unknown[]).length).toBe(1);
+    expect(() => leerRespuestaGroq({ choices: [{ message: { content: "Factura de FritoLay, total 8763" } }] })).toThrow(/no es JSON.*FritoLay/);
   });
 });
