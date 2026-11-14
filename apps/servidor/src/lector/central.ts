@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { normalizarAlias } from "../rutas/central-compras.js";
+import { compararTamano, sinTamano, tamanoDe } from "./tamano.js";
 import { llamarPortal } from "../licencia/cliente.js";
 import { credencialesPortal } from "../respaldo/respaldo.js";
 
@@ -149,8 +150,17 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       const exacto = barras(i).map((d) => porBarra.get(clave(d))).find(Boolean) ?? porProveedor.get(cod) ?? porAlias.get(normalizarAlias(nombreLimpio(i.nombre || i.descripcion, cod))) ?? porAlias.get(normalizarAlias(nombreLimpio(i.descripcion, cod))) ?? porAlias.get(normalizarAlias(i.descripcion)); // por el nombre limpio (el que se guarda) y, si no, por el original
       let elegido = exacto ? porId.get(exacto) : undefined;
       let confianza: "CODIGO" | "NOMBRE" | "NINGUNA" = elegido ? "CODIGO" : "NINGUNA";
-      const sugeridos = catalogo.map((c) => ({ c, s: parecido(i.descripcion, `${c.nombre} ${c.presentacion === "Unidad" ? "" : c.presentacion}`) }))
-        .filter((x) => x.s > 0.25).sort((x, y) => y.s - x.s).slice(0, 4);
+      // Sugerencias por nombre; el tamaño se compara convertido (55 OZ = 1559 G): igual suma, distinto resta, y «55OZ» vs «55G» se avisa
+      const nombreL = nombreLimpio(i.nombre || i.descripcion, cod);
+      const tLinea = tamanoDe(nombreL);
+      const avisos: string[] = [];
+      const sugeridos = catalogo.map((c) => {
+        const txt = `${c.nombre} ${c.presentacion === "Unidad" ? "" : c.presentacion}`;
+        const nom = parecido(sinTamano(nombreL), sinTamano(txt));
+        const tc = tamanoDe(txt), rel = compararTamano(tLinea, tc);
+        if (rel === "confundible" && nom >= 0.6 && tLinea && tc && !avisos.length) avisos.push(`Dice ${tLinea.numero} ${tLinea.unidad}, pero en su inventario «${c.nombre}» es de ${tc.numero} ${tc.unidad}: ¿se leyó mal la unidad?`);
+        return { c, s: rel === "igual" ? Math.min(1, nom + 0.15) : rel === "distinto" ? nom * 0.6 : nom };
+      }).filter((x) => x.s > 0.25).sort((x, y) => y.s - x.s).slice(0, 4);
       if (!elegido && sugeridos[0] && sugeridos[0].s >= 0.75 && (!sugeridos[1] || sugeridos[0].s - sugeridos[1].s >= 0.1)) { elegido = sugeridos[0].c; confianza = "NOMBRE"; }
       // ---- Costo REAL de la línea, sin ITBIS: precio × cantidad − descuento + impuesto selectivo (ISC), repartido entre las unidades que llegaron
       const bruto = i.cantidad * i.precioUnitario;
@@ -186,7 +196,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
         codigo: cod || null, codigoBarras: barras(i)[0] ?? null, descripcion: nombreLimpio(i.nombre || i.descripcion, cod), unidad: i.unidad ?? null,
         cantidad: Math.round(cantidad * 10000) / 10000, costo: Math.round(costo * 10000) / 10000, importe: i.importe ?? null, porUnidad, empaque,
         presentacionId: elegido?.presentacionId ?? null, producto: elegido ? { nombre: elegido.nombre, presentacion: elegido.presentacion, factor: elegido.factor } : null,
-        confianza, sugeridos: sugeridos.filter((x) => x.c.presentacionId !== elegido?.presentacionId).map((x) => x.c),
+        confianza, aviso: avisos[0] ?? null, sugeridos: sugeridos.filter((x) => x.c.presentacionId !== elegido?.presentacionId).map((x) => x.c),
       };
     });
 

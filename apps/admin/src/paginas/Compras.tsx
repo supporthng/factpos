@@ -28,6 +28,8 @@ interface ItemLeido {
   confianza: "CODIGO" | "NOMBRE" | "NINGUNA"; sugeridos: Sugerido[];
   /** true: cantidad y costo vienen por UNIDAD (la factura trae cajas de N); empaque = cómo se interpretó */
   porUnidad?: boolean; empaque?: string | null;
+  /** La unidad parece mal leída (55 OZ vs 55 G en su inventario) */
+  aviso?: string | null;
 }
 interface FacturaLeida {
   cupo: number; usadas: number; aviso?: string | null; proveedor: { id: string | null; nombreLeido: string | null; rncLeido: string | null };
@@ -553,7 +555,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
           {pend.map((it, i) => (
             <div key={i} className="pend-linea">
               <div className="pend-fila">
-                <span><b>{it.descripcion}</b>{it.codigo && <small className="suave bloque">Código {it.codigo}</small>}{it.empaque && <small className="suave bloque">{it.empaque}</small>}</span>
+                <span><b>{it.descripcion}</b>{it.codigo && <small className="suave bloque">Código {it.codigo}</small>}{it.empaque && <small className="suave bloque">{it.empaque}</small>}{it.aviso && <small className="bloque" style={{ color: "var(--aviso, #b45309)" }}>⚠ {it.aviso}</small>}</span>
                 <span className="der">{it.cantidad}</span>
                 <span className="der">{rd(it.costo)}{it.porUnidad && <small className="suave bloque">por unidad</small>}</span>
               </div>
