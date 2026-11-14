@@ -28,7 +28,7 @@ import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
 import { EstadoSistema } from "./paginas/InicioCifras";
-import { BarraPuesta, PuestaEnMarcha } from "./paginas/PuestaEnMarcha";
+import { PuestaEnMarcha } from "./paginas/PuestaEnMarcha";
 const Inventario = lazy(() => import("./paginas/Inventario").then((m) => ({ default: m.Inventario })));
 const Productos = lazy(() => import("./paginas/Productos").then((m) => ({ default: m.Productos })));
 const Compras = lazy(() => import("./paginas/Compras").then((m) => ({ default: m.Compras })));
@@ -404,7 +404,6 @@ function AppInterna() {
 
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
-            {!enPortal && vista === "inicio" && <BarraPuesta />}
             {vista === "inicio" && <TarjetaAgregar />}
 
             {vista === "inicio" && (
