@@ -10,6 +10,14 @@ describe("nombre limpio de producto de factura", () => {
     expect(nombreLimpio("NATUCHIPS YUCA CS 33GX70X1")).toBe("NATUCHIPS YUCA CS 33G");
     expect(nombreLimpio("CARIBEA 6X12X1.140OZXA1")).toBe("CARIBEA 6X12X1.140OZ");
   });
+  it("regla general: cualquier producto, aunque la IA haya leído mal el empaque", () => {
+    expect(nombreLimpio("CHICHARRON CS 6X502XA1")).toBe("CHICHARRON CS");
+    expect(nombreLimpio("NATYCHIPS PL ALO 12.5X385RXA1")).toBe("NATYCHIPS PL ALO");
+    expect(nombreLimpio("LAYS CLASSICS CS 6X30XA1")).toBe("LAYS CLASSICS CS");
+    expect(nombreLimpio("RUFFLES CHEDDAR DE SAL 12.5X55OZXA1")).toBe("RUFFLES CHEDDAR DE SAL 55OZ");
+    expect(nombreLimpio("300055756-RUFFLES CHEEDAR CS TA 55GX50X1")).toBe("RUFFLES CHEEDAR CS TA 55G");
+    expect(nombreLimpio("300059691-NATUCHIPS YUCA CS 33GX70X1")).toBe("NATUCHIPS YUCA CS 33G");
+  });
   it("quita el código si viene aparte y repetido al inicio", () => {
     expect(nombreLimpio("30008208 CHEETOS CORN 8OZ", "30008208")).toBe("CHEETOS CORN 8OZ");
   });
