@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cuerpoGemini, elegirAlternos, leerRespuestaGemini, modelosGratis, ordenProveedores } from "./proveedores.js";
+import { cuerpoGemini, cuerpoGroq, elegirAlternos, leerRespuestaGemini, leerRespuestaGroq, modelosGratis, ordenProveedores } from "./proveedores.js";
 
 describe("orden de proveedores del lector", () => {
   const g = { GEMINI_API_KEY: "g" }, a = { ANTHROPIC_API_KEY: "a" };
@@ -80,5 +80,26 @@ describe("modelos alternos de Gemini", () => {
   it("respeta el máximo y una lista vacía", () => {
     expect(elegirAlternos(lista, [], 1)).toEqual(["gemini-3.8-flash"]);
     expect(elegirAlternos([], [])).toEqual([]);
+  });
+});
+
+describe("Groq como segundo lector gratuito", () => {
+  const g = { GEMINI_API_KEY: "g" }, q = { GROQ_API_KEY: "q" }, a = { ANTHROPIC_API_KEY: "a" };
+  it("va después de Gemini y antes del de pago", () => {
+    expect(ordenProveedores({ ...g, ...q, ...a }, true)).toEqual(["gratis", "groq", "pago"]);
+    expect(ordenProveedores({ ...q, ...a }, false)).toEqual(["groq"]);
+    expect(ordenProveedores({ ...g, ...q, LECTOR_PROVEEDOR: "gratis" })).toEqual(["gratis", "groq"]);
+    expect(ordenProveedores({ ...g, ...q, LECTOR_PROVEEDOR: "groq" })).toEqual(["groq"]);
+  });
+  it("la petición lleva la imagen en base64 y pide JSON", () => {
+    const c = cuerpoGroq({ modelo: "m", tipo: "image/jpeg", datos: "AAA", instrucciones: "reglas", esquema: { type: "object" } });
+    expect(c.model).toBe("m");
+    expect(c.response_format).toEqual({ type: "json_object" });
+    expect(JSON.stringify(c.messages[1])).toContain("data:image/jpeg;base64,AAA");
+  });
+  it("lee el JSON aunque venga con <think> y rechaza lo vacío", () => {
+    const ok = { choices: [{ message: { content: '<think>hmm</think>{"items":[{"descripcion":"A"}]}' }, finish_reason: "stop" }] };
+    expect((leerRespuestaGroq(ok).items as unknown[]).length).toBe(1);
+    expect(() => leerRespuestaGroq({ choices: [{ message: { content: "" } }] })).toThrow(/Groq/);
   });
 });

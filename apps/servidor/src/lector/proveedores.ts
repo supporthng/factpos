@@ -2,21 +2,24 @@
  * Proveedores de IA del lector de facturas:
  *  - «gratis»: Google Gemini (GEMINI_API_KEY, modelo LECTOR_MODELO_GRATIS). Su capa gratuita tiene límites de uso y
  *    Google puede usar lo que se envía para mejorar sus productos.
+ *  - «groq»: segundo lector gratuito (GROQ_API_KEY, modelo LECTOR_MODELO_GROQ, por omisión qwen/qwen3.8-27b). Solo lee imágenes (no PDF).
+ *    Se usa cuando Gemini falla o está saturado.
  *  - «pago»: Claude de Anthropic (ANTHROPIC_API_KEY, modelo LECTOR_MODELO). Es el que ya estaba.
  * El de pago solo se usa si el proveedor autorizó a esa licencia (portal_licencias.lector_pago); sin esa autorización
  * nunca se llama a Claude, ni siquiera como respaldo. LECTOR_PROVEEDOR = «auto» (por omisión: gratis primero y, si falla
  * o se agota y la licencia está autorizada, el de pago), «gratis» (solo gratis) o «pago» (solo pago, si está autorizada).
  */
-export type Proveedor = "gratis" | "pago";
-export interface Entorno { LECTOR_PROVEEDOR?: string; GEMINI_API_KEY?: string; ANTHROPIC_API_KEY?: string }
+export type Proveedor = "gratis" | "groq" | "pago";
+export interface Entorno { LECTOR_PROVEEDOR?: string; GEMINI_API_KEY?: string; GROQ_API_KEY?: string; ANTHROPIC_API_KEY?: string }
 
 /** En qué orden se intentan los proveedores según lo configurado y las llaves que existan */
 export function ordenProveedores(env: Entorno, pagoAutorizado = false): Proveedor[] {
-  const gratis = !!env.GEMINI_API_KEY, pago = !!env.ANTHROPIC_API_KEY && pagoAutorizado;
+  const gratis = !!env.GEMINI_API_KEY, groq = !!env.GROQ_API_KEY, pago = !!env.ANTHROPIC_API_KEY && pagoAutorizado;
   const modo = (env.LECTOR_PROVEEDOR ?? "auto").toLowerCase();
-  if (modo === "gratis") return gratis ? ["gratis"] : [];
+  if (modo === "gratis") return [...(gratis ? ["gratis" as const] : []), ...(groq ? ["groq" as const] : [])];
+  if (modo === "groq") return groq ? ["groq"] : [];
   if (modo === "pago") return pago ? ["pago"] : [];
-  return [...(gratis ? ["gratis" as const] : []), ...(pago ? ["pago" as const] : [])];
+  return [...(gratis ? ["gratis" as const] : []), ...(groq ? ["groq" as const] : []), ...(pago ? ["pago" as const] : [])];
 }
 
 export const MODELO_GRATIS = (env: { LECTOR_MODELO_GRATIS?: string } = process.env) => env.LECTOR_MODELO_GRATIS || "gemini-3.8-flash";
@@ -63,4 +66,29 @@ export function elegirAlternos(lista: { name?: string; supportedGenerationMethod
     .sort((a, b) => b.version - a.version || Number(a.lite) - Number(b.lite))
     .slice(0, max)
     .map((m) => m.nombre);
+}
+
+export const MODELO_GROQ = (env: { LECTOR_MODELO_GROQ?: string } = process.env) => env.LECTOR_MODELO_GROQ || "qwen/qwen3.8-27b";
+
+/** Petición a Groq (formato compatible con OpenAI): la imagen va en base64 y se pide la respuesta como JSON */
+export function cuerpoGroq(args: { modelo: string; tipo: string; datos: string; instrucciones: string; esquema: unknown }) {
+  return {
+    model: args.modelo,
+    temperature: 0,
+    max_tokens: 8192,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: `${args.instrucciones}\nResponde ÚNICAMENTE con un objeto JSON (sin texto antes ni después, sin bloques de código) que cumpla este esquema:\n${JSON.stringify(args.esquema)}` },
+      { role: "user", content: [{ type: "image_url", image_url: { url: `data:${args.tipo};base64,${args.datos}` } }, { type: "text", text: "Lea esta factura de compra." }] },
+    ],
+  };
+}
+
+/** Saca el JSON de la respuesta de Groq (quita un posible bloque <think>) y aplica las mismas comprobaciones que con Gemini */
+export function leerRespuestaGroq(d: unknown): Record<string, unknown> {
+  const r = d as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
+  const texto = (r.choices?.[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const adaptado = { candidates: [{ content: { parts: [{ text: texto }] }, finishReason: r.choices?.[0]?.finish_reason === "length" ? "MAX_TOKENS" : "STOP" }] };
+  try { return leerRespuestaGemini(adaptado); }
+  catch (e) { throw new Error((e as Error).message.replace(/Gemini/g, "Groq")); }
 }
