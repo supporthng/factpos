@@ -549,9 +549,15 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
         <div className="panel">
           <h3>Líneas de la factura sin emparejar ({pend.length})</h3>
           <p className="suave">No se encontró el producto en su inventario. Elija el que corresponde o créelo aquí mismo con «Crear producto nuevo».</p>
+          <div className="pend-cab"><span>Nombre o descripción</span><span className="der">Cantidad</span><span className="der">Precio o costo</span></div>
           {pend.map((it, i) => (
-            <div key={i} className="en-linea" style={{ flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
-              <span><b>{it.descripcion}</b> <span className="suave">{it.codigo ? `${it.codigo} · ` : ""}{it.cantidad} × {rd(it.costo)}{it.porUnidad ? " por unidad" : ""}</span>{it.empaque && <small className="suave bloque">{it.empaque}</small>}</span>
+            <div key={i} className="pend-linea">
+              <div className="pend-fila">
+                <span><b>{it.descripcion}</b>{it.codigo && <small className="suave bloque">Código {it.codigo}</small>}{it.empaque && <small className="suave bloque">{it.empaque}</small>}</span>
+                <span className="der">{it.cantidad}</span>
+                <span className="der">{rd(it.costo)}{it.porUnidad && <small className="suave bloque">por unidad</small>}</span>
+              </div>
+              <div className="en-linea" style={{ flexWrap: "wrap", gap: 8, margin: "6px 0 0" }}>
               {it.sugeridos.map((sg) => (
                 <button key={sg.presentacionId} className="chip" onClick={() => { agregarLeidas([{ presentacionId: sg.presentacionId, alias: it.descripcion, ...enPresentacion(it, sg.factor) }]); setPend((p) => p.filter((_, j) => j !== i)); }}>
                   {sg.nombre}{sg.presentacion !== "Unidad" ? ` · ${sg.presentacion}` : ""}
@@ -566,6 +572,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
               }} />
               <button className="boton" onClick={() => setCreando({ i, item: it })}>＋ Crear producto nuevo</button>
               <button className="boton fantasma" onClick={() => setPend((p) => p.filter((_, j) => j !== i))}>Descartar</button>
+              </div>
             </div>
           ))}
         </div>
