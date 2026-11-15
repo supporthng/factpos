@@ -185,6 +185,39 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
     return { pasos, hechos: necesarios.filter((x) => x.listo).length, necesarios: necesarios.length };
   });
 
+  /**
+   * Existencias del grupo (solo lectura): por cada producto de la empresa actual, cuánto hay del MISMO producto (mismo código de barras)
+   * en cada una de las otras empresas enlazadas. Cada empresa tiene su propio catálogo e inventario; esto solo permite saber dónde está el stock.
+   */
+  app.get("/central/inventario/grupo", async (req) => {
+    const s = sesionAdmin(req);
+    if (!s.p.includes("*")) throw new ErrorNegocio("Solo un administrador completo puede ver las existencias de las otras empresas", 403);
+    const f = z.object({ q: z.string().trim().max(60).optional() }).parse(req.query);
+    const g = await grupoDe(s.e);
+    const r = await pool.query(
+      `SELECT p.id AS "productoId",
+              COALESCE(jsonb_agg(jsonb_build_object('empresaId', e.id, 'empresa', COALESCE(e.nombre_comercial, e.razon_social), 'producto', o.nombre, 'cantidad', o.cant))
+                       FILTER (WHERE o.id IS NOT NULL), '[]') AS otras
+         FROM productos p
+         CROSS JOIN empresas e
+         LEFT JOIN LATERAL (
+           SELECT p2.id, p2.nombre, COALESCE((SELECT SUM(x.cantidad) FROM existencias x WHERE x.producto_id = p2.id), 0)::float AS cant
+             FROM productos p2
+            WHERE p2.empresa_id = e.id AND p2.activo
+              AND EXISTS (SELECT 1 FROM presentaciones pr2 JOIN codigos_barra b2 ON b2.presentacion_id = pr2.id
+                           WHERE pr2.producto_id = p2.id
+                             AND b2.codigo IN (SELECT b1.codigo FROM presentaciones pr1 JOIN codigos_barra b1 ON b1.presentacion_id = pr1.id WHERE pr1.producto_id = p.id))
+            LIMIT 1) o ON TRUE
+        WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock
+          AND COALESCE(e.grupo_id, e.id) = $2 AND e.activo AND e.id <> $1
+          AND ($3::text IS NULL OR p.nombre ILIKE '%' || $3 || '%' OR p.sku ILIKE $3 || '%')
+        GROUP BY p.id
+        ORDER BY MIN(p.nombre) LIMIT 500`,
+      [s.e, g, f.q ?? null],
+    );
+    return r.rows;
+  });
+
   /** Pasa a otra empresa del grupo: devuelve una sesión nueva como administrador de esa empresa. */
   app.post("/central/empresas/cambiar", async (req) => {
     const s = sesionAdmin(req);
