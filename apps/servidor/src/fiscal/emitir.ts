@@ -96,7 +96,7 @@ export async function emitirEcfVenta(
   if (v.tipo_documento === "E34") {
     const o = (await c.query("SELECT encf, fecha_firma FROM ecf_documentos WHERE venta_id = $1", [v.venta_origen_id])).rows[0];
     if (!o?.encf) throw new ErrorNegocio("La factura original no tiene e-NCF");
-    datos.referencia = { encf: o.encf, fecha: new Date(o.fecha_firma), codigoModificacion: "1", razon: v.motivo ?? "Anulación" };
+    datos.referencia = { encf: o.encf, fecha: new Date(o.fecha_firma), codigoModificacion: v.parcial ? "3" : "1", razon: v.motivo ?? (v.parcial ? "Devolución parcial" : "Anulación") };
   }
 
   // Las notas de crédito (E34) se envían siempre completas

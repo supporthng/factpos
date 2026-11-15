@@ -98,7 +98,7 @@ export async function rutasSalon(app: FastifyInstance) {
     const dia = fecha ?? (await pool.query<{ d: string }>("SELECT ((now() AT TIME ZONE 'America/Santo_Domingo') - interval '6 hours')::date::text AS d")).rows[0]!.d;
     const jornada = (col: string) => `((${col} AT TIME ZONE 'America/Santo_Domingo') - interval '6 hours')::date`;
     // Ventas que cuentan: no son anulaciones ni notas de crédito y no fueron anuladas después
-    const valida = `v.tipo_documento NOT IN ('E34','ANU') AND NOT EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU'))`;
+    const valida = `v.tipo_documento NOT IN ('E34','ANU') AND NOT EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND NOT n.parcial AND n.tipo_documento IN ('E34','ANU'))`;
     const cuentas = `
       SELECT c.id, c.abierta_por, c.mesa, c.numero,
              floor(EXTRACT(EPOCH FROM (c.cerrada_en - c.abierta_en)) / 60)::int AS minutos,
