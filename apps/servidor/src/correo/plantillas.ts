@@ -241,6 +241,38 @@ ${c.condiciones ? `<p style="font-size:13px;line-height:1.5;margin:0;color:${COL
   };
 }
 
+// ------------------------------------------------------------------ FACTURA (para el cliente)
+export interface FacturaCorreo {
+  titulo: string; numero: string; fecha: string; cliente: string | null; subtotal: number; descuento: number; itbis: number; total: number;
+  notas: string | null; pagos: string | null; fiscal: { encf: string; codigoSeguridad: string | null } | null;
+  lineas: { descripcion: string; cantidad: number; precio: number; total: number }[];
+}
+export function correoFactura(m: Marca, f: FacturaCorreo, mensaje?: string) {
+  const filas = f.lineas.map((l) => [esc(l.descripcion), num(l.cantidad), rd(l.precio), rd(l.total)]);
+  const cuerpo = `
+${mensaje ? `<p style="font-size:15px;line-height:1.6;margin:0 0 14px">${esc(mensaje).replace(/\n/g, "<br>")}</p>` : `<p style="font-size:15px;line-height:1.6;margin:0 0 14px">${f.cliente ? `Estimado(a) ${esc(f.cliente)}` : "Estimado cliente"}: le enviamos el detalle de su factura. Gracias por su compra.</p>`}
+${tabla(["Descripción", "Cant.", "Precio", "Total"], filas, 1)}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin:0 0 14px">
+  <tr><td align="right" style="padding:3px 6px;color:${COLOR.suave}">Subtotal</td><td align="right" style="padding:3px 6px;width:130px">${rd(f.subtotal)}</td></tr>
+  ${f.descuento > 0 ? `<tr><td align="right" style="padding:3px 6px;color:${COLOR.suave}">Descuento</td><td align="right" style="padding:3px 6px">${rd(f.descuento)}</td></tr>` : ""}
+  <tr><td align="right" style="padding:3px 6px;color:${COLOR.suave}">ITBIS</td><td align="right" style="padding:3px 6px">${rd(f.itbis)}</td></tr>
+  <tr><td align="right" style="padding:6px;font-weight:700;font-size:16px">Total</td><td align="right" style="padding:6px;font-weight:700;font-size:16px">${rd(f.total)}</td></tr>
+</table>
+${f.fiscal ? `<p style="font-size:14px;margin:0 0 6px"><b>e-NCF:</b> ${esc(f.fiscal.encf)}${f.fiscal.codigoSeguridad ? ` · <b>Código de seguridad:</b> ${esc(f.fiscal.codigoSeguridad)}` : ""}</p>` : ""}
+${f.pagos ? `<p style="font-size:14px;margin:0 0 6px"><b>Forma de pago:</b> ${esc(f.pagos)}</p>` : ""}
+${f.notas ? `<p style="font-size:14px;line-height:1.5;margin:0 0 6px"><b>Notas:</b> ${esc(f.notas)}</p>` : ""}`;
+  const texto = [
+    `${m.empresa} · ${f.titulo} ${f.numero}`, f.cliente ? `Cliente: ${f.cliente}` : "", `Fecha: ${f.fecha}`, "",
+    ...f.lineas.map((l) => `- ${l.descripcion}: ${num(l.cantidad)} x ${rd(l.precio)} = ${rd(l.total)}`), "",
+    `Subtotal ${rd(f.subtotal)} · ITBIS ${rd(f.itbis)} · TOTAL ${rd(f.total)}`, f.fiscal ? `e-NCF ${f.fiscal.encf}` : "",
+  ].filter((x) => x !== "").join("\n");
+  return {
+    asunto: `${f.titulo} ${f.numero} de ${m.empresa}`,
+    html: base(m, `${f.titulo} ${f.numero}`, esc(f.fecha), cuerpo, "Si tiene alguna pregunta, responda a este correo.", true),
+    texto,
+  };
+}
+
 /** Aviso al cliente de que su licencia está por vencer. */
 export function correoVencimiento(m: Marca, cliente: string, vence: string, dias: number) {
   const cuando = dias <= 0 ? "vence hoy" : dias === 1 ? "vence mañana" : `vence en ${dias} días`;
