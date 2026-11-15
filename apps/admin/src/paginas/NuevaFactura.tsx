@@ -14,7 +14,7 @@ interface Cotizacion {
   subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown; cupon?: { codigo: string; total: string } | null;
   lineas: { presentacionId: string; descripcion: string; cantidad: string; precio: string | null; oferta: string | null; descuento?: string; itbis?: string; total: string }[];
 }
-interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string; descuento: string }
+interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string; descuento: string; /** precio libre (vacío = el de lista) */ precio: string }
 interface PagoF { id: string; forma: (typeof FORMAS)[number][0]; monto: string; recibido: string; referencia: string }
 
 const TIPOS: { id: string; nombre: string; fiscal: boolean; pideCliente: boolean }[] = [
@@ -48,6 +48,11 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   const [cupon, setCupon] = useState("");
   const [motivo, setMotivo] = useState("");
   const puedeDescuento = puede("venta.descuento");
+  const puedeLibre = puede("venta.precio_libre");
+  const [motivoPrecio, setMotivoPrecio] = useState("");
+  /** «cobrar» = se emite aquí mismo; «enviar» = se manda a una caja y allí se cobra (el comprobante sale al cobrar) */
+  const [modo, setModo] = useState<"cobrar" | "enviar">("cobrar");
+  const [enviada, setEnviada] = useState("");
   const [notas, setNotas] = useState("");
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -65,7 +70,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   }, [busca]);
 
   const validas = lineas.filter((l) => n(l.cantidad) > 0);
-  const items = () => validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad, ...(n(l.descuento) > 0 ? { descuentoManual: n(l.descuento).toFixed(2) } : {}) }));
+  const items = () => validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad, ...(n(l.descuento) > 0 ? { descuentoManual: n(l.descuento).toFixed(2) } : {}), ...(puedeLibre && n(l.precio) > 0 ? { precioLibre: n(l.precio).toFixed(2) } : {}) }));
   // Precios del servidor: se recalculan al cambiar productos, cantidades o cliente
   useEffect(() => {
     if (!cajaId || !validas.length) { setCot(null); setErrCot(""); return; }
@@ -77,7 +82,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
       } catch (e) { if (vivo) { setCot(null); setErrCot((e as Error).message); } }
     }, 350);
     return () => { vivo = false; clearTimeout(t); };
-  }, [cajaId, cliente?.id, cupon, JSON.stringify(validas.map((l) => [l.presentacionId, l.cantidad, l.descuento]))]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cajaId, cliente?.id, cupon, JSON.stringify(validas.map((l) => [l.presentacionId, l.cantidad, l.descuento, l.precio]))]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!foco) return;
@@ -92,7 +97,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
     const ya = lineas.find((l) => l.presentacionId === presentacionId);
     if (ya) { setLineas((ls) => ls.map((l) => (l.clave === ya.clave ? { ...l, cantidad: String(n(l.cantidad) + 1) } : l))); return; }
     const clave = crypto.randomUUID();
-    setLineas((ls) => [...ls, { clave, presentacionId, nombre: `${p.nombre}${pr.nombre !== "Unidad" ? ` · ${pr.nombre}` : ""}`, cantidad: "1", descuento: "" }]);
+    setLineas((ls) => [...ls, { clave, presentacionId, nombre: `${p.nombre}${pr.nombre !== "Unidad" ? ` · ${pr.nombre}` : ""}`, cantidad: "1", descuento: "", precio: "" }]);
     setFoco(clave);
   };
 
@@ -103,6 +108,10 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   const pagado = pagos.reduce((a, p) => a + montoDe(p), 0);
   const falta = Math.round((total - pagado) * 100) / 100;
   const hayDescuento = lineas.some((l) => n(l.descuento) > 0);
+  const hayPrecioLibre = puedeLibre && lineas.some((l) => n(l.precio) > 0);
+  const cajaSel = cajas.datos?.find((c) => c.cajaId === cajaId);
+  const puedeEnviar = !!cajaSel && cajaSel.tipo !== "FACTURACION";
+  const enviando = modo === "enviar" && puedeEnviar;
   const cambio = pagos.reduce((a, p) => a + (p.forma === "EFECTIVO" && n(p.recibido) > montoDe(p) ? n(p.recibido) - montoDe(p) : 0), 0);
   const cambiarPago = (id: string, c: Partial<PagoF>) => setPagos((ps) => ps.map((p) => (p.id === id ? { ...p, ...c } : p)));
   const agregarPago = () => setPagos((ps) => [...(ps.length === 1 ? [{ ...ps[0], monto: total ? total.toFixed(2) : "" }] : ps), { id: crypto.randomUUID(), forma: "TARJETA", monto: "", recibido: "", referencia: "" }]);
@@ -111,14 +120,31 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
     if (!validas.length) return "Agregue al menos un producto.";
     if (errCot) return errCot;
     if (!cot) return "Calculando…";
+    if (hayDescuento && motivo.trim().length < 5) return "Escriba el motivo del descuento.";
+    if (hayPrecioLibre && motivoPrecio.trim().length < 5) return "Escriba el motivo del cambio de precio.";
+    if (enviando) return "";
     if (t.pideCliente && !(cliente?.documento)) return "Este comprobante requiere un cliente con RNC o cédula.";
     if (pagos.some((p) => p.forma === "CREDITO") && !cliente) return "La venta a crédito requiere un cliente.";
     if (Math.abs(falta) >= 0.005) return falta > 0 ? `Faltan ${rd(falta)} por cobrar.` : `Los pagos se pasan por ${rd(-falta)}.`;
     if (pagos.some((p) => montoDe(p) <= 0)) return "Cada pago debe tener un monto.";
     if (pagos.some((p) => p.forma === "EFECTIVO" && p.recibido && n(p.recibido) < montoDe(p))) return "El efectivo recibido es menor que el monto en efectivo.";
-    if (hayDescuento && motivo.trim().length < 5) return "Escriba el motivo del descuento.";
     return "";
-  }, [cajas.datos, validas.length, errCot, cot, t.pideCliente, cliente, pagos, falta, hayDescuento, motivo, total]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enviando, hayPrecioLibre, motivoPrecio, cajas.datos, validas.length, errCot, cot, t.pideCliente, cliente, pagos, falta, hayDescuento, motivo, total]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enviar = async () => {
+    if (problema || !cot) return;
+    setGuardando(true); setMsg(""); setEnviada("");
+    try {
+      const r = await api<{ numero: string }>("/central/por-cobrar", { cuerpo: {
+        cajaId, clienteId: cliente?.id, notas: notas.trim() || undefined, items: items(),
+        ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}), ...(hayPrecioLibre ? { motivoPrecio: motivoPrecio.trim() } : {}),
+      } });
+      setEnviada(`Venta #${r.numero} enviada a ${cajaSel?.caja ?? "la caja"}: el cajero la verá en «Por cobrar».`);
+      setLineas([]); setCliente(null); setNotas(""); setMotivo(""); setMotivoPrecio(""); setCupon(""); setCuponTxt(""); setCot(null);
+      ventaId.current = crypto.randomUUID();
+    } catch (e) { setMsg((e as Error).message); }
+    setGuardando(false);
+  };
 
   const crear = async () => {
     if (problema || !cot) return;
@@ -127,7 +153,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
     try {
       const r = await api<{ id: string }>("/central/facturas", { cuerpo: {
         cajaId, clienteId: cliente?.id, tipoDocumento: tipo, notas: notas.trim() || undefined, ventaId: ventaId.current,
-        items: items(), ...(cupon ? { cuponCodigo: cupon } : {}), ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}),
+        items: items(), ...(cupon ? { cuponCodigo: cupon } : {}), ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}), ...(hayPrecioLibre ? { motivoPrecio: motivoPrecio.trim() } : {}),
         pagos: pagos.map((p) => ({
           formaPago: p.forma, monto: montoDe(p).toFixed(2),
           ...(p.forma === "EFECTIVO" && n(p.recibido) >= montoDe(p) && p.recibido ? { recibido: n(p.recibido).toFixed(2) } : {}),
@@ -144,6 +170,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
       <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>
       <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />
       <Aviso texto={cajas.error || msg} />
+      {enviada && <Aviso tipo="info" texto={enviada} />}
       {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo." />}
 
       <div className="panel cab-compra">
@@ -152,9 +179,13 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
             {cajas.datos?.map((c) => <option key={c.cajaId} value={c.cajaId}>{c.sucursal} · {c.tipo === "FACTURACION" ? "Facturación (sin caja)" : c.caja}{c.cajero && c.tipo !== "FACTURACION" ? ` · ${c.cajero}` : ""}</option>)}
           </select>
         </label>
-        <label className="campo"><span>Comprobante</span>
+        {puedeEnviar && <label className="campo"><span>Qué hacer con la venta</span>
+          <select value={modo} onChange={(e) => setModo(e.target.value as "cobrar" | "enviar")}>
+            <option value="cobrar">Cobrar y facturar aquí</option><option value="enviar">Enviar a la caja para que cobre</option>
+          </select></label>}
+        {!enviando && <label className="campo"><span>Comprobante</span>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS.filter((x) => x.id !== "SIN" || sinComprobante).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
-        </label>
+        </label>}
         <div className="campo campo-prov"><span>Cliente {t.pideCliente ? "(obligatorio)" : "(opcional: sin cliente = mostrador)"}</span>
           {cliente ? (
             <span className="en-linea"><b>{cliente.nombre}</b><span className="suave">{cliente.documento ?? "sin documento"}</span><button className="boton fantasma" onClick={() => setCliente(null)}>✕ Quitar</button></span>
@@ -173,7 +204,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
         <BuscadorLinea inputRef={buscarRef} onElegir={agregar} />
         {!lineas.length ? <p className="suave vacio-compra">Busque los productos que lleva el cliente.</p> : (
           <div className="tabla-contenedor"><table className="tabla tabla-edicion">
-            <thead><tr><th>#</th><th>Producto</th><th className="der">Cantidad</th><th className="der">Precio</th>{puedeDescuento && <th className="der">Descuento RD$</th>}<th className="der">Total</th><th /></tr></thead>
+            <thead><tr><th>#</th><th>Producto</th><th className="der">Cantidad</th><th className="der">Precio{puedeLibre ? " (editable)" : ""}</th>{puedeDescuento && <th className="der">Descuento RD$</th>}<th className="der">Total</th><th /></tr></thead>
             <tbody>{lineas.map((l, i) => {
               const c = cot?.lineas.find((x) => x.presentacionId === l.presentacionId);
               return (
@@ -184,7 +215,10 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
                     ref={(el) => { if (el) cantRefs.current.set(l.clave, el); else cantRefs.current.delete(l.clave); }}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarRef.current?.focus(); } }}
                     onChange={(e) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, cantidad: limpiar(e.target.value) } : x)))} /></td>
-                  <td className="der">{c?.precio ? rd(c.precio) : "…"}</td>
+                  {puedeLibre
+                    ? <td className="der" style={{ width: 130 }}><input className="numero" inputMode="decimal" value={l.precio} placeholder={c?.precio ? n(c.precio).toFixed(2) : "…"} aria-label="Precio"
+                        onChange={(e) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, precio: limpiar(e.target.value) } : x)))} /></td>
+                    : <td className="der">{c?.precio ? rd(c.precio) : "…"}</td>}
                   {puedeDescuento && <td className="der" style={{ width: 120 }}><input className="numero" inputMode="decimal" value={l.descuento} placeholder="0" aria-label="Descuento"
                     onChange={(e) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, descuento: limpiar(e.target.value) } : x)))} /></td>}
                   <td className="der">{c ? rd(c.total) : "…"}</td>
@@ -197,7 +231,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
         <label className="campo"><span>Notas (salen en la factura)</span><input value={notas} maxLength={300} onChange={(e) => setNotas(e.target.value)} /></label>
       </div>
 
-      <div className="panel">
+      {!enviando && <div className="panel">
         <h3>Cobro</h3>
         {pagos.map((p, i) => (
           <div key={p.id} className="cab-compra" style={{ marginBottom: 8 }}>
@@ -216,7 +250,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
           {!unico && <span className={falta === 0 ? "texto-ok" : "texto-alerta"}>{falta === 0 ? "Cobro completo" : falta > 0 ? `Faltan ${rd(falta)}` : `Se pasa por ${rd(-falta)}`}</span>}
           {cambio > 0 && <span>Devuelta: <b>{rd(cambio)}</b></span>}
         </div>
-      </div>
+      </div>}
 
       <div className="panel cab-compra">
         <label className="campo"><span>Cupón de descuento</span>
@@ -225,6 +259,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
               <button className="boton" disabled={!cuponTxt.trim()} onClick={() => setCupon(cuponTxt.trim())}>Aplicar</button></span>}
         </label>
         {puedeDescuento && hayDescuento && <label className="campo campo-prov"><span>Motivo del descuento (queda en auditoría)</span><input value={motivo} maxLength={200} onChange={(e) => setMotivo(e.target.value)} /></label>}
+        {hayPrecioLibre && <label className="campo campo-prov"><span>Motivo del cambio de precio (queda en auditoría)</span><input value={motivoPrecio} maxLength={200} onChange={(e) => setMotivoPrecio(e.target.value)} /></label>}
         {!puedeDescuento && <p className="suave pequeno">Para dar descuentos por línea se necesita el permiso «Aprobar descuentos».</p>}
       </div>
 
@@ -232,7 +267,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
         <span className="suave">{validas.length} línea(s)</span>
         {cot && <><span>Subtotal {rd(cot.subtotal)}</span>{n(cot.descuento) > 0 && <span className="texto-ok">Descuento {rd(cot.descuento)}</span>}<span>ITBIS {rd(cot.itbis)}</span></>}
         <b className="total-compra">Total {rd(total)}</b>
-        <button className="boton primario" disabled={!!problema || guardando} onClick={crear}>{guardando ? "Emitiendo…" : "Emitir factura"}</button>
+        <button className="boton primario" disabled={!!problema || guardando} onClick={enviando ? enviar : crear}>{enviando ? (guardando ? "Enviando…" : "Enviar a caja") : guardando ? "Emitiendo…" : "Emitir factura"}</button>
       </div>
       {problema && lineas.length > 0 && <p className="suave pequeno">{problema}</p>}
     </>

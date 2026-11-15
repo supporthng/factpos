@@ -64,6 +64,7 @@ import { rutasCentralCxcSeguimiento } from "./rutas/central-cxc-seguimiento.js";
 import { rutasCentralClientes } from "./rutas/central-clientes.js";
 import { rutasPedidos } from "./rutas/pedidos.js";
 import { rutasCuentas } from "./rutas/cuentas.js";
+import { rutasPorCobrar } from "./rutas/por-cobrar.js";
 import { rutasComandas } from "./rutas/comandas.js";
 import { rutasSalon } from "./rutas/salon.js";
 import { rutasAforo } from "./rutas/aforo.js";
@@ -269,6 +270,7 @@ export async function crearApp() {
   await app.register(rutasDelivery);
   await app.register(rutasPedidos);
   await app.register(rutasCuentas);
+  await app.register(rutasPorCobrar);
   await app.register(rutasComandas);
   await app.register(rutasSalon);
   await app.register(rutasAforo);

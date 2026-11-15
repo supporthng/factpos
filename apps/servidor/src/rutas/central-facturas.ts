@@ -229,6 +229,69 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
   };
   const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional(), precioVariable: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), precioLibre: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional() })).min(1, "La factura necesita al menos un producto").max(200);
 
+  /** Verifica descuentos y precios libres de una venta (permiso + motivo) y devuelve la autorización de descuento si hace falta */
+  const exigirPermisosItems = async (req: { headers: Record<string, unknown> }, cajaId: string, items: z.infer<typeof ItemsSchema>, motivoDescuento?: string, motivoPrecio?: string) => {
+    let autorizacion: string | undefined;
+    if (items.some((i) => Number(i.descuentoManual ?? 0) > 0)) {
+      if (!tienePermiso(permisos(req), "venta.descuento")) throw new ErrorNegocio("Los descuentos requieren el permiso de aprobar descuentos (supervisor).", 403);
+      if (!motivoDescuento || motivoDescuento.length < 5) throw new ErrorNegocio("Indique el motivo del descuento (mínimo 5 caracteres).");
+      const yo = (await pool.query<{ nombre: string }>("SELECT nombre FROM usuarios WHERE id = $1", [usuarioDe(req)])).rows[0];
+      autorizacion = autorizacionDirecta(usuarioDe(req), yo?.nombre ?? "Administración", "venta.descuento", cajaId);
+    }
+    if (items.some((i) => i.precioLibre)) {
+      if (!tienePermiso(permisos(req), "venta.precio_libre")) throw new ErrorNegocio("Cambiar el precio de una línea requiere el permiso «Facturar con precio libre».", 403);
+      if (!motivoPrecio || motivoPrecio.length < 5) throw new ErrorNegocio("Indique el motivo del cambio de precio (mínimo 5 caracteres).");
+    }
+    return autorizacion;
+  };
+
+  /** Ventas por cobrar: se arman aquí y se envían a una caja, que las cobra (el e-CF sale al cobrar) */
+  app.post("/central/por-cobrar", async (req, rep) => {
+    soloSucursal();
+    const b = z.object({
+      cajaId: uuid, clienteId: uuid.optional(), items: ItemsSchema, notas: z.string().trim().max(300).optional(),
+      motivoDescuento: z.string().trim().max(200).optional(), motivoPrecio: z.string().trim().max(200).optional(),
+    }).parse(req.body);
+    const ctx = await cajaPermitida(req, b.cajaId);
+    await exigirLicenciaParaVender();
+    await exigirPermisosItems(req, b.cajaId, b.items, b.motivoDescuento, b.motivoPrecio);
+    const q = resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false)); // valida precios, existencia y cliente
+    const id = uuidv7();
+    const numero = await enTransaccion(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(hashtext('por_cobrar:' || $1))", [ctx.sucursalId]);
+      const r = await c.query<{ numero: string }>(
+        `INSERT INTO ventas_por_cobrar (id, sucursal_id, numero, caja_id, cliente_id, items, total, notas, motivo_descuento, motivo_precio, creada_por)
+         VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM ventas_por_cobrar WHERE sucursal_id = $2),$3,$4,$5::jsonb,$6,$7,$8,$9,$10) RETURNING numero::text`,
+        [id, ctx.sucursalId, b.cajaId, b.clienteId ?? null, JSON.stringify(b.items), (q as { total: string }).total, b.notas ?? null, b.motivoDescuento ?? null, b.motivoPrecio ?? null, usuarioDe(req)]);
+      return r.rows[0].numero;
+    });
+    rep.code(201);
+    return { id, numero, total: (q as { total: string }).total };
+  });
+
+  app.get("/central/por-cobrar", async (req) => {
+    const permitidas = sucursalesDe(req);
+    const r = await pool.query(
+      `SELECT v.id, v.numero::text, v.total::text, v.estado, v.creada_en AS "creadaEn", ca.nombre AS caja, s.nombre AS sucursal,
+              cl.nombre AS cliente, u.nombre AS vendedor, jsonb_array_length(v.items) AS lineas
+         FROM ventas_por_cobrar v JOIN cajas ca ON ca.id = v.caja_id JOIN sucursales s ON s.id = v.sucursal_id
+         LEFT JOIN clientes cl ON cl.id = v.cliente_id LEFT JOIN usuarios u ON u.id = v.creada_por
+        WHERE s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[])) AND (v.estado = 'PENDIENTE' OR v.cerrada_en > now() - interval '2 days')
+        ORDER BY (v.estado = 'PENDIENTE') DESC, v.creada_en DESC LIMIT 200`, [empresaDe(req), permitidas]);
+    return r.rows;
+  });
+
+  app.post("/central/por-cobrar/:id/anular", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const permitidas = sucursalesDe(req);
+    const r = await pool.query(
+      `UPDATE ventas_por_cobrar v SET estado = 'ANULADA', cerrada_en = now(), cerrada_por = $4
+        FROM sucursales s WHERE v.id = $1 AND s.id = v.sucursal_id AND s.empresa_id = $2 AND ($3::uuid[] IS NULL OR s.id = ANY($3::uuid[])) AND v.estado = 'PENDIENTE'`,
+      [id, empresaDe(req), permitidas, usuarioDe(req)]);
+    if (!r.rowCount) throw new ErrorNegocio("La venta no existe o ya no está pendiente", 404);
+    return { ok: true };
+  });
+
   /** Cajas con turno abierto: dónde se puede facturar */
   app.get("/central/facturas/cajas-abiertas", async (req) => {
     const permitidas = sucursalesDe(req);
