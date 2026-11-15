@@ -16,6 +16,11 @@ export function Inventario() {
   const [buscar, setBuscar] = useState("");
   const ruta = `/central/inventario?${new URLSearchParams({ ...(buscar ? { q: buscar } : {}), ...(mostrar === "bajo" ? { soloBajoMinimo: "1" } : {}), ...(mostrar === "sin" ? { soloSinStock: "1" } : {}) })}`;
   const { datos, error, recargar } = useDatos<Fila[]>(ruta);
+  // Existencias de las otras empresas enlazadas (solo lectura; solo administradores completos)
+  const [verGrupo, setVerGrupo] = useState(false);
+  const grupo = useDatos<{ productoId: string; otras: { empresaId: string; empresa: string; producto: string; cantidad: number }[] }[]>(verGrupo ? `/central/inventario/grupo${buscar ? `?q=${encodeURIComponent(buscar)}` : ""}` : null);
+  const otrasPorProducto = new Map((grupo.datos ?? []).map((g) => [g.productoId, g.otras] as const));
+  const empresasGrupo = [...new Map((grupo.datos ?? []).flatMap((g) => g.otras).map((o) => [o.empresaId, o.empresa] as [string, string])).entries()];
   const [excel, setExcel] = useState(false);
   const [editar, setEditar] = useState<{ productoId: string; sucursalId: string; nombre: string; sucursal: string } | null>(null);
 
@@ -30,13 +35,15 @@ export function Inventario() {
       <div className="filtros">
         <input placeholder="Buscar por nombre o SKU" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setBuscar(q)} />
         <button className="boton" onClick={() => setBuscar(q)}>Buscar</button>
+        {puede("*") && <label className="check"><input type="checkbox" checked={verGrupo} onChange={(e) => setVerGrupo(e.target.checked)} /> Ver otras empresas del grupo</label>}
         <div className="rp-chips" role="radiogroup" aria-label="Mostrar">
           {([["todos", "Todos los productos"], ["bajo", "Bajo el mínimo"], ["sin", "Sin stock (en 0)"]] as const).map(([v, t]) => (
             <button key={v} type="button" role="radio" aria-checked={mostrar === v} className={mostrar === v ? "activo" : ""} onClick={() => setMostrar(v)}>{t}</button>
           ))}
         </div>
       </div>
-      <Aviso texto={error} />
+      <Aviso texto={error || grupo.error} />
+      {verGrupo && empresasGrupo.length > 0 && <p className="suave pequeno">Las columnas de otras empresas son solo informativas: no suman al total ni se pueden editar. Se emparejan por código de barras.</p>}
       <Tabla
         tarjetas
         filas={datos ?? []}
@@ -55,6 +62,14 @@ export function Inventario() {
                   {x?.minimo !== null && x?.minimo !== undefined && <small>mín {num(x.minimo)}</small>}
                 </button>
               );
+            },
+          })),
+          ...empresasGrupo.map(([id, nombre]) => ({
+            titulo: nombre,
+            der: true,
+            valor: (f: Fila) => {
+              const o = otrasPorProducto.get(f.productoId)?.find((x) => x.empresaId === id);
+              return o ? <span title={`${o.producto} (otra empresa, solo lectura)`}>{num(o.cantidad, 0)}</span> : <span className="suave" title="No hay un producto con el mismo código de barras en esa empresa">—</span>;
             },
           })),
           { titulo: "Total", valor: (f) => <b>{num(f.existenciaTotal)}</b>, der: true },
