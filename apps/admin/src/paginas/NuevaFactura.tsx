@@ -30,11 +30,14 @@ const FORMAS = [["EFECTIVO", "Efectivo"], ["TARJETA", "Tarjeta"], ["TRANSFERENCI
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
 const limpiar = (v: string) => v.replace(/[^\d.]/g, "");
 
-export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (id: string) => void }) {
+/** `soloEnviar`: pantalla del vendedor (terminal de ventas): arma la venta y la envía a una caja; no cobra ni emite comprobantes. */
+export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCerrar: () => void; onCreada: (id: string) => void; soloEnviar?: boolean }) {
+  const base = soloEnviar ? "/central/ventas" : "/central/facturas";
   // «Sin comprobante» solo si un administrador lo activó en Sistema › Seguridad
   const { habilitada: sinComprobante } = useFuncionSeguridad("venta_sin_comprobante");
   const { productos } = useCatalogo();
-  const cajas = useDatos<CajaAbierta[]>("/central/facturas/cajas-abiertas");
+  const cajasTodas = useDatos<CajaAbierta[]>(`${base}/cajas-abiertas`);
+  const cajas = { ...cajasTodas, datos: soloEnviar ? (cajasTodas.datos?.filter((c) => c.tipo !== "FACTURACION") ?? null) : cajasTodas.datos };
   const [cajaId, setCajaId] = useState("");
   const [cliente, setCliente] = useState<ClienteB | null>(null);
   const [busca, setBusca] = useState("");
@@ -51,7 +54,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   const puedeLibre = puede("venta.precio_libre");
   const [motivoPrecio, setMotivoPrecio] = useState("");
   /** «cobrar» = se emite aquí mismo; «enviar» = se manda a una caja y allí se cobra (el comprobante sale al cobrar) */
-  const [modo, setModo] = useState<"cobrar" | "enviar">("cobrar");
+  const [modo, setModo] = useState<"cobrar" | "enviar">(soloEnviar ? "enviar" : "cobrar");
   const [enviada, setEnviada] = useState("");
   const [notas, setNotas] = useState("");
   const [msg, setMsg] = useState("");
@@ -77,7 +80,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
     let vivo = true;
     const t = setTimeout(async () => {
       try {
-        const r = await api<Cotizacion>("/central/facturas/cotizar", { cuerpo: { cajaId, clienteId: cliente?.id, items: items() , ...(cupon ? { cuponCodigo: cupon } : {}) } });
+        const r = await api<Cotizacion>(`${base}/cotizar`, { cuerpo: { cajaId, clienteId: cliente?.id, items: items() , ...(cupon ? { cuponCodigo: cupon } : {}) } });
         if (vivo) { setCot(r); setErrCot(""); }
       } catch (e) { if (vivo) { setCot(null); setErrCot((e as Error).message); } }
     }, 350);
@@ -167,11 +170,13 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
   const sinCajas = cajas.datos && !cajas.datos.length;
   return (
     <>
-      <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>
-      <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />
+      {!soloEnviar && <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>
+      {soloEnviar
+        ? <Encabezado titulo="Nueva venta" descripcion="Busque los productos, arme la venta y envíela a la caja: el cliente paga allí y la caja emite el comprobante." />
+        : <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />}
       <Aviso texto={cajas.error || msg} />
       {enviada && <Aviso tipo="info" texto={enviada} />}
-      {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo." />}
+      {sinCajas && <Aviso tipo="info" texto={soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}
 
       <div className="panel cab-compra">
         <label className="campo"><span>{cajas.datos?.every((c) => c.tipo === "FACTURACION") ? "Facturar desde" : "Caja (turno abierto)"}</span>
@@ -179,7 +184,7 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
             {cajas.datos?.map((c) => <option key={c.cajaId} value={c.cajaId}>{c.sucursal} · {c.tipo === "FACTURACION" ? "Facturación (sin caja)" : c.caja}{c.cajero && c.tipo !== "FACTURACION" ? ` · ${c.cajero}` : ""}</option>)}
           </select>
         </label>
-        {puedeEnviar && <label className="campo"><span>Qué hacer con la venta</span>
+        {puedeEnviar && !soloEnviar && <label className="campo"><span>Qué hacer con la venta</span>
           <select value={modo} onChange={(e) => setModo(e.target.value as "cobrar" | "enviar")}>
             <option value="cobrar">Cobrar y facturar aquí</option><option value="enviar">Enviar a la caja para que cobre</option>
           </select></label>}

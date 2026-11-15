@@ -8,6 +8,7 @@ const ActualizacionesPortal = lazy(() => import("./paginas/ActualizacionesPortal
 const InstaladoresPortal = lazy(() => import("./paginas/InstaladoresPortal").then((m) => ({ default: m.InstaladoresPortal })));
 const VersionesEquipos = lazy(() => import("./paginas/VersionesEquipos").then((m) => ({ default: m.VersionesEquipos })));
 const Pedidos = lazy(() => import("./paginas/Pedidos").then((m) => ({ default: m.Pedidos })));
+const Vender = lazy(() => import("./paginas/Vender").then((m) => ({ default: m.Vender })));
 const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
 const CertificacionDgii = lazy(() => import("./paginas/CertificacionDgii").then((m) => ({ default: m.CertificacionDgii })));
 const FacturacionElectronica = lazy(() => import("./paginas/FacturacionElectronica").then((m) => ({ default: m.FacturacionElectronica })));
@@ -67,13 +68,14 @@ import { Icono, type NombreIcono } from "./Iconos";
 const SECCIONES = [
   { id: "resumen", titulo: "Resumen", grupo: "General", C: Resumen, i: "resumen", p: ["admin.reportes"] },
   { id: "puesta", titulo: "Puesta en marcha", grupo: "General", C: PuestaEnMarcha, i: "conteos", p: ["admin.config"] },
+  { id: "vender", titulo: "Vender", grupo: "Ventas", C: Vender, i: "venta", p: ["admin.vender"] },
   { id: "facturas", titulo: "Facturas", grupo: "Ventas", C: Facturas, i: "venta", p: ["admin.facturas"] },
   { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Ventas", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Ventas", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Ventas", C: Delivery, i: "delivery", p: ["admin.config"] },
   { id: "clientela", titulo: "Clientes", grupo: "Ventas", C: Clientes, i: "clientes", p: ["admin.clientes", "admin.cxc"] },
   { id: "productos", titulo: "Productos", grupo: "Inventario", C: Productos, i: "productos", p: ["admin.productos"] },
-  { id: "inventario", titulo: "Existencias", grupo: "Inventario", C: Inventario, i: "inventario", p: ["admin.inventario", "admin.reportes"] },
+  { id: "inventario", titulo: "Existencias", grupo: "Inventario", C: Inventario, i: "inventario", p: ["admin.inventario", "admin.reportes", "admin.vender"] },
   { id: "compras", titulo: "Compras", grupo: "Inventario", C: Compras, i: "compras", p: ["admin.compras"] },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", C: Traspasos, i: "traspasos", p: ["admin.traspasos", "admin.recibir"] },
   { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario", C: Conteos, i: "conteos", p: ["admin.inventario"] },
@@ -109,7 +111,7 @@ const SECCIONES = [
   { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Sistema", C: Incidentes, i: "incidentes", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
-const SECCIONES_MOVIL_BASE = ["resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "cierres", "caja", "reportes"];
+const SECCIONES_MOVIL_BASE = ["vender", "resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "cierres", "caja", "reportes"];
 interface CfgMovil { habilitada: boolean; secciones: string[]; aplica: boolean }
 const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
@@ -128,6 +130,8 @@ function useVersionMovil(cfg: CfgMovil | null) {
   return { admin, angosta, activa, bloqueado: angosta && activa && !permitido, secciones: new Set(cfg?.secciones ?? SECCIONES_MOVIL_BASE),
     movil: angosta && activa && !(admin && completa), puedeAlternar: angosta && admin && activa, alternar: () => { guarda("factpos.versionCompleta", completa ? null : "1"); setCompleta(!completa); } };
 }
+/** Vendedor: solo vende, cotiza y consulta existencias; entra directo a la terminal de ventas */
+const soloVende = () => puede("admin.vender") && !puede("*") && ["admin.facturas", "admin.compras", "admin.productos", "admin.reportes", "admin.inventario", "admin.config", "admin.cierres"].every((x) => !puede(x));
 /** En el portal del proveedor solo hay clientes/licencias y su propio equipo. */
 const SECCIONES_PORTAL = [
   { id: "clientes", titulo: "Clientes y licencias", grupo: "Portal FactPOS", C: Portal, i: "clientes", p: ["*"] },
@@ -259,7 +263,7 @@ function AppInterna() {
   useEffect(() => { if (location.hash.slice(1).split("?")[0] !== seccion) location.hash = seccion; window.scrollTo(0, 0); document.querySelector(".contenido")?.scrollTo(0, 0); }, [seccion]);
   // Enlaces internos (#seccion) desde cualquier pantalla, y atrás/adelante del navegador
   useEffect(() => {
-    const f = () => { const h = location.hash.slice(1).split("?")[0]; setSeccion(h || "inicio"); };
+    const f = () => { const h = location.hash.slice(1).split("?")[0]; setSeccion(h || (soloVende() ? "vender" : "inicio")); };
     addEventListener("hashchange", f);
     return () => removeEventListener("hashchange", f);
   }, []);

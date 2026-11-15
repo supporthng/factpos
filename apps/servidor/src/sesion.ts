@@ -102,6 +102,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "admin.cotizaciones", grupo: "Administración", nombre: "Cotizaciones: preparar y enviar por correo" },
   { id: "admin.cierres", grupo: "Administración", nombre: "Cierres de caja: ver cuadres de todos, revisar diferencias y registrar depósitos" },
   { id: "admin.pedidos", grupo: "Administración", nombre: "Pedidos de clientes" },
+  { id: "admin.vender", grupo: "Administración", nombre: "Vender: armar la venta y enviarla a una caja para cobrar (vendedor: sin acceso a compras, precios ni reportes)" },
   { id: "admin.facturas", grupo: "Administración", nombre: "Facturas: buscar, reimprimir, modificar (la anulación pide permiso de supervisor)" },
   { id: "admin.reportes", grupo: "Administración", nombre: "Ver reportes y resumen" },
   { id: "admin.fiscal", grupo: "Administración", nombre: "Facturación electrónica y padrón" },
@@ -120,6 +121,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   // Entregan secretos (clave de los respaldos en la nube, archivo de licencia): solo el administrador principal, también para leer
   if (/^\/central\/(restaurar-respaldo|licencia\/archivo)(\/|$)/.test(ruta)) return "*";
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
+  if (/^\/central\/(ventas|por-cobrar)(\/|$)/.test(ruta)) return "admin.vender"; // el vendedor: arma la venta y la envía a caja
   if (/^\/central\/facturas(\/|$)/.test(ruta)) return "admin.facturas";
   if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros
   if (!escribe) return null;
