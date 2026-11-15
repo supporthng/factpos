@@ -178,11 +178,14 @@ function CrearProductoCompra({ item, proveedorId, onCerrar, onCreado }: {
   const [nombre, setNombre] = useState(item.descripcion.trim());
   const [categoriaId, setCategoriaId] = useState("");
   const [impuestoId, setImpuestoId] = useState("");
-  const [precio, setPrecio] = useState("");
+  const [precioEscrito, setPrecioEscrito] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
   const impuesto = aux.datos?.impuestos.find((i) => i.id === (impuestoId || aux.datos?.impuestos.find((x) => x.tasa === 0.18)?.id || aux.datos?.impuestos[0]?.id));
   const costoCon = item.costo * (1 + (impuesto?.tasa ?? 0.18));
+  // Precio sugerido: el costo + 20 % (redondeado a 5 pesos); se puede cambiar
+  const sugerido = costoCon > 0 ? Math.round((costoCon * 1.2) / 5) * 5 : 0;
+  const precio = precioEscrito ?? (sugerido > 0 ? String(sugerido) : "");
   const crear = async () => {
     if (nombre.trim().length < 2) return setMsg("Escriba el nombre del producto.");
     if (n(precio) <= 0) return setMsg("Escriba el precio de venta (con ITBIS): es el que se cobra en caja.");
@@ -221,9 +224,9 @@ function CrearProductoCompra({ item, proveedorId, onCerrar, onCreado }: {
             {aux.datos?.impuestos.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
           </select>
         </label>
-        <label className="campo"><span>Precio de venta (con ITBIS)</span>
+        <label className="campo"><span>Precio de venta (con ITBIS) · sugerido: costo + 20 %</span>
           <input className="numero" inputMode="decimal" value={precio} placeholder={`Su costo con ITBIS es ${rd(costoCon)}`}
-            onChange={(e) => setPrecio(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && crear()} />
+            onChange={(e) => setPrecioEscrito(e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={(e) => e.key === "Enter" && crear()} />
         </label>
         {n(precio) > 0 && costoCon > 0 && <p className="suave pequeno">Ganancia sobre el costo: {(((n(precio) - costoCon) / costoCon) * 100).toFixed(1)} %</p>}
         <Aviso texto={msg} />
