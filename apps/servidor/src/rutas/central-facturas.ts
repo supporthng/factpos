@@ -9,6 +9,9 @@ import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPre
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
+import { enviarCorreo, correoListo } from "../correo/transporte.js";
+import { marcaDe } from "../correo/envios.js";
+import { correoFactura } from "../correo/plantillas.js";
 
 /**
  * Facturas (administración): buscar cualquier factura, reimprimirla, modificarla o anularla.
@@ -85,13 +88,36 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await cargar(req, id);
     const t = await datosTicket(pool, id);
     const x = await pool.query(
-      `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero,
+      `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero, cl.correo AS "clienteCorreo", cl.telefono AS "clienteTelefono",
               (SELECT jsonb_build_object('numero', n.numero_interno, 'fecha', n.creado_en, 'motivo', n.motivo, 'por', ua.nombre)
                  FROM ventas n LEFT JOIN usuarios ua ON ua.id = n.usuario_id
                 WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU') LIMIT 1) AS anulacion
          FROM ventas v JOIN sucursales s ON s.id = v.sucursal_id LEFT JOIN cajas c ON c.id = v.caja_id LEFT JOIN usuarios u ON u.id = v.usuario_id
+         LEFT JOIN clientes cl ON cl.id = v.cliente_id
         WHERE v.id = $1`, [id]);
     return { ...t, ...x.rows[0], anulada: !!x.rows[0].anulacion };
+  });
+
+  /** Envía la factura al cliente por correo (detalle de la factura; el PDF se obtiene con «Imprimir carta» › Guardar como PDF) */
+  app.post("/central/facturas/:id/enviar", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ para: z.array(z.string().trim().toLowerCase().email("Correo inválido").max(120)).min(1, "Escriba el correo del cliente").max(5), mensaje: z.string().trim().max(1000).optional() }).parse(req.body);
+    await cargar(req, id);
+    const empresaId = empresaDe(req);
+    if (!(await correoListo(empresaId))) throw new ErrorNegocio("Falta configurar el correo: Negocio › Correo y envíos.");
+    const t = (await datosTicket(pool, id)) as Record<string, any>;
+    const NOMBRES: Record<string, string> = { E31: "Factura de crédito fiscal", E32: "Factura de consumo", B01: "Factura de crédito fiscal", B02: "Factura de consumo", B14: "Factura", B15: "Factura", B16: "Factura de exportación", SIN: "Factura" };
+    const mail = correoFactura(await marcaDe(empresaId), {
+      titulo: NOMBRES[t.tipoDocumento] ?? "Factura", numero: t.fiscal?.encf ?? t.numeroDocumento ?? `Nº ${t.numero}`,
+      fecha: new Date(t.fecha).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "medium", timeStyle: "short" }),
+      cliente: t.cliente?.nombre ?? null, subtotal: Number(t.subtotal), descuento: Number(t.descuento ?? 0), itbis: Number(t.itbis), total: Number(t.total),
+      notas: t.notas ?? null, pagos: (t.pagos ?? []).map((p: { formaPago: string; monto: string }) => `${p.formaPago} ${Number(p.monto).toFixed(2)}`).join(" · ") || null,
+      fiscal: t.fiscal ? { encf: t.fiscal.encf, codigoSeguridad: t.fiscal.codigoSeguridad ?? null } : null,
+      lineas: (t.lineas ?? []).map((l: { descripcion: string; cantidad: string; precio: string; total: string }) => ({ descripcion: l.descripcion, cantidad: Number(l.cantidad), precio: Number(l.precio), total: Number(l.total) })),
+    }, b.mensaje);
+    try { await enviarCorreo(empresaId, { para: b.para, asunto: mail.asunto, html: mail.html, texto: mail.texto }); }
+    catch (e) { throw new ErrorNegocio(`No se pudo enviar: ${(e as Error).message}`, 502); }
+    return { ok: true };
   });
 
   /** Modificar: solo la nota y, en facturas internas, el cliente. Siempre con motivo y en auditoría. */
