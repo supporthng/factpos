@@ -5,10 +5,13 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, devolverParcial, datosTicket } from "./facturas.js";
-import { registrarVenta, cotizar, resumen, exigirSinComprobante } from "./ventas.js";
+import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPresentes } from "./ventas.js";
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
+import { enviarCorreo, correoListo } from "../correo/transporte.js";
+import { marcaDe } from "../correo/envios.js";
+import { correoFactura } from "../correo/plantillas.js";
 
 /**
  * Facturas (administración): buscar cualquier factura, reimprimirla, modificarla o anularla.
@@ -85,7 +88,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await cargar(req, id);
     const t = await datosTicket(pool, id);
     const x = await pool.query(
-      `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero,
+      `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero, cl.correo AS "clienteCorreo", cl.telefono AS "clienteTelefono",
               (SELECT jsonb_agg(jsonb_build_object('linea', i.linea, 'cantidad', i.cantidad, 'devuelta',
                   COALESCE((SELECT SUM(ni.cantidad) FROM venta_items ni JOIN ventas n ON n.id = ni.venta_id WHERE n.venta_origen_id = v.id AND n.parcial AND ni.linea = i.linea), 0)) ORDER BY i.linea)
                  FROM venta_items i WHERE i.venta_id = v.id) AS "lineasDevolucion",
@@ -94,8 +97,31 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
                  FROM ventas n LEFT JOIN usuarios ua ON ua.id = n.usuario_id
                 WHERE n.venta_origen_id = v.id AND NOT n.parcial AND n.tipo_documento IN ('E34','ANU') LIMIT 1) AS anulacion
          FROM ventas v JOIN sucursales s ON s.id = v.sucursal_id LEFT JOIN cajas c ON c.id = v.caja_id LEFT JOIN usuarios u ON u.id = v.usuario_id
+         LEFT JOIN clientes cl ON cl.id = v.cliente_id
         WHERE v.id = $1`, [id]);
     return { ...t, ...x.rows[0], anulada: !!x.rows[0].anulacion };
+  });
+
+  /** Envía la factura al cliente por correo (detalle de la factura; el PDF se obtiene con «Imprimir carta» › Guardar como PDF) */
+  app.post("/central/facturas/:id/enviar", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ para: z.array(z.string().trim().toLowerCase().email("Correo inválido").max(120)).min(1, "Escriba el correo del cliente").max(5), mensaje: z.string().trim().max(1000).optional() }).parse(req.body);
+    await cargar(req, id);
+    const empresaId = empresaDe(req);
+    if (!(await correoListo(empresaId))) throw new ErrorNegocio("Falta configurar el correo: Negocio › Correo y envíos.");
+    const t = (await datosTicket(pool, id)) as Record<string, any>;
+    const NOMBRES: Record<string, string> = { E31: "Factura de crédito fiscal", E32: "Factura de consumo", B01: "Factura de crédito fiscal", B02: "Factura de consumo", B14: "Factura", B15: "Factura", B16: "Factura de exportación", SIN: "Factura" };
+    const mail = correoFactura(await marcaDe(empresaId), {
+      titulo: NOMBRES[t.tipoDocumento] ?? "Factura", numero: t.fiscal?.encf ?? t.numeroDocumento ?? `Nº ${t.numero}`,
+      fecha: new Date(t.fecha).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "medium", timeStyle: "short" }),
+      cliente: t.cliente?.nombre ?? null, subtotal: Number(t.subtotal), descuento: Number(t.descuento ?? 0), itbis: Number(t.itbis), total: Number(t.total),
+      notas: t.notas ?? null, pagos: (t.pagos ?? []).map((p: { formaPago: string; monto: string }) => `${p.formaPago} ${Number(p.monto).toFixed(2)}`).join(" · ") || null,
+      fiscal: t.fiscal ? { encf: t.fiscal.encf, codigoSeguridad: t.fiscal.codigoSeguridad ?? null } : null,
+      lineas: (t.lineas ?? []).map((l: { descripcion: string; cantidad: string; precio: string; total: string }) => ({ descripcion: l.descripcion, cantidad: Number(l.cantidad), precio: Number(l.precio), total: Number(l.total) })),
+    }, b.mensaje);
+    try { await enviarCorreo(empresaId, { para: b.para, asunto: mail.asunto, html: mail.html, texto: mail.texto }); }
+    catch (e) { throw new ErrorNegocio(`No se pudo enviar: ${(e as Error).message}`, 502); }
+    return { ok: true };
   });
 
   /** Modificar: solo la nota y, en facturas internas, el cliente. Siempre con motivo y en auditoría. */
@@ -252,7 +278,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     if (permitidas && !permitidas.includes(ctx.sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
     return ctx;
   };
-  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional(), precioVariable: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), precioLibre: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional() })).min(1, "La factura necesita al menos un producto").max(200);
+  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional(), precioVariable: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), precioLibre: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), series: z.array(z.string().trim().min(1).max(60)).max(500).optional() })).min(1, "La factura necesita al menos un producto").max(200);
 
   /** Verifica descuentos y precios libres de una venta (permiso + motivo) y devuelve la autorización de descuento si hace falta */
   const exigirPermisosItems = async (req: { headers: Record<string, unknown> }, cajaId: string, items: z.infer<typeof ItemsSchema>, motivoDescuento?: string, motivoPrecio?: string) => {
@@ -280,6 +306,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const ctx = await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
     await exigirPermisosItems(req, b.cajaId, b.items, b.motivoDescuento, b.motivoPrecio);
+    await exigirSeriesPresentes(pool, b.items);
     const q = resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false)); // valida precios, existencia y cliente
     const id = uuidv7();
     const numero = await enTransaccion(async (c) => {
@@ -380,7 +407,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       return registrarVenta(c, b.cajaId, {
       usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
       cuponCodigo: b.cuponCodigo, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: b.motivoDescuento } : {}),
-      });
+      }, { exigirSeries: true });
     });
     await pool.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)

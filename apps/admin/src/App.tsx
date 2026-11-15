@@ -8,6 +8,7 @@ const ActualizacionesPortal = lazy(() => import("./paginas/ActualizacionesPortal
 const InstaladoresPortal = lazy(() => import("./paginas/InstaladoresPortal").then((m) => ({ default: m.InstaladoresPortal })));
 const VersionesEquipos = lazy(() => import("./paginas/VersionesEquipos").then((m) => ({ default: m.VersionesEquipos })));
 const Pedidos = lazy(() => import("./paginas/Pedidos").then((m) => ({ default: m.Pedidos })));
+const Series = lazy(() => import("./paginas/Series").then((m) => ({ default: m.Series })));
 const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
 const CertificacionDgii = lazy(() => import("./paginas/CertificacionDgii").then((m) => ({ default: m.CertificacionDgii })));
 const FacturacionElectronica = lazy(() => import("./paginas/FacturacionElectronica").then((m) => ({ default: m.FacturacionElectronica })));
@@ -68,6 +69,7 @@ const SECCIONES = [
   { id: "resumen", titulo: "Resumen", grupo: "General", C: Resumen, i: "resumen", p: ["admin.reportes"] },
   { id: "puesta", titulo: "Puesta en marcha", grupo: "General", C: PuestaEnMarcha, i: "conteos", p: ["admin.config"] },
   { id: "facturas", titulo: "Facturas", grupo: "Ventas", C: Facturas, i: "venta", p: ["admin.facturas"] },
+  { id: "series", titulo: "Series y garantías", grupo: "Ventas", C: Series, i: "ticket", p: ["admin.facturas"] },
   { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Ventas", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Ventas", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Ventas", C: Delivery, i: "delivery", p: ["admin.config"] },
