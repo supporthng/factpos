@@ -393,6 +393,7 @@ async function aplicarSubida(c: Pg, sucursalId: string, tabla: string, p: Payloa
       propio(p.venta);
       await aplicarFilas(c, "ventas", [p.venta], "insertar");
       await aplicarFilas(c, "venta_items", p.items, "insertar");
+      if (p.series) await aplicarFilas(c, "series_producto", p.series, "reemplazar");
       await aplicarFilas(c, "venta_pagos", p.pagos, "insertar");
       await aplicarKardex(c, p.kardex);
       await aplicarFilas(c, "cxc_movimientos", p.cxc, "insertar");

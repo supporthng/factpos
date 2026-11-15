@@ -13,7 +13,7 @@ import { cotizar, resumen, registrarVenta, exigirSinComprobante } from "./ventas
  */
 const uuid = z.string().uuid();
 const monto = z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido");
-interface Fila { id: string; numero: string; items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string; precioLibre?: string }[];
+interface Fila { id: string; numero: string; items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string; precioLibre?: string; series?: string[] }[];
   clienteId: string | null; notas: string | null; motivoDescuento: string | null; creadaPor: string | null; total: string; }
 
 export async function rutasPorCobrar(app: FastifyInstance) {
@@ -71,7 +71,7 @@ export async function rutasPorCobrar(app: FastifyInstance) {
       const v = await registrarVenta(c, cajaId, {
         usuarioId, clienteId: f.clienteId ?? undefined, tipoDocumento: b.tipoDocumento, notas: `Venta por cobrar #${f.numero}${f.notas ? ` · ${f.notas}` : ""}`.slice(0, 300),
         items: f.items, pagos: b.pagos, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
-      });
+      }, { exigirSeries: true });
       await c.query("UPDATE ventas_por_cobrar SET estado = 'COBRADA', cerrada_en = now(), cerrada_por = $2, venta_id = $3 WHERE id = $1", [id, usuarioId, (v as { id: string }).id]);
       return v;
     });

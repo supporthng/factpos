@@ -122,7 +122,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   if (/^\/central\/(restaurar-respaldo|licencia\/archivo)(\/|$)/.test(ruta)) return "*";
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
   if (/^\/central\/(ventas|por-cobrar)(\/|$)/.test(ruta)) return "admin.vender"; // el vendedor: arma la venta y la envía a caja
-  if (/^\/central\/facturas(\/|$)/.test(ruta)) return "admin.facturas";
+  if (/^\/central\/(facturas|series)(\/|$)/.test(ruta)) return "admin.facturas";
   if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";

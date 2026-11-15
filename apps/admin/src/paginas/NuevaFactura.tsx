@@ -14,7 +14,7 @@ interface Cotizacion {
   subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown; cupon?: { codigo: string; total: string } | null;
   lineas: { presentacionId: string; descripcion: string; cantidad: string; precio: string | null; oferta: string | null; descuento?: string; itbis?: string; total: string }[];
 }
-interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string; descuento: string; /** precio libre (vacío = el de lista) */ precio: string }
+interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string; descuento: string; /** precio libre (vacío = el de lista) */ precio: string; /** el producto pide número de serie por unidad */ usaSeries?: boolean; /** series escritas (una por unidad; separadas por coma, espacio o renglón) */ series: string }
 interface PagoF { id: string; forma: (typeof FORMAS)[number][0]; monto: string; recibido: string; referencia: string }
 
 const TIPOS: { id: string; nombre: string; fiscal: boolean; pideCliente: boolean }[] = [
@@ -28,6 +28,7 @@ const TIPOS: { id: string; nombre: string; fiscal: boolean; pideCliente: boolean
 ];
 const FORMAS = [["EFECTIVO", "Efectivo"], ["TARJETA", "Tarjeta"], ["TRANSFERENCIA", "Transferencia"], ["CREDITO", "A crédito (cuenta por cobrar)"], ["OTRO", "Otro"]] as const;
 const n = (v: string | number | null | undefined) => Number(v ?? 0) || 0;
+const seriesDe = (l: { series: string }) => l.series.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
 const limpiar = (v: string) => v.replace(/[^\d.]/g, "");
 
 /** `soloEnviar`: pantalla del vendedor (terminal de ventas): arma la venta y la envía a una caja; no cobra ni emite comprobantes. */
@@ -73,7 +74,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   }, [busca]);
 
   const validas = lineas.filter((l) => n(l.cantidad) > 0);
-  const items = () => validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad, ...(n(l.descuento) > 0 ? { descuentoManual: n(l.descuento).toFixed(2) } : {}), ...(puedeLibre && n(l.precio) > 0 ? { precioLibre: n(l.precio).toFixed(2) } : {}) }));
+  const items = () => validas.map((l) => ({ presentacionId: l.presentacionId, cantidad: l.cantidad, ...(n(l.descuento) > 0 ? { descuentoManual: n(l.descuento).toFixed(2) } : {}), ...(puedeLibre && n(l.precio) > 0 ? { precioLibre: n(l.precio).toFixed(2) } : {}), ...(l.usaSeries ? { series: seriesDe(l) } : {}) }));
   // Precios del servidor: se recalculan al cambiar productos, cantidades o cliente
   useEffect(() => {
     if (!cajaId || !validas.length) { setCot(null); setErrCot(""); return; }
@@ -85,7 +86,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
       } catch (e) { if (vivo) { setCot(null); setErrCot((e as Error).message); } }
     }, 350);
     return () => { vivo = false; clearTimeout(t); };
-  }, [cajaId, cliente?.id, cupon, JSON.stringify(validas.map((l) => [l.presentacionId, l.cantidad, l.descuento, l.precio]))]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cajaId, cliente?.id, cupon, JSON.stringify(validas.map((l) => [l.presentacionId, l.cantidad, l.descuento, l.precio, l.series]))]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!foco) return;
@@ -100,7 +101,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
     const ya = lineas.find((l) => l.presentacionId === presentacionId);
     if (ya) { setLineas((ls) => ls.map((l) => (l.clave === ya.clave ? { ...l, cantidad: String(n(l.cantidad) + 1) } : l))); return; }
     const clave = crypto.randomUUID();
-    setLineas((ls) => [...ls, { clave, presentacionId, nombre: `${p.nombre}${pr.nombre !== "Unidad" ? ` · ${pr.nombre}` : ""}`, cantidad: "1", descuento: "", precio: "" }]);
+    setLineas((ls) => [...ls, { clave, presentacionId, nombre: `${p.nombre}${pr.nombre !== "Unidad" ? ` · ${pr.nombre}` : ""}`, cantidad: "1", descuento: "", precio: "", usaSeries: !!p.usaSeries, series: "" }]);
     setFoco(clave);
   };
 
@@ -125,6 +126,8 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
     if (!cot) return "Calculando…";
     if (hayDescuento && motivo.trim().length < 5) return "Escriba el motivo del descuento.";
     if (hayPrecioLibre && motivoPrecio.trim().length < 5) return "Escriba el motivo del cambio de precio.";
+    const sinSeries = validas.find((l) => l.usaSeries && seriesDe(l).length !== n(l.cantidad));
+    if (sinSeries) return `${sinSeries.nombre}: escriba ${n(sinSeries.cantidad)} número(s) de serie (lleva ${seriesDe(sinSeries).length}).`;
     if (enviando) return "";
     if (t.pideCliente && !(cliente?.documento)) return "Este comprobante requiere un cliente con RNC o cédula.";
     if (pagos.some((p) => p.forma === "CREDITO") && !cliente) return "La venta a crédito requiere un cliente.";
@@ -215,7 +218,11 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
               return (
                 <tr key={l.clave}>
                   <td className="suave">{i + 1}</td>
-                  <td><b>{l.nombre}</b>{c?.oferta && <span className="pastilla en-oferta">{c.oferta}</span>}</td>
+                  <td><b>{l.nombre}</b>{c?.oferta && <span className="pastilla en-oferta">{c.oferta}</span>}
+                    {l.usaSeries && <textarea rows={Math.min(4, Math.max(1, n(l.cantidad)))} value={l.series} placeholder={`Serie / IMEI (${n(l.cantidad)}): una por renglón o separadas por coma`}
+                      style={{ display: "block", width: "100%", marginTop: 4 }} aria-label="Series"
+                      onChange={(e) => setLineas((ls) => ls.map((x) => (x.clave === l.clave ? { ...x, series: e.target.value.toUpperCase() } : x)))} />}
+                    {l.usaSeries && <span className={seriesDe(l).length === n(l.cantidad) ? "suave pequeno texto-ok" : "suave pequeno"}>{seriesDe(l).length} de {n(l.cantidad)} series</span>}</td>
                   <td className="der" style={{ width: 110 }}><input className="numero" inputMode="decimal" value={l.cantidad} aria-label="Cantidad"
                     ref={(el) => { if (el) cantRefs.current.set(l.clave, el); else cantRefs.current.delete(l.clave); }}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); buscarRef.current?.focus(); } }}

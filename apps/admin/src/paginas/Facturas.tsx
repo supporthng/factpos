@@ -18,7 +18,9 @@ interface Detalle {
   subtotal: string; descuento: string; itbis: string; total: string; notas: string | null; anulada: boolean;
   anulacion: { numero: number; fecha: string; motivo: string; por: string | null } | null;
   cliente: { id: string; nombre: string; documento: string | null } | null;
+  clienteCorreo?: string | null; clienteTelefono?: string | null;
   sucursalId?: string;
+  lineasDevolucion?: { linea: number; cantidad: string; devuelta: string }[] | null; devolucionesParciales?: number;
   fiscal: { encf: string; codigoSeguridad: string | null; fechaFirma?: string | null; urlQr?: string | null; venceSecuencia?: string | null } | null;
   lineas: { descripcion: string; cantidad: string; precio: string; total: string }[] | null;
   pagos: { formaPago: string; monto: string }[] | null;
@@ -117,13 +119,15 @@ export function Facturas() {
 
 function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => void; onCambio: () => void }) {
   const { datos: d, error, recargar } = useDatos<Detalle>(`/central/facturas/${id}`);
-  const [modo, setModo] = useState<"ver" | "modificar" | "anular">("ver");
+  const [modo, setModo] = useState<"ver" | "modificar" | "anular" | "devolver">("ver");
+  const [cantDev, setCantDev] = useState<Record<number, string>>({});
   const [motivo, setMotivo] = useState("");
   const [notas, setNotas] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [res, setRes] = useState<{ clienteId: string; nombre: string; documento: string | null }[]>([]);
   const [cliente, setCliente] = useState<{ id: string | null; nombre: string } | undefined>(undefined);
   const [msg, setMsg] = useState("");
+  const [envio, setEnvio] = useState<{ para: string; enviando: boolean } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const interna = d?.tipoDocumento === "SIN";
   // Edición de líneas (solo facturas sin comprobante): al guardar se corrige la factura (nueva con los cambios, la original queda anulada)
@@ -166,6 +170,9 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
   const guardar = () => ejecutar(() => api(`/central/facturas/${id}`, {
     metodo: "PUT", cuerpo: { motivo, ...(notas !== null ? { notas: notas.trim() || null } : {}), ...(cliente ? { clienteId: cliente.id } : {}) },
   }), "Factura modificada");
+  const devolver = () => ejecutar(() => api(`/central/facturas/${id}/devolver`, { metodo: "POST", cuerpo: {
+    motivo, lineas: Object.entries(cantDev).filter(([, c]) => Number(c) > 0).map(([linea, cantidad]) => ({ linea: Number(linea), cantidad: String(Number(cantidad)) })),
+  } }), "Devolución registrada: se emitió la nota de crédito por lo devuelto");
   const anular = () => ejecutar(() => api(`/central/facturas/${id}/anular`, { metodo: "POST", cuerpo: { motivo } }), "Factura anulada");
 
   return (
@@ -175,9 +182,32 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
           <h2 style={{ margin: 0 }}>{d ? `${d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`}` : "Factura"}</h2><span className="flex" />
           {d && <button className="boton chico" onClick={() => imprimirCartaFactura(d)} title="Hoja carta 8½ × 11">Imprimir carta</button>}
           {d && <button className="boton chico" onClick={() => imprimir(d)} title="Ticket angosto">Imprimir ticket</button>}
+          {d && !d.anulada && <button className="boton chico" onClick={() => setEnvio(envio ? null : { para: d.clienteCorreo ?? "", enviando: false })}>Enviar al cliente</button>}
         </div>
         <Aviso texto={error} />
-        {msg && <Aviso texto={msg} tipo={/modificada|anulada$|corregida/.test(msg) ? "ok" : "error"} />}
+        {msg && <Aviso texto={msg} tipo={/modificada|anulada$|corregida|enviada|Devolución registrada/.test(msg) ? "ok" : "error"} />}
+        {d && envio && (() => {
+          const digitos = String(d.clienteTelefono ?? "").replace(/\D/g, "");
+          const doc = d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`;
+          const texto = `Hola${d.cliente ? `, ${d.cliente.nombre}` : ""}. Le enviamos su factura ${doc} por ${rd(d.total)}. ¡Gracias por su compra!`;
+          const wa = digitos.length >= 10 ? `https://wa.me/${digitos.length === 10 ? "1" + digitos : digitos}?text=${encodeURIComponent(texto)}` : null;
+          const enviar = async () => {
+            setEnvio({ ...envio, enviando: true }); setMsg("");
+            try { await api(`/central/facturas/${id}/enviar`, { cuerpo: { para: [envio.para.trim()] } }); setMsg(`Factura enviada a ${envio.para.trim()}.`); setEnvio(null); }
+            catch (e) { setMsg((e as Error).message); setEnvio({ ...envio, enviando: false }); }
+          };
+          return (
+            <div className="panel">
+              <b>Enviar la factura al cliente</b>
+              <label className="campo"><span>Correo del cliente</span><input type="email" value={envio.para} onChange={(e) => setEnvio({ ...envio, para: e.target.value })} placeholder="cliente@correo.com" /></label>
+              <div className="fila-acciones">
+                <button className="boton primario" disabled={envio.enviando || !envio.para.includes("@")} onClick={enviar}>{envio.enviando ? "Enviando…" : "Enviar por correo"}</button>
+                {wa ? <a className="boton" href={wa} target="_blank" rel="noreferrer">Abrir WhatsApp</a> : <span className="suave pequeno">Para WhatsApp el cliente necesita un teléfono.</span>}
+              </div>
+              <p className="suave pequeno" style={{ margin: "6px 0 0" }}>El correo lleva el detalle de la factura. Para un PDF, use «Imprimir carta» y elija «Guardar como PDF».</p>
+            </div>
+          );
+        })()}
         {d && <>
           <p><b>{NOMBRE[d.tipoDocumento] ?? d.tipoDocumento}</b> <span className="pastilla">{prefijo(d.tipoDocumento)}</span> {d.anulada && <span className="pastilla alerta">Anulada</span>}<br />
             <span className="suave">{d.sucursal}{d.caja ? ` · ${d.caja}` : ""} · {fecha(d.fecha)}{d.cajero ? ` · ${d.cajero}` : ""}</span><br />
@@ -197,6 +227,7 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
             <div className="fila-acciones">
               <span className="flex" />
               {puede("admin.facturas") && <button className="boton" onClick={() => { if (interna) empezarEdicion(); else { setMsg(""); setModo("modificar"); } }}>Modificar</button>}
+              {puede("venta.anular") && <button className="boton" onClick={() => { setMsg(""); setCantDev({}); setModo("devolver"); }}>Devolver parte</button>}
               {puede("venta.anular") && <button className="boton peligro" onClick={() => { setMsg(""); setModo("anular"); }}>Anular</button>}
             </div>
           )}
@@ -226,6 +257,24 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
             <label className="campo"><span>Motivo del cambio (obligatorio)</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Mínimo 10 caracteres" /><small className="suave">{motivo.trim().length < 10 ? `Faltan ${10 - motivo.trim().length} caracteres para poder guardar` : "Listo"}</small></label>
             <div className="fila-acciones"><span className="flex" /><button className="boton" onClick={() => { setModo("ver"); setLineas(null); }}>Cancelar</button>
               <button className="boton primario" disabled={ocupado || motivo.trim().length < 10 || (!!lineas && lineas.length === 0)} onClick={cambioLineas ? corregir : guardar}>{cambioLineas ? "Corregir factura" : "Guardar cambios"}</button></div>
+          </>}
+          {modo === "devolver" && <>
+            <p className="suave">Escriba cuántas unidades devuelve el cliente de cada línea. Se emite una nota de crédito solo por eso, la mercancía regresa al inventario y la devolución del dinero se registra en un turno abierto de la sucursal. La factura sigue vigente.
+              {!esLocal() && " Esto se hace en la administración de la sucursal."}</p>
+            <table className="tabla" style={{ width: "100%" }}><thead><tr><th>Producto</th><th style={{ textAlign: "right" }}>Vendido</th><th style={{ textAlign: "right" }}>Ya devuelto</th><th style={{ textAlign: "right" }}>Devolver</th></tr></thead><tbody>
+              {(d.lineas ?? []).map((l: any, i: number) => {
+                const x = d.lineasDevolucion?.[i];
+                const queda = x ? Number(x.cantidad) - Number(x.devuelta) : 0;
+                return (
+                  <tr key={i}><td>{l.descripcion}</td><td style={{ textAlign: "right" }}>{num(l.cantidad, 3)}</td><td style={{ textAlign: "right" }}>{x ? num(x.devuelta, 3) : ""}</td>
+                    <td style={{ textAlign: "right" }}>{queda > 0 && x ? <input inputMode="decimal" style={{ width: 80, textAlign: "right" }} value={cantDev[x.linea] ?? ""} placeholder="0"
+                      onChange={(e) => setCantDev({ ...cantDev, [x.linea]: e.target.value.replace(/[^\d.]/g, "") })} /> : <span className="suave">—</span>}</td></tr>
+                );
+              })}
+            </tbody></table>
+            <label className="campo"><span>Motivo de la devolución (obligatorio)</span><input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Mínimo 10 caracteres" /></label>
+            <div className="fila-acciones"><span className="flex" /><button className="boton" onClick={() => setModo("ver")}>Cancelar</button>
+              <button className="boton primario" disabled={ocupado || motivo.trim().length < 10 || !Object.values(cantDev).some((c) => Number(c) > 0)} onClick={devolver}>Registrar devolución</button></div>
           </>}
           {modo === "anular" && <>
             <p className="suave">Se emite la nota de crédito (o anulación interna), la mercancía regresa al inventario y la devolución se registra en un turno abierto de la sucursal.

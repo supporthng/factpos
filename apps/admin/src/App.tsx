@@ -10,6 +10,7 @@ const VersionesEquipos = lazy(() => import("./paginas/VersionesEquipos").then((m
 const Pedidos = lazy(() => import("./paginas/Pedidos").then((m) => ({ default: m.Pedidos })));
 const ConsultaExistencias = lazy(() => import("./paginas/ConsultaExistencias").then((m) => ({ default: m.ConsultaExistencias })));
 const Vender = lazy(() => import("./paginas/Vender").then((m) => ({ default: m.Vender })));
+const Series = lazy(() => import("./paginas/Series").then((m) => ({ default: m.Series })));
 const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
 const CertificacionDgii = lazy(() => import("./paginas/CertificacionDgii").then((m) => ({ default: m.CertificacionDgii })));
 const FacturacionElectronica = lazy(() => import("./paginas/FacturacionElectronica").then((m) => ({ default: m.FacturacionElectronica })));
@@ -72,6 +73,7 @@ const SECCIONES = [
   { id: "vender", titulo: "Vender", grupo: "Ventas", C: Vender, i: "venta", p: ["admin.vender"] },
   { id: "consultaexistencias", titulo: "Consultar existencias", grupo: "Ventas", C: ConsultaExistencias, i: "inventario", p: ["admin.vender"] },
   { id: "facturas", titulo: "Facturas", grupo: "Ventas", C: Facturas, i: "venta", p: ["admin.facturas"] },
+  { id: "series", titulo: "Series y garantías", grupo: "Ventas", C: Series, i: "ticket", p: ["admin.facturas"] },
   { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Ventas", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
   { id: "pedidos", titulo: "Pedidos de clientes", grupo: "Ventas", C: Pedidos, i: "compras", p: ["admin.pedidos"] },
   { id: "delivery", titulo: "Delivery", grupo: "Ventas", C: Delivery, i: "delivery", p: ["admin.config"] },

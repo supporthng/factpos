@@ -20,7 +20,7 @@ interface Ficha {
   sku: string; nombre: string; nombreCorto: string | null; marca: string | null; categoriaId: string | null; tipo: Tipo;
   impuestoId: string; precioIncluyeItbis: boolean; esPesable: boolean; costoReferencia: string;
   permiteSinExistencia: boolean; precioVariable: boolean; precioVariableMin: string | null; precioVariableMax: string | null;
-  controlaLotes: boolean; volumenMl: number | null; gradoAlcohol: number | null; imagen: string | null; activo: boolean; valeConsumos?: number;
+  controlaLotes: boolean; volumenMl: number | null; gradoAlcohol: number | null; imagen: string | null; activo: boolean; valeConsumos?: number; usaSeries?: boolean; garantiaMeses?: number;
   presentaciones: Presentacion[];
   sucursales: { sucursalId: string; sucursal?: string; existencia?: string; stockMinimo: string; stockMaximo: string | null; ubicacion: string | null; activo: boolean }[];
   proveedores: { proveedorId: string; nombre?: string; codigoProveedor: string | null; ultimoCosto: string | null; principal: boolean }[];
@@ -530,6 +530,10 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
           <input className="numero" inputMode="numeric" value={f.valeConsumos ? String(f.valeConsumos) : ""} placeholder="0"
             onChange={(e) => cambiar({ valeConsumos: Math.min(20, Number(e.target.value.replace(/\D/g, "")) || 0) })} /></label>
         {!!f.valeConsumos && <p className="suave" style={{ margin: "4px 0 0" }}>Cada unidad vendida imprime un vale de {f.valeConsumos} consumo(s) que se canjea en la barra (solo en negocios con cuentas; no se vende sin servidor).</p>}
+              <label className="campo" style={{ maxWidth: 420, marginTop: 12 }}><span>Garantía (meses) <span className="suave">· 0 = sin garantía</span></span>
+          <input className="numero" inputMode="numeric" value={f.garantiaMeses ? String(f.garantiaMeses) : ""} placeholder="0"
+            onChange={(e) => cambiar({ garantiaMeses: Math.min(120, Number(e.target.value.replace(/\D/g, "")) || 0) })} /></label>
+        <label className="en-linea" style={{ marginTop: 8 }}><input type="checkbox" checked={!!f.usaSeries} onChange={(e) => cambiar({ usaSeries: e.target.checked })} /> Lleva número de serie / IMEI (se pide uno por unidad al facturar)</label>
       </div>
 
       <div className="panel">

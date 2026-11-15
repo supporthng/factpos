@@ -4,7 +4,7 @@ import { api } from "./api";
 import { Icono, type NombreIcono } from "./Iconos";
 
 /** Datos comunes a todas las pantallas (sucursales, productos, usuarios). */
-export interface Producto { id: string; sku: string; nombre: string; categoriaId: string | null; presentaciones: { id: string; nombre: string; factor: string }[] }
+export interface Producto { id: string; sku: string; nombre: string; categoriaId: string | null; usaSeries?: boolean; presentaciones: { id: string; nombre: string; factor: string }[] }
 export interface CatalogoAdmin {
   sucursales: { id: string; codigo: string; nombre: string; almacenId: string; tipo?: "TIENDA" | "ALMACEN"; almacenes?: { id: string; nombre: string; principal: boolean }[] }[];
   productos: Producto[];
