@@ -233,10 +233,12 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
   app.get("/central/facturas/cajas-abiertas", async (req) => {
     const permitidas = sucursalesDe(req);
     const r = await pool.query(
-      `SELECT ca.id AS "cajaId", ca.nombre AS caja, s.id AS "sucursalId", s.nombre AS sucursal, u.nombre AS cajero, t.abierto_en AS "abiertoEn"
-         FROM turnos t JOIN cajas ca ON ca.id = t.caja_id JOIN sucursales s ON s.id = ca.sucursal_id LEFT JOIN usuarios u ON u.id = t.usuario_id
-        WHERE t.estado = 'ABIERTO' AND ca.activo AND s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[]))
-        ORDER BY s.nombre, ca.nombre`, [empresaDe(req), permitidas]);
+      `SELECT ca.id AS "cajaId", ca.nombre AS caja, ca.tipo, s.id AS "sucursalId", s.nombre AS sucursal, u.nombre AS cajero, t.abierto_en AS "abiertoEn"
+         FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
+         LEFT JOIN turnos t ON t.caja_id = ca.id AND t.estado = 'ABIERTO' LEFT JOIN usuarios u ON u.id = t.usuario_id
+        WHERE ca.activo AND NOT ca.eliminada AND s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[]))
+          AND (t.id IS NOT NULL OR ca.tipo = 'FACTURACION')  -- la de facturación no necesita turno abierto: se abre sola al facturar
+        ORDER BY (ca.tipo = 'FACTURACION') DESC, s.nombre, ca.nombre`, [empresaDe(req), permitidas]);
     return r.rows;
   });
 
@@ -271,10 +273,20 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       const yo = (await pool.query<{ nombre: string }>("SELECT nombre FROM usuarios WHERE id = $1", [usuarioId])).rows[0];
       autorizacion = autorizacionDirecta(usuarioId, yo?.nombre ?? "Administración", "venta.descuento", b.cajaId);
     }
-    const r = await enTransaccion((c) => registrarVenta(c, b.cajaId, {
+    const r = await enTransaccion(async (c) => {
+      // Caja de «Facturación» (tienda sin punto de venta): su turno se abre solo, sin fondo, la primera vez que se factura
+      if ((await c.query("SELECT 1 FROM cajas WHERE id = $1 AND tipo = 'FACTURACION'", [b.cajaId])).rowCount) {
+        await c.query("SELECT 1 FROM cajas WHERE id = $1 FOR UPDATE", [b.cajaId]);
+        await c.query(
+          `INSERT INTO turnos (id, sucursal_id, caja_id, usuario_id, abierto_en, fondo_inicial)
+           SELECT $1, ca.sucursal_id, ca.id, $3, now(), 0 FROM cajas ca WHERE ca.id = $2
+              AND NOT EXISTS (SELECT 1 FROM turnos t WHERE t.caja_id = ca.id AND t.estado = 'ABIERTO')`, [uuidv7(), b.cajaId, usuarioId]);
+      }
+      return registrarVenta(c, b.cajaId, {
       usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
       cuponCodigo: b.cuponCodigo, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: b.motivoDescuento } : {}),
-    }));
+      });
+    });
     await pool.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
        VALUES ($1,(SELECT sucursal_id FROM cajas WHERE id = $2),$3,$3,'venta.admin','venta',$4,$5)`,

@@ -80,7 +80,7 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
       un<{ n: string; en_linea: string }>(
         `SELECT count(*) AS n, count(*) FILTER (WHERE GREATEST(y.ultima_subida, y.ultima_bajada) > now() - interval '2 minutes') AS en_linea
            FROM sucursales s LEFT JOIN sync_sucursales y ON y.sucursal_id = s.id WHERE s.empresa_id = $1 AND s.activo`),
-      un<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND s.activo"),
+      un<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND c.tipo = 'CAJA' AND s.activo"),
       un<{ n: string }>("SELECT count(*) AS n FROM productos WHERE empresa_id = $1 AND activo"),
       un<{ n: string }>("SELECT count(*) AS n FROM usuarios WHERE empresa_id = $1 AND activo AND pin_hash IS NOT NULL"),
     ]);
@@ -122,7 +122,7 @@ export async function rutasCentralEmpresas(app: FastifyInstance) {
       fila<{ n: string }>(
         `SELECT count(*) AS n FROM facturacion_rangos_ncf r JOIN sucursales s ON s.id = r.sucursal_id
           WHERE s.empresa_id = $1 AND r.activo AND r.vence_en >= current_date AND r.siguiente <= r.hasta`),
-      fila<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND s.activo"),
+      fila<{ n: string }>("SELECT count(*) AS n FROM cajas c JOIN sucursales s ON s.id = c.sucursal_id WHERE s.empresa_id = $1 AND c.activo AND c.tipo = 'CAJA' AND s.activo"),
       fila<{ n: string }>("SELECT count(*) AS n FROM productos WHERE empresa_id = $1 AND activo"),
       fila<{ n: string }>("SELECT count(*) AS n FROM usuarios WHERE empresa_id = $1 AND activo AND pin_hash IS NOT NULL"),
       fila<{ n: string }>("SELECT count(*) AS n FROM clientes WHERE empresa_id = $1 AND activo"),

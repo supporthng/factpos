@@ -18,7 +18,7 @@ export async function rutasTurnos(app: FastifyInstance) {
               NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id) AS libre,
               EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id AND ce.equipo_id = $2) AS mia
          FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
-        WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) ORDER BY s.nombre, ca.numero`,
+        WHERE ca.activo AND ca.tipo = 'CAJA' AND ($1::uuid IS NULL OR ca.sucursal_id = $1) ORDER BY s.nombre, ca.numero`,
       [sucursalPropia(), equipo],
     );
     return r.rows;
@@ -44,7 +44,7 @@ export async function rutasTurnos(app: FastifyInstance) {
         // La persona eligió la caja: debe ser de esta sucursal y estar libre
         const elegida = (await c.query(
           `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
-            WHERE ca.id = $1 AND ca.activo AND ($2::uuid IS NULL OR ca.sucursal_id = $2) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id AND ce.equipo_id <> $3)`, [cajaId, sucursalPropia(), equipoId])).rows[0];
+            WHERE ca.id = $1 AND ca.activo AND ca.tipo = 'CAJA' AND ($2::uuid IS NULL OR ca.sucursal_id = $2) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id AND ce.equipo_id <> $3)`, [cajaId, sucursalPropia(), equipoId])).rows[0];
         if (!elegida) throw new ErrorNegocio("Esa caja ya está en uso por otra PC o no es de esta sucursal.", 409);
         await c.query("DELETE FROM cajas_equipos WHERE equipo_id = $1", [equipoId]);
         await c.query("INSERT INTO cajas_equipos (caja_id, equipo_id) VALUES ($1,$2)", [elegida.id, equipoId]);
@@ -52,7 +52,7 @@ export async function rutasTurnos(app: FastifyInstance) {
       }
       const libre = (await c.query(
         `SELECT ca.id, ca.nombre, s.nombre AS sucursal FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id
-          WHERE ca.activo AND ($1::uuid IS NULL OR ca.sucursal_id = $1) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
+          WHERE ca.activo AND ca.tipo = 'CAJA' AND ($1::uuid IS NULL OR ca.sucursal_id = $1) AND NOT EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = ca.id)
           ORDER BY s.nombre, ca.numero LIMIT 1`, [sucursalPropia()])).rows[0];
       if (!libre) throw new ErrorNegocio("Todas las cajas de este servidor ya están asignadas a otra PC. Pida al administrador que libere una (Sucursales y terminales) o que agregue una terminal.", 409);
       await c.query("DELETE FROM cajas_equipos WHERE equipo_id = $1", [equipoId]);
