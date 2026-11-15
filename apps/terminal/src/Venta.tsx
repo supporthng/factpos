@@ -53,6 +53,7 @@ import { Facturas, Pausadas, PinSupervisor, PrecioVariable, type Aprobacion, typ
 import { AbrirGaveta, AjustesTerminal, CambiarPrecio, ConfirmarCancelar, Cotizacion as CotizacionImpresa, DescuentoVenta, Existencias, NotaVenta, repartir } from "./Herramientas";
 import type { MetodoPago } from "./Cobro";
 import { PanelPedidos, type PedidoDetalle } from "./Pedidos";
+import { PanelPorCobrar } from "./PorCobrar";
 import { requiereDocumento, tieneDocumentoFiscal, type TipoComprobante } from "./Comprobante";
 
 export interface Cliente {
@@ -68,7 +69,7 @@ interface Linea {
 }
 
 type Modal = null | "precio" | "buscar" | "cliente" | "cupon" | "cobro" | "delivery" | "turno" | "ticket" | "descuento" | "facturas" | "facturasPin" | "pausadas"
-  | "cuentas" | "barra" | "aforo" | "pedidos" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
+  | "cuentas" | "barra" | "aforo" | "pedidos" | "porCobrar" | "cambiarPrecio" | "nota" | "cotizacion" | "existencias" | "gaveta" | "cancelar" | "ajustes" | "consulta" | "salida" | "pagoFactura";
 
 /**
  * Pantalla de venta. Todo lo que pasa mientras se escanea ocurre en memoria:
@@ -174,6 +175,14 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const nivelCliente = cliente?.nivel ?? catalogo?.nivelPredeterminado ?? 1;
   // Precios 2 y 3 como % de descuento sobre el precio 1: se muestra el precio 1 y el descuento se marca en cada línea
   const descNivelPct = catalogo?.descuentosNivel?.[String(nivelCliente)] ?? null;
+  // Ventas que la oficina envió a esta caja para cobrar (se consulta cada 15 s)
+  const [porCobrarN, setPorCobrarN] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    const ver = () => api<unknown[]>(ajustes.servidor, `/cajas/${ajustes.cajaId}/por-cobrar`).then((l) => vivo && setPorCobrarN(l.length)).catch(() => {});
+    ver(); const t = setInterval(ver, 15000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [ajustes.servidor, ajustes.cajaId, modal]);
   const { aforo, recargar: recargarAforo, poner: ponerAforo } = useAforo(ajustes, !!config.aforoActivo);
   const nivelPrecio = descNivelPct && catalogo ? catalogo.nivelPredeterminado : nivelCliente;
 
@@ -844,6 +853,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ...(verCatalogo ? [
                   ["Pedidos", () => setModal("pedidos"), false] as const,
+                  [porCobrarN ? `Por cobrar (${porCobrarN})` : "Por cobrar", () => setModal("porCobrar"), false] as const,
                   ["Existencias", () => setModal("existencias"), !catalogo] as const,
                 ] : []),
               ] as const).map(([t, f, d]) => (
@@ -867,6 +877,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       <footer className="pv-funciones" aria-label="Funciones">
         <BotonFuncion tono="azul" icono="etiqueta" texto="Consultar precio" tecla="Alt+C" disabled={!catalogo} onClick={() => setModal("consulta")} />
         <BotonFuncion tono="azul" icono="documento" texto="Pedidos" tecla="Alt+O" onClick={() => setModal("pedidos")} />
+        <BotonFuncion tono={porCobrarN ? "verde" : "azul"} icono="documento" texto={porCobrarN ? `Por cobrar (${porCobrarN})` : "Por cobrar"} tecla="" onClick={() => setModal("porCobrar")} />
         <BotonFuncion tono="gris" icono="caja" texto="Existencias" tecla="Alt+E" disabled={!catalogo} onClick={() => setModal("existencias")} />
         <BotonFuncion tono="gris" icono="impresora" texto="Reimprimir última" tecla="" disabled={!ultima} onClick={reimprimirUltima} />
         <BotonFuncion tono="verde" icono="gaveta" texto="Abrir gaveta" tecla="Alt+G" onClick={() => setModal("gaveta")} />
@@ -968,6 +979,10 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
       {modal === "cuentas" && idx && catalogo && (
         <Cuentas ajustes={ajustes} config={config} catalogo={catalogo} nivel={nivelPrecio}
           usuarioNombre={usuario.nombre} onCobrar={cobrarCuenta} onCerrar={() => setModal(null)} />
+      )}
+      {modal === "porCobrar" && (
+        <PanelPorCobrar ajustes={ajustes} permitirSin={!!config.funciones?.sinComprobante} onCerrar={() => setModal(null)}
+          onCobrada={(r) => { setUltima(r); setTicketAuto(r); setModal(null); setConfirmacion({ titulo: "Venta registrada", cambio: r.pagos.some((x) => x.formaPago === "EFECTIVO") ? rd(r.cambio) : null, nota: null }); existenciasRef.current().catch(() => {}); }} />
       )}
       {modal === "pedidos" && <PanelPedidos ajustes={ajustes} onFacturar={facturarPedido} onCerrar={() => setModal(null)} />}
       {modal === "delivery" && (
