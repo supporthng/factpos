@@ -170,7 +170,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   const sinCajas = cajas.datos && !cajas.datos.length;
   return (
     <>
-      {!soloEnviar && <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>
+      {!soloEnviar && <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>}
       {soloEnviar
         ? <Encabezado titulo="Nueva venta" descripcion="Busque los productos, arme la venta y envíela a la caja: el cliente paga allí y la caja emite el comprobante." />
         : <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />}
