@@ -457,6 +457,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   };
 
   const registrar = async () => {
+    if (pend.length > 0 && !confirm(`Hay ${pend.length} línea(s) de la factura sin emparejar que NO se van a registrar. ¿Registrar la compra sin ellas?`)) return;
     setGuardando(true);
     setMsg("");
     try {
@@ -726,6 +727,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
       {/* Barra fija: el total y el botón siempre a la vista, sin subir la pantalla */}
       <div className="barra-compra">
         <span className="suave">{lineas.length} línea(s){guardado ? " · borrador guardado" : ""}</span>
+        {pend.length > 0 && <span className="texto-alerta" style={{ flexBasis: "100%" }}>⚠ Faltan {pend.length} línea(s) de la factura sin emparejar (RD$ {pend.reduce((t, x) => t + x.cantidad * x.costo, 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sin ITBIS): no están en este total hasta que las elija o las descarte.</span>}
         {guardado && <button className="boton fantasma" onClick={descartarBorrador} title="Borra el borrador sin registrar la compra">Descartar</button>}
         <span>Subtotal {rd(sub)}</span><span>ITBIS {rd(itb)}</span>
         {ahorro > 0 && <span className="texto-ok">Ahorro por ofertas {rd(ahorro)}</span>}
