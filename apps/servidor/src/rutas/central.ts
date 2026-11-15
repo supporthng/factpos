@@ -229,6 +229,30 @@ export async function rutasCentral(app: FastifyInstance) {
     return r.rows;
   });
 
+  /**
+   * Consulta de existencias de TODAS las sucursales (solo lectura: cantidades, sin costos ni valores). Es lo que ve el vendedor:
+   * puede saber en qué sucursal hay un producto, pero solo vende (y saca inventario) de las sucursales que tiene asignadas.
+   */
+  app.get("/central/existencias", async (req) => {
+    const f = z.object({ q: z.string().trim().min(2, "Escriba al menos 2 letras").max(60) }).parse(req.query);
+    const r = await pool.query(
+      `SELECT p.id AS "productoId", p.sku, p.nombre,
+              jsonb_object_agg(s.nombre, jsonb_build_object('sucursalId', s.id, 'cantidad', x.cantidad)) AS sucursales
+         FROM productos p
+         CROSS JOIN sucursales s
+         CROSS JOIN LATERAL (
+           SELECT COALESCE(SUM(e.cantidad), 0)::float AS cantidad FROM existencias e JOIN almacenes a ON a.id = e.almacen_id
+            WHERE e.producto_id = p.id AND a.sucursal_id = s.id) x
+        WHERE p.empresa_id = $1 AND p.activo AND p.controla_stock AND s.empresa_id = $1 AND s.activo
+          AND (p.nombre ILIKE '%' || $2 || '%' OR p.sku ILIKE $2 || '%'
+               OR EXISTS (SELECT 1 FROM presentaciones pr JOIN codigos_barra b ON b.presentacion_id = pr.id WHERE pr.producto_id = p.id AND b.codigo = $2))
+        GROUP BY p.id, p.sku, p.nombre
+        ORDER BY p.nombre LIMIT 100`,
+      [empresaDe(req), f.q],
+    );
+    return r.rows;
+  });
+
   /** Mínimos, máximos y producto habilitado por sucursal. */
   app.put("/central/inventario/parametros", async (req) => {
     const items = z
