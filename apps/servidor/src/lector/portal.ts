@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 import { autorizarLicencia } from "../respaldo/portal.js";
+import { montoFaltante, pistaFaltantes, unirFaltantes } from "./completa.js";
 import { cuerpoGemini, cuerpoGroq, elegirAlternos, leerRespuestaGemini, leerRespuestaGroq, MODELO_GROQ, modelosGratis, ordenProveedores, type Proveedor } from "./proveedores.js";
 
 /**
@@ -107,6 +108,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
        WHERE portal_lector_uso.usadas < $3 RETURNING usadas`, [l.id, mes, l.lector_cupo]);
     if (!reservado.rowCount) throw new ErrorNegocio(`Ya usó las ${l.lector_cupo} facturas de este mes. Pídale a su proveedor ampliar el cupo.`, 402);
     const devolver = () => pool.query("UPDATE portal_lector_uso SET usadas = GREATEST(usadas - 1, 0) WHERE licencia_id = $1 AND mes = $2", [l.id, mes]).catch(() => undefined);
+    let extra = ""; // segunda pasada: pista para pedir solo las líneas que faltan
     try {
       const leer: Record<Proveedor, () => Promise<unknown>> = {
         pago: async () => {
@@ -117,7 +119,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
             method: "POST",
             headers: { "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({
-              model: MODELO(), max_tokens: 4096, system: INSTRUCCIONES,
+              model: MODELO(), max_tokens: 4096, system: INSTRUCCIONES + extra,
               tools: [HERRAMIENTA], tool_choice: { type: "auto" }, // los modelos nuevos no aceptan forzar la herramienta: se le exige en las instrucciones
               messages: [{ role: "user", content: [bloque, { type: "text", text: "Lea esta factura de compra." }] }],
             }),
@@ -144,7 +146,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
             const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
               method: "POST",
               headers: { "x-goog-api-key": process.env.GEMINI_API_KEY!, "content-type": "application/json" },
-              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema, pensamiento })),
+              body: JSON.stringify(cuerpoGemini({ tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES + extra, esquema: HERRAMIENTA.input_schema, pensamiento })),
               signal: AbortSignal.timeout(Math.min(25_000, Math.max(5_000, hasta - Date.now()))), // tope por intento: uno colgado no se come todo el tiempo y deja probar otro modelo
             }).catch((e) => { fallos.push(`${modelo}: ${(e as Error).message}`); return null; });
             if (!r) return "saturado";
@@ -188,7 +190,7 @@ export async function rutasPortalLector(app: FastifyInstance) {
             const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
               method: "POST",
               headers: { authorization: `Bearer ${process.env.GROQ_API_KEY}`, "content-type": "application/json" },
-              body: JSON.stringify(cuerpoGroq({ modelo: MODELO_GROQ(), tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES, esquema: HERRAMIENTA.input_schema })),
+              body: JSON.stringify(cuerpoGroq({ modelo: MODELO_GROQ(), tipo: b.tipo, datos: b.datos, instrucciones: INSTRUCCIONES + extra, esquema: HERRAMIENTA.input_schema })),
               signal: AbortSignal.timeout(25_000),
             }).catch((e) => { ultimo = `${MODELO_GROQ()}: ${(e as Error).message}`; return null; });
             if (!r) continue;
@@ -215,6 +217,24 @@ export async function rutasPortalLector(app: FastifyInstance) {
         catch (e) { ultimoError = e as Error; bitacora.push(`${NOMBRE[p]} no pudo (${Math.round((Date.now() - t0) / 1000)} s): ${(e as Error).message.replace(/\s+/g, " ").slice(0, 150)}`); app.log.warn(`Lector de facturas (${p}): ${(e as Error).message}`); }
       }
       if (!usado) throw ultimoError ?? new Error("Sin proveedor disponible");
+      // ¿Se leyeron todas las líneas? Si lo leído suma mucho menos que el subtotal impreso, segunda pasada pidiendo solo las que faltan
+      let faltaAntes = 0, agregadas = 0;
+      try {
+        const f0 = factura as Parameters<typeof montoFaltante>[0];
+        faltaAntes = montoFaltante(f0);
+        if (faltaAntes > 0 && Date.now() - inicio < 22_000) {
+          bitacora.push(`Las líneas leídas suman RD$ ${faltaAntes.toLocaleString("es-DO")} menos que la factura: se pide una segunda lectura de lo que falta`);
+          extra = pistaFaltantes(f0);
+          const t1 = Date.now();
+          try {
+            const r2 = (await leer[usado]()) as Parameters<typeof unirFaltantes>[1];
+            const u = unirFaltantes(f0, r2);
+            agregadas = u.agregadas; if (agregadas) factura = u.factura;
+            bitacora.push(`Segunda lectura (${Math.round((Date.now() - t1) / 1000)} s): ${agregadas} línea(s) más`);
+          } catch (e) { bitacora.push(`La segunda lectura no pudo: ${(e as Error).message.replace(/\s+/g, " ").slice(0, 120)}`); }
+          finally { extra = ""; }
+        }
+      } catch { /* la comprobación nunca debe tumbar una lectura buena */ }
       return { factura, proveedor: usado, cupo: l.lector_cupo, usadas: reservado.rows[0].usadas as number, bitacora, segundos: Math.round((Date.now() - inicio) / 1000) };
     } catch (e) {
       await devolver();
