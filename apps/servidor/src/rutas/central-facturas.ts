@@ -323,13 +323,16 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
 
   app.get("/central/por-cobrar", async (req) => {
     const permitidas = sucursalesDe(req);
+    const { mias } = z.object({ mias: z.enum(["1"]).optional() }).parse(req.query);
     const r = await pool.query(
       `SELECT v.id, v.numero::text, v.total::text, v.estado, v.creada_en AS "creadaEn", ca.nombre AS caja, s.nombre AS sucursal,
-              cl.nombre AS cliente, u.nombre AS vendedor, jsonb_array_length(v.items) AS lineas
+              cl.nombre AS cliente, u.nombre AS vendedor, jsonb_array_length(v.items) AS lineas, ed.encf
          FROM ventas_por_cobrar v JOIN cajas ca ON ca.id = v.caja_id JOIN sucursales s ON s.id = v.sucursal_id
          LEFT JOIN clientes cl ON cl.id = v.cliente_id LEFT JOIN usuarios u ON u.id = v.creada_por
+         LEFT JOIN ecf_documentos ed ON ed.venta_id = v.venta_id
         WHERE s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[])) AND (v.estado = 'PENDIENTE' OR v.cerrada_en > now() - interval '2 days')
-        ORDER BY (v.estado = 'PENDIENTE') DESC, v.creada_en DESC LIMIT 200`, [empresaDe(req), permitidas]);
+          AND ($3::uuid IS NULL OR v.creada_por = $3)
+        ORDER BY (v.estado = 'PENDIENTE') DESC, v.creada_en DESC LIMIT 200`, [empresaDe(req), permitidas, mias ? usuarioDe(req) : null]);
     return r.rows;
   });
 
@@ -338,14 +341,15 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const permitidas = sucursalesDe(req);
     const r = await pool.query(
       `UPDATE ventas_por_cobrar v SET estado = 'ANULADA', cerrada_en = now(), cerrada_por = $4
-        FROM sucursales s WHERE v.id = $1 AND s.id = v.sucursal_id AND s.empresa_id = $2 AND ($3::uuid[] IS NULL OR s.id = ANY($3::uuid[])) AND v.estado = 'PENDIENTE'`,
-      [id, empresaDe(req), permitidas, usuarioDe(req)]);
+        FROM sucursales s WHERE v.id = $1 AND s.id = v.sucursal_id AND s.empresa_id = $2 AND ($3::uuid[] IS NULL OR s.id = ANY($3::uuid[])) AND v.estado = 'PENDIENTE'
+         AND ($5::boolean OR v.creada_por = $4)`,
+      [id, empresaDe(req), permitidas, usuarioDe(req), tienePermiso(permisos(req), "admin.facturas")]);
     if (!r.rowCount) throw new ErrorNegocio("La venta no existe o ya no está pendiente", 404);
     return { ok: true };
   });
 
   /** Cajas con turno abierto: dónde se puede facturar */
-  app.get("/central/facturas/cajas-abiertas", async (req) => {
+  const cajasAbiertas = async (req: any) => {
     const permitidas = sucursalesDe(req);
     const r = await pool.query(
       `SELECT ca.id AS "cajaId", ca.nombre AS caja, ca.tipo, s.id AS "sucursalId", s.nombre AS sucursal, u.nombre AS cajero, t.abierto_en AS "abiertoEn"
@@ -355,15 +359,17 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
           AND (t.id IS NOT NULL OR ca.tipo = 'FACTURACION')  -- la de facturación no necesita turno abierto: se abre sola al facturar
         ORDER BY (ca.tipo = 'FACTURACION') DESC, s.nombre, ca.nombre`, [empresaDe(req), permitidas]);
     return r.rows;
-  });
+  };
+  for (const u of ["/central/facturas/cajas-abiertas", "/central/ventas/cajas-abiertas"]) app.get(u, cajasAbiertas);
 
   /** Precios, ofertas e ITBIS de lo que se va a facturar (con los precios del nivel del cliente) */
-  app.post("/central/facturas/cotizar", async (req) => {
+  const cotizarFactura = async (req: any) => {
     const b = z.object({ cajaId: uuid, clienteId: uuid.optional(), cuponCodigo: z.string().trim().min(1).max(30).optional(), items: ItemsSchema }).parse(req.body);
     const ctx = await cajaPermitida(req, b.cajaId);
     if (b.items.some((i) => i.precioLibre) && !tienePermiso(permisos(req), "venta.precio_libre")) throw new ErrorNegocio("Cambiar el precio de una línea requiere el permiso «Facturar con precio libre».", 403);
     return resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, cuponCodigo: b.cuponCodigo, items: b.items }, false));
-  });
+  };
+  for (const u of ["/central/facturas/cotizar", "/central/ventas/cotizar"]) app.post(u, cotizarFactura);
 
   app.post("/central/facturas", async (req, rep) => {
     soloSucursal();
