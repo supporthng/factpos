@@ -48,7 +48,7 @@ export function leerRespuestaGemini(d: unknown): Record<string, unknown> {
   try { obj = JSON.parse(limpio); } catch { throw new Error(r.candidates?.[0]?.finishReason === "MAX_TOKENS" ? "La factura es muy larga para leerla de una vez" : "Gemini devolvió un texto que no es JSON"); }
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new Error("Gemini devolvió un resultado inesperado");
   const f = obj as Record<string, unknown>;
-  if (!Array.isArray(f.items) || f.items.length === 0) throw new Error("Gemini no encontró productos en la factura");
+  if (!Array.isArray(f.items) || f.items.length === 0) throw new Error(`Gemini no encontró productos en la factura${Object.keys(f).length ? ` (respondió: ${Object.keys(f).slice(0, 8).join(", ")}; items ${Array.isArray(f.items) ? "vacío" : "ausente"})` : ""}`);
   if (!f.items.every((i) => i && typeof i === "object" && typeof (i as { descripcion?: unknown }).descripcion === "string")) throw new Error("Gemini devolvió productos sin descripción");
   return { ...f, columnas: Array.isArray(f.columnas) ? f.columnas : [], preciosIncluyenItbis: f.preciosIncluyenItbis === true };
 }

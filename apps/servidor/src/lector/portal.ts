@@ -197,7 +197,9 @@ export async function rutasPortalLector(app: FastifyInstance) {
             if (r.status === 400 && d.error?.failed_generation) { try { return leerRespuestaGroq({ choices: [{ message: { content: d.error.failed_generation } }] }); } catch { /* se informa abajo */ } }
             if (r.status === 429 || r.status >= 500) { ultimo = r.status === 429 ? "Groq: se agotó el límite de lecturas gratuitas por ahora" : (d.error?.message ?? `Groq: HTTP ${r.status}`); continue; }
             if (!r.ok) throw new Error(`Groq: ${d.error?.message ?? `HTTP ${r.status}`}`);
-            return leerRespuestaGroq(d);
+            // El modelo gratuito a veces responde sin productos o sin JSON aunque la foto sea la misma: se reintenta antes de rendirse
+            try { return leerRespuestaGroq(d); }
+            catch (e) { ultimo = (e as Error).message; if (!/no encontró productos|no es JSON|inesperado|sin descripción|no devolvió datos/.test(ultimo)) throw e; }
           }
           throw new Error(ultimo);
         },
