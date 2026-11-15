@@ -4,7 +4,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
-import { anularVenta, datosTicket } from "./facturas.js";
+import { anularVenta, devolverParcial, datosTicket } from "./facturas.js";
 import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPresentes } from "./ventas.js";
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
@@ -59,8 +59,8 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     if (f.familia === "E") cond.push("v.tipo_documento LIKE 'E%'");
     if (f.familia === "B") cond.push("v.tipo_documento LIKE 'B%'");
     if (f.familia === "SIN") cond.push("v.tipo_documento = 'SIN'");
-    if (f.estado === "ANULADA") cond.push("EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU'))");
-    if (f.estado === "EMITIDA") cond.push("NOT EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU'))");
+    if (f.estado === "ANULADA") cond.push("EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND NOT n.parcial AND n.tipo_documento IN ('E34','ANU'))");
+    if (f.estado === "EMITIDA") cond.push("NOT EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND NOT n.parcial AND n.tipo_documento IN ('E34','ANU'))");
     if (f.q) {
       params.push(`%${f.q}%`);
       const n = params.length;
@@ -69,7 +69,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT v.id, v.numero_interno AS numero, v.tipo_documento AS tipo, COALESCE(d.encf, v.numero_documento) AS comprobante,
               v.total, v.creado_en AS fecha, s.nombre AS sucursal, c.nombre AS caja, u.nombre AS cajero, cl.nombre AS cliente,
-              EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU')) AS anulada
+              EXISTS (SELECT 1 FROM ventas n WHERE n.venta_origen_id = v.id AND NOT n.parcial AND n.tipo_documento IN ('E34','ANU')) AS anulada
          FROM ventas v
          JOIN sucursales s ON s.id = v.sucursal_id
          LEFT JOIN cajas c ON c.id = v.caja_id
@@ -89,9 +89,13 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const t = await datosTicket(pool, id);
     const x = await pool.query(
       `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero, cl.correo AS "clienteCorreo", cl.telefono AS "clienteTelefono",
+              (SELECT jsonb_agg(jsonb_build_object('linea', i.linea, 'cantidad', i.cantidad, 'devuelta',
+                  COALESCE((SELECT SUM(ni.cantidad) FROM venta_items ni JOIN ventas n ON n.id = ni.venta_id WHERE n.venta_origen_id = v.id AND n.parcial AND ni.linea = i.linea), 0)) ORDER BY i.linea)
+                 FROM venta_items i WHERE i.venta_id = v.id) AS "lineasDevolucion",
+              (SELECT COUNT(*)::int FROM ventas n WHERE n.venta_origen_id = v.id AND n.parcial) AS "devolucionesParciales",
               (SELECT jsonb_build_object('numero', n.numero_interno, 'fecha', n.creado_en, 'motivo', n.motivo, 'por', ua.nombre)
                  FROM ventas n LEFT JOIN usuarios ua ON ua.id = n.usuario_id
-                WHERE n.venta_origen_id = v.id AND n.tipo_documento IN ('E34','ANU') LIMIT 1) AS anulacion
+                WHERE n.venta_origen_id = v.id AND NOT n.parcial AND n.tipo_documento IN ('E34','ANU') LIMIT 1) AS anulacion
          FROM ventas v JOIN sucursales s ON s.id = v.sucursal_id LEFT JOIN cajas c ON c.id = v.caja_id LEFT JOIN usuarios u ON u.id = v.usuario_id
          LEFT JOIN clientes cl ON cl.id = v.cliente_id
         WHERE v.id = $1`, [id]);
@@ -135,7 +139,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     }
     await enTransaccion(async (c) => {
       const ant = (await c.query("SELECT notas, cliente_id FROM ventas WHERE id = $1 FOR UPDATE", [id])).rows[0];
-      const ya = await c.query("SELECT 1 FROM ventas WHERE venta_origen_id = $1 AND tipo_documento IN ('E34','ANU')", [id]);
+      const ya = await c.query("SELECT 1 FROM ventas WHERE venta_origen_id = $1 AND NOT parcial AND tipo_documento IN ('E34','ANU')", [id]);
       if (ya.rowCount) throw new ErrorNegocio("La factura está anulada y no se puede modificar", 409);
       if (b.clienteId) {
         const ok = await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2", [b.clienteId, empresaDe(req)]);
@@ -240,6 +244,27 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       return r;
     });
   });
+  /** Devolución parcial: una nota de crédito por las líneas y cantidades indicadas; la factura sigue vigente. */
+  app.post("/central/facturas/:id/devolver", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({
+      motivo: z.string().trim().min(10, "Explique el motivo (mínimo 10 caracteres)").max(200),
+      lineas: z.array(z.object({ linea: z.number().int().positive(), cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida") })).min(1, "Indique qué se devuelve").max(200),
+    }).parse(req.body);
+    if (!tienePermiso(permisos(req), "venta.anular")) throw new ErrorNegocio("Una devolución requiere permiso de supervisor", 403);
+    const v = await cargar(req, id);
+    if (config.modo !== "sucursal" && v.sucursal_id !== sucursalPropia()) {
+      throw new ErrorNegocio("La devolución se hace en la administración de la sucursal (su servidor): allí están la caja y el inventario de esa factura.", 409);
+    }
+    const usuarioId = usuarioDe(req);
+    return enTransaccion(async (c) => {
+      const t = await c.query<{ caja_id: string }>(
+        `SELECT caja_id FROM turnos WHERE sucursal_id = $1 AND estado = 'ABIERTO' ORDER BY (caja_id = $2) DESC, abierto_en LIMIT 1`, [v.sucursal_id, v.caja_id]);
+      if (!t.rowCount) throw new ErrorNegocio("No hay un turno abierto en la sucursal para registrar la devolución: abra una caja e intente de nuevo.", 409);
+      return devolverParcial(c, { cajaId: t.rows[0].caja_id, ventaId: id, usuarioId, supervisorId: usuarioId, motivo: b.motivo, lineas: b.lineas });
+    });
+  });
+
   // ================= Crear facturas desde la administración =================
   // Se factura contra una caja con el turno abierto (ahí entran el dinero y el cuadre); el inventario sale de su almacén.
   const soloSucursal = () => {
