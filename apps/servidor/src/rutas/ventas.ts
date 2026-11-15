@@ -62,7 +62,7 @@ const VentaSchema = CarritoSchema.extend({
 
 type CarritoBase = z.infer<typeof CarritoSchema>;
 /** `precioLibre` solo lo pone la facturación de administración (con el permiso "venta.precio_libre"): la caja nunca lo recibe */
-type Carrito = Omit<CarritoBase, "items"> & { items: (CarritoBase["items"][number] & { precioLibre?: string })[] };
+type Carrito = Omit<CarritoBase, "items"> & { items: (CarritoBase["items"][number] & { precioLibre?: string; series?: string[] })[] };
 
 /** Datos de una venta ya validados. Delivery la usa con forma de pago "DELIVERY". */
 export interface VentaInput extends Carrito {
@@ -244,6 +244,60 @@ export function resumen(q: Awaited<ReturnType<typeof cotizar>>) {
  * líneas tenga la venta; las líneas, pagos y movimientos de kardex se insertan
  * en bloque con unnest(). Una venta de 40 líneas cuesta lo mismo que una de 2.
  */
+/** Serie o IMEI: sin espacios ni guiones sueltos, en mayúsculas */
+export const normalizarSerie = (v: string) => v.trim().toUpperCase().replace(/\s+/g, "");
+
+/**
+ * Números de serie / IMEI de los productos que los llevan: una serie por unidad, sin repetir, y que no esté ya vendida.
+ * Guarda también hasta cuándo dura la garantía (meses del producto desde hoy).
+ */
+async function guardarSeries(c: PoolClient, d: {
+  ventaId: string; sucursalId: string; clienteId: string | null; itemIds: string[]; exigir: boolean;
+  L: { linea: number; cantidad: string; prod: { productoId: string; presentacionId: string; nombre: string; factor: string } }[];
+  items: { series?: string[] }[];
+}) {
+  const ids = [...new Set(d.L.map((l) => l.prod.productoId))];
+  const ps = (await c.query<{ id: string; usa_series: boolean; garantia_meses: number }>("SELECT id, usa_series, garantia_meses FROM productos WHERE id = ANY($1::uuid[])", [ids])).rows;
+  const info = new Map(ps.map((x) => [x.id, x]));
+  const vistas = new Set<string>();
+  for (const [i, l] of d.L.entries()) {
+    const pr = info.get(l.prod.productoId);
+    if (!pr?.usa_series) continue;
+    const unidades = new Decimal(l.cantidad).mul(l.prod.factor);
+    const series = (d.items[l.linea - 1]?.series ?? []).map(normalizarSerie).filter(Boolean);
+    if (!series.length && !d.exigir) continue; // la caja (punto de venta) todavía no captura series
+    if (!unidades.isInteger()) throw new ErrorNegocio(`${l.prod.nombre} lleva número de serie: la cantidad debe ser entera`);
+    if (series.length !== unidades.toNumber()) throw new ErrorNegocio(`${l.prod.nombre}: indique ${unidades.toNumber()} número(s) de serie (lleva ${series.length})`);
+    for (const sr of series) {
+      if (sr.length < 3 || sr.length > 40) throw new ErrorNegocio(`La serie «${sr}» no es válida (3 a 40 caracteres)`);
+      if (vistas.has(`${l.prod.productoId}|${sr}`)) throw new ErrorNegocio(`La serie ${sr} está repetida en la factura`);
+      vistas.add(`${l.prod.productoId}|${sr}`);
+    }
+    const ya = await c.query<{ serie: string }>("SELECT serie FROM series_producto WHERE producto_id = $1 AND serie = ANY($2::text[]) AND devuelta_en IS NULL LIMIT 1", [l.prod.productoId, series]);
+    if (ya.rowCount) throw new ErrorNegocio(`La serie ${ya.rows[0].serie} ya fue vendida`);
+    await c.query(
+      `INSERT INTO series_producto (id, sucursal_id, producto_id, presentacion_id, serie, venta_id, venta_item_id, cliente_id, garantia_hasta)
+       SELECT gen_random_uuid(), $1, $2, $3, s, $4, $5, $6, CASE WHEN $7::int > 0 THEN (CURRENT_DATE + make_interval(months => $7::int))::date END
+         FROM unnest($8::text[]) AS s`,
+      [d.sucursalId, l.prod.productoId, l.prod.presentacionId, d.ventaId, d.itemIds[i], d.clienteId, pr.garantia_meses, series]);
+  }
+}
+
+/** Antes de enviar una venta a caja: los productos con serie deben traer una serie por unidad (la caja no las captura) */
+export async function exigirSeriesPresentes(c: Pick<PoolClient, "query">, items: { presentacionId: string; cantidad: string; series?: string[] }[]) {
+  const r = await c.query<{ id: string; nombre: string; factor: string }>(
+    `SELECT pr.id, p.nombre, pr.factor::text FROM presentaciones pr JOIN productos p ON p.id = pr.producto_id WHERE pr.id = ANY($1::uuid[]) AND p.usa_series`,
+    [items.map((i) => i.presentacionId)]);
+  const m = new Map(r.rows.map((x) => [x.id, x]));
+  for (const i of items) {
+    const x = m.get(i.presentacionId);
+    if (!x) continue;
+    const n = new Decimal(i.cantidad).mul(x.factor);
+    const dadas = (i.series ?? []).map(normalizarSerie).filter(Boolean);
+    if (!n.isInteger() || dadas.length !== n.toNumber()) throw new ErrorNegocio(`${x.nombre}: indique ${n.toString()} número(s) de serie (lleva ${dadas.length})`);
+  }
+}
+
 export async function registrarVenta(
   c: PoolClient,
   cajaId: string,
@@ -252,6 +306,8 @@ export async function registrarVenta(
     pagarTodoCon?: VentaInput["pagos"][number]["formaPago"];
     /** Venta hecha en la caja sin servidor: su hora real, su e-NCF apartado y su turno */
     contingencia?: { creadoEn: string; encf: string; rangoId: string; turnoId: string };
+    /** Facturación de administración: los productos con número de serie deben traer una serie por unidad */
+    exigirSeries?: boolean;
   } = {},
 ) {
   await c.query("SELECT 1 FROM cajas WHERE id = $1 FOR UPDATE", [cajaId]); // numeración por caja
@@ -358,6 +414,7 @@ export async function registrarVenta(
   }
 
   // Líneas en bloque
+  const itemIds = L.map(() => uuidv7());
   await c.query(
     `INSERT INTO venta_items (id, venta_id, linea, presentacion_id, descripcion, cantidad, factor, precio_unitario,
                               descuento, tasa_itbis, itbis, total, costo_unitario, oferta_id, descuento_oferta,
@@ -365,7 +422,7 @@ export async function registrarVenta(
      SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::smallint[], $4::uuid[], $5::text[], $6::numeric[], $7::numeric[],
                           $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[], $12::numeric[], $13::numeric[],
                           $14::uuid[], $15::numeric[], $16::numeric[], $17::uuid[], $18::numeric[], $19::numeric[], $20::numeric[])`,
-    [L.map(() => uuidv7()), L.map(() => ventaId), L.map((l) => l.linea), L.map((l) => l.prod.presentacionId),
+    [itemIds, L.map(() => ventaId), L.map((l) => l.linea), L.map((l) => l.prod.presentacionId),
      L.map((l) => `${l.prod.nombre} ${l.prod.presentacion}`.trim()), L.map((l) => l.cantidad), L.map((l) => l.prod.factor),
      L.map((l) => l.prod.precio), L.map((l) => l.calc.descuento), L.map((l) => l.prod.tasaItbis), L.map((l) => l.calc.itbis),
      L.map((l) => l.calc.total), L.map((l) => l.prod.costoPromedio), L.map((l) => l.oferta?.ofertaId ?? null),
@@ -374,6 +431,8 @@ export async function registrarVenta(
      L.map((l) => (l.oferta ? new Decimal(l.oferta.unidades).mul(l.prod.factor).toString() : "0")),
      L.map((l) => l.descuentoNivel)],
   );
+
+  await guardarSeries(c, { ventaId, sucursalId: ctx.sucursalId, clienteId: body.clienteId ?? null, L, itemIds, items: body.items, exigir: !!opciones.exigirSeries });
 
   // Entradas con consumos incluidos: un vale por unidad (no aplica a ventas hechas sin servidor)
   const vales = cont ? [] : await crearVales(c, ctx.sucursalId, ventaId, L.map((l) => ({ productoId: l.prod.productoId, descripcion: l.prod.nombre, cantidad: l.cantidad })));
@@ -458,6 +517,7 @@ export async function registrarVenta(
               'pagos', (SELECT jsonb_agg(to_jsonb(p)) FROM venta_pagos p WHERE p.venta_id = v.id),
               'kardex', (SELECT jsonb_agg(to_jsonb(k)) FROM kardex_movimientos k WHERE k.documento_tipo = 'venta' AND k.documento_id = v.id),
               'cxc', (SELECT jsonb_agg(to_jsonb(m)) FROM cxc_movimientos m WHERE m.venta_id = v.id),
+              'series', (SELECT jsonb_agg(to_jsonb(sp)) FROM series_producto sp WHERE sp.venta_id = v.id),
               'cupon', (SELECT to_jsonb(u) FROM cupon_usos u WHERE u.venta_id = v.id),
               'ecf', (SELECT to_jsonb(d) - 'xml' - 'xml_envio' FROM ecf_documentos d WHERE d.venta_id = v.id),
               'auditoria', (SELECT jsonb_agg(to_jsonb(a)) FROM auditoria a WHERE a.entidad = 'venta' AND a.entidad_id = v.id))

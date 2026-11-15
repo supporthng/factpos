@@ -69,6 +69,7 @@ import { rutasComandas } from "./rutas/comandas.js";
 import { rutasSalon } from "./rutas/salon.js";
 import { rutasAforo } from "./rutas/aforo.js";
 import { rutasCentralFacturas } from "./rutas/central-facturas.js";
+import { rutasCentralSeries } from "./rutas/central-series.js";
 import { rutasContingencia } from "./rutas/contingencia.js";
 import { rutasCentralIncidentes } from "./rutas/central-incidentes.js";
 import { leerSesionAdmin, rutasSesionCaja, rutasSesionCentral, usuarioVigente } from "./rutas/sesion.js";
@@ -275,6 +276,7 @@ export async function crearApp() {
   await app.register(rutasSalon);
   await app.register(rutasAforo);
   await app.register(rutasCentralFacturas);
+  await app.register(rutasCentralSeries);
   await app.register(rutasFacturas);
   await app.register(rutasCierre);
   await app.register(rutasPadronCaja);

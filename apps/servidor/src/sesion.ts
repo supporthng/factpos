@@ -120,7 +120,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   // Entregan secretos (clave de los respaldos en la nube, archivo de licencia): solo el administrador principal, también para leer
   if (/^\/central\/(restaurar-respaldo|licencia\/archivo)(\/|$)/.test(ruta)) return "*";
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
-  if (/^\/central\/facturas(\/|$)/.test(ruta)) return "admin.facturas";
+  if (/^\/central\/(facturas|series|por-cobrar)(\/|$)/.test(ruta)) return "admin.facturas";
   if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";
