@@ -8,7 +8,7 @@ import { BuscadorLinea } from "./Compras";
  * Nueva factura desde la administración: se factura contra una caja con el turno abierto (ahí entra el dinero),
  * con los precios, ofertas e ITBIS del servidor, igual que en la caja.
  */
-interface CajaAbierta { cajaId: string; caja: string; sucursalId: string; sucursal: string; cajero: string | null; abiertoEn: string }
+interface CajaAbierta { cajaId: string; caja: string; tipo?: string; sucursalId: string; sucursal: string; cajero: string | null; abiertoEn: string }
 interface ClienteB { id: string; nombre: string; documento: string | null; tipoDocumento?: string | null }
 interface Cotizacion {
   subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown; cupon?: { codigo: string; total: string } | null;
@@ -144,12 +144,12 @@ export function NuevaFactura({ onCerrar, onCreada }: { onCerrar: () => void; onC
       <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>
       <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />
       <Aviso texto={cajas.error || msg} />
-      {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con turno abierto. La factura necesita una caja abierta para registrar el cobro: abra el turno en la caja e intente de nuevo." />}
+      {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo." />}
 
       <div className="panel cab-compra">
-        <label className="campo"><span>Caja (turno abierto)</span>
+        <label className="campo"><span>{cajas.datos?.every((c) => c.tipo === "FACTURACION") ? "Facturar desde" : "Caja (turno abierto)"}</span>
           <select value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
-            {cajas.datos?.map((c) => <option key={c.cajaId} value={c.cajaId}>{c.sucursal} · {c.caja}{c.cajero ? ` · ${c.cajero}` : ""}</option>)}
+            {cajas.datos?.map((c) => <option key={c.cajaId} value={c.cajaId}>{c.sucursal} · {c.tipo === "FACTURACION" ? "Facturación (sin caja)" : c.caja}{c.cajero && c.tipo !== "FACTURACION" ? ` · ${c.cajero}` : ""}</option>)}
           </select>
         </label>
         <label className="campo"><span>Comprobante</span>

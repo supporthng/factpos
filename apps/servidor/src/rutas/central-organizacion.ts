@@ -19,7 +19,7 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
                                   'almacen', (SELECT nombre FROM almacenes WHERE id = c.almacen_id),
                                   'turnoAbierto', EXISTS (SELECT 1 FROM turnos t WHERE t.caja_id = c.id AND t.estado = 'ABIERTO'),
                                   'ultimaVenta', (SELECT MAX(creado_en) FROM ventas v WHERE v.caja_id = c.id),
-                                  'conPc', EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = c.id)) ORDER BY c.numero)
+                                  'conPc', EXISTS (SELECT 1 FROM cajas_equipos ce WHERE ce.caja_id = c.id), 'tipo', c.tipo) ORDER BY c.numero)
                           FROM cajas c WHERE c.sucursal_id = s.id AND NOT c.eliminada), '[]') AS terminales
          FROM sucursales s WHERE s.empresa_id = $1 ORDER BY s.codigo`,
       [empresaDe(req)],
@@ -110,15 +110,16 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
   /** Nueva terminal de venta en una sucursal. */
   app.post("/central/sucursales/:id/terminales", async (req, rep) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const b = z.object({ nombre: z.string().trim().min(2).max(40).optional(), almacenId: uuid.optional() }).parse(req.body);
+    const b = z.object({ nombre: z.string().trim().min(2).max(40).optional(), almacenId: uuid.optional(), tipo: z.enum(["CAJA", "FACTURACION"]).default("CAJA") }).parse(req.body);
     const r = await enTransaccion(async (c) => {
       await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [id, empresaDe(req)]);
       const n = (await c.query("SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM cajas WHERE sucursal_id = $1", [id])).rows[0].n;
       const alm = b.almacenId ?? (await c.query("SELECT id FROM almacenes WHERE sucursal_id = $1 AND es_principal", [id])).rows[0]?.id;
       if (!alm) throw new ErrorNegocio("La sucursal no tiene almacén principal");
       const nuevo = uuidv7();
-      await c.query("INSERT INTO cajas (id, sucursal_id, numero, nombre, almacen_id) VALUES ($1,$2,$3,$4,$5)",
-        [nuevo, id, n, b.nombre ?? `Caja ${n}`, alm]);
+      if (b.tipo === "FACTURACION" && (await c.query("SELECT 1 FROM cajas WHERE sucursal_id = $1 AND tipo = 'FACTURACION' AND NOT eliminada", [id])).rowCount) throw new ErrorNegocio("Esta sucursal ya tiene su caja de facturación", 409);
+      await c.query("INSERT INTO cajas (id, sucursal_id, numero, nombre, almacen_id, tipo) VALUES ($1,$2,$3,$4,$5,$6)",
+        [nuevo, id, n, b.nombre ?? (b.tipo === "FACTURACION" ? "Facturación" : `Caja ${n}`), alm, b.tipo]);
       return { id: nuevo, numero: n };
     });
     rep.code(201);

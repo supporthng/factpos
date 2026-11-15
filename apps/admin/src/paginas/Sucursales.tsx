@@ -3,7 +3,7 @@ import { api, esLocal, sesionActual } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 import { EmpresasEnlazadas, PuestaEnMarcha } from "./Empresas";
 
-interface Terminal { id: string; numero: number; nombre: string; activo: boolean; almacen: string; turnoAbierto: boolean; ultimaVenta: string | null; conPc?: boolean }
+interface Terminal { id: string; numero: number; nombre: string; activo: boolean; almacen: string; turnoAbierto: boolean; ultimaVenta: string | null; conPc?: boolean; tipo?: string }
 interface EstadoSync { sucursalId: string; ultimaSubida: string | null; ultimaBajada: string | null; pendientes: number | null; errores: number | null; ultimoError: string | null; enLinea: boolean | null; segundos: number | null; equipo: string | null }
 interface Sucursal {
   id: string; codigo: string; nombre: string; direccion: string | null; telefono: string | null; activo: boolean; tipo: "TIENDA" | "ALMACEN";
@@ -187,13 +187,14 @@ export function Sucursales() {
                   <span className="suave pequeno">Descuenta de: {t.almacen}</span>
                   <span className="suave pequeno">{t.ultimaVenta ? `Última venta: ${new Date(t.ultimaVenta).toLocaleString("es-DO")}` : "Sin ventas"}</span>
                   <span className="suave pequeno mono" title="Identificador para configurar la terminal">{t.id.slice(0, 8)}…</span>
-                  <span className="suave pequeno">{t.conPc ? "PC ligada a esta caja" : "Sin PC ligada"}</span>
+                  <span className="suave pequeno">{t.tipo === "FACTURACION" ? "Para facturar desde la administración: no necesita PC ni turno" : t.conPc ? "PC ligada a esta caja" : "Sin PC ligada"}</span>
                   <button className="enlace" onClick={() => accion(`/central/terminales/${t.id}`, { activo: !t.activo }, "PATCH")}>{t.activo ? "Desactivar" : "Activar"}</button>
                   <button className="enlace" title="Si cambió la PC de esta caja, libérela para que la nueva PC la reciba" onClick={() => void liberar(t)}>Liberar PC</button>
                   {!t.turnoAbierto && <button className="enlace" title="Quita la terminal de la lista (conserva sus ventas)" onClick={() => eliminar(t)}>Eliminar</button>}
                 </div>
               ))}
               <button className="terminal nueva" onClick={() => accion(`/central/sucursales/${s.id}/terminales`, {})}>+ Agregar terminal</button>
+              {!s.terminales.some((t) => t.tipo === "FACTURACION") && <button className="terminal nueva" title="Para facturar desde la administración sin punto de venta: no es una terminal ni cuenta para la licencia" onClick={() => accion(`/central/sucursales/${s.id}/terminales`, { tipo: "FACTURACION" })}>+ Caja de facturación (sin punto de venta)</button>}
             </div>
           </div>
         ))}
