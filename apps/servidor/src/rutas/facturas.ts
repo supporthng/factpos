@@ -122,11 +122,15 @@ export async function anularVenta(c: PoolClient, a: { cajaId: string; ventaId: s
     [uuidv7(), ctx.sucursalId, a.usuarioId, a.supervisorId, a.corregir ? "venta.corregir" : "venta.anular", ventaId,
      JSON.stringify({ motivo: a.motivo, notaCredito: fiscal?.encf ?? null, anulacionInterna: fiscal === null })],
   );
+  // Las series de la factura anulada quedan libres (el equipo volvió): pueden venderse otra vez
+  await c.query("UPDATE series_producto SET devuelta_en = now() WHERE venta_id = $1 AND devuelta_en IS NULL", [ventaId]);
+
   await c.query(
     `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
      SELECT 'ventas', v.id, 'INSERT', jsonb_build_object(
               'venta', to_jsonb(v),
               'items', (SELECT jsonb_agg(to_jsonb(i)) FROM venta_items i WHERE i.venta_id = v.id),
+              'series', (SELECT jsonb_agg(to_jsonb(sp)) FROM series_producto sp WHERE sp.venta_id = $2),
               'pagos', (SELECT jsonb_agg(to_jsonb(p)) FROM venta_pagos p WHERE p.venta_id = v.id),
               'kardex', (SELECT jsonb_agg(to_jsonb(k)) FROM kardex_movimientos k WHERE k.documento_tipo = 'venta' AND k.documento_id = v.id),
               'cxc', (SELECT jsonb_agg(to_jsonb(m)) FROM cxc_movimientos m WHERE m.venta_id = v.id),

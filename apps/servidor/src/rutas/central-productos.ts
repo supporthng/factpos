@@ -37,6 +37,10 @@ const ProductoSchema = z
     volumenMl: z.number().int().positive().nullable().default(null),
     gradoAlcohol: z.number().min(0).max(100).nullable().default(null),
     valeConsumos: z.number().int().min(0).max(20).default(0),
+    /** Pide número de serie / IMEI de cada unidad al facturar */
+    usaSeries: z.boolean().default(false),
+    /** Meses de garantía desde la venta (0 = sin garantía) */
+    garantiaMeses: z.number().int().min(0).max(120).default(0),
     imagen: z.string().regex(/^(https?:\/\/|data:image\/)/).max(400000, "La imagen es muy pesada").nullable().default(null),
     activo: z.boolean().default(true),
     presentaciones: z
@@ -86,7 +90,7 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
     id, empresaId, p.sku, p.nombre, p.nombreCorto, p.marca, p.categoriaId, p.tipo, p.impuestoId, p.precioIncluyeItbis,
     p.esPesable, p.esPesable ? "LB" : "UND", p.tipo === "INVENTARIABLE", p.costoReferencia, p.permiteSinExistencia,
     p.precioVariable, p.precioVariableMin, p.precioVariableMax, p.controlaLotes, p.volumenMl,
-    p.gradoAlcohol, p.imagen, p.activo, p.valeConsumos,
+    p.gradoAlcohol, p.imagen, p.activo, p.valeConsumos, p.usaSeries, p.garantiaMeses,
   ];
   try {
     if (nuevo) {
@@ -94,8 +98,8 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
         `INSERT INTO productos (id, empresa_id, sku, nombre, nombre_corto, marca, categoria_id, tipo, impuesto_id,
                                 precio_incluye_impuesto, es_pesable, unidad_base, controla_stock, costo_promedio,
                                 permite_sin_existencia, precio_variable, precio_variable_min, precio_variable_max,
-                                controla_lotes, volumen_ml, grado_alcohol, imagen, activo, vale_consumos)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+                                controla_lotes, volumen_ml, grado_alcohol, imagen, activo, vale_consumos, usa_series, garantia_meses)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
         valores,
       );
     } else {
@@ -104,7 +108,7 @@ async function guardar(c: PoolClient, empresaId: string, usuarioId: string | nul
                 precio_incluye_impuesto=$10, es_pesable=$11, unidad_base=$12, controla_stock=$13,
                 costo_promedio = CASE WHEN EXISTS (SELECT 1 FROM existencias WHERE producto_id = $1 AND cantidad <> 0) THEN costo_promedio ELSE $14 END,
                 permite_sin_existencia=$15, precio_variable=$16, precio_variable_min=$17, precio_variable_max=$18,
-                controla_lotes=$19, volumen_ml=$20, grado_alcohol=$21, imagen=$22, activo=$23, vale_consumos=$24
+                controla_lotes=$19, volumen_ml=$20, grado_alcohol=$21, imagen=$22, activo=$23, vale_consumos=$24, usa_series=$25, garantia_meses=$26
           WHERE id = $1 AND empresa_id = $2`,
         valores,
       );
@@ -291,7 +295,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
               permite_sin_existencia AS "permiteSinExistencia", precio_variable AS "precioVariable",
               precio_variable_min AS "precioVariableMin", precio_variable_max AS "precioVariableMax",
               controla_lotes AS "controlaLotes", volumen_ml AS "volumenMl",
-              grado_alcohol::float AS "gradoAlcohol", imagen, activo, vale_consumos AS "valeConsumos"
+              grado_alcohol::float AS "gradoAlcohol", imagen, activo, vale_consumos AS "valeConsumos", usa_series AS "usaSeries", garantia_meses AS "garantiaMeses"
          FROM productos WHERE id = $1 AND empresa_id = $2`,
       [id, e],
     )).rows[0];
@@ -371,10 +375,10 @@ export async function rutasCentralProductos(app: FastifyInstance) {
       await c.query(
         `INSERT INTO productos (id, empresa_id, sku, nombre, nombre_corto, marca, categoria_id, tipo, impuesto_id, precio_incluye_impuesto,
                                 es_pesable, unidad_base, controla_stock, costo_promedio, permite_sin_existencia, precio_variable,
-                                precio_variable_min, precio_variable_max, controla_lotes, volumen_ml, grado_alcohol, imagen)
+                                precio_variable_min, precio_variable_max, controla_lotes, volumen_ml, grado_alcohol, imagen, usa_series, garantia_meses)
          SELECT $1, empresa_id, $2, nombre || ' (copia)', nombre_corto, marca, categoria_id, tipo, impuesto_id, precio_incluye_impuesto,
                 es_pesable, unidad_base, controla_stock, costo_promedio, permite_sin_existencia, precio_variable,
-                precio_variable_min, precio_variable_max, controla_lotes, volumen_ml, grado_alcohol, imagen
+                precio_variable_min, precio_variable_max, controla_lotes, volumen_ml, grado_alcohol, imagen, usa_series, garantia_meses
            FROM productos WHERE id = $3`,
         [nid, sku, id],
       );

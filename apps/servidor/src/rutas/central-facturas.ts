@@ -5,7 +5,7 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, datosTicket } from "./facturas.js";
-import { registrarVenta, cotizar, resumen, exigirSinComprobante } from "./ventas.js";
+import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPresentes } from "./ventas.js";
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
@@ -227,7 +227,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     if (permitidas && !permitidas.includes(ctx.sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
     return ctx;
   };
-  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional(), precioVariable: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), precioLibre: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional() })).min(1, "La factura necesita al menos un producto").max(200);
+  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional(), precioVariable: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), precioLibre: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), series: z.array(z.string().trim().min(1).max(60)).max(500).optional() })).min(1, "La factura necesita al menos un producto").max(200);
 
   /** Verifica descuentos y precios libres de una venta (permiso + motivo) y devuelve la autorización de descuento si hace falta */
   const exigirPermisosItems = async (req: { headers: Record<string, unknown> }, cajaId: string, items: z.infer<typeof ItemsSchema>, motivoDescuento?: string, motivoPrecio?: string) => {
@@ -255,6 +255,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const ctx = await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
     await exigirPermisosItems(req, b.cajaId, b.items, b.motivoDescuento, b.motivoPrecio);
+    await exigirSeriesPresentes(pool, b.items);
     const q = resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false)); // valida precios, existencia y cliente
     const id = uuidv7();
     const numero = await enTransaccion(async (c) => {
@@ -355,7 +356,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       return registrarVenta(c, b.cajaId, {
       usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
       cuponCodigo: b.cuponCodigo, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: b.motivoDescuento } : {}),
-      });
+      }, { exigirSeries: true });
     });
     await pool.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)

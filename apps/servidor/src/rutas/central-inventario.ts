@@ -770,7 +770,7 @@ export async function rutasCentralInventario(app: FastifyInstance) {
         [e, sucursalesDe(req)],
       ),
       pool.query(
-        `SELECT p.id, p.sku, p.nombre, p.categoria_id AS "categoriaId",
+        `SELECT p.id, p.sku, p.nombre, p.categoria_id AS "categoriaId", p.usa_series AS "usaSeries",
                 (SELECT jsonb_agg(jsonb_build_object('id', pr.id, 'nombre', pr.nombre, 'factor', pr.factor) ORDER BY pr.factor)
                    FROM presentaciones pr WHERE pr.producto_id = p.id) AS presentaciones
            FROM productos p WHERE p.empresa_id = $1 AND p.activo ORDER BY p.nombre`,
