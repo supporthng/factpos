@@ -227,7 +227,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     if (permitidas && !permitidas.includes(ctx.sucursalId)) throw new ErrorNegocio("No tiene acceso a esa sucursal", 403);
     return ctx;
   };
-  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional() })).min(1, "La factura necesita al menos un producto").max(200);
+  const ItemsSchema = z.array(z.object({ presentacionId: uuid, cantidad: z.string().regex(/^\d+(\.\d{1,3})?$/, "Cantidad inválida"), descuentoManual: z.string().regex(/^\d+(\.\d{1,2})?$/, "Descuento inválido").optional(), precioVariable: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional(), precioLibre: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido").optional() })).min(1, "La factura necesita al menos un producto").max(200);
 
   /** Cajas con turno abierto: dónde se puede facturar */
   app.get("/central/facturas/cajas-abiertas", async (req) => {
@@ -246,6 +246,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
   app.post("/central/facturas/cotizar", async (req) => {
     const b = z.object({ cajaId: uuid, clienteId: uuid.optional(), cuponCodigo: z.string().trim().min(1).max(30).optional(), items: ItemsSchema }).parse(req.body);
     const ctx = await cajaPermitida(req, b.cajaId);
+    if (b.items.some((i) => i.precioLibre) && !tienePermiso(permisos(req), "venta.precio_libre")) throw new ErrorNegocio("Cambiar el precio de una línea requiere el permiso «Facturar con precio libre».", 403);
     return resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, cuponCodigo: b.cuponCodigo, items: b.items }, false));
   });
 
@@ -253,7 +254,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     soloSucursal();
     const b = z.object({
       cajaId: uuid, clienteId: uuid.optional(), tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]),
-      notas: z.string().trim().max(300).optional(), ventaId: uuid.optional(), items: ItemsSchema,
+      notas: z.string().trim().max(300).optional(), ventaId: uuid.optional(), items: ItemsSchema, motivoPrecio: z.string().trim().max(200).optional(),
       cuponCodigo: z.string().trim().min(1).max(30).optional(), motivoDescuento: z.string().trim().max(200).optional(),
       pagos: z.array(z.object({
         formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]),
@@ -273,6 +274,12 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       const yo = (await pool.query<{ nombre: string }>("SELECT nombre FROM usuarios WHERE id = $1", [usuarioId])).rows[0];
       autorizacion = autorizacionDirecta(usuarioId, yo?.nombre ?? "Administración", "venta.descuento", b.cajaId);
     }
+    // Precio libre: solo con el permiso y con motivo; queda en la auditoría
+    const libres = b.items.filter((i) => i.precioLibre);
+    if (libres.length) {
+      if (!tienePermiso(permisos(req), "venta.precio_libre")) throw new ErrorNegocio("Cambiar el precio de una línea requiere el permiso «Facturar con precio libre».", 403);
+      if (!b.motivoPrecio || b.motivoPrecio.length < 5) throw new ErrorNegocio("Indique el motivo del cambio de precio (mínimo 5 caracteres).");
+    }
     const r = await enTransaccion(async (c) => {
       // Caja de «Facturación» (tienda sin punto de venta): su turno se abre solo, sin fondo, la primera vez que se factura
       if ((await c.query("SELECT 1 FROM cajas WHERE id = $1 AND tipo = 'FACTURACION'", [b.cajaId])).rowCount) {
@@ -290,7 +297,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await pool.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
        VALUES ($1,(SELECT sucursal_id FROM cajas WHERE id = $2),$3,$3,'venta.admin','venta',$4,$5)`,
-      [uuidv7(), b.cajaId, usuarioId, (r as { id: string }).id, JSON.stringify({ origen: "administración", tipo: b.tipoDocumento })]).catch(() => undefined);
+      [uuidv7(), b.cajaId, usuarioId, (r as { id: string }).id, JSON.stringify({ origen: "administración", tipo: b.tipoDocumento, ...(libres.length ? { precioLibre: libres.map((i) => ({ presentacionId: i.presentacionId, precio: i.precioLibre })), motivoPrecio: b.motivoPrecio } : {}) })]).catch(() => undefined);
     rep.code(201);
     return r;
   });

@@ -60,7 +60,9 @@ const VentaSchema = CarritoSchema.extend({
     .min(1, "Falta la forma de pago"),
 });
 
-type Carrito = z.infer<typeof CarritoSchema>;
+type CarritoBase = z.infer<typeof CarritoSchema>;
+/** `precioLibre` solo lo pone la facturación de administración (con el permiso "venta.precio_libre"): la caja nunca lo recibe */
+type Carrito = Omit<CarritoBase, "items"> & { items: (CarritoBase["items"][number] & { precioLibre?: string })[] };
 
 /** Datos de una venta ya validados. Delivery la usa con forma de pago "DELIVERY". */
 export interface VentaInput extends Carrito {
@@ -136,6 +138,11 @@ export async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, c
       }
       return { ...p, precio: v.toFixed(2) };
     }
+    // Precio libre (facturación de administración): reemplaza el precio de lista; no lleva ofertas ni descuento de nivel
+    if (it.precioLibre) {
+      if (new Decimal(it.precioLibre).lte(0)) throw new ErrorNegocio(`El precio de ${p.nombre} debe ser mayor que cero`);
+      return { ...p, precio: new Decimal(it.precioLibre).toFixed(2), precioVariable: true };
+    }
     if (p.precio === null) throw new ErrorNegocio(`${p.nombre} no tiene precio asignado`);
     return Number(descuentoNivelPct) > 0 ? { ...p, listaPrecioId: listaCliente } : p;
   });
@@ -194,7 +201,7 @@ export async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, c
         precioIncluyeItbis: prods[i].precioIncluyeItbis,
         esPesable: prods[i].esPesable,
         nombre: prods[i].nombre,
-        ofertas: ofertas.get(prods[i].presentacionId) ?? [],
+        ofertas: carrito.items[i].precioLibre ? [] : ofertas.get(prods[i].presentacionId) ?? [],
         descuentoManual: it.descuentoManual,
         factor: prods[i].factor,
         descuentoNivelPct: prods[i].precioVariable ? undefined : descuentoNivelPct,
