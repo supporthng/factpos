@@ -189,6 +189,7 @@ export async function rutasLectorFacturas(app: FastifyInstance) {
       let costo = i.cantidad > 0 ? neto / i.cantidad : 0; // sin empaque: por lo cobrado (ya con descuento e impuesto selectivo)
       let porUnidad = false;
       const partes: string[] = [];
+      partes.push(`Factura: ${i0.cantidad} ${i0.unidad ?? ""} × ${i0.precioUnitario}${i0.importe ? ` = ${i0.importe}` : ""}`.replace("  ", " "));
       if (qCorr) partes.push(`cantidad ${qCorr} (la leída era ${i0.cantidad}; importe ÷ precio ${i0.precioUnitario})`);
       if (porEmpaque > 1) partes.push(`${i.cantidad} × empaque de ${Math.round(porEmpaque * 100) / 100} (${i.unidad ?? ""}) = ${unidades} unidades`.replace(" ()", ""));
       if (i.descuento && i.descuento > 0) partes.push(`descuento −${i.descuento}`);

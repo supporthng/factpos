@@ -41,7 +41,7 @@ const HERRAMIENTA = {
             codigoBarras: { type: ["string", "null"], description: "Código de barras estándar (EAN-13, UPC-A de 12 o GTIN de 8 a 14 dígitos) SOLO si la factura lo imprime (columna «Código de barras», «EAN», o debajo de la descripción). Solo dígitos. No lo confundas con el código interno." },
             descripcion: { type: "string", description: "El texto de la descripción tal como está impreso" },
             nombre: { type: ["string", "null"], description: "SOLO el nombre del producto y su presentación o tamaño, sin el código y SIN la notación de empaque (xN, x12x1, XA1…). Aplica a TODOS los productos. Ej.: «300028208-CHEETOS CORN JUMBO PUFF 9OZX12X1» → «CHEETOS CORN JUMBO PUFF 9OZ»; «300055371-CARIBAS AJO CS 110GX30X1» → «CARIBAS AJO CS 110G»; «JW BLUE 6x75 CL» se deja igual porque ahí 75 CL es la presentación." },
-            cantidad: { type: "number" },
+            cantidad: { type: "number", description: "La columna de cantidad COMPLETA y tal como está impresa (no recortes dígitos: «20» es 20, no 2)" },
             unidad: { type: ["string", "null"], description: "Texto de la columna de unidad / presentación tal como está impreso (p. ej. «15x22 oz», «70cl», «CAJA»)" },
             unidadesTotales: { type: ["number", "null"], description: "Cuántas unidades sueltas (botellas, latas, fundas…) llegaron en TOTAL en esta línea. Si la cantidad está en cajas/paquetes: cantidad × unidades por empaque. Si la cantidad ya está en botellas/unidades, es igual a la cantidad." },
             descuento: { type: ["number", "null"], description: "Descuento de la línea en MONTO (no %), tal como está impreso o calculado (cantidad × precio × %). 0 o null si no hay." },
@@ -49,7 +49,7 @@ const HERRAMIENTA = {
             itbisLinea: { type: ["number", "null"], description: "ITBIS de la línea en monto, si la línea lo trae." },
             netoSinItbis: { type: ["number", "null"], description: "Valor de la línea SIN ITBIS = cantidad × precio − descuento + impuesto selectivo (si el precio impreso incluye ITBIS, divídelo entre 1.18). Debe cuadrar con la columna de importe/total de la línea y con itbisLinea ÷ 0.18." },
             unidadesPorEmpaque: { type: ["integer", "null"], description: "Cuántas unidades trae cada empaque que se cobra en esta línea, SOLO si la columna de unidad lo indica (p. ej. «15x22 oz» → 15, «24 UND» → 24, «12x1L» → 12). Si cada cantidad es una unidad suelta (p. ej. «70cl», «UND»), null." },
-            precioUnitario: { type: "number", description: "Precio por unidad tal como está impreso" },
+            precioUnitario: { type: "number", description: "El precio de la columna Precio EXACTAMENTE como está impreso. No lo calcules dividiendo el importe entre la cantidad" },
             importe: { type: ["number", "null"], description: "Importe de la línea tal como está impreso" },
           },
           required: ["descripcion", "cantidad", "precioUnitario"],
@@ -69,6 +69,7 @@ const INSTRUCCIONES = "Eres un asistente que lee facturas de proveedores de la R
     "(3) El «precio» puede ser por caja o por unidad aunque la columna diga «Precio Und.»: compruébalo con el importe de la línea (cantidad × precio ≈ importe antes de descuento). Si la cantidad viene en botellas pero el precio es por caja (p. ej. «6 BOT» de «12/700ML»), usa el ITBIS de la línea para deducir el valor real (ITBIS ÷ 0.18). " +
   "(4) Descuentos por línea (%, «Desc. Línea», «Descuento comercial») y el impuesto selectivo al consumo (ISC) que algunas facturas de licores muestran en una columna aparte forman parte del COSTO: llénalos en descuento e impuestoSelectivo y calcula netoSinItbis. Un descuento general al pie (que no está por línea) no se reparte: déjalo fuera. " +
   "(5) Hay facturas con precios que ya incluyen ITBIS (recibos de caja con marca «I18»): preciosIncluyenItbis = true. En otras, el importe de la línea ya es sin ITBIS. " +
+  "(5b) Facturas con columnas «Caj/Und» (p. ej. «0/20»), «Cant» y «Und Medida»: «Caj/Und» son CAJAS / UNIDADES sueltas; «Cant» es lo que se cobra en la unidad de «Und Medida». Si Und Medida es UND, la cantidad (p. ej. 20) son 20 unidades sueltas y el precio de la columna «Precio» es POR UNIDAD, aunque el nombre traiga «X24X1» o «X50X1» (eso solo dice cuántas trae una caja, no cuántas se compraron). Copia la cantidad completa («20», no «2») y el precio EXACTO de la columna Precio: no lo calcules dividiendo el importe entre la cantidad. " +
   "(6) Si es una página de varias («Página 1 / 2»), lee solo las líneas de esta página. " +
   "Responde SIEMPRE y ÚNICAMENTE llamando a la herramienta registrar_factura con el resultado; no escribas texto.";
 
