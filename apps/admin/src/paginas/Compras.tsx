@@ -316,6 +316,8 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   useEffect(() => { if (!leyendo) return; const t = setInterval(() => setAhora(Date.now()), 1000); return () => clearInterval(t); }, [leyendo]);
   const [pend, setPend] = useState<ItemLeido[]>(() => (borrador?.datos?.pend as ItemLeido[] | undefined) ?? []);
   const [leidaInfo, setLeidaInfo] = useState<string>("");
+  /** Total impreso en la factura leída (una sola página): sirve para avisar si las líneas no cuadran con él */
+  const [totalLeido, setTotalLeido] = useState<number | null>(null);
 
   /** Agrega varias líneas de una vez (de la factura leída); si la presentación ya está, suma la cantidad */
   const agregarLeidas = (items: { presentacionId: string; cantidad: number; costo: number; alias?: string }[]) => {
@@ -370,7 +372,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   /** Una o varias fotos/PDF (las páginas de una misma factura): cada una se lee y se suma a la compra */
   const leerFactura = async (archivos: File[]) => {
     if (!archivos.length) return;
-    setLeyendo(true); setMsg(""); setLeidaInfo(""); setPend([]); setPasosLectura([]);
+    setLeyendo(true); setMsg(""); setLeidaInfo(""); setTotalLeido(null); setPend([]); setPasosLectura([]);
     let lineasLeidas = 0, ultima: FacturaLeida | undefined;
     try {
       for (let k = 0; k < archivos.length; k++) {
@@ -387,6 +389,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
         setPend((p) => [...p, ...r.items.filter((i) => !i.presentacionId)]);
         if (archivos.length === 1 && r.aviso) setMsg(r.aviso);
       }
+      if (archivos.length === 1 && ultima?.total && Number(ultima.total) > 0) setTotalLeido(Number(ultima.total));
       setLeidaInfo(`Factura leída: ${lineasLeidas} líneas${archivos.length > 1 ? ` en ${archivos.length} páginas` : ultima?.total ? ` · total ${rd(ultima.total)}` : ""}. Revise cada dato antes de registrar.${ultima ? ` Facturas leídas este mes: ${ultima.usadas} de ${ultima.cupo}.` : ""}`);
       lector.recargar();
     } catch (e) {
@@ -727,6 +730,12 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
         <span>Subtotal {rd(sub)}</span><span>ITBIS {rd(itb)}</span>
         {ahorro > 0 && <span className="texto-ok">Ahorro por ofertas {rd(ahorro)}</span>}
         <b className="total-compra">Total {rd(sub + itb)}</b>
+        {totalLeido !== null && Math.abs(totalLeido - (sub + itb)) > Math.max(1, totalLeido * 0.01) && (
+          <span className="texto-alerta" style={{ flexBasis: "100%" }}>
+            No cuadra: la factura dice {rd(totalLeido)} y las líneas suman {rd(sub + itb)} (diferencia {rd(totalLeido - (sub + itb))}).
+            {pend.length > 0 ? ` Hay ${pend.length} línea(s) sin producto asignado que no están sumadas.` : " Revise cantidades y costos, o si falta alguna línea."}
+          </span>
+        )}
         <button className="boton primario" disabled={!completa || guardando} onClick={registrar} title="Ctrl + Enter">{guardando ? "Registrando…" : "Registrar compra"}</button>
       </div>
       {!completa && lineas.length > 0 && (
