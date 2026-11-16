@@ -50,6 +50,7 @@ const Kardex = lazy(() => import("./paginas/Kardex").then((m) => ({ default: m.K
 const EquiposRed = lazy(() => import("./paginas/EquiposRed").then((m) => ({ default: m.EquiposRed })));
 const Verificador = lazy(() => import("./paginas/Verificador").then((m) => ({ default: m.Verificador })));
 const ComprobantesNcf = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.ComprobantesNcf })));
+const Impuestos = lazy(() => import("./paginas/Impuestos").then((m) => ({ default: m.Impuestos })));
 const Fiscal = lazy(() => import("./paginas/Fiscal").then((m) => ({ default: m.Fiscal })));
 const Sucursales = lazy(() => import("./paginas/Sucursales").then((m) => ({ default: m.Sucursales })));
 const Marca = lazy(() => import("./paginas/Marca").then((m) => ({ default: m.Marca })));
@@ -95,6 +96,7 @@ const SECCIONES = [
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
   { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, i: "fiscal", p: ["admin.fiscal"] },
   { id: "ncf", titulo: "Comprobantes (NCF)", grupo: "Fiscal", C: ComprobantesNcf, i: "fiscal", p: ["admin.fiscal"] },
+  { id: "impuestos", titulo: "Planilla de impuestos", grupo: "Fiscal", C: Impuestos, i: "fiscal", p: ["admin.fiscal"] },
   { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, i: "reportes", p: ["admin.reportes"] },
   { id: "empresa", titulo: "Datos de la empresa", grupo: "Negocio", C: DatosEmpresa, i: "ajustes", p: ["admin.config"] },
@@ -185,6 +187,7 @@ const DESCRIPCION: Record<string, string> = {
   caja: "Retiros, gastos y movimientos de caja",
   fiscal: "e-CF, envíos a la DGII y certificado digital",
   ncf: "Rangos NCF (serie B) y secuencias e-NCF por sucursal",
+  impuestos: "Tasas de ITBIS, ISC, otros impuestos y propina legal",
   padron: "Consulta de RNC y cédulas de la DGII",
   reportes: "Ventas, cierres, inventario, impuestos y más",
   sucursales: "Tiendas, cajas y servidores de cada local",
@@ -207,7 +210,7 @@ const GRUPOS: Record<string, { slug: string; i: NombreIcono; color: string; d: s
   "Inventario": { slug: "inventario", i: "productos", color: "#2563eb", d: "Productos, existencias, compras y traspasos" },
   "Precios": { slug: "precios", i: "precios", color: "#db2777", d: "Precios por nivel, ofertas y verificadores" },
   "Finanzas": { slug: "finanzas", i: "cxc", color: "#16a34a", d: "Cuentas por cobrar, cierres, retiros y gastos" },
-  "Fiscal": { slug: "fiscal", i: "fiscal", color: "#7c3aed", d: "Facturación electrónica, NCF y padrón de la DGII" },
+  "Fiscal": { slug: "fiscal", i: "fiscal", color: "#7c3aed", d: "Facturación electrónica, NCF, impuestos y padrón de la DGII" },
   "Reportes": { slug: "reportes", i: "reportes", color: "#0891b2", d: "Todos los informes del negocio" },
   "Negocio": { slug: "negocio", i: "sucursales", color: "#475569", d: "Empresa, sucursales, usuarios, apariencia y correo" },
   "Instaladores": { slug: "instaladores", i: "actualizaciones", color: "#ea580c", d: "Caja, servidor, verificador de precios y conexión remota" },

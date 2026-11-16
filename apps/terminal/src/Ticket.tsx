@@ -137,7 +137,7 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
           <div className="t-fila t-total"><span>TOTAL</span><span>{rd(venta.total)}</span></div>
           {Number(venta.propinaLegal ?? 0) > 0 && (
             <>
-              <div className="t-fila"><span>Propina legal 10 %</span><span>{rd(venta.propinaLegal!)}</span></div>
+              <div className="t-fila"><span>Propina legal {config.propinaPct ?? 10} %</span><span>{rd(venta.propinaLegal!)}</span></div>
               <div className="t-fila t-total"><span>TOTAL PAGADO</span><span>{rd((Number(venta.total) + Number(venta.propinaLegal)).toFixed(2))}</span></div>
             </>
           )}
