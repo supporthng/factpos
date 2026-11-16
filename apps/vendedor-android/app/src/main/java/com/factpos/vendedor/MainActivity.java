@@ -150,21 +150,6 @@ public class MainActivity extends Activity {
         try { return r != null && "FactPOS".equals(new JSONObject(r).optString("producto")); } catch (Exception e) { return false; }
     }
 
-    private final List<String> noSucursal = new java.util.concurrent.CopyOnWriteArrayList<>();
-
-    /** Las ventas solo se arman en el servidor de una tienda (modo «sucursal»); el central o el portal no las aceptan. */
-    private boolean esSucursal(String base) {
-        String r = leer(base + "/salud", 2500);
-        if (r == null) return true;   // no se pudo saber (p. ej. base de datos caída): se deja pasar
-        try {
-            String modo = new JSONObject(r).optString("modo", "");
-            if (!modo.isEmpty() && !modo.equals("sucursal")) { if (!noSucursal.contains(base)) noSucursal.add(base); return false; }
-        } catch (Exception ignorar) {}
-        return true;
-    }
-
-    private boolean servidorValido(String base, int espera) { return esFactpos(base, espera) && esSucursal(base); }
-
     /** Pregunta por UDP («FACTPOS?») a toda la red; el servidor contesta con sus direcciones. */
     private List<String> porAviso() {
         List<String> res = new ArrayList<>();
@@ -209,7 +194,7 @@ public class MainActivity extends Activity {
             List<Future<String>> fs = new ArrayList<>();
             for (int n = 1; n < 255; n++) {
                 final String base = "http://" + prefijo + "." + n + ":" + PUERTO;
-                fs.add(ex.submit((Callable<String>) () -> servidorValido(base, 800) ? base : null));
+                fs.add(ex.submit((Callable<String>) () -> esFactpos(base, 800) ? base : null));
             }
             String hallado = null;
             for (Future<String> f : fs) { String r = f.get(); if (r != null && hallado == null) hallado = r; }
@@ -220,16 +205,15 @@ public class MainActivity extends Activity {
 
     private String encontrarServidor() {
         String guardada = prefs.getString("servidor", null);
-        if (guardada != null && servidorValido(guardada, 1500)) return guardada;
-        for (String d : porAviso()) { String b = normalizar(d); if (b != null && servidorValido(b, 1500)) return b; }
+        if (guardada != null && esFactpos(guardada, 1500)) return guardada;
+        for (String d : porAviso()) { String b = normalizar(d); if (b != null && esFactpos(b, 1500)) return b; }
         String local = "http://factpos.local:" + PUERTO;
-        if (servidorValido(local, 2500)) return local;
+        if (esFactpos(local, 2500)) return local;
         return barrido();
     }
 
     private void conectar() {
         buscando = true;
-        noSucursal.clear();
         web.loadData("<body style='margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0E1B26;color:#fff;font:600 22px sans-serif'>FactPOS Vendedor<div style='font:400 14px sans-serif;opacity:.75;margin-top:8px'>Buscando el servidor de la tienda…</div></body>", "text/html; charset=utf-8", "UTF-8");
         new Thread(() -> {
             String base = encontrarServidor();
@@ -239,8 +223,7 @@ public class MainActivity extends Activity {
                     prefs.edit().putString("servidor", base).apply();
                     fallo = false;
                     web.loadUrl(base + "/admin/#vender");
-                } else if (!noSucursal.isEmpty()) pedirDireccion("Se encontró un servidor FactPOS (" + noSucursal.get(0).replace("http://", "") + ") pero es el central, no el de una tienda. Escribe la dirección del servidor de la tienda.");
-                else pedirDireccion("No encontramos el servidor de la tienda en esta red. Revisa que el celular o la tableta estén en el mismo Wi-Fi que el servidor y que este esté encendido. Si conoces su dirección, escríbela (por ejemplo 192.168.1.10).");
+                } else pedirDireccion("No encontramos el servidor de la tienda en esta red. Revisa que el celular o la tableta estén en el mismo Wi-Fi que el servidor y que este esté encendido. Si conoces su dirección, escríbela (por ejemplo 192.168.1.10).");
             });
         }).start();
     }
@@ -257,12 +240,10 @@ public class MainActivity extends Activity {
                 if (b == null) { pedirDireccion("Escribe la dirección del servidor."); return; }
                 buscando = true;
                 new Thread(() -> {
-                    boolean fp = esFactpos(b, 3000);
-                    boolean ok = fp && esSucursal(b);
+                    boolean ok = esFactpos(b, 3000);
                     runOnUiThread(() -> {
                         buscando = false;
-                        if (fp && !ok) pedirDireccion("Ese es el servidor central, no el de una tienda. Escribe la dirección del servidor de la tienda.");
-                        else if (ok) { prefs.edit().putString("servidor", b).apply(); web.loadUrl(b + "/admin/#vender"); }
+                        if (ok) { prefs.edit().putString("servidor", b).apply(); web.loadUrl(b + "/admin/#vender"); }
                         else pedirDireccion("No hay un servidor FactPOS en esa dirección.");
                     });
                 }).start();
