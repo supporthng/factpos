@@ -1,0 +1,52 @@
+name: Vendedor Windows
+# Compila Instalador_Vendedor_FactPOS.exe (terminal de ventas) y lo publica en Releases › «vendedor-windows».
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["apps/vendedor-windows/**", ".github/workflows/vendedor-windows.yml"]
+  pull_request:
+    paths: ["apps/vendedor-windows/**", ".github/workflows/vendedor-windows.yml"]
+permissions:
+  contents: write
+concurrency: { group: vendedor-windows, cancel-in-progress: false }
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", architecture: x64 }
+      - name: Versión
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          $f = "apps/vendedor-windows/vendedor.py"
+          $t = Get-Content $f -Raw -Encoding utf8
+          $t = $t -replace 'VERSION = "1\.0\.0"', "VERSION = `"$version`""
+          Set-Content $f $t -Encoding utf8 -NoNewline
+          Select-String -Path $f -Pattern '^VERSION ='
+          "VERSION_APP=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Crear la app
+        shell: pwsh
+        run: ./apps/vendedor-windows/build_windows.ps1
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Construir instalador
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION_APP" "apps\vendedor-windows\FactPOSVendedor.iss"
+      - uses: actions/upload-artifact@v4
+        with: { name: FactPOS-Vendedor-Windows, path: dist_instalador/Instalador_Vendedor_FactPOS.exe }
+      - name: Publicar en Releases
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view vendedor-windows >/dev/null 2>&1 || gh release create vendedor-windows --title "FactPOS Vendedor para Windows" --notes "Descargue Instalador_Vendedor_FactPOS.exe y ejecútelo en la PC." --latest=false
+          gh release upload vendedor-windows dist_instalador/Instalador_Vendedor_FactPOS.exe --clobber
+          # Número de compilación vigente: lo leen las apps para actualizarse solas
+          gh release edit vendedor-windows --notes "Descargue Instalador_Vendedor_FactPOS.exe y ejecútelo en la PC. build=${{ github.run_number }}"

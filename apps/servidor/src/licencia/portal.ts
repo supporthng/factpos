@@ -1057,6 +1057,9 @@ const APPS_VERIFICADOR = {
   // Apps de administración remota (FactPOS Admin)
   "admin-android": { tag: "admin-android", nombre: /^FactPOS-Admin\.apk$/i },
   "admin-windows": { tag: "admin-windows", nombre: /^Instalador_Admin_FactPOS\.exe$/i },
+  // Terminal de ventas del vendedor (FactPOS Vendedor): abre la pantalla Vender del servidor de la tienda en la red local
+  "vendedor-android": { tag: "vendedor-android", nombre: /^FactPOS-Vendedor\.apk$/i },
+  "vendedor-windows": { tag: "vendedor-windows", nombre: /^Instalador_Vendedor_FactPOS\.exe$/i },
   // Importador de datos desde otro sistema (WilPOS): un solo .exe portable
   importador: { tag: "importador", nombre: /^Importador-FactPOS\.exe$/i },
 } as const;
@@ -1078,6 +1081,8 @@ const CATALOGO_INSTALADORES = [
   { id: "caja", titulo: "Instalador de Caja", para: "Solo la caja de venta (sin servidor ni base de datos)", plataforma: "Windows" },
   { id: "admin-windows", titulo: "FactPOS Admin para Windows", para: "Administración remota en computadora", plataforma: "Windows" },
   { id: "admin-android", titulo: "FactPOS Admin para Android", para: "Administración remota en celular o tableta", plataforma: "Android (APK)" },
+  { id: "vendedor-windows", titulo: "FactPOS Vendedor para Windows", para: "Terminal de ventas del vendedor (busca sola el servidor de la tienda)", plataforma: "Windows" },
+  { id: "vendedor-android", titulo: "FactPOS Vendedor para Android", para: "Terminal de ventas en celular o tableta, por el Wi-Fi de la tienda", plataforma: "Android (APK)" },
   { id: "verificador-windows", titulo: "Verificador de precios para Windows", para: "PC con pantalla táctil", plataforma: "Windows" },
   { id: "verificador-android", titulo: "Verificador de precios para Android", para: "Tabletas y pantallas Android", plataforma: "Android (APK)" },
   { id: "importador", titulo: "Importador de datos (WilPOS)", para: "Pasa productos, clientes e historial desde el sistema anterior", plataforma: "Windows (portable)" },
@@ -1085,7 +1090,7 @@ const CATALOGO_INSTALADORES = [
 
 /** Id del catálogo → clave en APPS_VERIFICADOR (el verificador se llama «android»/«windows» allá) */
 const CLAVE_APP: Record<string, keyof typeof APPS_VERIFICADOR> = {
-  "admin-windows": "admin-windows", "admin-android": "admin-android", importador: "importador",
+  "admin-windows": "admin-windows", "admin-android": "admin-android", "vendedor-windows": "vendedor-windows", "vendedor-android": "vendedor-android", importador: "importador",
   "verificador-windows": "windows", "verificador-android": "android",
 };
 

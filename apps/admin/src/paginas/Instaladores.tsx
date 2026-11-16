@@ -17,6 +17,11 @@ const GRUPOS: Grupo[] = [
       { titulo: "Verificador para Android", para: "Tabletas y pantallas Android", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "android" } },
       { titulo: "Verificador para Windows", para: "PC con pantalla táctil", plataforma: "Windows", descarga: { tipo: "portal", so: "windows" } },
     ] },
+  { titulo: "Terminal de ventas · FactPOS Vendedor", nota: "Para los vendedores: abre la pantalla Vender del servidor de la tienda y busca sola el servidor en la red (Wi-Fi o cable de la tienda). Funciona sin internet; el vendedor entra con su usuario y clave.",
+    items: [
+      { titulo: "FactPOS Vendedor para Windows", para: "Computadora de la tienda", plataforma: "Windows", descarga: { tipo: "portal", so: "vendedor-windows" } },
+      { titulo: "FactPOS Vendedor para Android", para: "Celular o tableta conectados al Wi-Fi de la tienda", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "vendedor-android" } },
+    ] },
   { titulo: "Conexión remota · FactPOS Admin", nota: "Para administrar el negocio desde fuera de la oficina. El enlace con QR que la deja configurada está en Sistema › Acceso remoto.",
     items: [
       { titulo: "FactPOS Admin para Android", para: "Celular o tableta", plataforma: "Android (APK)", descarga: { tipo: "portal", so: "admin-android" } },
