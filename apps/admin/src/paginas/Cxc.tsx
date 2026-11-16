@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, puede, rd } from "../api";
 import { Aviso, Encabezado, Kpi, Tabla, useDatos } from "../ui";
+import { ConfigCredito, PlanCuotas } from "./PlanCuotas";
 
 /**
  * Cuentas por cobrar: quién debe, cuánto está vencido y su estado de cuenta.
@@ -19,6 +20,7 @@ export function Cxc() {
   const [vencidos, setVencidos] = useState(false);
   const [ver, setVer] = useState<string | null>(null);
   const [nuevoCredito, setNuevoCredito] = useState(false);
+  const [configCredito, setConfigCredito] = useState(false);
   const [recarga, setRecarga] = useState(0);
   const lista = useDatos<{ clientes: FilaCxc[]; totales: { saldo: string; alDia: string; vencido: string; clientes: number } }>(
     `/central/cxc?${new URLSearchParams({ ...(q.trim().length >= 2 ? { q: q.trim() } : {}), ...(vencidos ? { vencidos: "1" } : {}) })}`, [recarga]);
@@ -27,6 +29,7 @@ export function Cxc() {
   return (
     <>
       <Encabezado titulo="Cuentas por cobrar" descripcion="Clientes a crédito: lo que deben, lo vencido y cada factura y abono.">
+        {puede("admin.cxc") && <button className="boton" onClick={() => setConfigCredito(true)}>Planes y mora</button>}
         {puede("admin.cxc") && <button className="boton" onClick={() => setNuevoCredito(true)}>Dar crédito a un cliente</button>}
       </Encabezado>
       <div className="kpis">
@@ -55,6 +58,7 @@ export function Cxc() {
         ]}
       />
       {ver && <EstadoCuenta clienteId={ver} onCerrar={() => setVer(null)} onCambio={() => setRecarga((x) => x + 1)} />}
+      {configCredito && <ConfigCredito onCerrar={() => setConfigCredito(false)} />}
       {nuevoCredito && <DarCredito onCerrar={() => setNuevoCredito(false)} onListo={(id) => { setNuevoCredito(false); setRecarga((x) => x + 1); setVer(id); }} />}
     </>
   );
@@ -136,6 +140,7 @@ function EstadoCuenta({ clienteId, onCerrar, onCambio }: { clienteId: string; on
               <div><span>Más de 60</span><b>{rd(d.vencidoMas ?? 0)}</b></div>
               <div><span>Límite · días</span><b>{Number(d.limiteCredito) > 0 ? rd(d.limiteCredito) : "Sin límite"} · {d.diasCredito}</b></div>
             </div>
+            <PlanCuotas clienteId={clienteId} saldo={d.saldo} onCambio={() => { recargar(); fac.recargar(); onCambio(); }} />
             <h3 style={{ margin: "16px 0 6px" }}>Facturas pendientes</h3>
             {(fac.datos ?? []).length === 0 ? <p className="suave pequeno">No hay facturas a crédito pendientes.</p> : (
               <table className="tabla">
