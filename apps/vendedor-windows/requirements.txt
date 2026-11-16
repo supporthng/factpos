@@ -1,0 +1,3 @@
+# App Windows de administración remota (WebView2 = motor de Microsoft Edge)
+pywebview>=5.1,<6
+pyinstaller>=6.0,<7
