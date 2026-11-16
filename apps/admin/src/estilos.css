@@ -1582,3 +1582,26 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .lectura-pasos li.hecho { color: var(--suave); }
 .lectura-pasos li.actual { font-weight: 600; }
 .lectura-detalle summary { cursor: pointer; margin: 6px 0; }
+
+/* Terminal de ventas (vendedor): carrito a la izquierda, datos y total a la derecha */
+.tv { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.tv-izq { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tv-der { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 12px; }
+.tv .panel { margin: 0; }
+.tv-buscar input { font-size: 17px; padding: 12px 14px; }
+.tv-titulo { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.tv-titulo h3 { margin: 0; }
+.tv-vacio { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 48px 12px; }
+.tv-carrito .vacio-compra { display: none; }
+.tv-datos { display: flex; flex-direction: column; gap: 12px; }
+.tv-datos .campo { margin: 0; }
+.tv-datos .cab-compra { display: block; padding: 0; background: none; border: 0; box-shadow: none; }
+.tv-total { display: flex; flex-direction: column; gap: 6px; }
+.tv-fila { display: flex; justify-content: space-between; }
+.tv-gran { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; border-top: 1px solid var(--borde, #e5e7eb); padding-top: 10px; margin-top: 4px; }
+.tv-gran b { font-size: 30px; }
+.tv-enviar { width: 100%; padding: 14px; font-size: 17px; margin-top: 8px; }
+@media (max-width: 960px) {
+  .tv { grid-template-columns: 1fr; }
+  .tv-der { position: static; }
+}

@@ -180,31 +180,14 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
     } catch (e) { setMsg((e as Error).message); setGuardando(false); }
   };
 
-  const sinCajas = cajas.datos && !cajas.datos.length;
-  return (
-    <>
-      {!soloEnviar && <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>}
-      {soloEnviar
-        ? <Encabezado titulo="Nueva venta" descripcion="Busque los productos, arme la venta y envíela a la caja: el cliente paga allí y la caja emite el comprobante." />
-        : <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />}
-      <Aviso texto={cajas.error || msg} />
-      {sinPlan && <div className="panel"><Aviso texto={`La factura se emitió, pero el plan de cuotas no se pudo crear: ${sinPlan.error}. Puede hacerlo desde Cuentas por cobrar › Financiar la deuda en cuotas.`} /><div className="fila-acciones"><button className="boton primario" onClick={() => onCreada(sinPlan.id)}>Ver la factura</button></div></div>}
-      {enviada && <Aviso tipo="info" texto={enviada} />}
-      {sinCajas && <Aviso tipo="info" texto={soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}
-
-      <div className="panel cab-compra">
-        <label className="campo"><span>{cajas.datos?.every((c) => c.tipo === "FACTURACION") ? "Facturar desde" : "Caja (turno abierto)"}</span>
+  const bloqueCaja = (
+    <label className="campo"><span>{cajas.datos?.every((c) => c.tipo === "FACTURACION") ? "Facturar desde" : "Caja (turno abierto)"}</span>
           <select value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
             {cajas.datos?.map((c) => <option key={c.cajaId} value={c.cajaId}>{c.sucursal} · {c.tipo === "FACTURACION" ? "Facturación (sin caja)" : c.caja}{c.cajero && c.tipo !== "FACTURACION" ? ` · ${c.cajero}` : ""}</option>)}
           </select>
         </label>
-        {puedeEnviar && !soloEnviar && <label className="campo"><span>Qué hacer con la venta</span>
-          <select value={modo} onChange={(e) => setModo(e.target.value as "cobrar" | "enviar")}>
-            <option value="cobrar">Cobrar y facturar aquí</option><option value="enviar">Enviar a la caja para que cobre</option>
-          </select></label>}
-        {!enviando && <label className="campo"><span>Comprobante</span>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS.filter((x) => x.id !== "SIN" || sinComprobante).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
-        </label>}
+  );
+  const bloqueCliente = (
         <div className="campo campo-prov"><span>Cliente {t.pideCliente ? "(obligatorio)" : "(opcional: sin cliente = mostrador)"}</span>
           {cliente ? (
             <span className="en-linea"><b>{cliente.nombre}</b><span className="suave">{cliente.documento ?? "sin documento"}</span><button className="boton fantasma" onClick={() => setCliente(null)}>✕ Quitar</button></span>
@@ -217,10 +200,9 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
             </div>
           )}
         </div>
-      </div>
-
-      <div className="panel">
-        <BuscadorLinea inputRef={buscarRef} onElegir={agregar} />
+  );
+  const bloqueLineas = (
+    <>
         {!lineas.length ? <p className="suave vacio-compra">Busque los productos que lleva el cliente.</p> : (
           <div className="tabla-contenedor"><table className="tabla tabla-edicion">
             <thead><tr><th>#</th><th>Producto</th><th className="der">Cantidad</th><th className="der">Precio{puedeLibre ? " (editable)" : ""}</th>{puedeDescuento && <th className="der">Descuento RD$</th>}<th className="der">Total</th><th /></tr></thead>
@@ -251,7 +233,85 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
             })}</tbody>
           </table></div>
         )}
+    </>
+  );
+  const bloqueNotas = (
         <label className="campo"><span>Notas (salen en la factura)</span><input value={notas} maxLength={300} onChange={(e) => setNotas(e.target.value)} /></label>
+  );
+  const bloqueCupon = (
+    <>
+        <label className="campo"><span>Cupón de descuento</span>
+          {cupon ? <span className="en-linea"><b>{cupon}</b>{cot?.cupon ? <span className="texto-ok">−{rd(cot.cupon.total)}</span> : null}<button className="boton fantasma" onClick={() => { setCupon(""); setCuponTxt(""); }}>✕ Quitar</button></span>
+            : <span className="en-linea"><input value={cuponTxt} placeholder="Código del cupón" onChange={(e) => setCuponTxt(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cuponTxt.trim() && setCupon(cuponTxt.trim())} />
+              <button className="boton" disabled={!cuponTxt.trim()} onClick={() => setCupon(cuponTxt.trim())}>Aplicar</button></span>}
+        </label>
+        {puedeDescuento && hayDescuento && <label className="campo campo-prov"><span>Motivo del descuento (queda en auditoría)</span><input value={motivo} maxLength={200} onChange={(e) => setMotivo(e.target.value)} /></label>}
+        {hayPrecioLibre && <label className="campo campo-prov"><span>Motivo del cambio de precio (queda en auditoría)</span><input value={motivoPrecio} maxLength={200} onChange={(e) => setMotivoPrecio(e.target.value)} /></label>}
+        {!puedeDescuento && <p className="suave pequeno">Para dar descuentos por línea se necesita el permiso «Aprobar descuentos».</p>}
+    </>
+  );
+  const sinCajas = cajas.datos && !cajas.datos.length;
+  // Terminal de ventas (vendedor): carrito a la izquierda; cliente, caja, notas y total siempre a la vista a la derecha
+  if (soloEnviar) {
+    return (
+      <div className="tv">
+        <div className="tv-izq">
+          <Aviso texto={cajas.error || msg} />
+          {enviada && <Aviso tipo="info" texto={enviada} />}
+          {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." />}
+          <div className="panel tv-buscar"><BuscadorLinea inputRef={buscarRef} onElegir={agregar} /></div>
+          <div className="panel tv-carrito">
+            <div className="tv-titulo"><h3>Venta en curso</h3><span className="suave">{validas.length} {validas.length === 1 ? "línea" : "líneas"}</span></div>
+            {lineas.length ? bloqueLineas : <div className="tv-vacio"><b>Todavía no hay productos</b><span className="suave">Escriba el nombre o el SKU arriba y presione Enter para agregarlo.</span></div>}
+          </div>
+        </div>
+        <aside className="tv-der">
+          <div className="panel tv-datos">{bloqueCaja}{bloqueCliente}</div>
+          <div className="panel tv-datos">{bloqueNotas}{bloqueCupon}</div>
+          <div className="panel tv-total">
+            {cot ? (
+              <>
+                <div className="tv-fila"><span>Subtotal</span><span>{rd(cot.subtotal)}</span></div>
+                {n(cot.descuento) > 0 && <div className="tv-fila texto-ok"><span>Descuento</span><span>−{rd(cot.descuento)}</span></div>}
+                <div className="tv-fila"><span>ITBIS</span><span>{rd(cot.itbis)}</span></div>
+              </>
+            ) : <div className="tv-fila suave"><span>{lineas.length ? "Calculando…" : "Sin productos"}</span><span /></div>}
+            <div className="tv-gran"><span>Total</span><b>{rd(total)}</b></div>
+            <button className="boton primario tv-enviar" disabled={!!problema || guardando} onClick={enviar}>{guardando ? "Enviando…" : "Enviar a caja"}</button>
+            {problema && lineas.length > 0 && <p className="suave pequeno" style={{ margin: "8px 0 0" }}>{problema}</p>}
+          </div>
+        </aside>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {!soloEnviar && <div className="migas"><button className="enlace" onClick={() => (!lineas.length || confirm("La factura no se ha emitido. ¿Salir?")) && onCerrar()}>Facturas</button><span>/</span><span>Nueva factura</span></div>}
+      {soloEnviar
+        ? <Encabezado titulo="Nueva venta" descripcion="Busque los productos, arme la venta y envíela a la caja: el cliente paga allí y la caja emite el comprobante." />
+        : <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />}
+      <Aviso texto={cajas.error || msg} />
+      {sinPlan && <div className="panel"><Aviso texto={`La factura se emitió, pero el plan de cuotas no se pudo crear: ${sinPlan.error}. Puede hacerlo desde Cuentas por cobrar › Financiar la deuda en cuotas.`} /><div className="fila-acciones"><button className="boton primario" onClick={() => onCreada(sinPlan.id)}>Ver la factura</button></div></div>}
+      {enviada && <Aviso tipo="info" texto={enviada} />}
+      {sinCajas && <Aviso tipo="info" texto={soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}
+
+      <div className="panel cab-compra">
+        {bloqueCaja}
+        {puedeEnviar && !soloEnviar && <label className="campo"><span>Qué hacer con la venta</span>
+          <select value={modo} onChange={(e) => setModo(e.target.value as "cobrar" | "enviar")}>
+            <option value="cobrar">Cobrar y facturar aquí</option><option value="enviar">Enviar a la caja para que cobre</option>
+          </select></label>}
+        {!enviando && <label className="campo"><span>Comprobante</span>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS.filter((x) => x.id !== "SIN" || sinComprobante).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
+        </label>}
+        {bloqueCliente}
+      </div>
+
+      <div className="panel">
+        <BuscadorLinea inputRef={buscarRef} onElegir={agregar} />
+        {bloqueLineas}
+        {bloqueNotas}
       </div>
 
       {!enviando && <div className="panel">
@@ -286,14 +346,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
       </div>}
 
       <div className="panel cab-compra">
-        <label className="campo"><span>Cupón de descuento</span>
-          {cupon ? <span className="en-linea"><b>{cupon}</b>{cot?.cupon ? <span className="texto-ok">−{rd(cot.cupon.total)}</span> : null}<button className="boton fantasma" onClick={() => { setCupon(""); setCuponTxt(""); }}>✕ Quitar</button></span>
-            : <span className="en-linea"><input value={cuponTxt} placeholder="Código del cupón" onChange={(e) => setCuponTxt(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && cuponTxt.trim() && setCupon(cuponTxt.trim())} />
-              <button className="boton" disabled={!cuponTxt.trim()} onClick={() => setCupon(cuponTxt.trim())}>Aplicar</button></span>}
-        </label>
-        {puedeDescuento && hayDescuento && <label className="campo campo-prov"><span>Motivo del descuento (queda en auditoría)</span><input value={motivo} maxLength={200} onChange={(e) => setMotivo(e.target.value)} /></label>}
-        {hayPrecioLibre && <label className="campo campo-prov"><span>Motivo del cambio de precio (queda en auditoría)</span><input value={motivoPrecio} maxLength={200} onChange={(e) => setMotivoPrecio(e.target.value)} /></label>}
-        {!puedeDescuento && <p className="suave pequeno">Para dar descuentos por línea se necesita el permiso «Aprobar descuentos».</p>}
+        {bloqueCupon}
       </div>
 
       <div className="barra-compra">
