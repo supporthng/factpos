@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, esLocal, rd } from "../api";
+import { api, esLocal, rd, sucursalPropia } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 import { NuevaFactura } from "./NuevaFactura";
 
@@ -41,8 +41,9 @@ function MisVentas() {
 }
 
 export function Vender() {
-  // Las ventas por cobrar viven en el servidor de la sucursal (caja, inventario y turno): en la administración de internet no se pueden crear
-  if (!esLocal()) {
+  // Las ventas por cobrar viven en el servidor de la sucursal (caja, inventario y turno): en la administración de internet no se pueden crear.
+  // Un servidor principal que también atiende una tienda (SUCURSAL_LOCAL en su .env) sí puede.
+  if (!esLocal() && !sucursalPropia()) {
     return (
       <>
         <Encabezado titulo="Vender" descripcion="Arme la venta y envíela a la caja para cobrar." />
@@ -50,6 +51,7 @@ export function Vender() {
           <h3 style={{ marginTop: 0 }}>Abra la administración local de la sucursal</h3>
           <p>Las ventas se arman y se envían a la caja desde la administración de la tienda (la que se abre con la dirección del servidor local), no desde internet. Allí están la caja, el inventario y el turno del cajero.</p>
           <p className="suave">Entre con el mismo usuario y contraseña. Cada vendedor solo ve lo que su rol permite.</p>
+          <p className="suave">Si esta es la computadora principal y también es la tienda, agregue <b>SUCURSAL_LOCAL=nombre de la sucursal</b> en el archivo .env del servidor y reinícielo: así este mismo servidor puede vender.</p>
         </div>
       </>
     );
