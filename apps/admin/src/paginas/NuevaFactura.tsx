@@ -266,7 +266,21 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
           </div>
         </div>
         <aside className="tv-der">
-          <div className="panel tv-datos">{bloqueCaja}{bloqueCliente}</div>
+          <div className="panel tv-cliente">
+            <div className="tv-titulo"><h3>Cliente</h3>{cliente && <button className="boton fantasma chico" onClick={() => setCliente(null)}>Cambiar</button>}</div>
+            {cliente ? (
+              <div className="tv-cliente-ficha"><b>{cliente.nombre}</b><span className="suave">{cliente.documento ?? "sin documento"}</span></div>
+            ) : (
+              <div className="selector-producto">
+                <input value={busca} placeholder="Buscar por nombre, RNC, cédula o teléfono…" onChange={(e) => setBusca(e.target.value)} />
+                {encontrados.length > 0 && <div className="desplegable">{encontrados.map((c) => (
+                  <button key={c.id} onMouseDown={(e) => { e.preventDefault(); setCliente(c); setBusca(""); setEncontrados([]); }}><b>{c.nombre}</b> <span className="suave">{c.documento ?? ""}</span></button>
+                ))}</div>}
+                <p className="suave pequeno" style={{ margin: "6px 0 0" }}>Sin cliente = venta de mostrador.</p>
+              </div>
+            )}
+          </div>
+          <div className="panel tv-datos">{bloqueCaja}</div>
           <div className="panel tv-datos">{bloqueNotas}{bloqueCupon}</div>
           <div className="panel tv-total">
             {cot ? (

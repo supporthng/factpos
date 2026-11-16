@@ -1605,3 +1605,7 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
   .tv { grid-template-columns: 1fr; }
   .tv-der { position: static; }
 }
+.tv-cliente .tv-titulo { margin-bottom: 6px; }
+.tv-cliente-ficha { display: flex; flex-direction: column; gap: 2px; }
+.tv-cliente-ficha b { font-size: 17px; }
+.tv-cliente input { width: 100%; }
