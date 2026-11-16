@@ -36,7 +36,7 @@ const REPORTES: Rep[] = [
   { id: "cartera", titulo: "Cartera por antigüedad", grupo: "Cuentas por cobrar", desc: "Lo que debe cada cliente: al día y vencido a 1-30, 31-60, 61-90 y más de 90 días, con su parte de la cartera." },
   { id: "cobros", titulo: "Cobros a clientes", grupo: "Cuentas por cobrar", fechas: true, desc: "Abonos recibidos: día, cliente, quién cobró y forma de pago." },
   { id: "saldo-clientes", titulo: "Saldo de clientes (fiado)", grupo: "Operación", desc: "Lo que cada cliente debe en este momento." },
-  { id: "historial-ventas", titulo: "Ventas del sistema anterior", grupo: "Historial anterior", fechas: true, desc: "Ventas importadas de WilPOS. Son solo de consulta: no son facturas de FactPOS." },
+  { id: "historial-ventas", titulo: "Ventas del sistema anterior", grupo: "Historial anterior", fechas: true, desc: "Ventas importadas del sistema anterior. Son solo de consulta: no son facturas de FactPOS." },
   { id: "historial-ventas-producto", titulo: "Productos vendidos (sistema anterior)", grupo: "Historial anterior", fechas: true, desc: "Cuánto se vendió de cada producto en el historial importado." },
 ];
 const GRUPOS = ["Ventas", "Inventario", "Cuentas por cobrar", "Control", "Operación", "Historial anterior"];
