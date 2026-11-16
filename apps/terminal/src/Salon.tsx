@@ -467,7 +467,7 @@ export function MoverCuenta({ ajustes, base, cuentaId, lineas, accion, onCerrar 
 /** Lo que lleva la pre-cuenta: el consumo pendiente de la cuenta, ya separado por persona si se ordenó así. */
 export interface DatosPreCuenta {
   nombre: string; mesa: string | null; numero: string; nota: string | null; abiertaEn: string;
-  subtotal: string; itbis: string; total: string; propinaLegal: string;
+  subtotal: string; itbis: string; total: string; propinaLegal: string; propinaPct?: number;
   grupos: { persona: string | null; lineas: { cantidad: string; descripcion: string; total: string; extra: boolean }[] }[];
 }
 
@@ -515,11 +515,11 @@ export function PreCuentaPapel({ datos, config, onListo }: { datos: DatosPreCuen
           <div className="t-fila"><span>Subtotal</span><span>{rd(datos.subtotal)}</span></div>
           <div className="t-fila"><span>ITBIS</span><span>{rd(datos.itbis)}</span></div>
           <div className="t-fila"><span>Consumo</span><span>{rd(datos.total)}</span></div>
-          <div className="t-fila"><span>Propina legal 10 %</span><span>{rd(datos.propinaLegal)}</span></div>
+          <div className="t-fila"><span>Propina legal {datos.propinaPct ?? 10} %</span><span>{rd(datos.propinaLegal)}</span></div>
           <div className="t-linea" />
           <div className="t-fila t-grande"><b>TOTAL A PAGAR</b><b>{rd(aPagar)}</b></div>
           <div className="t-linea" />
-          <div className="t-centro">La propina es de ley (10 %). Gracias por su visita.</div>
+          <div className="t-centro">La propina es de ley ({datos.propinaPct ?? 10} %). Gracias por su visita.</div>
         </div>
       </div>
     </div>

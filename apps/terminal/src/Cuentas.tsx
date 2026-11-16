@@ -16,7 +16,7 @@ import type { ConfigCaja } from "./App";
 interface LineaC { id: string; asientoId: string | null; descripcion: string; cantidad: string; total: string; nota: string | null; enviadaEn: string | null; anulada: boolean; ventaId: string | null; presentacionId: string; padreId: string | null; paso: number }
 interface AsientoC { id: string; nombre: string; total: string; pedidoCobro?: boolean }
 interface CortesiaC { descripcion: string; cantidad: string; motivoTipo: string; motivo: string | null; valor: string }
-interface CuentaC { pedidoCobro?: boolean; cortesias?: CortesiaC[]; pasoLiberado: number; subtotal: string; itbis: string; nota: string | null; abiertaEn: string; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; asientos: AsientoC[]; lineas: LineaC[] }
+interface CuentaC { pedidoCobro?: boolean; cortesias?: CortesiaC[]; pasoLiberado: number; subtotal: string; itbis: string; nota: string | null; abiertaEn: string; id: string; nombre: string; mesa: string | null; numero: string; estado: string; total: string; sinAsiento: string; propinaLegal: string; propinaPct?: number; asientos: AsientoC[]; lineas: LineaC[] }
 interface Resumen { id: string; nombre: string; nota?: string | null; mesa: string | null; numero: string; lineas: number; asientos: number; abiertaEn: string; total?: string }
 interface Parte { indice: number; nombre: string; consumo: string; propina: string; totalConPropina: string; lineas: string[] | null }
 interface Division { cuentaId: string; modo: string; total: string; partes: Parte[] }
@@ -334,7 +334,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
 
   const armarPreCuenta = (): DatosPreCuenta => ({
     nombre: cuenta.nombre, mesa: cuenta.mesa, numero: cuenta.numero, nota: cuenta.nota, abiertaEn: cuenta.abiertaEn,
-    subtotal: cuenta.subtotal, itbis: cuenta.itbis, total: cuenta.total, propinaLegal: cuenta.propinaLegal,
+    subtotal: cuenta.subtotal, itbis: cuenta.itbis, total: cuenta.total, propinaLegal: cuenta.propinaLegal, propinaPct: cuenta.propinaPct,
     grupos: grupos.filter((g) => g.lineas.length > 0).map((g) => ({
       persona: g.id === null && cuenta.asientos.length === 0 ? null : g.nombre,
       lineas: g.lineas.map((l) => ({ cantidad: l.cantidad, descripcion: l.descripcion, total: l.total, extra: !!l.padreId })),
@@ -411,7 +411,7 @@ function DetalleCuenta({ ajustes, config, base, cuenta, catalogo, nivel, error, 
           {!!cuenta.cortesias?.length && <p className="suave" style={{ margin: "6px 0 0" }}>Cortesías: {cuenta.cortesias.map((c) => `${Number(c.cantidad)} × ${c.descripcion}`).join(", ")}</p>}
           {cobradas > 0 && <p className="suave">Ya se cobraron {cobradas} producto(s) de esta cuenta; abajo queda lo pendiente.</p>}
           <div className="cuenta-resumen">
-            <span>Pendiente<small>propina legal 10 % · {rd(cuenta.propinaLegal)}</small></span>
+            <span>Pendiente<small>propina legal {cuenta.propinaPct ?? 10} % · {rd(cuenta.propinaLegal)}</small></span>
             <b>{rd(cuenta.total)}</b>
           </div>
           {avisosCobro.length > 0 && (

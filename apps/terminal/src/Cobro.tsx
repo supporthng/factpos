@@ -29,10 +29,12 @@ export interface CobroLocal {
 
 export type MetodoPago = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "MIXTO";
 
-export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, propinaLegal, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, conVales = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
+export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, propinaLegal, propinaPct = 10, items, aprobacionDescuento, motivoDescuento, local, onCerrar, onVendido, permitirSin = false, conVales = false, alFallar, metodo = "EFECTIVO", notas, tipo, onTipo, onCliente, onBuscarCliente, onMetodo, pedirClienteAlAbrir = true }: {
   ajustes: Ajustes; usuario: Usuario; cliente: Cliente | null; cupon: Cupon | null; total: string;
   /** Propina legal sugerida (10 % del consumo sin ITBIS) para cuentas de restaurante, bar o discoteca; el cliente puede no aceptarla */
   propinaLegal?: string;
+  /** Porcentaje que se muestra junto a la propina legal */
+  propinaPct?: number;
   items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string; precioNuevo?: string }[];
   aprobacionDescuento?: string; motivoDescuento?: string;
   local?: CobroLocal;
@@ -207,7 +209,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
           <label className="campo" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={conPropina} style={{ width: "auto" }}
               onChange={(e) => { setConPropina(e.target.checked); setTarjeta(""); setTransferencia(""); setCredito(""); setRecibido(""); setForma("EFECTIVO"); onMetodo?.("EFECTIVO"); }} />
-            <span>Propina legal 10 %: <b>{rd(propinaLegal)}</b> <span className="suave">(factura {rd(totalVenta)} + propina)</span></span>
+            <span>Propina legal {propinaPct} %: <b>{rd(propinaLegal)}</b> <span className="suave">(factura {rd(totalVenta)} + propina)</span></span>
           </label>
         )}
         <div className="cobro-total"><span>Total a pagar</span><b>{rd(total)}</b></div>

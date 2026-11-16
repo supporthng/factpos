@@ -124,6 +124,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   if (/^\/central\/por-cobrar-todas(\/|$)/.test(ruta)) return "admin.facturas"; // supervisión: ve y anula lo pendiente de todos los vendedores
   if (/^\/central\/(ventas|por-cobrar)(\/|$)/.test(ruta)) return "admin.vender"; // el vendedor: arma la venta y la envía a caja
   if (/^\/central\/(facturas|series)(\/|$)/.test(ruta)) return "admin.facturas";
+  if (/^\/central\/impuestos(\/|$)/.test(ruta) && escribe) return "admin.fiscal"; // la planilla de impuestos se edita en Fiscal; leerla basta con sesión
   if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";

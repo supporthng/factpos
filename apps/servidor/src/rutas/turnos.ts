@@ -73,7 +73,8 @@ export async function rutasTurnos(app: FastifyInstance) {
                                  'formato', COALESCE(m.formato_ticket, '{}'::jsonb),
                                  'pantallaCliente', COALESCE(m.pantalla_cliente, '{}'::jsonb)) AS marca,
               COALESCE(NULLIF(btrim(s.direccion), ''), NULLIF(btrim(e.direccion), '')) AS direccion,
-              COALESCE(NULLIF(btrim(s.telefono), ''), NULLIF(btrim(e.telefono), '')) AS telefono, e.id AS "empresaId"
+              COALESCE(NULLIF(btrim(s.telefono), ''), NULLIF(btrim(e.telefono), '')) AS telefono, e.id AS "empresaId",
+              COALESCE((SELECT i.tasa * 100 FROM impuestos i WHERE i.empresa_id = e.id AND i.tipo = 'PROPINA' AND i.activo ORDER BY i.actualizado_en DESC LIMIT 1), 10)::float AS "propinaPct"
          FROM cajas ca JOIN sucursales s ON s.id = ca.sucursal_id JOIN empresas e ON e.id = s.empresa_id
          LEFT JOIN configuracion_sucursal cs ON cs.sucursal_id = s.id
          LEFT JOIN configuracion_marca m ON m.empresa_id = e.id

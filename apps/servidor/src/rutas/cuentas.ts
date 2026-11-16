@@ -1,3 +1,4 @@
+import { tasaPropina } from "./propina.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
@@ -27,8 +28,8 @@ interface FilaLinea {
 }
 
 /** Total de una línea en centavos (el precio guardado ya incluye el ITBIS si el producto lo trae incluido). */
-/** Propina legal de una cuenta (centavos): 10 % del consumo SIN ITBIS (cada línea sin su impuesto). */
-const propinaDe = (lineas: FilaLinea[]) => Math.round(lineas.reduce((s, l) => s + totalLinea(l) / (1 + Number(l.tasaItbis)), 0) / 10);
+/** Propina legal de una cuenta (centavos): la tasa de la planilla de impuestos (10 % por omisión) sobre el consumo SIN ITBIS (cada línea sin su impuesto). */
+const propinaDe = (lineas: FilaLinea[], tasa = 0.1) => Math.round(lineas.reduce((s, l) => s + totalLinea(l) / (1 + Number(l.tasaItbis)), 0) * tasa);
 const totalLinea = (l: FilaLinea) => Math.round(Number(l.cantidad) * Number(l.precioUnitario) * (l.incluyeItbis === false ? 1 + Number(l.tasaItbis) : 1) * 100);
 
 export async function rutasCuentas(app: FastifyInstance) {
@@ -52,6 +53,8 @@ export async function rutasCuentas(app: FastifyInstance) {
 
   const detalle = async (sucursalId: string, id: string) => {
     const c = await cuentaDe(sucursalId, id, false);
+    const empresaId = (await pool.query<{ e: string }>("SELECT empresa_id AS e FROM sucursales WHERE id = $1", [sucursalId])).rows[0]?.e;
+    const tasaProp = empresaId ? await tasaPropina(pool, empresaId) : 0.1;
     const asientos = (await pool.query<{ id: string; nombre: string; orden: number; pedidoCobro: boolean }>(
       `SELECT a.id, a.nombre, a.orden,
               -- el aviso de cobro solo cuenta mientras la persona tenga algo pendiente
@@ -73,7 +76,7 @@ export async function rutasCuentas(app: FastifyInstance) {
     const cortesias = (await pool.query(
       `SELECT descripcion, cantidad::text AS cantidad, motivo_tipo AS "motivoTipo", motivo, valor::text AS valor FROM control_cuentas WHERE cuenta_id = $1 AND tipo IN ('CORTESIA','VALE') ORDER BY creado_en`, [id])).rows;
     return {
-      ...c, cortesias, asientos: porAsiento, total: aMonto(total), itbis: aMonto(itbis), subtotal: aMonto(total - itbis), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas)),
+      ...c, cortesias, asientos: porAsiento, total: aMonto(total), itbis: aMonto(itbis), subtotal: aMonto(total - itbis), sinAsiento: aMonto(sinAsiento), propinaLegal: aMonto(propinaDe(vivas, tasaProp)), propinaPct: Math.round(tasaProp * 10000) / 100,
       lineas: lineas.map((l) => ({ ...l, total: aMonto(totalLinea(l)) })),
     };
   };
@@ -545,8 +548,8 @@ export async function rutasCuentas(app: FastifyInstance) {
         montos = dividirPorLineas(totales, b.partes, b.asignacion, b.compartidas ?? {}); nombres = montos.map((_, i) => `Persona ${i + 1}`);
         lineasPorParte = montos.map((_, i) => vivas.filter((l) => b.asignacion[l.id] === i).map((l) => l.id));
       }
-      // 10 % del consumo sin ITBIS, repartido en proporción a lo que consume cada parte (suma exacta)
-      const propinas = repartirProporcional(propinaDe(vivas), montos);
+      // La propina (tasa de la planilla de impuestos) sobre el consumo sin ITBIS, repartida en proporción a lo que consume cada parte (suma exacta)
+      const propinas = repartirProporcional(propinaDe(vivas, (d.propinaPct ?? 10) / 100), montos);
       return { cuentaId: id, modo: b.modo, total: aMonto(total), partes: montos.map((m, i) => ({ indice: i, nombre: nombres[i], consumo: aMonto(m), propina: aMonto(propinas[i]!), totalConPropina: aMonto(m + propinas[i]!), lineas: lineasPorParte?.[i] ?? null })) };
     } catch (e) {
       if (e instanceof ErrorDivision) throw new ErrorNegocio(e.message, 400);
