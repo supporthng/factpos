@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -94,6 +95,31 @@ def es_factpos(base, espera=1.5):
         return False
 
 
+NO_SUCURSAL = []  # servidores FactPOS hallados que no son de una tienda (p. ej. el central): no sirven para vender
+
+
+def es_sucursal(base):
+    """Las ventas solo se arman en el servidor de una tienda (modo «sucursal»); el central o el portal no las aceptan.
+    /salud dice el modo (también cuando la base de datos está caída, con código 503)."""
+    try:
+        try:
+            with urllib.request.urlopen(base + "/salud", timeout=2.5) as r:
+                modo = json.load(r).get("modo")
+        except urllib.error.HTTPError as e:
+            modo = json.load(e).get("modo")
+    except Exception:
+        return True  # no se pudo saber: se deja pasar (la pantalla avisa si no corresponde)
+    if modo and modo != "sucursal":
+        if base not in NO_SUCURSAL:
+            NO_SUCURSAL.append(base)
+        return False
+    return True
+
+
+def servidor_valido(base, espera=1.5):
+    return es_factpos(base, espera) and es_sucursal(base)
+
+
 def por_aviso(espera=2.0):
     """Pregunta por UDP («FACTPOS?») a toda la red: el servidor contesta con sus direcciones."""
     hallados = []
@@ -141,7 +167,7 @@ def barrido():
     prefijo = ip.rsplit(".", 1)[0]
     candidatas = ["http://%s.%d:%d" % (prefijo, n, PUERTO) for n in range(1, 255)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=64) as ex:
-        for base, ok in zip(candidatas, ex.map(lambda b: es_factpos(b, 0.8), candidatas)):
+        for base, ok in zip(candidatas, ex.map(lambda b: servidor_valido(b, 0.8), candidatas)):
             if ok:
                 return base
     return None
@@ -150,14 +176,14 @@ def barrido():
 def encontrar_servidor():
     """Orden: la última dirección que funcionó → aviso por UDP → factpos.local → barrido de la red."""
     guardada = leer_config().get("servidor")
-    if guardada and es_factpos(guardada):
+    if guardada and servidor_valido(guardada):
         return guardada
     for d in por_aviso():
         b = normalizar(d)
-        if b and es_factpos(b):
+        if b and servidor_valido(b):
             return b
     b = "http://factpos.local:%d" % PUERTO
-    if es_factpos(b, 2.5):
+    if servidor_valido(b, 2.5):
         return b
     return barrido()
 
@@ -173,6 +199,8 @@ class Api:
         b = normalizar(texto)
         if not b or not es_factpos(b, 3):
             return {"error": "No hay un servidor FactPOS en esa dirección. Revísala e inténtalo de nuevo."}
+        if not es_sucursal(b):
+            return {"error": "Ese es el servidor central, no el de una tienda. Escribe la dirección del servidor de la tienda."}
         guardar_config(b)
         self.ventana.load_url(direccion_venta(b))
         return {"ok": True}
@@ -193,11 +221,14 @@ def threading_buscar():
 def conectar(error=""):
     """Busca el servidor y abre la pantalla de ventas; si no lo encuentra pide la dirección."""
     api.ventana.load_html(PAGINA_BUSCANDO)
+    del NO_SUCURSAL[:]
     base = encontrar_servidor()
     if base:
         guardar_config(base)
         api.ventana.load_url(direccion_venta(base))
     else:
+        if NO_SUCURSAL and not error:
+            error = "Se encontró un servidor FactPOS (" + NO_SUCURSAL[0].replace("http://", "") + ") pero es el central, no el de una tienda. Escribe la dirección del servidor de la tienda."
         valor = (leer_config().get("servidor") or "").replace("http://", "").replace('"', "")
         api.ventana.load_html(PAGINA_MANUAL.replace("__VALOR__", valor).replace("__ERROR__", error))
 
