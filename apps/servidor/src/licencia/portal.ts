@@ -1085,7 +1085,7 @@ const CATALOGO_INSTALADORES = [
   { id: "vendedor-android", titulo: "FactPOS Vendedor para Android", para: "Terminal de ventas en celular o tableta, por el Wi-Fi de la tienda", plataforma: "Android (APK)" },
   { id: "verificador-windows", titulo: "Verificador de precios para Windows", para: "PC con pantalla táctil", plataforma: "Windows" },
   { id: "verificador-android", titulo: "Verificador de precios para Android", para: "Tabletas y pantallas Android", plataforma: "Android (APK)" },
-  { id: "importador", titulo: "Importador de datos (WilPOS)", para: "Pasa productos, clientes e historial desde el sistema anterior", plataforma: "Windows (portable)" },
+  { id: "importador", titulo: "Importador de datos", para: "Pasa productos, clientes e historial desde el sistema anterior", plataforma: "Windows (portable)" },
 ] as const;
 
 /** Id del catálogo → clave en APPS_VERIFICADOR (el verificador se llama «android»/«windows» allá) */
