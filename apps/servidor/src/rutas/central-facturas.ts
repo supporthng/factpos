@@ -321,9 +321,9 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     return { id, numero, total: (q as { total: string }).total };
   });
 
-  app.get("/central/por-cobrar", async (req) => {
+  const listarPorCobrar = async (req: any, soloMias: boolean) => {
     const permitidas = sucursalesDe(req);
-    const { mias } = z.object({ mias: z.enum(["1"]).optional() }).parse(req.query);
+    const mias = soloMias;
     const r = await pool.query(
       `SELECT v.id, v.numero::text, v.total::text, v.estado, v.creada_en AS "creadaEn", ca.nombre AS caja, s.nombre AS sucursal,
               cl.nombre AS cliente, u.nombre AS vendedor, jsonb_array_length(v.items) AS lineas, ed.encf
@@ -334,9 +334,12 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
           AND ($3::uuid IS NULL OR v.creada_por = $3)
         ORDER BY (v.estado = 'PENDIENTE') DESC, v.creada_en DESC LIMIT 200`, [empresaDe(req), permitidas, mias ? usuarioDe(req) : null]);
     return r.rows;
-  });
+  };
+  // El vendedor solo ve las suyas; la supervisión (admin.facturas) ve todas en su propia pantalla
+  app.get("/central/por-cobrar", async (req) => listarPorCobrar(req, true));
+  app.get("/central/por-cobrar-todas", async (req) => listarPorCobrar(req, false));
 
-  app.post("/central/por-cobrar/:id/anular", async (req) => {
+  const anularPorCobrar = async (req: any) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const permitidas = sucursalesDe(req);
     const r = await pool.query(
@@ -346,7 +349,8 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       [id, empresaDe(req), permitidas, usuarioDe(req), tienePermiso(permisos(req), "admin.facturas")]);
     if (!r.rowCount) throw new ErrorNegocio("La venta no existe o ya no está pendiente", 404);
     return { ok: true };
-  });
+  };
+  for (const u of ["/central/por-cobrar/:id/anular", "/central/por-cobrar-todas/:id/anular"]) app.post(u, anularPorCobrar);
 
   /** Cajas con turno abierto: dónde se puede facturar */
   const cajasAbiertas = async (req: any) => {

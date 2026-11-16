@@ -39,7 +39,7 @@ export async function rutasPorCobrar(app: FastifyInstance) {
     const { cajaId, id } = z.object({ cajaId: uuid, id: uuid }).parse(req.params);
     const f = await cargar(cajaId, id);
     const ctx = await contextoCaja(cajaId);
-    const q = await cotizar(pool, ctx, { clienteId: f.clienteId ?? undefined, items: f.items }, false);
+    const q = await cotizar(pool, ctx, { clienteId: f.clienteId ?? undefined, items: f.items, excluirApartado: f.id }, false);
     const cl = f.clienteId ? (await pool.query("SELECT id, nombre, tipo_documento AS \"tipoDocumento\", documento FROM clientes WHERE id = $1", [f.clienteId])).rows[0] : null;
     return { id: f.id, numero: f.numero, notas: f.notas, cliente: cl ?? null, ...resumen(q) };
   });
@@ -70,7 +70,7 @@ export async function rutasPorCobrar(app: FastifyInstance) {
       }
       const v = await registrarVenta(c, cajaId, {
         usuarioId, clienteId: f.clienteId ?? undefined, tipoDocumento: b.tipoDocumento, notas: `Venta por cobrar #${f.numero}${f.notas ? ` · ${f.notas}` : ""}`.slice(0, 300),
-        items: f.items, pagos: b.pagos, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
+        items: f.items, excluirApartado: f.id, pagos: b.pagos, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
       }, { exigirSeries: true });
       await c.query("UPDATE ventas_por_cobrar SET estado = 'COBRADA', cerrada_en = now(), cerrada_por = $2, venta_id = $3 WHERE id = $1", [id, usuarioId, (v as { id: string }).id]);
       return v;
