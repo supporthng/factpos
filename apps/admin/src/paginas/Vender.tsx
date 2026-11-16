@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, rd } from "../api";
+import { api, esLocal, rd } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 import { NuevaFactura } from "./NuevaFactura";
 
@@ -41,6 +41,19 @@ function MisVentas() {
 }
 
 export function Vender() {
+  // Las ventas por cobrar viven en el servidor de la sucursal (caja, inventario y turno): en la administración de internet no se pueden crear
+  if (!esLocal()) {
+    return (
+      <>
+        <Encabezado titulo="Vender" descripcion="Arme la venta y envíela a la caja para cobrar." />
+        <div className="panel">
+          <h3 style={{ marginTop: 0 }}>Abra la administración local de la sucursal</h3>
+          <p>Las ventas se arman y se envían a la caja desde la administración de la tienda (la que se abre con la dirección del servidor local), no desde internet. Allí están la caja, el inventario y el turno del cajero.</p>
+          <p className="suave">Entre con el mismo usuario y contraseña. Cada vendedor solo ve lo que su rol permite.</p>
+        </div>
+      </>
+    );
+  }
   const [pestana, setPestana] = useState<"nueva" | "mias">("nueva");
   const [version, setVersion] = useState(0); // al enviar una venta se reinicia la pantalla
   return (
