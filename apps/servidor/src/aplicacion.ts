@@ -46,6 +46,7 @@ import { reportarError } from "./incidentes.js";
 import { rutasDispositivos, dispositivoExigido, estadoDispositivo, rutaDeAltaDispositivo, rutaDeServidor } from "./rutas/dispositivos.js";
 import { rutasCentralFiscal } from "./rutas/central-fiscal.js";
 import { rutasEnsayoFiscal } from "./rutas/central-fiscal-ensayo.js";
+import { rutasSetPruebasFiscal } from "./rutas/central-fiscal-set-pruebas.js";
 import { rutasCentralOrganizacion } from "./rutas/central-organizacion.js";
 import { rutasCentralProductos } from "./rutas/central-productos.js";
 import { rutasCentralCompras } from "./rutas/central-compras.js";
@@ -296,6 +297,7 @@ export async function crearApp() {
   await app.register(rutasCentralMovil);
     await app.register(rutasCentralFiscal);
     await app.register(rutasEnsayoFiscal);
+    await app.register(rutasSetPruebasFiscal);
     await app.register(rutasCentralOrganizacion);
     await app.register(rutasCentralProductos);
     await app.register(rutasCentralCompras);
