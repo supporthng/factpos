@@ -60,19 +60,19 @@ const letraACol = (ref: string) => {
   return n - 1;
 };
 
-async function leerXlsx(buf: ArrayBuffer): Promise<Tabla> {
-  const z = await descomprimir(buf);
-  const xml = async (n: string) => new DOMParser().parseFromString(await z.get(n)!(), "application/xml");
-  const hoja = [...z.keys()].filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
-    .sort((a, b) => Number(a.match(/\d+/g)!.pop()) - Number(b.match(/\d+/g)!.pop()))[0];
-  if (!hoja) throw new Error("El libro no tiene hojas.");
+async function textosCompartidos(z: Map<string, () => Promise<string>>): Promise<string[]> {
   const textos: string[] = [];
   if (z.has("xl/sharedStrings.xml")) {
-    for (const si of Array.from((await xml("xl/sharedStrings.xml")).getElementsByTagName("si")))
+    const d = new DOMParser().parseFromString(await z.get("xl/sharedStrings.xml")!(), "application/xml");
+    for (const si of Array.from(d.getElementsByTagName("si")))
       textos.push(Array.from(si.getElementsByTagName("t")).map((t) => t.textContent ?? "").join(""));
   }
+  return textos;
+}
+
+function filasDeHoja(doc: Document, textos: string[]): Tabla {
   const filas: Tabla = [];
-  for (const r of Array.from((await xml(hoja)).getElementsByTagName("row"))) {
+  for (const r of Array.from(doc.getElementsByTagName("row"))) {
     const fila: string[] = [];
     for (const c of Array.from(r.getElementsByTagName("c"))) {
       const t = c.getAttribute("t"), vEl = c.getElementsByTagName("v")[0]?.textContent ?? "";
@@ -89,6 +89,33 @@ async function leerXlsx(buf: ArrayBuffer): Promise<Tabla> {
     filas.push(fila);
   }
   return filas;
+}
+
+async function leerXlsx(buf: ArrayBuffer): Promise<Tabla> {
+  const z = await descomprimir(buf);
+  const hoja = [...z.keys()].filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
+    .sort((a, b) => Number(a.match(/\d+/g)!.pop()) - Number(b.match(/\d+/g)!.pop()))[0];
+  if (!hoja) throw new Error("El libro no tiene hojas.");
+  const textos = await textosCompartidos(z);
+  return filasDeHoja(new DOMParser().parseFromString(await z.get(hoja)!(), "application/xml"), textos);
+}
+
+/** Todas las hojas de un .xlsx por su nombre, sin recortar ni quitar filas (los valores tal cual vienen en el libro). */
+export async function leerHojasXlsx(archivo: File): Promise<Record<string, Tabla>> {
+  const z = await descomprimir(await archivo.arrayBuffer());
+  const xml = async (n: string) => new DOMParser().parseFromString(await z.get(n)!(), "application/xml");
+  if (!z.has("xl/workbook.xml")) throw new Error("El archivo no es un libro de Excel (.xlsx).");
+  const rels = new Map<string, string>();
+  if (z.has("xl/_rels/workbook.xml.rels"))
+    for (const r of Array.from((await xml("xl/_rels/workbook.xml.rels")).getElementsByTagName("Relationship")))
+      rels.set(r.getAttribute("Id") ?? "", (r.getAttribute("Target") ?? "").replace(/^\/?(xl\/)?/, "xl/"));
+  const textos = await textosCompartidos(z);
+  const out: Record<string, Tabla> = {};
+  for (const s of Array.from((await xml("xl/workbook.xml")).getElementsByTagName("sheet"))) {
+    const destino = rels.get(s.getAttribute("r:id") ?? s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? "");
+    if (destino && z.has(destino)) out[s.getAttribute("name") ?? destino] = filasDeHoja(await xml(destino), textos);
+  }
+  return out;
 }
 
 export async function leerTabla(archivo: File): Promise<Tabla> {

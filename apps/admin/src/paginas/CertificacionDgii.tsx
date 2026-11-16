@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { SetPruebasDgii } from "./SetPruebasDgii";
 import { Aviso, Encabezado, SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
 /**
@@ -203,6 +204,7 @@ export function CertificacionDgii() {
       </div>
       <VerificacionEcf />
       <EnsayoTipos />
+      <SetPruebasDgii />
       <ChecklistSolicitud />
       <Aviso tipo={f.autorizado ? "ok" : "info"} texto={f.autorizado ? `FactPOS está autorizado por la DGII${f.autorizadoFecha ? ` desde el ${new Date(f.autorizadoFecha + "T12:00:00").toLocaleDateString("es-DO")}` : ""}.` : `FactPOS aún no está autorizado por la DGII para emitir e-CF · ${hechos} de ${PASOS.length} pasos hechos.`} />
 
