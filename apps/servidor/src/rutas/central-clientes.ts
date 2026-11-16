@@ -45,7 +45,8 @@ export async function rutasCentralClientes(app: FastifyInstance) {
   const usuarioDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-usuario-id"]);
 
   const SELECT = `SELECT c.id, c.nombre, c.tipo_documento AS "tipoDocumento", c.documento, c.telefono, c.correo, c.direccion,
-                         lp.nivel, c.limite_credito::text AS "limiteCredito", c.dias_credito AS "diasCredito", c.activo, c.creado_en AS "creadoEn"
+                         lp.nivel, c.limite_credito::text AS "limiteCredito", c.dias_credito AS "diasCredito", c.activo, c.creado_en AS "creadoEn",
+                         (SELECT COALESCE(SUM(m.monto), 0)::text FROM cxc_movimientos m WHERE m.cliente_id = c.id) AS saldo
                     FROM clientes c LEFT JOIN listas_precio lp ON lp.id = c.lista_precio_id`;
 
   app.get("/central/clientes", async (req) => {

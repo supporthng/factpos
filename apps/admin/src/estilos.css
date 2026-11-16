@@ -1609,3 +1609,6 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .tv-cliente-ficha { display: flex; flex-direction: column; gap: 2px; }
 .tv-cliente-ficha b { font-size: 17px; }
 .tv-cliente input { width: 100%; }
+.tv-cliente-ficha dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 6px 0 0; font-size: 13px; }
+.tv-cliente-ficha dt { color: var(--suave); }
+.tv-cliente-ficha dd { margin: 0; overflow-wrap: anywhere; }

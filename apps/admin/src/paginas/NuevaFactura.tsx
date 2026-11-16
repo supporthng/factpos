@@ -9,7 +9,7 @@ import { BuscadorLinea } from "./Compras";
  * con los precios, ofertas e ITBIS del servidor, igual que en la caja.
  */
 interface CajaAbierta { cajaId: string; caja: string; tipo?: string; sucursalId: string; sucursal: string; cajero: string | null; abiertoEn: string }
-interface ClienteB { id: string; nombre: string; documento: string | null; tipoDocumento?: string | null }
+interface ClienteB { id: string; nombre: string; documento: string | null; tipoDocumento?: string | null; telefono?: string | null; correo?: string | null; direccion?: string | null; nivel?: number | null; limiteCredito?: string; diasCredito?: number; saldo?: string }
 interface Cotizacion {
   subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown; cupon?: { codigo: string; total: string } | null;
   lineas: { presentacionId: string; descripcion: string; cantidad: string; precio: string | null; oferta: string | null; descuento?: string; itbis?: string; total: string }[];
@@ -269,7 +269,18 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
           <div className="panel tv-cliente">
             <div className="tv-titulo"><h3>Cliente</h3>{cliente && <button className="boton fantasma chico" onClick={() => setCliente(null)}>Cambiar</button>}</div>
             {cliente ? (
-              <div className="tv-cliente-ficha"><b>{cliente.nombre}</b><span className="suave">{cliente.documento ?? "sin documento"}</span></div>
+              <div className="tv-cliente-ficha">
+                <b>{cliente.nombre}</b>
+                <dl>
+                  <dt>{cliente.tipoDocumento === "RNC" ? "RNC" : cliente.tipoDocumento === "CEDULA" ? "Cédula" : "Documento"}</dt><dd>{cliente.documento ?? "—"}</dd>
+                  <dt>Teléfono</dt><dd>{cliente.telefono || "—"}</dd>
+                  <dt>Correo</dt><dd>{cliente.correo || "—"}</dd>
+                  <dt>Dirección</dt><dd>{cliente.direccion || "—"}</dd>
+                  <dt>Precio</dt><dd>Nivel {cliente.nivel ?? 1}</dd>
+                  <dt>Crédito</dt><dd>{n(cliente.limiteCredito) > 0 ? `límite ${rd(cliente.limiteCredito!)} · ${cliente.diasCredito ?? 30} días` : "sin límite asignado"}</dd>
+                  <dt>Debe</dt><dd className={n(cliente.saldo) > 0 ? "texto-alerta" : ""}>{rd(cliente.saldo ?? 0)}{n(cliente.limiteCredito) > 0 && <span className="suave"> · disponible {rd(Math.max(0, n(cliente.limiteCredito) - n(cliente.saldo)))}</span>}</dd>
+                </dl>
+              </div>
             ) : (
               <div className="selector-producto">
                 <input value={busca} placeholder="Buscar por nombre, RNC, cédula o teléfono…" onChange={(e) => setBusca(e.target.value)} />
