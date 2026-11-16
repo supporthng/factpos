@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FORMATO_TICKET_BASE, formatoTicket, medidasTicket, type FormatoTicket } from "@factpos/compartido";
+import { FORMATO_TICKET_BASE, PAPELES_TICKET, esHoja, formatoTicket, medidasTicket, type FormatoTicket } from "@factpos/compartido";
 import { api } from "../api";
 import { Aviso, Encabezado } from "../ui";
 
@@ -51,8 +51,9 @@ export function FormatosImpresion() {
           <div className="panel">
             <h3>Papel y letra</h3>
             <div className="dos-col">
-              <label className="campo"><span>Ancho del papel</span>
-                <select value={f.papel} onChange={(e) => set({ papel: e.target.value as FormatoTicket["papel"] })}><option value="80">80 mm (el más común)</option><option value="58">58 mm</option></select></label>
+              <label className="campo"><span>Tamaño del papel</span>
+                <select value={f.papel} onChange={(e) => set({ papel: e.target.value as FormatoTicket["papel"] })}>{PAPELES_TICKET.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
+                {esHoja(f) && <span className="suave pequeno">Para impresoras de hojas (láser o inyección): se imprime por el driver de Windows; en la caja, elija esa impresora en «Impresión».</span>}</label>
               <label className="campo"><span>Tamaño de la letra</span>
                 <select value={f.letra} onChange={(e) => set({ letra: e.target.value as FormatoTicket["letra"] })}><option value="pequena">Pequeña</option><option value="normal">Normal</option><option value="grande">Grande</option></select></label>
             </div>
@@ -89,7 +90,7 @@ export function FormatosImpresion() {
 
         <div className="panel" style={{ position: "sticky", top: 76 }}>
           <h3>Vista previa</h3>
-          <p className="suave pequeno">Ticket de {f.papel} mm con una venta de ejemplo.</p>
+          <p className="suave pequeno">{PAPELES_TICKET.find((p) => p.id === f.papel)?.nombre} · venta de ejemplo.</p>
           <div className="vista-ticket" style={{ width: med.ancho, fontSize: med.letra }}>
             <div className="vt-centro">
               {m.logo && m.logoEnTicket && <img src={m.logo} alt="" style={{ maxWidth: med.logoAncho, maxHeight: med.logoAlto }} />}

@@ -645,14 +645,21 @@ async function midoTicket(wc) {
     const mm = await wc.executeJavaScript(`(() => { const t = document.getElementById('ticket'); if (!t) return 0;
       const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
       return Math.ceil(t.getBoundingClientRect().height / z * 25.4 / 96); })()`);
+    // Ancho del ticket: más de 100 mm = formato de hoja (media carta o carta), no rollo térmico
+    anchoTicketMm = await wc.executeJavaScript(`(() => { const t = document.getElementById('ticket'); return t ? Math.round(t.getBoundingClientRect().width * 25.4 / 96) : 0; })()`).catch(() => 0);
     return mm > 20 && mm < 2000 ? mm : 0;
   } catch { return 0; }
 }
+let anchoTicketMm = 0;
 function opcionesImp(mm, impresora) {
   const o = { silent: true, printBackground: false, margins: { marginType: 'none' } };
   const destino = impresora === undefined ? impCfg.impresora : impresora;
   if (destino) o.deviceName = destino;
-  if (mm) o.pageSize = { width: impCfg.ancho * 1000, height: (mm + 8) * 1000 };   // micras: el largo exacto del ticket
+  if (anchoTicketMm > 100) {
+    // Hoja: carta (8½ × 11 pulg.) o media carta (5½ × 8½ pulg.) con los márgenes normales; el contenido continúa en otra hoja si es largo
+    o.pageSize = anchoTicketMm > 170 ? { width: 215900, height: 279400 } : { width: 139700, height: 215900 };
+    o.margins = { marginType: 'default' };
+  } else if (mm) o.pageSize = { width: impCfg.ancho * 1000, height: (mm + 8) * 1000 };   // micras: el largo exacto del ticket
   return o;
 }
 // Imprime el contenido de una ventana con la impresora elegida; resuelve { ok, motivo }.
