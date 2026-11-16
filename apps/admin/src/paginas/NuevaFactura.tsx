@@ -114,6 +114,12 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   const hayDescuento = lineas.some((l) => n(l.descuento) > 0);
   const hayPrecioLibre = puedeLibre && lineas.some((l) => n(l.precio) > 0);
   const cajaSel = cajas.datos?.find((c) => c.cajaId === cajaId);
+  // Crédito a plazos: si parte del cobro queda a crédito, se puede financiar en cuotas con un plan predefinido
+  const planes = useDatos<{ id: string; nombre: string; cuotas: number; frecuencia: string; interesPct: string; activo: boolean }[]>(puede("admin.cxc") ? "/central/cxc/config/planes" : null);
+  const [planId, setPlanId] = useState("");
+  const [sinPlan, setSinPlan] = useState<{ id: string; error: string } | null>(null);
+  const montoCredito = pagos.filter((p) => p.forma === "CREDITO").reduce((a, p) => a + montoDe(p), 0);
+  const planElegido = planes.datos?.find((p) => p.id === planId);
   const puedeEnviar = !!cajaSel && cajaSel.tipo !== "FACTURACION";
   const enviando = modo === "enviar" && puedeEnviar;
   const cambio = pagos.reduce((a, p) => a + (p.forma === "EFECTIVO" && n(p.recibido) > montoDe(p) ? n(p.recibido) - montoDe(p) : 0), 0);
@@ -166,6 +172,10 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
           ...(p.referencia.trim() ? { referencia: p.referencia.trim() } : {}),
         })),
       } });
+      if (planId && cliente && montoCredito > 0) {
+        try { await api(`/central/cxc/${cliente.id}/planes`, { cuerpo: { planId, ventaId: r.id, capital: montoCredito.toFixed(2) } }); }
+        catch (e) { setSinPlan({ id: r.id, error: (e as Error).message }); setGuardando(false); return; } // la factura ya está hecha: se avisa y se deja ir a verla
+      }
       onCreada(r.id);
     } catch (e) { setMsg((e as Error).message); setGuardando(false); }
   };
@@ -178,6 +188,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
         ? <Encabezado titulo="Nueva venta" descripcion="Busque los productos, arme la venta y envíela a la caja: el cliente paga allí y la caja emite el comprobante." />
         : <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />}
       <Aviso texto={cajas.error || msg} />
+      {sinPlan && <div className="panel"><Aviso texto={`La factura se emitió, pero el plan de cuotas no se pudo crear: ${sinPlan.error}. Puede hacerlo desde Cuentas por cobrar › Financiar la deuda en cuotas.`} /><div className="fila-acciones"><button className="boton primario" onClick={() => onCreada(sinPlan.id)}>Ver la factura</button></div></div>}
       {enviada && <Aviso tipo="info" texto={enviada} />}
       {sinCajas && <Aviso tipo="info" texto={soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}
 
@@ -257,6 +268,16 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
             {!unico && <button className="boton fantasma" aria-label="Quitar pago" onClick={() => setPagos((ps) => ps.filter((x) => x.id !== p.id))}>✕</button>}
           </div>
         ))}
+        {montoCredito > 0 && cliente && puede("admin.cxc") && (planes.datos ?? []).some((p) => p.activo) && (
+          <div className="en-linea" style={{ flexWrap: "wrap", gap: 12, margin: "6px 0" }}>
+            <label className="campo"><span>Financiar el crédito en cuotas</span>
+              <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
+                <option value="">No: queda como crédito normal ({cliente.nombre})</option>
+                {(planes.datos ?? []).filter((p) => p.activo).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select></label>
+            {planElegido && <span className="suave pequeno">{rd(montoCredito)} + {planElegido.interesPct}% de interés = {rd(montoCredito * (1 + Number(planElegido.interesPct) / 100))} en {planElegido.cuotas} cuotas de ≈ {rd((montoCredito * (1 + Number(planElegido.interesPct) / 100)) / planElegido.cuotas)}</span>}
+          </div>
+        )}
         <div className="en-linea" style={{ flexWrap: "wrap", gap: 12 }}>
           <button className="boton" onClick={agregarPago} disabled={!total}>＋ Pago mixto (agregar otra forma de pago)</button>
           {!unico && <span className={falta === 0 ? "texto-ok" : "texto-alerta"}>{falta === 0 ? "Cobro completo" : falta > 0 ? `Faltan ${rd(falta)}` : `Se pasa por ${rd(-falta)}`}</span>}

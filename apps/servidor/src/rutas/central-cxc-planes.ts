@@ -81,18 +81,25 @@ export async function rutasCentralCxcPlanes(app: FastifyInstance) {
     }
     if (!cuotas || !frecuencia || interesPct === undefined) throw new ErrorNegocio("Elija un plan o indique cuotas, frecuencia e interés");
     const saldo = new Decimal((await c.query("SELECT COALESCE(SUM(monto), 0) AS s FROM cxc_movimientos WHERE cliente_id = $1", [clienteId])).rows[0].s);
-    let maximo = saldo;
+    let maximo = saldo, sinSincronizar = false;
     if (b.ventaId) {
-      const f = (await c.query<{ pendiente: string }>("SELECT pendiente FROM rpt_cxc_facturas WHERE cliente_id = $1 AND venta_id = $2", [clienteId, b.ventaId])).rows[0];
-      if (!f || new Decimal(f.pendiente).lte(0)) throw new ErrorNegocio("Esa factura no tiene saldo pendiente a crédito");
-      maximo = Decimal.min(saldo, new Decimal(f.pendiente));
+      const existe = (await c.query("SELECT 1 FROM ventas WHERE id = $1", [b.ventaId])).rowCount;
+      if (existe) {
+        const f = (await c.query<{ pendiente: string }>("SELECT pendiente FROM rpt_cxc_facturas WHERE cliente_id = $1 AND venta_id = $2", [clienteId, b.ventaId])).rows[0];
+        if (!f || new Decimal(f.pendiente).lte(0)) throw new ErrorNegocio("Esa factura no tiene saldo pendiente a crédito");
+        maximo = Decimal.min(saldo, new Decimal(f.pendiente));
+      } else {
+        // Factura recién hecha en una sucursal: todavía no llegó a la nube. Se confía en el monto a crédito de la factura (se pide explícito).
+        if (!b.capital) throw new ErrorNegocio("Indique el monto a crédito de la factura");
+        sinSincronizar = true; maximo = new Decimal(b.capital);
+      }
     }
     const capital = b.capital ? new Decimal(b.capital) : maximo;
     if (capital.lte(0)) throw new ErrorNegocio("El cliente no tiene deuda que financiar");
     if (capital.gt(maximo)) throw new ErrorNegocio(`Solo se puede financiar hasta ${maximo.toFixed(2)}`);
     const hoy = hoyRD();
     if (b.primeraCuota && b.primeraCuota < hoy) throw new ErrorNegocio("La primera cuota no puede estar en el pasado");
-    return { nombre, ...armarCuotas({ capital, interesPct, cuotas, frecuencia, desde: hoy, primera: b.primeraCuota }), interesPct, nCuotas: cuotas, frecuencia };
+    return { nombre, sinSincronizar, ...armarCuotas({ capital, interesPct, cuotas, frecuencia, desde: hoy, primera: b.primeraCuota }), interesPct, nCuotas: cuotas, frecuencia };
   };
 
   app.post("/central/cxc/:clienteId/planes/previsualizar", async (req) => {
@@ -118,7 +125,7 @@ export async function rutasCentralCxcPlanes(app: FastifyInstance) {
       await c.query(
         `INSERT INTO cxc_planes (id, empresa_id, cliente_id, venta_id, nombre, capital, interes_pct, interes, total, cuotas, frecuencia, mora_pct, dias_gracia, notas, usuario_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [id, empresaId, clienteId, b.ventaId ?? null, r.nombre, r.capital, r.interesPct, r.interes, r.total, r.nCuotas, r.frecuencia, cfg.moraPct, cfg.diasGracia, b.notas ?? null, usuarioDe(req)]);
+        [id, empresaId, clienteId, r.sinSincronizar ? null : (b.ventaId ?? null), r.nombre, r.capital, r.interesPct, r.interes, r.total, r.nCuotas, r.frecuencia, cfg.moraPct, cfg.diasGracia, [b.notas, r.sinSincronizar ? `Factura ${b.ventaId} (aún sincronizando)` : null].filter(Boolean).join(" · ") || null, usuarioDe(req)]);
       for (const q of r.cuotas) await c.query("INSERT INTO cxc_cuotas (id, plan_id, numero, vence, monto) VALUES ($1,$2,$3,$4,$5)", [uuidv7(), id, q.numero, q.vence, q.monto]);
       if (new Decimal(r.interes).gt(0)) {
         await c.query(
