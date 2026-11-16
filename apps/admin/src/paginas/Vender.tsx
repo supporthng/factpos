@@ -41,6 +41,8 @@ function MisVentas() {
 }
 
 export function Vender() {
+  const [pestana, setPestana] = useState<"nueva" | "mias">("nueva");
+  const [version, setVersion] = useState(0); // al enviar una venta se reinicia la pantalla
   // Las ventas por cobrar viven en el servidor de la sucursal (caja, inventario y turno): en la administración de internet no se pueden crear.
   // Un servidor principal que también atiende una tienda (SUCURSAL_LOCAL en su .env) sí puede.
   if (!esLocal() && !sucursalPropia()) {
@@ -56,8 +58,6 @@ export function Vender() {
       </>
     );
   }
-  const [pestana, setPestana] = useState<"nueva" | "mias">("nueva");
-  const [version, setVersion] = useState(0); // al enviar una venta se reinicia la pantalla
   return (
     <>
       <div className="fila-acciones" style={{ marginTop: 0 }}>
