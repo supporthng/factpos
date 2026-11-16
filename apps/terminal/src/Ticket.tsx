@@ -1,4 +1,4 @@
-import { formatoTicket, medidasTicket } from "@factpos/compartido";
+import { formatoTicket, medidasTicket, paginaTicket } from "@factpos/compartido";
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { rd } from "./api";
@@ -102,7 +102,7 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
       <div className="modal ticket-modal" onMouseDown={(e) => e.stopPropagation()}>
         {!copia && venta.tipoDocumento !== "E34" && venta.tipoDocumento !== "ANU" && Number(venta.cambio) > 0 && <div className="cambio-grande centro">Cambio: {rd(venta.cambio)}</div>}
         {(venta.tipoDocumento === "E34" || venta.tipoDocumento === "ANU") && <div className="centro aviso-devolucion">Devolver al cliente: <b>{rd(venta.total)}</b></div>}
-        <style>{`@media print { @page { size: ${fmt.papel}mm auto; margin: 0; } }`}</style>
+        <style>{`@media print { @page { size: ${paginaTicket(fmt).size}; margin: ${paginaTicket(fmt).margen}; } }`}</style>
         <div className="ticket" id="ticket" style={{ width: med.ancho, fontSize: med.letra }}>
           <EncabezadoTicket config={config} fiscal={!!venta.fiscal} />
           <div className="t-linea" />

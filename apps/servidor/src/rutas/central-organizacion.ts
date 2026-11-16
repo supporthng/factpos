@@ -223,7 +223,7 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
   /** Diseño del ticket impreso (papel, letra, logo, datos que se muestran, encabezado y pie). */
   app.put("/central/marca/formato", async (req) => {
     const b = z.object({
-      papel: z.enum(["58", "80"]), letra: z.enum(["pequena", "normal", "grande"]), logoTamano: z.enum(["pequeno", "mediano", "grande"]),
+      papel: z.enum(["58", "80", "mediacarta", "carta"]), letra: z.enum(["pequena", "normal", "grande"]), logoTamano: z.enum(["pequeno", "mediano", "grande"]),
       mostrarRnc: z.boolean(), mostrarSucursal: z.boolean(), mostrarDireccion: z.boolean(), mostrarTelefono: z.boolean(),
       encabezadoExtra: z.string().max(240), mostrarCajero: z.boolean(), mostrarCliente: z.boolean(), mostrarAhorro: z.boolean(), mostrarQr: z.boolean(),
       pie: z.string().max(120), pieExtra: z.string().max(400),
