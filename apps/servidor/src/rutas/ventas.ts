@@ -62,7 +62,22 @@ const VentaSchema = CarritoSchema.extend({
 
 type CarritoBase = z.infer<typeof CarritoSchema>;
 /** `precioLibre` solo lo pone la facturación de administración (con el permiso "venta.precio_libre"): la caja nunca lo recibe */
-type Carrito = Omit<CarritoBase, "items"> & { items: (CarritoBase["items"][number] & { precioLibre?: string; series?: string[] })[] };
+type Carrito = Omit<CarritoBase, "items"> & { items: (CarritoBase["items"][number] & { precioLibre?: string; series?: string[] })[];
+  /** Venta por cobrar que se está cobrando o revisando: su propio apartado no cuenta contra la existencia (solo lo pone el servidor) */
+  excluirApartado?: string };
+
+/** Horas que una venta por cobrar sin cobrar sigue apartando existencia (después se libera sola, aunque siga en la lista) */
+export const HORAS_APARTADO = 12;
+/** Unidades sueltas de un producto apartadas por ventas por cobrar pendientes de esa sucursal */
+export async function apartadoDe(c: Pick<PoolClient, "query">, sucursalId: string, productoId: string, excluir?: string): Promise<Decimal> {
+  const r = await c.query<{ n: string }>(
+    `SELECT COALESCE(SUM((it->>'cantidad')::numeric * pr.factor), 0)::text AS n
+       FROM ventas_por_cobrar v CROSS JOIN LATERAL jsonb_array_elements(v.items) it
+       JOIN presentaciones pr ON pr.id = (it->>'presentacionId')::uuid
+      WHERE v.sucursal_id = $1 AND v.estado = 'PENDIENTE' AND v.creada_en > now() - make_interval(hours => $4) AND pr.producto_id = $2 AND ($3::uuid IS NULL OR v.id <> $3::uuid)`,
+    [sucursalId, productoId, excluir ?? null, HORAS_APARTADO]);
+  return new Decimal(r.rows[0]?.n ?? 0);
+}
 
 /** Datos de una venta ya validados. Delivery la usa con forma de pago "DELIVERY". */
 export interface VentaInput extends Carrito {
@@ -184,7 +199,12 @@ export async function cotizar(c: Pick<PoolClient, "query">, ctx: ContextoCaja, c
   });
   for (const { p, cant } of demanda.values()) {
     if (contingencia) break; // la mercancía ya salió de la tienda
-    if (cant.gt(p.existencia)) throw new ErrorNegocio(`No hay existencia suficiente de ${p.nombre}: quedan ${Number(p.existencia)}`);
+    const apartado = await apartadoDe(c, ctx.sucursalId, p.productoId, carrito.excluirApartado);
+    if (cant.gt(new Decimal(p.existencia).minus(apartado))) {
+      throw new ErrorNegocio(apartado.gt(0)
+        ? `No hay existencia suficiente de ${p.nombre}: quedan ${Number(p.existencia)}, de las que ${Number(apartado)} están apartadas en ventas por cobrar`
+        : `No hay existencia suficiente de ${p.nombre}: quedan ${Number(p.existencia)}`);
+    }
   }
 
   const cupon = carrito.cuponCodigo

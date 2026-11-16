@@ -9,6 +9,7 @@ const InstaladoresPortal = lazy(() => import("./paginas/InstaladoresPortal").the
 const VersionesEquipos = lazy(() => import("./paginas/VersionesEquipos").then((m) => ({ default: m.VersionesEquipos })));
 const Pedidos = lazy(() => import("./paginas/Pedidos").then((m) => ({ default: m.Pedidos })));
 const ConsultaExistencias = lazy(() => import("./paginas/ConsultaExistencias").then((m) => ({ default: m.ConsultaExistencias })));
+const PorCobrarTodas = lazy(() => import("./paginas/PorCobrarTodas").then((m) => ({ default: m.PorCobrarTodas })));
 const Vender = lazy(() => import("./paginas/Vender").then((m) => ({ default: m.Vender })));
 const Series = lazy(() => import("./paginas/Series").then((m) => ({ default: m.Series })));
 const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
@@ -72,6 +73,7 @@ const SECCIONES = [
   { id: "puesta", titulo: "Puesta en marcha", grupo: "General", C: PuestaEnMarcha, i: "conteos", p: ["admin.config"] },
   { id: "vender", titulo: "Vender", grupo: "Ventas", C: Vender, i: "venta", p: ["admin.vender"] },
   { id: "consultaexistencias", titulo: "Consultar existencias", grupo: "Ventas", C: ConsultaExistencias, i: "inventario", p: ["admin.vender"] },
+  { id: "porcobrar", titulo: "Ventas por cobrar", grupo: "Ventas", C: PorCobrarTodas, i: "venta", p: ["admin.facturas"] },
   { id: "facturas", titulo: "Facturas", grupo: "Ventas", C: Facturas, i: "venta", p: ["admin.facturas"] },
   { id: "series", titulo: "Series y garantías", grupo: "Ventas", C: Series, i: "ticket", p: ["admin.facturas"] },
   { id: "cotizaciones", titulo: "Cotizaciones", grupo: "Ventas", C: Cotizaciones, i: "ticket", p: ["admin.cotizaciones"] },
