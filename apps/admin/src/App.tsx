@@ -1,6 +1,7 @@
 const Seguridad = lazy(() => import("./paginas/Seguridad").then((m) => ({ default: m.Seguridad })));
 const AccesoRemoto = lazy(() => import("./paginas/AccesoRemoto").then((m) => ({ default: m.AccesoRemoto })));
 import { AvisoAcceso } from "./AvisoAcceso";
+import { AvisoActualizacion } from "./AvisoActualizacion";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
 const Instaladores = lazy(() => import("./paginas/Instaladores").then((m) => ({ default: m.Instaladores })));
@@ -417,6 +418,7 @@ function AppInterna() {
 
           <main key={seccion} className={vista !== "seccion" ? "main-cuadricula" : ""}>
             {!enPortal && actualId !== "licencia" && <AvisoLicencia irA={() => setSeccion("licencia")} />}
+            {!enPortal && <AvisoActualizacion oculto={actualId === "actualizaciones"} />}
             {vista === "inicio" && <TarjetaAgregar />}
 
             {vista === "inicio" && (

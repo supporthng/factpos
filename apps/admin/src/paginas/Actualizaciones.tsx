@@ -13,7 +13,7 @@ interface Estado {
  * versión nueva. Pregunta al mismo servidor al que está conectada esta administración (también en las apps remotas, celular
  * o Windows), así no depende de que alcance a ver el aviso «Actualizando» mientras el servidor se reinicia.
  */
-async function recargarAlTerminar(antes: string, avisar: (t: string, tipo: "ok" | "error" | "info") => void) {
+export async function recargarAlTerminar(antes: string, avisar: (t: string, tipo: "ok" | "error" | "info") => void) {
   const inicio = Date.now();
   avisar("Actualizando… no cierre esta ventana: cuando termine se recarga sola.", "info");
   while (Date.now() - inicio < 20 * 60_000) {
