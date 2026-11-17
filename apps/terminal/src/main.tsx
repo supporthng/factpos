@@ -1,3 +1,4 @@
+import "./uuid-compat";
 import "./migracion-nombre";
 import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
