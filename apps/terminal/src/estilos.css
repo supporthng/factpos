@@ -1412,3 +1412,12 @@ input.ref.requerido { border-color: var(--error); box-shadow: 0 0 0 2px color-mi
 @keyframes pulso-cobro { 50% { box-shadow: 0 0 0 4px rgba(22,163,74,.35); } }
 .aviso-cobro { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; background: rgba(22,163,74,.12); border: 1px solid #16a34a; border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
 .aviso-cobro button { font-weight: 700; }
+
+/* Por cobrar: lista de ventas a la izquierda y la factura completa a la derecha */
+.modal.por-cobrar { width: min(1100px, 100%); }
+.pc-grid { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.pc-lista { display: flex; flex-direction: column; gap: 8px; max-height: 70vh; overflow: auto; }
+.pc-fila { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel); color: inherit; cursor: pointer; font: inherit; }
+.pc-fila.activa { border-color: var(--primario, #0b6f63); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primario, #0b6f63) 25%, transparent); }
+.pc-factura { min-width: 0; max-height: 70vh; overflow: auto; }
+@media (max-width: 760px) { .pc-grid { grid-template-columns: 1fr; } }

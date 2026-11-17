@@ -14,19 +14,27 @@ interface Detalle {
   cliente: { id: string; nombre: string; tipoDocumento: string; documento: string | null } | null;
   lineas: { linea: number; descripcion: string; cantidad: string; precio: string | null; total: string }[];
 }
-const FORMAS = [["EFECTIVO", "Efectivo"], ["TARJETA", "Tarjeta"], ["TRANSFERENCIA", "Transferencia"]] as const;
+const FORMAS = [["EFECTIVO", "Efectivo"], ["TARJETA", "Tarjeta"], ["TRANSFERENCIA", "Transferencia"], ["MIXTO", "Mixto"]] as const;
+type Forma = (typeof FORMAS)[number][0];
 const hora = (iso: string) => new Date(iso).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const cent = (v: string) => Math.round((Number(v) || 0) * 100);
+const dinero = (c: number) => (c / 100).toFixed(2);
 
 export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
   ajustes: Ajustes; permitirSin: boolean; onCobrada: (v: VentaRegistrada) => void; onCerrar: () => void;
 }) {
   const ruta = `/cajas/${ajustes.cajaId}/por-cobrar`;
   const [lista, setLista] = useState<PorCobrarResumen[]>([]);
-  const [abierta, setAbierta] = useState<Detalle | null>(null);
+  const [elegida, setElegida] = useState<string | null>(null);
+  const [detalle, setDetalle] = useState<Detalle | null>(null);
+  const [cobrando, setCobrando] = useState(false);
   const [tipo, setTipo] = useState<TipoComprobante>("E32");
-  const [forma, setForma] = useState<(typeof FORMAS)[number][0]>("EFECTIVO");
+  const [forma, setForma] = useState<Forma>("EFECTIVO");
   const [recibido, setRecibido] = useState("");
-  const [referencia, setReferencia] = useState("");
+  const [tarjeta, setTarjeta] = useState("");
+  const [refTarjeta, setRefTarjeta] = useState("");
+  const [transferencia, setTransferencia] = useState("");
+  const [refTransf, setRefTransf] = useState("");
   const [msg, setMsg] = useState("");
   const [trabajando, setTrabajando] = useState(false);
 
@@ -35,77 +43,131 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
   }, [ajustes, ruta]);
   useEffect(() => { recargar(); const t = setInterval(recargar, 10000); return () => clearInterval(t); }, [recargar]);
 
-  const abrir = async (id: string) => {
-    setMsg("");
-    try {
-      const d = await api<Detalle>(ajustes.servidor, `${ruta}/${id}`);
-      setAbierta(d); setTipo("E32"); setForma("EFECTIVO"); setRecibido(""); setReferencia("");
-    } catch (e) { setMsg((e as Error).message); recargar(); }
-  };
+  // La primera venta de la lista se muestra completa de entrada; si la elegida ya no está (cobrada o devuelta), pasa a la siguiente
+  useEffect(() => {
+    if (!lista.length) { setElegida(null); setDetalle(null); return; }
+    if (!elegida || !lista.some((x) => x.id === elegida)) setElegida(lista[0]!.id);
+  }, [lista, elegida]);
+  useEffect(() => {
+    if (!elegida) return;
+    let vivo = true;
+    api<Detalle>(ajustes.servidor, `${ruta}/${elegida}`).then((d) => { if (vivo) { setDetalle(d); setMsg(""); } }).catch((e) => { if (vivo) { setMsg((e as Error).message); recargar(); } });
+    return () => { vivo = false; };
+  }, [elegida, ajustes, ruta, recargar]);
 
-  const total = Number(abierta?.total ?? 0);
-  const falla = abierta && requiereDocumento(tipo) && ["E31", "B01", "B14", "B15", "B16"].includes(tipo) && !tieneDocumentoFiscal(abierta.cliente as never)
+  const abrirCobro = () => { setTipo("E32"); setForma("EFECTIVO"); setRecibido(""); setTarjeta(""); setRefTarjeta(""); setTransferencia(""); setRefTransf(""); setMsg(""); setCobrando(true); };
+
+  const total = Number(detalle?.total ?? 0);
+  const totalC = cent(detalle?.total ?? "0");
+  const falla = detalle && requiereDocumento(tipo) && ["E31", "B01", "B14", "B15", "B16"].includes(tipo) && !tieneDocumentoFiscal(detalle.cliente as never)
     ? "Este comprobante requiere un cliente con RNC o cédula; la venta no lo tiene. Use consumo final o pida a la oficina que la reenvíe con cliente." : "";
-  const cambio = forma === "EFECTIVO" && Number(recibido) > total ? Number(recibido) - total : 0;
+  // Mixto: tarjeta y transferencia se escriben; el efectivo cubre lo que falta
+  const otrosC = forma === "MIXTO" ? cent(tarjeta) + cent(transferencia) : 0;
+  const efectivoC = forma === "MIXTO" ? Math.max(totalC - otrosC, 0) : forma === "EFECTIVO" ? totalC : 0;
+  const cambioC = (forma === "EFECTIVO" || forma === "MIXTO") && cent(recibido) > efectivoC && efectivoC > 0 ? cent(recibido) - efectivoC : 0;
+  const errorPago = forma === "MIXTO" && otrosC > totalC ? "Tarjeta y transferencia superan el total."
+    : forma === "MIXTO" && otrosC === 0 ? "Escriba lo que se paga con tarjeta o transferencia; el resto se cobra en efectivo."
+    : (forma === "EFECTIVO" || forma === "MIXTO") && recibido && cent(recibido) < efectivoC ? "El efectivo recibido es menor que lo que falta." : "";
 
   const cobrar = async () => {
-    if (!abierta || falla || trabajando) return;
-    if (forma === "EFECTIVO" && recibido && Number(recibido) < total) return setMsg("El efectivo recibido es menor que el total.");
+    if (!detalle || falla || errorPago || trabajando) return;
+    const pagos: Record<string, string>[] = [];
+    if (forma === "MIXTO") {
+      if (cent(tarjeta) > 0) pagos.push({ formaPago: "TARJETA", monto: dinero(cent(tarjeta)), ...(refTarjeta.trim() ? { referencia: refTarjeta.trim() } : {}) });
+      if (cent(transferencia) > 0) pagos.push({ formaPago: "TRANSFERENCIA", monto: dinero(cent(transferencia)), ...(refTransf.trim() ? { referencia: refTransf.trim() } : {}) });
+      if (efectivoC > 0) pagos.push({ formaPago: "EFECTIVO", monto: dinero(efectivoC), ...(recibido ? { recibido: dinero(cent(recibido)) } : {}) });
+    } else {
+      pagos.push({ formaPago: forma, monto: dinero(totalC), ...(forma === "EFECTIVO" && recibido ? { recibido: dinero(cent(recibido)) } : {}), ...(forma !== "EFECTIVO" && refTarjeta.trim() ? { referencia: refTarjeta.trim() } : {}) });
+    }
     setTrabajando(true); setMsg("");
     try {
-      const v = await api<VentaRegistrada>(ajustes.servidor, `${ruta}/${abierta.id}/cobrar`, { cuerpo: {
-        tipoDocumento: tipo,
-        pagos: [{ formaPago: forma, monto: total.toFixed(2), ...(forma === "EFECTIVO" && recibido ? { recibido: Number(recibido).toFixed(2) } : {}), ...(forma !== "EFECTIVO" && referencia.trim() ? { referencia: referencia.trim() } : {}) }],
-      } });
+      const v = await api<VentaRegistrada>(ajustes.servidor, `${ruta}/${detalle.id}/cobrar`, { cuerpo: { tipoDocumento: tipo, pagos } });
       onCobrada(v);
     } catch (e) { setMsg((e as Error).message); setTrabajando(false); }
   };
   const devolver = async () => {
-    if (!abierta || !confirm(`¿Devolver la venta #${abierta.numero} a la oficina sin cobrar? Quedará anulada.`)) return;
-    try { await api(ajustes.servidor, `${ruta}/${abierta.id}/anular`, { cuerpo: {} }); setAbierta(null); recargar(); } catch (e) { setMsg((e as Error).message); }
+    if (!detalle || !confirm(`¿Devolver la venta #${detalle.numero} a la oficina sin cobrar? Quedará anulada.`)) return;
+    try { await api(ajustes.servidor, `${ruta}/${detalle.id}/anular`, { cuerpo: {} }); setDetalle(null); setElegida(null); recargar(); } catch (e) { setMsg((e as Error).message); }
   };
 
-  if (abierta) {
+  // Ventana de cobro: solo comprobante, forma de pago y total (el desglose de la factura está en la pantalla anterior)
+  if (cobrando && detalle) {
     return (
-      <Modal titulo={`Por cobrar #${abierta.numero}`} onCerrar={onCerrar}>
-        <p><b>{abierta.cliente?.nombre ?? "Consumidor final"}</b>{abierta.cliente?.documento && <span className="suave"> · {abierta.cliente.documento}</span>}</p>
-        {abierta.notas && <p className="nota">{abierta.notas}</p>}
-        <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Producto</th><th className="der">Cant.</th><th className="der">Precio</th><th className="der">Total</th></tr></thead><tbody>
-          {abierta.lineas.map((l) => (
-            <tr key={l.linea}><td>{l.descripcion}</td><td className="der">{Number(l.cantidad)}</td><td className="der">{l.precio ? rd(l.precio) : ""}</td><td className="der">{rd(l.total)}</td></tr>
-          ))}
-        </tbody></table></div>
-        <p className="der">Subtotal {rd(abierta.subtotal)}{Number(abierta.descuento) > 0 && ` · Descuento ${rd(abierta.descuento)}`} · ITBIS {rd(abierta.itbis)}<br /><b style={{ fontSize: "1.4em" }}>Total {rd(total)}</b></p>
+      <Modal titulo={`Cobrar #${detalle.numero}`} onCerrar={() => setCobrando(false)}>
+        <p><b>{detalle.cliente?.nombre ?? "Consumidor final"}</b>{detalle.cliente?.documento && <span className="suave"> · {detalle.cliente.documento}</span>}</p>
+        <p style={{ margin: "4px 0 10px" }}><span className="suave">Total a cobrar</span><br /><b style={{ fontSize: "1.9em" }}>{rd(total)}</b></p>
         <SelectorComprobante tipo={tipo} onTipo={setTipo} permitirSin={permitirSin} compacto />
         <div className="fila-acciones" style={{ marginTop: 8 }}>
-          {FORMAS.map(([id, nombre]) => <button key={id} className={"boton" + (forma === id ? " primario" : "")} onClick={() => setForma(id)}>{nombre}</button>)}
+          {FORMAS.map(([id, nombre]) => <button key={id} className={"boton" + (forma === id ? " primario" : "")} onClick={() => { setForma(id); setRecibido(""); setTarjeta(""); setTransferencia(""); }}>{nombre}</button>)}
         </div>
-        {forma === "EFECTIVO"
-          ? <label className="campo"><span>Efectivo recibido</span><input className="numero" inputMode="decimal" value={recibido} placeholder={rd(total)} onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} /></label>
-          : <label className="campo"><span>Referencia (opcional)</span><input value={referencia} maxLength={60} onChange={(e) => setReferencia(e.target.value)} /></label>}
-        {cambio > 0 && <p>Devuelta: <b>{rd(cambio)}</b></p>}
-        {(falla || msg) && <p className="error">{falla || msg}</p>}
+        {forma === "MIXTO" && (
+          <>
+            <div className="fila-acciones" style={{ alignItems: "flex-end" }}>
+              <label className="campo"><span>Tarjeta</span><input className="numero" inputMode="decimal" value={tarjeta} placeholder="0.00" onChange={(e) => setTarjeta(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+              <label className="campo"><span>Voucher (opcional)</span><input value={refTarjeta} maxLength={60} onChange={(e) => setRefTarjeta(e.target.value)} /></label>
+            </div>
+            <div className="fila-acciones" style={{ alignItems: "flex-end" }}>
+              <label className="campo"><span>Transferencia</span><input className="numero" inputMode="decimal" value={transferencia} placeholder="0.00" onChange={(e) => setTransferencia(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+              <label className="campo"><span>Referencia (opcional)</span><input value={refTransf} maxLength={60} onChange={(e) => setRefTransf(e.target.value)} /></label>
+            </div>
+            <p>Efectivo (lo que falta): <b>{rd(dinero(efectivoC))}</b></p>
+          </>
+        )}
+        {(forma === "EFECTIVO" || (forma === "MIXTO" && efectivoC > 0)) && (
+          <label className="campo"><span>Efectivo recibido</span><input className="numero" inputMode="decimal" value={recibido} placeholder={rd(dinero(efectivoC))} onChange={(e) => setRecibido(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+        )}
+        {(forma === "TARJETA" || forma === "TRANSFERENCIA") && (
+          <label className="campo"><span>{forma === "TARJETA" ? "Voucher (opcional)" : "Referencia (opcional)"}</span><input value={refTarjeta} maxLength={60} onChange={(e) => setRefTarjeta(e.target.value)} /></label>
+        )}
+        {cambioC > 0 && <p>Devuelta: <b>{rd(dinero(cambioC))}</b></p>}
+        {(falla || errorPago || msg) && <p className="error">{falla || errorPago || msg}</p>}
         <div className="fila-acciones">
-          <button className="boton" onClick={() => { setAbierta(null); setMsg(""); recargar(); }}>← Por cobrar</button>
-          <button className="boton" onClick={devolver}>Devolver sin cobrar</button>
+          <button className="boton" onClick={() => setCobrando(false)}>← Ver factura</button>
           <span className="flex" />
-          <button className="boton primario" disabled={!!falla || trabajando} onClick={cobrar}>{trabajando ? "Cobrando…" : `Cobrar ${rd(total)}`}</button>
+          <button className="boton primario" disabled={!!falla || !!errorPago || trabajando} onClick={cobrar}>{trabajando ? "Cobrando…" : `Cobrar ${rd(total)}`}</button>
         </div>
       </Modal>
     );
   }
+
+  // Pantalla de ventas por cobrar: la lista a la izquierda y la factura completa de la elegida a la derecha
   return (
-    <Modal titulo="Por cobrar" onCerrar={onCerrar}>
+    <Modal titulo="Por cobrar" onCerrar={onCerrar} ancho clase="por-cobrar">
       {msg && <p className="error">{msg}</p>}
-      {!lista.length ? <p className="suave">No hay ventas esperando cobro en esta caja.</p> : (
-        <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>#</th><th>Cliente</th><th>Vendedor</th><th>Enviada</th><th className="der">Líneas</th><th className="der">Total</th><th /></tr></thead><tbody>
-          {lista.map((p) => (
-            <tr key={p.id}><td><b>{p.numero}</b></td><td>{p.cliente ?? "Consumidor final"}</td><td>{p.vendedor ?? ""}</td><td className="suave">{hora(p.creadaEn)}</td><td className="der">{p.lineas}</td><td className="der">{rd(p.total)}</td>
-              <td className="der"><button className="boton primario" onClick={() => abrir(p.id)}>Cobrar</button></td></tr>
-          ))}
-        </tbody></table></div>
+      {!lista.length ? <><p className="suave">No hay ventas esperando cobro en esta caja.</p><div className="fila-acciones"><button className="boton" onClick={onCerrar}>Cerrar</button></div></> : (
+        <div className="pc-grid">
+          <div className="pc-lista">
+            {lista.map((p) => (
+              <button key={p.id} className={"pc-fila" + (p.id === elegida ? " activa" : "")} onClick={() => setElegida(p.id)}>
+                <span><b>#{p.numero}</b> · {p.cliente ?? "Consumidor final"}</span>
+                <span className="suave">{p.vendedor ?? ""} · {hora(p.creadaEn)} · {p.lineas} {p.lineas === 1 ? "línea" : "líneas"}</span>
+                <b>{rd(p.total)}</b>
+              </button>
+            ))}
+          </div>
+          <div className="pc-factura">
+            {!detalle || detalle.id !== elegida ? <p className="suave">Cargando la factura…</p> : (
+              <>
+                <h4 style={{ margin: "0 0 2px" }}>Factura #{detalle.numero}</h4>
+                <p style={{ margin: "0 0 8px" }}><b>{detalle.cliente?.nombre ?? "Consumidor final"}</b>{detalle.cliente?.documento && <span className="suave"> · {detalle.cliente.documento}</span>}</p>
+                {detalle.notas && <p className="nota">{detalle.notas}</p>}
+                <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Producto</th><th className="der">Cant.</th><th className="der">Precio</th><th className="der">Total</th></tr></thead><tbody>
+                  {detalle.lineas.map((l) => (
+                    <tr key={l.linea}><td>{l.descripcion}</td><td className="der">{Number(l.cantidad)}</td><td className="der">{l.precio ? rd(l.precio) : ""}</td><td className="der">{rd(l.total)}</td></tr>
+                  ))}
+                </tbody></table></div>
+                <p className="der">Subtotal {rd(detalle.subtotal)}{Number(detalle.descuento) > 0 && ` · Descuento ${rd(detalle.descuento)}`} · ITBIS {rd(detalle.itbis)}<br /><b style={{ fontSize: "1.5em" }}>Total {rd(detalle.total)}</b></p>
+                <div className="fila-acciones">
+                  <button className="boton" onClick={devolver}>Devolver sin cobrar</button>
+                  <span className="flex" />
+                  <button className="boton" onClick={onCerrar}>Cerrar</button>
+                  <button className="boton primario" onClick={abrirCobro}>Cobrar {rd(detalle.total)}</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
-      <div className="fila-acciones"><button className="boton" onClick={onCerrar}>Cerrar</button></div>
     </Modal>
   );
 }
