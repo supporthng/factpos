@@ -236,6 +236,11 @@ export function mseller(cred: CredencialesMseller | null, ambiente: string, base
   if (!entorno) throw new Error("MSeller se usa en los ambientes TesteCF, CerteCF o eCF");
   if (!cred) throw new Error("Faltan las credenciales de MSeller (correo, clave y API Key) de esta empresa");
   const url = (ruta: string) => `${base.replace(/\/$/, "")}/${entorno}${ruta}`;
+  // Las API Keys de MSeller empiezan con su ambiente («TesteCF-…»): si no coincide, se avisa claro
+  const delaKey = cred.apiKey.trim().split("-")[0];
+  if (["TesteCF", "CerteCF", "eCF"].includes(delaKey!) && delaKey !== entorno) {
+    throw new Error(`La API Key es del ambiente ${delaKey}, pero FactPOS está en ${entorno}. Cambie el ambiente o cree en MSeller una API Key de ${entorno}.`);
+  }
   let idToken = "", refresco = "", vence = 0;
 
   const tokens = (c: any) => { idToken = c.idToken; if (c.refreshToken) refresco = c.refreshToken; vence = Date.now() + 55 * 60_000; };
@@ -268,7 +273,7 @@ export function mseller(cred: CredencialesMseller | null, ambiente: string, base
       await autenticar();
       const r = await http(url("/documentos-ecf?ecf=E000000000000"), { method: "GET", headers: cabeceras() });
       if (r.status === 401) throw new Error("MSeller no aceptó el acceso (401)");
-      if (r.status === 403) throw new Error("La API Key no es válida (403)");
+      if (r.status === 403) throw new Error("MSeller rechazó la API Key (403). Si la acaba de crear, espere 1 o 2 minutos y pruebe de nuevo; confirme que la copió completa y que es del mismo ambiente.");
     },
     async enviar(d) {
       const xml = d.xmlCompleto ?? d.xml;
