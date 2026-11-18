@@ -22,7 +22,7 @@ const aFilas = (t: Tabla): Record<string, string>[] => {
     const o: Record<string, string> = {};
     cab.forEach((h, i) => { const v = (f[i] ?? "").trim(); if (h && v !== "" && v !== "#e") o[h.trim()] = v; });
     return o;
-  }).filter((o) => o["ENCF"]);
+  }).filter((o) => Object.entries(o).some(([k, v]) => k.toLowerCase() === "encf" && v));
 };
 
 const descargar = (nombre: string, xml: string) => {
@@ -42,7 +42,14 @@ async function descargarPdf(r: Resultado): Promise<void> {
   a.download = x.nombre; a.click(); URL.revokeObjectURL(a.href);
 }
 
+/** Aprobación comercial del set (hoja «ACECF»): la DGII simula que un suplidor nos envió un e-CF y pide aprobarlo o rechazarlo. */
+interface Aprobacion { clave: string; fila: Record<string, string> }
+const ENCF_DE = (f: Record<string, string>) => Object.entries(f).find(([k]) => k.toLowerCase() === "encf")?.[1] ?? "";
+
 export function SetPruebasDgii() {
+  const [aprob, setAprob] = useState<Aprobacion[]>([]);
+  const [resAprob, setResAprob] = useState<Record<string, Resultado>>({});
+
   const [casos, setCasos] = useState<Caso[]>([]);
   const [res, setRes] = useState<Record<string, Resultado>>({});
   const [error, setError] = useState<string | null>(null);
@@ -55,9 +62,18 @@ export function SetPruebasDgii() {
 
   const cargar = async (f: File | undefined) => {
     if (!f) return;
-    setError(null); setRes({}); setCasos([]); setBase([]); setSim(false); setArchivo(f.name);
+    setError(null); setArchivo(f.name);
     try {
       const hojas = await leerHojasXlsx(f);
+      // Set de aprobaciones comerciales: hoja «ACECF» (no borra el set de e-CF ya cargado)
+      const hAc = Object.keys(hojas).find((k) => /^ACE+CF/i.test(k.trim()));
+      if (hAc) {
+        const filas = aFilas(hojas[hAc]!);
+        if (!filas.length) throw new Error("La hoja de aprobaciones comerciales no trae filas.");
+        setAprob(filas.map((fila) => ({ clave: ENCF_DE(fila), fila }))); setResAprob({});
+        return;
+      }
+      setRes({}); setCasos([]); setBase([]); setSim(false);
       const nombre = (n: string) => Object.keys(hojas).find((k) => k.trim().toUpperCase() === n);
       const hEcf = nombre("ECF");
       if (!hEcf) throw new Error("El archivo no tiene la hoja «ECF». Suba el Excel del set de pruebas tal como lo descargó del portal de la DGII.");
@@ -90,6 +106,21 @@ export function SetPruebasDgii() {
     setCorriendo(null);
   };
 
+  const correrAprobaciones = async (lista: Aprobacion[], enviar: boolean) => {
+    setError(null);
+    for (const a of lista) {
+      setCorriendo("AC-" + a.clave);
+      try {
+        const r = await api<Resultado>("/central/fiscal/set-pruebas/aprobacion", { cuerpo: { fila: a.fila, enviar } });
+        setResAprob((x) => ({ ...x, [a.clave]: r }));
+      } catch (e) {
+        setResAprob((x) => ({ ...x, [a.clave]: { estado: "ERROR", mensajes: (e as Error).message } }));
+        if (enviar) break;
+      }
+    }
+    setCorriendo(null);
+  };
+
   const convertirEnSimulacion = async () => {
     setError(null);
     try {
@@ -115,6 +146,34 @@ export function SetPruebasDgii() {
         {archivo && <span className="suave pequeno">{archivo}</span>}
       </div>
       {error && <Aviso texto={error} />}
+      {aprob.length > 0 && (
+        <>
+          <h4 style={{ margin: "14px 0 4px" }}>Aprobaciones comerciales ({aprob.length})</h4>
+          <p className="suave pequeno">Cada fila es un e-CF que la DGII simula que un suplidor le envió: se aprueba (Estado 1) o se rechaza (Estado 2, con su motivo). Se arma el ACECF, se firma con el certificado de la empresa y se envía.</p>
+          <div className="fila-acciones">
+            <button className="boton" disabled={!!corriendo} onClick={() => void correrAprobaciones(aprob, false)}>Armar y firmar (sin enviar)</button>
+            <button className="boton primario" disabled={!!corriendo} onClick={() => { if (confirm(`¿Enviar las ${aprob.length} aprobaciones a la DGII?`)) void correrAprobaciones(aprob, true); }}>{corriendo?.startsWith("AC-") ? "Procesando…" : "Enviar aprobaciones a la DGII"}</button>
+          </div>
+          <table className="tabla">
+            <thead><tr><th>e-NCF</th><th>Decisión</th><th>Resultado</th><th>Detalle</th><th /></tr></thead>
+            <tbody>{aprob.map((a) => {
+              const r = resAprob[a.clave];
+              const estado = Object.entries(a.fila).find(([k]) => k.toLowerCase() === "estado")?.[1];
+              return (
+                <tr key={a.clave}>
+                  <td>{a.clave}</td><td>{estado === "1" ? "Aprobar" : estado === "2" ? "Rechazar" : "—"}</td>
+                  <td>{corriendo === "AC-" + a.clave ? "…" : r ? <span className={"pastilla " + (r.estado === "ACEPTADO" || r.estado === "ARMADO" ? "ok" : r.estado === "ERROR" || r.estado === "RECHAZADO" ? "alerta" : "")}>{r.estado}</span> : <span className="suave">—</span>}</td>
+                  <td className="pequeno">{txt(r?.mensajes)}</td>
+                  <td className="der">
+                    <button className="boton chico" disabled={!!corriendo} onClick={() => void correrAprobaciones([a], true)}>Enviar</button>{" "}
+                    {r?.xmlFirmado && <button className="boton chico" onClick={() => descargar(`${a.clave}-ACECF.xml`, r.xmlFirmado!)}>XML</button>}
+                  </td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </>
+      )}
       {casos.length > 0 && (
         <>
           <p className="suave pequeno">{casos.length} casos{rnc ? ` · RNC emisor del set: ${rnc}` : ""}. {Object.keys(res).length ? `${ok} de ${Object.keys(res).length} correctos.` : ""}</p>

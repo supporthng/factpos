@@ -3,7 +3,7 @@ import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
 import { firmarXml, codigoSeguridad, certificado } from "../fiscal/firma.js";
 import { dgii, type EstadoDgii } from "../fiscal/transmisor.js";
-import { armarXmlDeFila, fechaHoraFirma, limpiarFila } from "../fiscal/set-pruebas.js";
+import { armarXmlDeFila, armarAcecfDeFila, fechaHoraFirma, limpiarFila } from "../fiscal/set-pruebas.js";
 import { representacionPdf } from "../fiscal/representacion-pdf.js";
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -42,6 +42,31 @@ export async function rutasSetPruebasFiscal(app: FastifyInstance) {
     xml = xml.replace(/^<\?xml[^>]*\?>\s*/, "");
     try { return { xmlFirmado: `<?xml version="1.0" encoding="utf-8"?>${firmarXml(xml).xmlFirmado}` }; }
     catch (e) { throw new ErrorNegocio(`No se pudo firmar el archivo: ${(e as Error).message}`, 400); }
+  });
+
+  /** Aprobación comercial del set de pruebas: arma el ACECF de la fila, lo firma y (si se pide) lo envía a la DGII. */
+  app.post("/central/fiscal/set-pruebas/aprobacion", async (req) => {
+    const empresa = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const b = z.object({ fila: z.record(z.string(), z.unknown()), enviar: z.boolean().default(false) }).parse(req.body);
+    const cfg = (await pool.query(
+      `SELECT COALESCE(cf.ambiente, 'SIMULADO') AS ambiente, COALESCE(cf.transmisor, 'SIMULADO') AS transmisor
+         FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id WHERE e.id = $1`, [empresa])).rows[0];
+    if (!cfg) throw new ErrorNegocio("Empresa no encontrada", 404);
+    let a: ReturnType<typeof armarAcecfDeFila>;
+    try { a = armarAcecfDeFila(limpiarFila(b.fila)); } catch (e) { throw new ErrorNegocio((e as Error).message, 400); }
+    if (b.enviar) {
+      if (cfg.ambiente !== "TESTECF" && cfg.ambiente !== "CERTECF") throw new ErrorNegocio("Para enviar las aprobaciones el ambiente debe ser Pruebas (TesteCF) o Certificación (CerteCF).", 409);
+      if (cfg.transmisor !== "DGII") throw new ErrorNegocio("Las aprobaciones se envían directo a la DGII: elija «DGII» como transmisor en Fiscal › Facturación electrónica.", 409);
+      if (certificado().prueba) throw new ErrorNegocio("Falta el certificado digital de la empresa: cárguelo en Fiscal › Certificado digital.", 503);
+    }
+    const xmlFirmado = firmarXml(a.xml).xmlFirmado;
+    if (!b.enviar) return { encf: a.encf, estado: "ARMADO" as const, aceptado: a.aceptado, xmlFirmado, enviado: false };
+    try {
+      const r = await dgii(cfg.ambiente).aprobarComercial!(xmlFirmado, a.rncComprador, `${a.rncComprador}${a.encf}.xml`);
+      return { encf: a.encf, estado: r.aceptada ? "ACEPTADO" : "RECHAZADO", aceptado: a.aceptado, xmlFirmado, enviado: true, mensajes: r.respuesta };
+    } catch (e) {
+      return { encf: a.encf, estado: "ERROR" as const, aceptado: a.aceptado, xmlFirmado, enviado: true, mensajes: (e as Error).message.slice(0, 500) };
+    }
   });
 
   app.post("/central/fiscal/set-pruebas/caso", async (req) => {

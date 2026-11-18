@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { armarXmlDeFila, limpiarFila } from "./set-pruebas.js";
+import { armarAcecfDeFila, armarXmlDeFila, limpiarFila } from "./set-pruebas.js";
 
 const base = {
   Version: "1.0", TipoeCF: "32", ENCF: "E320000000003", TipoIngresos: "01", TipoPago: "1",
@@ -41,5 +41,27 @@ describe("set de pruebas de la DGII", () => {
   it("el resumen RFCE lleva el código de seguridad", () => {
     const r = armarXmlDeFila({ Version: "1.0", TipoeCF: "32", ENCF: "E320000000003", TipoIngresos: "01", TipoPago: "1", RNCEmisor: "1", RazonSocialEmisor: "X", FechaEmision: "01-04-2020", MontoTotal: "5" }, "RFCE", { CodigoSeguridadeCF: "ABC123" });
     expect(r.xml).toContain("<CodigoSeguridadeCF>ABC123</CodigoSeguridadeCF></Encabezado></RFCE>");
+  });
+});
+
+describe("aprobaciones comerciales del set (hoja ACECF)", () => {
+  const fila = { RNCEmisor: "130-89207-5", eNCF: "E310000000010", FechaEmision: "05-11-2026", MontoTotal: "1,180.50", RNCComprador: "131565296", Estado: "1" };
+  it("arma el ACECF aprobado con los datos de la fila", () => {
+    const r = armarAcecfDeFila(fila, new Date("2026-11-18T14:00:00Z"));
+    expect(r.aceptado).toBe(true);
+    expect(r.rncComprador).toBe("131565296");
+    expect(r.xml).toContain("<RNCEmisor>130892075</RNCEmisor>");
+    expect(r.xml).toContain("<eNCF>E310000000010</eNCF>");
+    expect(r.xml).toContain("<MontoTotal>1180.50</MontoTotal>");
+    expect(r.xml).toContain("<Estado>1</Estado>");
+    expect(r.xml).not.toContain("DetalleMotivoRechazo");
+  });
+  it("un rechazo lleva su motivo y sin motivo no se arma", () => {
+    expect(armarAcecfDeFila({ ...fila, Estado: "2", DetalleMotivoRechazo: "Monto incorrecto" }).xml).toContain("<DetalleMotivoRechazo>Monto incorrecto</DetalleMotivoRechazo>");
+    expect(() => armarAcecfDeFila({ ...fila, Estado: "2" })).toThrow(/motivo/i);
+  });
+  it("avisa de lo que falta o no es válido", () => {
+    expect(() => armarAcecfDeFila({ ...fila, Estado: "3" })).toThrow(/Estado/);
+    expect(() => armarAcecfDeFila({ ...fila, eNCF: "" })).toThrow(/eNCF/);
   });
 });
