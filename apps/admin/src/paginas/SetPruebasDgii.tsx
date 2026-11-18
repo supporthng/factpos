@@ -10,7 +10,7 @@ import { armarSimulacion, type DatosEmisor } from "../simulacionDgii";
  * trae su propio RNC y sus propios e-NCF: aquí no hay nada fijo.
  */
 interface Caso { clave: string; tipo: string; encf: string; ecf: Record<string, string>; rfce?: Record<string, string> }
-interface Resultado { estado: string; trackId?: string; mensajes?: unknown; aviso?: string; sinUsar?: string[]; xmlFirmado?: string; modo?: string; enviado?: boolean }
+interface Resultado { estado: string; trackId?: string; mensajes?: unknown; aviso?: string; sinUsar?: string[]; xmlFirmado?: string; xmlCompleto?: string; modo?: string; enviado?: boolean }
 
 /** Orden que pide la DGII: 31, 32, 41, 43, 44, 45, 46, 47; luego 33 y 34 (referencian comprobantes ya aceptados). */
 const ORDEN = ["31", "32", "41", "43", "44", "45", "46", "47", "33", "34"];
@@ -30,6 +30,17 @@ const descargar = (nombre: string, xml: string) => {
   a.href = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
   a.download = nombre; a.click(); URL.revokeObjectURL(a.href);
 };
+
+/** Representación impresa (PDF con QR) del e-CF completo del caso: paso 5 de la certificación. */
+async function descargarPdf(r: Resultado): Promise<void> {
+  const xml = r.xmlCompleto ?? r.xmlFirmado;
+  if (!xml) throw new Error("Primero arme el caso.");
+  const x = await api<{ nombre: string; pdfBase64: string }>("/central/fiscal/representacion-pdf", { cuerpo: { xml } });
+  const bytes = Uint8Array.from(atob(x.pdfBase64), (c) => c.charCodeAt(0));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  a.download = x.nombre; a.click(); URL.revokeObjectURL(a.href);
+}
 
 export function SetPruebasDgii() {
   const [casos, setCasos] = useState<Caso[]>([]);
@@ -118,6 +129,7 @@ export function SetPruebasDgii() {
           <div className="fila-acciones">
             {sim && <button className="boton" disabled={!!corriendo} onClick={() => { if (confirm("¿Reiniciar la simulación? Se vuelve al set y, si ya envió comprobantes, use un número de inicio más alto (la DGII no deja repetir números).")) volverAlSet(); }}>Reiniciar simulación</button>}
             <button className="boton" disabled={!!corriendo} onClick={() => void correr(casos, false)}>Armar y firmar (sin enviar)</button>
+            <button className="boton" disabled={!!corriendo || !Object.values(res).some((r) => r.xmlFirmado)} onClick={async () => { for (const c of casos) { const r = res[c.clave]; if (r?.xmlFirmado) { try { await descargarPdf(r); } catch (e) { setError((e as Error).message); break; } await new Promise((ok) => setTimeout(ok, 400)); } } }}>Descargar todos los PDF</button>
             <button className="boton primario" disabled={!!corriendo} onClick={() => { if (confirm(`¿Enviar los ${casos.length} casos a la DGII?`)) void correr(casos, true); }}>{corriendo ? "Procesando…" : "Enviar todo a la DGII"}</button>
           </div>
           <table className="tabla">
@@ -131,7 +143,8 @@ export function SetPruebasDgii() {
                   <td className="pequeno">{r?.trackId ? `TrackId ${r.trackId}. ` : ""}{r?.aviso ? `${r.aviso} ` : ""}{r?.sinUsar?.length ? `Columnas sin usar: ${r.sinUsar.join(", ")}. ` : ""}{txt(r?.mensajes)}</td>
                   <td className="der">
                     <button className="boton chico" disabled={!!corriendo} onClick={() => void correr([c], true)}>Enviar</button>{" "}
-                    {r?.xmlFirmado && <button className="boton chico" onClick={() => descargar(`${c.encf}.xml`, r.xmlFirmado!)}>XML</button>}
+                    {r?.xmlFirmado && <button className="boton chico" onClick={() => descargar(`${c.encf}.xml`, r.xmlFirmado!)}>XML</button>}{" "}
+                    {r?.xmlFirmado && <button className="boton chico" onClick={() => descargarPdf(r).catch((e) => setError((e as Error).message))}>PDF</button>}
                   </td>
                 </tr>
               );
