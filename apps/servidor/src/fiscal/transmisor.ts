@@ -87,11 +87,15 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
     if (token && token.vence > Date.now() + 60000) return token.valor;
     const semilla = await http(`${base}/autenticacion/api/Autenticacion/Semilla`, { method: "GET" });
     const xmlSemilla = typeof semilla.cuerpo.texto === "string" ? semilla.cuerpo.texto : String(semilla.cuerpo);
-    const { xmlFirmado } = firmarXml(xmlSemilla);
+    // Sin la declaración original (la semilla de .NET suele declarar utf-16) ni BOM: se firma el documento y se vuelve a declarar utf-8,
+    // que es lo que se envía. Así lo hace también fumio con dgii-ecf, que la DGII ya aceptó.
+    const limpia = xmlSemilla.replace(/^\uFEFF/, "").replace(/^\s*<\?xml[^>]*\?>\s*/, "").trim();
+    const { xmlFirmado } = firmarXml(limpia);
     const r = await http(`${base}/autenticacion/api/Autenticacion/ValidarSemilla`, {
-      method: "POST", body: archivo(xmlFirmado, "semilla.xml"),
+      method: "POST", body: archivo(`<?xml version="1.0" encoding="utf-8"?>${xmlFirmado}`, "semilla.xml"),
     });
-    if (!r.cuerpo.token) throw new Error(`La DGII no devolvió token: ${JSON.stringify(r.cuerpo)}`);
+    // Si la DGII la rechaza se deja a la vista cómo llegó la semilla (sin datos secretos) para poder compararla
+    if (!r.cuerpo.token) throw new Error(`La DGII no devolvió token: ${JSON.stringify(r.cuerpo)} · semilla recibida: ${JSON.stringify(xmlSemilla.slice(0, 220))}`);
     token = { valor: r.cuerpo.token, vence: Date.parse(r.cuerpo.expira ?? "") || Date.now() + 50 * 60000 };
     return token.valor;
   }
