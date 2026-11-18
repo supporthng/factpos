@@ -1,5 +1,6 @@
 import { fechaHoraDGII } from "./xml.js";
 import { ESTRUCTURA_ECF, type NodoEcf } from "./estructura-ecf.js";
+import { construirAcecf } from "./servicios-dgii.js";
 
 /**
  * Set de pruebas de la DGII (Excel de casos de e-CF y resumen de consumo): cada fila trae TODOS los datos del comprobante,
@@ -90,3 +91,27 @@ export function armarXmlDeFila(fila: FilaCaso, hoja: "ECF" | "RFCE", extra: Reco
 
 /** Fecha y hora de la firma tal como la pide el esquema (hora de República Dominicana). */
 export const fechaHoraFirma = (d = new Date()) => fechaHoraDGII(d);
+
+/**
+ * Aprobación comercial del set de pruebas (hoja «ACECF» del Excel): cada fila trae el e-CF que la DGII simula que un suplidor nos envió
+ * (RNC emisor, e-NCF, fecha, monto) y si se aprueba (Estado 1) o se rechaza (Estado 2, con su motivo). Con eso se arma el ACECF.
+ */
+export function armarAcecfDeFila(fila: Record<string, unknown>, ahora = new Date()): { xml: string; encf: string; rncEmisor: string; rncComprador: string; aceptado: boolean } {
+  const clave = new Map(Object.keys(fila).map((k) => [k.toLowerCase().replace(/[^a-z0-9]/g, ""), k]));
+  const v = (...nombres: string[]) => {
+    for (const n of nombres) { const k = clave.get(n.toLowerCase().replace(/[^a-z0-9]/g, "")); const x = k === undefined ? undefined : String(fila[k] ?? "").trim(); if (x && x !== "#e") return x; }
+    return "";
+  };
+  const encf = v("eNCF", "ENCF");
+  const rncEmisor = v("RNCEmisor").replace(/\D/g, "");
+  const rncComprador = v("RNCComprador").replace(/\D/g, "");
+  const monto = Number(v("MontoTotal").replace(/,/g, ""));
+  const estado = Number(v("Estado"));
+  const motivo = v("DetalleMotivoRechazo", "MotivoRechazo");
+  if (!encf || !rncEmisor || !rncComprador) throw new Error("La fila de aprobación comercial necesita eNCF, RNCEmisor y RNCComprador.");
+  if (!Number.isFinite(monto)) throw new Error("La fila de aprobación comercial no trae un MontoTotal válido.");
+  if (estado !== 1 && estado !== 2) throw new Error("El Estado de la aprobación debe ser 1 (aprobado) o 2 (rechazado).");
+  if (estado === 2 && !motivo) throw new Error("Una aprobación rechazada necesita su DetalleMotivoRechazo.");
+  const xml = construirAcecf({ rncEmisor, encf, fechaEmision: v("FechaEmision"), montoTotal: monto.toFixed(2), rncComprador, aceptado: estado === 1, ...(estado === 2 ? { motivoRechazo: motivo } : {}), ahora });
+  return { xml, encf, rncEmisor, rncComprador, aceptado: estado === 1 };
+}

@@ -26,7 +26,7 @@ export interface Transmisor {
   probar?(): Promise<void>;
   /** Anulación de rangos de e-NCF (ANECF). Solo el envío directo a la DGII. */
   /** Aprobación comercial (ACECF) de un e-CF recibido. Solo el envío directo a la DGII. */
-  aprobarComercial?(xmlFirmado: string, rncComprador: string): Promise<{ aceptada: boolean; respuesta: string }>;
+  aprobarComercial?(xmlFirmado: string, rncComprador: string, nombreArchivo?: string): Promise<{ aceptada: boolean; respuesta: string }>;
   anularRango?(xmlFirmado: string, rncEmisor: string): Promise<{ aceptada: boolean; respuesta: string }>;
 }
 
@@ -106,9 +106,9 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
 
   return {
     async probar() { token = null; await autenticar(); },
-    async aprobarComercial(xml, rnc) {
+    async aprobarComercial(xml, rnc, nombre) {
       const r = await conToken((t) => http(`${base}/aprobacioncomercial/api/aprobacioncomercial`, {
-        method: "POST", headers: { authorization: `Bearer ${t}` }, body: archivo(xml, `${rnc}ACECF.xml`),
+        method: "POST", headers: { authorization: `Bearer ${t}` }, body: archivo(xml, nombre ?? `${rnc}ACECF.xml`),
       }));
       const c = r.cuerpo;
       const texto = Array.isArray(c.mensaje) ? c.mensaje.join(" ") : typeof c.texto === "string" ? c.texto : JSON.stringify(c);
