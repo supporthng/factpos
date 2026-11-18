@@ -3,6 +3,7 @@ import { verificarCupoSucursal } from "../licencia/cliente.js";
 import { z } from "zod";
 import { uuidv7, rncValido } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
+import { quitarCertificado } from "../fiscal/firma.js";
 
 /** Sucursales y terminales (cajas) de la empresa. */
 const uuid = z.string().uuid();
@@ -191,6 +192,33 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
       throw err;
     }
     return { ok: true };
+  });
+
+  /**
+   * Corrige el RNC de una empresa que ya tiene certificado o comprobantes electrónicos, pero solo mientras NO esté en producción
+   * (ambiente simulado, pruebas o certificación): lo emitido hasta ahora son comprobantes de prueba. Se desactiva el certificado
+   * cargado (estaba firmado para el RNC anterior) y hay que cargar el que corresponde al RNC nuevo.
+   */
+  app.post("/central/empresa/cambiar-rnc", async (req) => {
+    const e = empresaDe(req);
+    const b = z.object({ rnc: z.string().trim().regex(/^\d{9}(\d{2})?$/, "El RNC debe tener 9 dígitos (11 si es cédula)"), confirmar: z.literal(true, { errorMap: () => ({ message: "Confirme el cambio" }) }) }).parse(req.body);
+    const actual = (await pool.query<{ rnc: string }>("SELECT rnc FROM empresas WHERE id = $1", [e])).rows[0];
+    if (!actual) throw new ErrorNegocio("Empresa no encontrada", 404);
+    if (b.rnc === actual.rnc) throw new ErrorNegocio("Ese ya es el RNC de la empresa", 400);
+    if (b.rnc.length === 9 && !rncValido(b.rnc)) throw new ErrorNegocio("RNC inválido: el último dígito no coincide con el verificador de la DGII");
+    const amb = (await pool.query<{ ambiente: string }>("SELECT ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [e])).rows[0]?.ambiente ?? "SIMULADO";
+    if (amb === "ECF") throw new ErrorNegocio("La empresa está facturando en producción con este RNC: no se puede cambiar. Cree una empresa nueva con el RNC correcto o escriba a soporte.", 409);
+    try {
+      await enTransaccion(async (c) => {
+        await c.query("UPDATE empresas SET rnc = $2, version = version + 1, actualizado_en = now() WHERE id = $1", [e, b.rnc]);
+        await c.query("UPDATE certificados_digitales SET activo = false WHERE empresa_id = $1 AND activo", [e]);
+      });
+    } catch (err: any) {
+      if (err.code === "23505") throw new ErrorNegocio("Ese RNC ya está registrado en otra empresa", 409);
+      throw err;
+    }
+    quitarCertificado();
+    return { ok: true, certificadoQuitado: true };
   });
 
   app.get("/central/marca", async (req) => {
