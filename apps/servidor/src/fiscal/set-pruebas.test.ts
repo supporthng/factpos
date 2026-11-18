@@ -56,6 +56,10 @@ describe("aprobaciones comerciales del set (hoja ACECF)", () => {
     expect(r.xml).toContain("<Estado>1</Estado>");
     expect(r.xml).not.toContain("DetalleMotivoRechazo");
   });
+  it("usa la fecha y hora de aprobación que trae el set (la DGII la compara)", () => {
+    const r = armarAcecfDeFila({ ...fila, FechaHoraAprobacionComercial: "18-11-2026 16:58:42" }, new Date("2026-11-18T14:00:00Z"));
+    expect(r.xml).toContain("<FechaHoraAprobacionComercial>18-11-2026 16:58:42</FechaHoraAprobacionComercial>");
+  });
   it("un rechazo lleva su motivo y sin motivo no se arma", () => {
     expect(armarAcecfDeFila({ ...fila, Estado: "2", DetalleMotivoRechazo: "Monto incorrecto" }).xml).toContain("<DetalleMotivoRechazo>Monto incorrecto</DetalleMotivoRechazo>");
     expect(() => armarAcecfDeFila({ ...fila, Estado: "2" })).toThrow(/motivo/i);

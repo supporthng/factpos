@@ -108,10 +108,13 @@ export function armarAcecfDeFila(fila: Record<string, unknown>, ahora = new Date
   const monto = Number(v("MontoTotal").replace(/,/g, ""));
   const estado = Number(v("Estado"));
   const motivo = v("DetalleMotivoRechazo", "MotivoRechazo");
+  // La DGII compara esta fecha/hora con la que ella generó en el set: se envía tal cual
+  const fh = v("FechaHoraAprobacionComercial");
+  const fechaHora = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}$/.test(fh) ? fh : undefined;
   if (!encf || !rncEmisor || !rncComprador) throw new Error("La fila de aprobación comercial necesita eNCF, RNCEmisor y RNCComprador.");
   if (!Number.isFinite(monto)) throw new Error("La fila de aprobación comercial no trae un MontoTotal válido.");
   if (estado !== 1 && estado !== 2) throw new Error("El Estado de la aprobación debe ser 1 (aprobado) o 2 (rechazado).");
   if (estado === 2 && !motivo) throw new Error("Una aprobación rechazada necesita su DetalleMotivoRechazo.");
-  const xml = construirAcecf({ rncEmisor, encf, fechaEmision: v("FechaEmision"), montoTotal: monto.toFixed(2), rncComprador, aceptado: estado === 1, ...(estado === 2 ? { motivoRechazo: motivo } : {}), ahora });
+  const xml = construirAcecf({ rncEmisor, encf, fechaEmision: v("FechaEmision"), montoTotal: monto.toFixed(2), rncComprador, aceptado: estado === 1, ...(fechaHora ? { fechaHora } : {}), ...(estado === 2 ? { motivoRechazo: motivo } : {}), ahora });
   return { xml, encf, rncEmisor, rncComprador, aceptado: estado === 1 };
 }

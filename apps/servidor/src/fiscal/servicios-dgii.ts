@@ -86,8 +86,8 @@ export function construirArecf(d: { rncEmisor: string; rncComprador: string; enc
   return `<?xml version="1.0" encoding="UTF-8"?><ARECF><DetalleAcusedeRecibo>${el("Version", "1.0")}${el("RNCEmisor", d.rncEmisor)}${el("RNCComprador", d.rncComprador)}${el("eNCF", d.encf)}${el("Estado", d.estado)}${d.estado === 1 ? el("CodigoMotivoNoRecibido", d.motivo ?? 1) : ""}${el("FechaHoraAcuseRecibo", fechaHoraDgii(d.ahora))}</DetalleAcusedeRecibo></ARECF>`;
 }
 
-export function construirAcecf(d: { rncEmisor: string; encf: string; fechaEmision: string; montoTotal: string; rncComprador: string; aceptado: boolean; motivoRechazo?: string; ahora?: Date }) {
-  return `<?xml version="1.0" encoding="UTF-8"?><ACECF><DetalleAprobacionComercial>${el("Version", "1.0")}${el("RNCEmisor", d.rncEmisor)}${el("eNCF", d.encf)}${el("FechaEmision", d.fechaEmision)}${el("MontoTotal", d.montoTotal)}${el("RNCComprador", d.rncComprador)}${el("Estado", d.aceptado ? 1 : 2)}${d.aceptado ? "" : el("DetalleMotivoRechazo", (d.motivoRechazo ?? "Rechazado").slice(0, 250))}${el("FechaHoraAprobacionComercial", fechaHoraDgii(d.ahora))}</DetalleAprobacionComercial></ACECF>`;
+export function construirAcecf(d: { rncEmisor: string; encf: string; fechaEmision: string; montoTotal: string; rncComprador: string; aceptado: boolean; motivoRechazo?: string; ahora?: Date; fechaHora?: string }) {
+  return `<?xml version="1.0" encoding="UTF-8"?><ACECF><DetalleAprobacionComercial>${el("Version", "1.0")}${el("RNCEmisor", d.rncEmisor)}${el("eNCF", d.encf)}${el("FechaEmision", d.fechaEmision)}${el("MontoTotal", d.montoTotal)}${el("RNCComprador", d.rncComprador)}${el("Estado", d.aceptado ? 1 : 2)}${d.aceptado ? "" : el("DetalleMotivoRechazo", (d.motivoRechazo ?? "Rechazado").slice(0, 250))}${el("FechaHoraAprobacionComercial", d.fechaHora ?? fechaHoraDgii(d.ahora))}</DetalleAprobacionComercial></ACECF>`;
 }
 
 export interface RangoAnulado { tipo: string; desde: string; hasta: string }
