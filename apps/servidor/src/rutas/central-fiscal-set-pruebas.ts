@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { pool, ErrorNegocio } from "../db.js";
-import { firmarXml, codigoSeguridad, certificado } from "../fiscal/firma.js";
+import { compactarXml, firmarXml, codigoSeguridad, certificado } from "../fiscal/firma.js";
 import { dgii, type EstadoDgii } from "../fiscal/transmisor.js";
 import { armarXmlDeFila, armarAcecfDeFila, fechaHoraFirma, limpiarFila } from "../fiscal/set-pruebas.js";
 import { representacionPdf } from "../fiscal/representacion-pdf.js";
@@ -39,7 +39,7 @@ export async function rutasSetPruebasFiscal(app: FastifyInstance) {
     if (!xml.startsWith("<")) throw new ErrorNegocio("Ese archivo no es un XML.", 400);
     if (/<(\w+:)?Signature[\s>]/.test(xml)) throw new ErrorNegocio("Ese XML ya está firmado: súbalo tal cual a la DGII.", 400);
     if (certificado().prueba) throw new ErrorNegocio("Falta el certificado digital de la empresa: cárguelo en Fiscal › Certificado digital.", 503);
-    xml = xml.replace(/^<\?xml[^>]*\?>\s*/, "");
+    xml = compactarXml(xml.replace(/^<\?xml[^>]*\?>\s*/, ""));
     try { return { xmlFirmado: `<?xml version="1.0" encoding="utf-8"?>${firmarXml(xml).xmlFirmado}` }; }
     catch (e) { throw new ErrorNegocio(`No se pudo firmar el archivo: ${(e as Error).message}`, 400); }
   });

@@ -1,5 +1,5 @@
 import { ecfXmlAJson } from "./xml-a-json.js";
-import { firmarXml } from "./firma.js";
+import { compactarXml, firmarXml } from "./firma.js";
 
 /**
  * Envío de e-CF a la DGII. Tres transmisores intercambiables:
@@ -89,7 +89,7 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
     const xmlSemilla = typeof semilla.cuerpo.texto === "string" ? semilla.cuerpo.texto : String(semilla.cuerpo);
     // Sin la declaración original (la semilla de .NET suele declarar utf-16) ni BOM: se firma el documento y se vuelve a declarar utf-8,
     // que es lo que se envía. Así lo hace también fumio con dgii-ecf, que la DGII ya aceptó.
-    const limpia = xmlSemilla.replace(/^\uFEFF/, "").replace(/^\s*<\?xml[^>]*\?>\s*/, "").trim();
+    const limpia = compactarXml(xmlSemilla.replace(/^\s*<\?xml[^>]*\?>\s*/, ""));
     const { xmlFirmado } = firmarXml(limpia);
     const r = await http(`${base}/autenticacion/api/Autenticacion/ValidarSemilla`, {
       method: "POST", body: archivo(`<?xml version="1.0" encoding="utf-8"?>${xmlFirmado}`, "semilla.xml"),

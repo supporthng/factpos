@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DOMParser } from "@xmldom/xmldom";
 import { SignedXml } from "xml-crypto";
-import { certificado, firmarXml } from "./firma.js";
+import { certificado, compactarXml, firmarXml } from "./firma.js";
 
 const digest = (x: string) => /<DigestValue>([^<]+)<\/DigestValue>/.exec(x)?.[1];
 
@@ -37,5 +37,18 @@ describe("firmarXml", () => {
   it("la firma de la postulación (raíz con xmlns:xsi y xmlns:xsd) verifica en contexto", () => {
     const x = `<Postulacion xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><PostulacionID>1</PostulacionID></Postulacion>`;
     expect(verifica(firmarXml(x).xmlFirmado)).toBe(true);
+  });
+
+  it("la semilla de la DGII (CRLF y sangría entre etiquetas) se compacta antes de firmar", () => {
+    const semilla = '<SemillaModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\r\n  <valor>9/1jfFwb+Xx=</valor>\r\n  <fecha>2026-11-18T14:00:00.000-04:00</fecha>\r\n</SemillaModel>';
+    const c = compactarXml(`<?xml version="1.0" encoding="utf-8"?>\r\n`.replace(/^<\?xml[^>]*\?>\s*/, "") + semilla);
+    expect(c).not.toMatch(/[\r\n]/);
+    expect(c).not.toMatch(/>\s+</);
+    expect(c).toContain("<valor>9/1jfFwb+Xx=</valor><fecha>");
+    expect(verifica(firmarXml(c).xmlFirmado)).toBe(true);
+  });
+
+  it("compactar no toca el texto de los valores", () => {
+    expect(compactarXml("<a>\n  <b>un  texto con espacios</b>\n</a>")).toBe("<a><b>un  texto con espacios</b></a>");
   });
 });
