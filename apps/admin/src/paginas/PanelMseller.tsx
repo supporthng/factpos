@@ -12,6 +12,7 @@ interface Fila {
   estado: "sin-plan" | "ok" | "cerca" | "excedido" | "sin-datos"; ultimoReporte: string | null;
   conexion: Conexion | null; conexionEn: string | null; esMseller: boolean;
 }
+interface PlanMseller { id: string; codigo: string; nombre: string; maxMes: number; costoUsd: number; precioUsd: number; activo: boolean; clientes: number }
 interface Resumen { mes: string; clientes: Fila[]; totales: { ingresoUsd: number; costoUsd: number; margenUsd: number } }
 
 const usd = (n: number) => "US$ " + n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -32,6 +33,7 @@ function problema(f: Fila): string | null {
 
 export function PanelMseller() {
   const { datos, error, recargar } = useDatos<Resumen>("/central/portal/ecf-resumen");
+  const planes = useDatos<PlanMseller[]>("/central/portal/ecf-planes");
   const filas = (datos?.clientes ?? []).filter((c) => c.esMseller);
   const conectados = filas.filter((f) => f.conexion?.proveedor === "mseller" && f.conexion.credenciales && f.conexion.ambiente !== "SIMULADO").length;
   const enProduccion = filas.filter((f) => f.conexion?.proveedor === "mseller" && f.conexion.ambiente === "ECF").length;
@@ -68,6 +70,23 @@ export function PanelMseller() {
               : "—" },
           { titulo: "Qué falta", valor: (f) => { const p = problema(f); return p ? <span className="texto-alerta pequeno">{p}</span> : <span className="texto-ok pequeno">Todo en orden</span>; } },
           { titulo: "Último reporte", valor: (f) => <span className="suave pequeno">{fecha(f.conexionEn ?? f.ultimoReporte)}</span>, ocultoMovil: true },
+        ]}
+      />
+      <h3 style={{ margin: "18px 0 6px" }}>Planes y precios de MSeller</h3>
+      <p className="suave pequeno" style={{ marginTop: 0 }}>Lo que MSeller cobra por cada cuenta de cliente al mes, lo que se cobra al cliente de FactPOS y la ganancia. Los precios se editan en Facturación electrónica.</p>
+      {planes.error && <Aviso texto={planes.error} />}
+      <Tabla
+        filas={(planes.datos ?? []).filter((p) => p.activo)}
+        clave={(p) => p.id}
+        tarjetas
+        vacio="Aún no hay planes de MSeller. Créalos en Facturación electrónica."
+        columnas={[
+          { titulo: "Plan", valor: (p) => <b>{p.nombre}</b> },
+          { titulo: "Comprobantes al mes", valor: (p) => `Hasta ${num(p.maxMes)}` },
+          { titulo: "Costo MSeller (mes)", valor: (p) => usd(p.costoUsd) },
+          { titulo: "Precio al cliente (mes)", valor: (p) => <b>{usd(p.precioUsd)}</b> },
+          { titulo: "Ganancia (mes)", valor: (p) => <span className={p.precioUsd - p.costoUsd > 0 ? "texto-ok" : ""}>{usd(p.precioUsd - p.costoUsd)}</span> },
+          { titulo: "Clientes", valor: (p) => num(p.clientes) },
         ]}
       />
       <div className="panel" style={{ marginTop: 14 }}>
