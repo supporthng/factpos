@@ -1203,7 +1203,7 @@ async function rutasPaginas(app: FastifyInstance) {
 
   // Clientes
   const cliente = async (slug: string) =>
-    slugValido(slug) ? (await pool.query("SELECT nombre, slug, codigo, api_url FROM portal_clientes WHERE slug = $1 AND activo", [slug])).rows[0] : null;
+    slugValido(slug) ? (await pool.query("SELECT nombre, slug, codigo, api_url, tunel_host FROM portal_clientes WHERE slug = $1 AND activo", [slug])).rows[0] : null;
   /** factpos.app/c/FP-K7M4QX → la administración de esa empresa (lo que usan las apps FactPOS Admin con el código corto) */
   app.get("/c/:codigo", async (req, rep) => {
     const codigo = String((req.params as { codigo: string }).codigo).toUpperCase();
@@ -1213,8 +1213,9 @@ async function rutasPaginas(app: FastifyInstance) {
   });
   app.get("/:slug", async (req, rep) => {
     const { slug } = req.params as { slug: string };
-    if (!(await cliente(slug.toLowerCase()))) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
-    return rep.redirect(`/${slug.toLowerCase()}/`);
+    const c = await cliente(slug.toLowerCase());
+    if (!c) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
+    return rep.redirect(c.tunel_host ? `https://${c.tunel_host}/admin/` : `/${slug.toLowerCase()}/`);
   });
   /**
    * Enlace FIJO de la consulta de precios (el del QR de la tienda): factpos.app/<empresa>/precios?sucursal=<id>.
@@ -1235,6 +1236,8 @@ async function rutasPaginas(app: FastifyInstance) {
     const c = await cliente(slug.toLowerCase());
     if (!c) return rep.code(404).type("text/html; charset=utf-8").send(noExiste());
     if (resto && resto !== "index.html") return archivo(rep, resto) ?? rep.code(404).send({ error: "No encontrado" });
+    // Con su dirección fija (<empresa>.factpos.app) ese es el acceso principal; «?portal=1» entra por aquí si el túnel está caído
+    if (c.tunel_host && !("portal" in ((req.query as object) ?? {}))) return rep.header("cache-control", "no-store").redirect(`https://${c.tunel_host}/admin/`);
     if (!c.api_url) return rep.type("text/html; charset=utf-8").send(sinNube(c.nombre));
     return pagina(rep, { modo: "cliente", slug: c.slug, codigo: c.codigo, cliente: c.nombre, api: c.api_url });
   });
