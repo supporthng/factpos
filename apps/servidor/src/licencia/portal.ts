@@ -602,6 +602,11 @@ export async function rutasPortal(app: FastifyInstance) {
   app.put("/central/portal/clientes/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = esquemaCliente.partial().parse(req.body);
+    if (b.slug) {
+      const act = (await pool.query("SELECT slug, tunel_host FROM portal_clientes WHERE id = $1", [id])).rows[0];
+      if (act && act.slug !== b.slug && act.tunel_host)
+        throw new ErrorNegocio(`Ya tiene su dirección fija (${act.tunel_host}); el nombre corto no se puede cambiar`, 409);
+    }
     try {
       const r = await pool.query(
         `UPDATE portal_clientes SET slug = COALESCE($2, slug), nombre = COALESCE($3, nombre), rnc = CASE WHEN $10 THEN $4 ELSE rnc END,
