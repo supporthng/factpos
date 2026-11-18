@@ -4,6 +4,7 @@ import { pool, ErrorNegocio } from "../db.js";
 import { firmarXml, codigoSeguridad, certificado } from "../fiscal/firma.js";
 import { dgii, type EstadoDgii } from "../fiscal/transmisor.js";
 import { armarXmlDeFila, fechaHoraFirma, limpiarFila } from "../fiscal/set-pruebas.js";
+import { representacionPdf } from "../fiscal/representacion-pdf.js";
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const soloDigitos = (s: string | undefined) => (s ?? "").replace(/\D/g, "");
@@ -14,6 +15,20 @@ const soloDigitos = (s: string | undefined) => (s ?? "").replace(/\D/g, "");
  * a TesteCF/CerteCF y se espera el resultado. No crea ventas ni gasta e-NCF de la sucursal: los números vienen en el set.
  */
 export async function rutasSetPruebasFiscal(app: FastifyInstance) {
+  /**
+   * Paso 5 de la certificación: la representación impresa (PDF con QR, código de seguridad y fecha de firma) de un e-CF,
+   * armada desde su XML firmado. Se devuelve en base64 para que la administración lo descargue.
+   */
+  app.post("/central/fiscal/representacion-pdf", { bodyLimit: 3 * 1024 * 1024 }, async (req) => {
+    const empresa = z.string().uuid().parse(req.headers["x-empresa-id"]);
+    const b = z.object({ xml: z.string().min(1).max(2 * 1024 * 1024) }).parse(req.body);
+    const amb = (await pool.query<{ ambiente: string }>("SELECT ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [empresa])).rows[0]?.ambiente ?? "CERTECF";
+    try {
+      const r = representacionPdf(b.xml, amb === "TESTECF" || amb === "ECF" ? amb : "CERTECF");
+      return { nombre: `${r.rnc}${r.encf}.pdf`, pdfBase64: Buffer.from(r.pdf).toString("base64") };
+    } catch (e) { throw new ErrorNegocio((e as Error).message, 400); }
+  });
+
   /**
    * Firma con el certificado de la empresa un XML que genera el portal de la DGII (postulación, delegaciones, declaración jurada…).
    * Sustituye a la «App Firma Digital»: el XML se devuelve firmado, listo para subirlo de nuevo a la DGII.
