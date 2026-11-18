@@ -326,6 +326,7 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
   const [ren, setRen] = useState({ meses: mesesDe(periodo), monto: "", referencia: "" });
   const montoSugerido = precio * l.sucursales * (ren.meses / mesesDe(periodo));
   const [api_, setApi] = useState(c.apiUrl ?? "");
+  const [dat, setDat] = useState({ nombre: c.nombre, slug: c.slug });
   const [extraGb, setExtraGb] = useState(String(c.respaldoExtraGb ?? 0));
   const [cupoLector, setCupoLector] = useState(String(c.lectorCupo ?? 0));
   const [lectorPago, setLectorPago] = useState(!!c.lectorPago);
@@ -342,6 +343,19 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
   return (
     <div className="detalle-grid">
       <div>
+        <h4>Datos del cliente</h4>
+        <div className="panel">
+          <div className="tres-col">
+            <label className="campo"><span>Nombre de la empresa</span><input value={dat.nombre} onChange={(e) => setDat({ ...dat, nombre: e.target.value })} /></label>
+            <label className="campo"><span>Nombre corto (su dirección)</span><input className="mono" value={dat.slug} disabled={!!c.tunelHost} title={c.tunelHost ? "Ya tiene su dirección fija creada; no se puede cambiar" : undefined} onChange={(e) => setDat({ ...dat, slug: aSlug(e.target.value) })} /></label>
+          </div>
+          <div className="fila-acciones">
+            <span className="suave pequeno">{c.tunelHost ? <>Dirección fija: <b className="mono">{c.tunelHost}</b></> : <>Su administración web: <b className="mono">{location.origin}/{dat.slug || "nombrecorto"}/</b></>}</span><span className="flex" />
+            <button className="boton primario" disabled={dat.nombre.trim().length < 2 || dat.slug.length < 3 || (dat.nombre.trim() === c.nombre && dat.slug === c.slug)}
+              onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}`, { metodo: "PUT", cuerpo: { nombre: dat.nombre.trim(), slug: dat.slug } }), "Datos guardados.")}>Guardar nombre</button>
+          </div>
+        </div>
+
         <h4>Renovar</h4>
         <div className="panel renovar">
           <div className="tres-col">
