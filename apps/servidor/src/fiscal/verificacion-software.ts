@@ -29,7 +29,7 @@ export const CAPACIDADES = {
   aprobacionComercial: true,   // ACECF: generar y recibir aprobaciones/rechazos comerciales
   anulacionSecuencias: true,   // ANECF: anular rangos de e-NCF no usados
   representacionPdf: false,    // PDF de la representación impresa por tipo (con QR)
-  importadorSetPruebas: false, // leer el Excel de la DGII y generar/enviar los XML
+  importadorSetPruebas: true,  // leer el Excel de la DGII y generar/enviar los XML
 } as const;
 
 const RUTAS_PUBLICAS: [string, string][] = [

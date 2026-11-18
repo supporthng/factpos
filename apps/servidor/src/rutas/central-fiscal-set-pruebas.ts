@@ -14,6 +14,21 @@ const soloDigitos = (s: string | undefined) => (s ?? "").replace(/\D/g, "");
  * a TesteCF/CerteCF y se espera el resultado. No crea ventas ni gasta e-NCF de la sucursal: los números vienen en el set.
  */
 export async function rutasSetPruebasFiscal(app: FastifyInstance) {
+  /**
+   * Firma con el certificado de la empresa un XML que genera el portal de la DGII (postulación, delegaciones, declaración jurada…).
+   * Sustituye a la «App Firma Digital»: el XML se devuelve firmado, listo para subirlo de nuevo a la DGII.
+   */
+  app.post("/central/fiscal/firmar-xml", { bodyLimit: 3 * 1024 * 1024 }, async (req) => {
+    const b = z.object({ xml: z.string().min(1).max(2 * 1024 * 1024) }).parse(req.body);
+    let xml = b.xml.replace(/^\uFEFF/, "").trim();
+    if (!xml.startsWith("<")) throw new ErrorNegocio("Ese archivo no es un XML.", 400);
+    if (/<(\w+:)?Signature[\s>]/.test(xml)) throw new ErrorNegocio("Ese XML ya está firmado: súbalo tal cual a la DGII.", 400);
+    if (certificado().prueba) throw new ErrorNegocio("Falta el certificado digital de la empresa: cárguelo en Fiscal › Certificado digital.", 503);
+    xml = xml.replace(/^<\?xml[^>]*\?>\s*/, "");
+    try { return { xmlFirmado: `<?xml version="1.0" encoding="utf-8"?>${firmarXml(xml).xmlFirmado}` }; }
+    catch (e) { throw new ErrorNegocio(`No se pudo firmar el archivo: ${(e as Error).message}`, 400); }
+  });
+
   app.post("/central/fiscal/set-pruebas/caso", async (req) => {
     const empresa = z.string().uuid().parse(req.headers["x-empresa-id"]);
     const b = z.object({

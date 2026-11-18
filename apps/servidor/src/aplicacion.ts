@@ -82,7 +82,17 @@ import path from "node:path";
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 export async function crearApp() {
-  const app = Fastify({ logger: { level: process.env.NODE_ENV === "test" ? "warn" : "info" } });
+  const app = Fastify({
+    logger: { level: process.env.NODE_ENV === "test" ? "warn" : "info" },
+    // La DGII escribe sus rutas con mayúsculas (/fe/autenticacion/api/ValidacionCertificado, /fe/Recepcion/api/ecf…):
+    // las rutas /fe/ se pasan a minúsculas antes de buscarlas, conservando la consulta (?x=Y).
+    rewriteUrl: (req) => {
+      const u = req.url ?? "/";
+      if (!/^\/fe\//i.test(u)) return u;
+      const i = u.indexOf("?");
+      return i < 0 ? u.toLowerCase() : u.slice(0, i).toLowerCase() + u.slice(i);
+    },
+  });
 
   await app.register(cors, { origin: true });
   // Cabeceras de seguridad y límite de peticiones por dirección (solo donde llega internet)
