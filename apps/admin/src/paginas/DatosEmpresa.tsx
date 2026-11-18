@@ -42,7 +42,7 @@ export function DatosEmpresa() {
           <label>Correo<input value={d.correo} onChange={poner("correo")} type="email" maxLength={120} /></label>
           <label>Sitio web<input value={d.sitioWeb} onChange={poner("sitioWeb")} maxLength={120} /></label>
         </div>
-        {d.rncBloqueado && <p className="suave" style={{ marginTop: 8 }}>El RNC no se puede cambiar porque la empresa ya tiene comprobantes electrónicos o un certificado cargado. Si hay un error, escriba a soporte.</p>}
+        {d.rncBloqueado && <CambiarRnc actual={d.rnc} />}
         <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center" }}>
           <button className="boton primario" onClick={guardar} disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</button>
           {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
@@ -118,6 +118,42 @@ function AforoEntradas() {
         </div>
       )}
       {msg && <div style={{ marginTop: 8 }}><Aviso texto={msg.t} tipo={msg.tipo} /></div>}
+    </div>
+  );
+}
+
+/** El RNC está en uso fiscal: solo se corrige con confirmación y mientras la empresa no esté facturando en producción. */
+function CambiarRnc({ actual }: { actual: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const [nuevo, setNuevo] = useState("");
+  const [seguro, setSeguro] = useState(false);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [trabajando, setTrabajando] = useState(false);
+  const cambiar = async () => {
+    setTrabajando(true); setMsg(null);
+    try {
+      await api("/central/empresa/cambiar-rnc", { metodo: "POST", cuerpo: { rnc: nuevo.replace(/\D/g, ""), confirmar: true } });
+      setMsg({ t: "RNC cambiado. Cargue de nuevo el certificado digital que corresponde a este RNC (Fiscal › Certificado digital).", tipo: "ok" });
+      setAbierto(false);
+      setTimeout(() => location.reload(), 2500);
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setTrabajando(false);
+  };
+  return (
+    <div style={{ marginTop: 8 }}>
+      <p className="suave" style={{ margin: 0 }}>El RNC está bloqueado porque la empresa ya tiene un certificado cargado o comprobantes electrónicos.</p>
+      {!abierto ? <button className="boton chico" style={{ marginTop: 6 }} onClick={() => setAbierto(true)}>Cambiar RNC…</button> : (
+        <div className="panel" style={{ marginTop: 8 }}>
+          <p style={{ margin: "0 0 8px" }}>Solo se puede mientras la empresa <b>no esté facturando en producción</b> (lo emitido hasta ahora son comprobantes de prueba). Se desactiva el certificado digital cargado, porque está firmado para el RNC {actual}, y habrá que cargar el del RNC nuevo.</p>
+          <label>RNC nuevo<input value={nuevo} onChange={(e) => setNuevo(e.target.value)} inputMode="numeric" maxLength={11} /></label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}><input type="checkbox" checked={seguro} onChange={(e) => setSeguro(e.target.checked)} /> Entiendo que se quita el certificado actual</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button className="boton primario" disabled={!seguro || nuevo.replace(/\D/g, "").length < 9 || trabajando} onClick={cambiar}>{trabajando ? "Cambiando…" : "Cambiar RNC"}</button>
+            <button className="boton" onClick={() => setAbierto(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
     </div>
   );
 }
