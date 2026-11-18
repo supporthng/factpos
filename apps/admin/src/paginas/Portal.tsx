@@ -178,7 +178,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
                 <button className="boton" onClick={() => setAbierto(abierto === c.id ? null : c.id)}>{abierto === c.id ? "Cerrar" : "Administrar"}</button>
               </footer>
               {abierto === c.id && (
-                <div className="detalle-cliente cli-detalle"><DetalleCliente key={`${c.vence}${c.sucursales}${c.planId}${c.estadoLicencia}`} c={c} planes={planes} onCambio={recargar} onClave={(k) => setClave({ cliente: c.nombre, clave: k })} /></div>
+                <div className="detalle-cliente cli-detalle"><DetalleCliente key={`${c.vence}${c.sucursales}${c.planId}${c.estadoLicencia}`} c={c} planes={planes} onCambio={recargar} onClave={(k) => { setClave({ cliente: c.nombre, clave: k }); window.scrollTo({ top: 0, behavior: "smooth" }); }} /></div>
               )}
             </article>
           );
