@@ -120,6 +120,9 @@ export function certificado(): Certificado {
 
 /** Firma el documento completo y devuelve el XML firmado y el SignatureValue. */
 export function firmarXml(xml: string, c: Certificado = certificado()): { xmlFirmado: string; signatureValue: string } {
+  // Un XML de Windows trae CRLF. Los analizadores de la DGII (.NET) lo leen como LF (regla de fin de línea del XML), pero el
+  // canonicalizador de aquí lo conservaría como &#xD; y el resumen (digest) no coincidiría: «Firma inválida».
+  xml = xml.replace(/\r\n?/g, "\n");
   const sig = new SignedXml({
     privateKey: c.llavePem,
     publicCert: c.certPem,
