@@ -172,6 +172,18 @@ function EnsayoTipos() {
   );
 }
 
+/** En la app de cada empresa: las herramientas que trabajan con SU certificado y SU servidor (firmar XML, ensayo, set de pruebas). El avance de los 15 pasos vive en el portal. */
+export function CertificacionEmpresa() {
+  return (
+    <>
+      <Encabezado titulo="Certificación DGII" descripcion="Herramientas para la certificación ante la DGII con el certificado digital de esta empresa: firmar los XML del portal de la DGII, ensayo por tipo de comprobante, set de pruebas, simulación y aprobaciones comerciales." />
+      <EnsayoTipos />
+      <FirmarXmlDgii />
+      <SetPruebasDgii />
+    </>
+  );
+}
+
 export function CertificacionDgii() {
   const { datos, error, recargar } = useDatos<Datos>("/central/portal/certificacion-dgii");
   const [f, setF] = useState<Datos | null>(null);
