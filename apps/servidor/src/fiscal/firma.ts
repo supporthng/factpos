@@ -118,6 +118,13 @@ export function certificado(): Certificado {
   return cache;
 }
 
+/**
+ * Quita los saltos de línea y la sangría que hay ENTRE etiquetas. Los XML que entrega la DGII (semilla, postulación) vienen con ellos
+ * (CRLF + espacios). Si el verificador de la DGII los descarta al leer el documento y aquí se firmaron, el resumen no coincide:
+ * «Firma inválida». Sin esos espacios el documento firmado es igual lo lea como lo lea.
+ */
+export const compactarXml = (xml: string) => xml.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").replace(/>\s+</g, "><").trim();
+
 /** Firma el documento completo y devuelve el XML firmado y el SignatureValue. */
 export function firmarXml(xml: string, c: Certificado = certificado()): { xmlFirmado: string; signatureValue: string } {
   // Un XML de Windows trae CRLF. Los analizadores de la DGII (.NET) lo leen como LF (regla de fin de línea del XML), pero el
