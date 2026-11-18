@@ -202,7 +202,8 @@ export function SetPruebasDgii() {
                   <td className="pequeno">{r?.trackId ? `TrackId ${r.trackId}. ` : ""}{r?.aviso ? `${r.aviso} ` : ""}{r?.sinUsar?.length ? `Columnas sin usar: ${r.sinUsar.join(", ")}. ` : ""}{txt(r?.mensajes)}</td>
                   <td className="der">
                     <button className="boton chico" disabled={!!corriendo} onClick={() => void correr([c], true)}>Enviar</button>{" "}
-                    {r?.xmlFirmado && <button className="boton chico" onClick={() => descargar(`${c.encf}.xml`, r.xmlFirmado!)}>XML</button>}{" "}
+                    {r?.xmlFirmado && <button className="boton chico" title={r.xmlCompleto ? "e-CF completo (el que se sube en «Facturas de consumo < 250Mil»)" : undefined} onClick={() => descargar(`${c.encf}.xml`, (r.xmlCompleto ?? r.xmlFirmado)!)}>XML</button>}{" "}
+                    {r?.xmlCompleto && r.xmlFirmado && <button className="boton chico" title="Resumen (RFCE) que se envió a la DGII" onClick={() => descargar(`${c.encf}-RFCE.xml`, r.xmlFirmado!)}>Resumen</button>}{" "}
                     {r?.xmlFirmado && <button className="boton chico" onClick={() => descargarPdf(r).catch((e) => setError((e as Error).message))}>PDF</button>}
                   </td>
                 </tr>
