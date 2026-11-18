@@ -314,7 +314,8 @@ footer a{text-decoration:none;color:var(--primario)}
       else if (p.mensual) { pr.textContent = rd(p.mensual); pr.appendChild(el("small", "", " / mes")); }
       else { pr.textContent = "Consultar"; }
       c.appendChild(pr);
-      c.appendChild(el("p", "d", p.sucursales + (p.sucursales === 1 ? " sucursal incluida" : " sucursales incluidas")));
+      // Un plan de una sola tienda no menciona sucursales: solo los que incluyen varias lo dicen
+      if (p.sucursales > 1) c.appendChild(el("p", "d", p.sucursales + " sucursales incluidas"));
       if (p.comprobantes) c.appendChild(el("p", "d", "Hasta " + Number(p.comprobantes).toLocaleString("es-DO") + " comprobantes electrónicos al mes"));
       var ul = el("ul"); (p.funciones || []).forEach(function(f){ ul.appendChild(el("li", "", f)); }); c.appendChild(ul);
       var a = el("a", "btn " + (p.destacado ? "p" : "o"), "Quiero este plan"); a.href = "#contacto"; c.appendChild(a);
