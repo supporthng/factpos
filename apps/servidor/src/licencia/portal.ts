@@ -659,7 +659,7 @@ export async function rutasPortal(app: FastifyInstance) {
     sucursalesIncluidas: z.number().int().min(1).max(999),
     modulos: z.array(z.string().max(30)).max(30).default([]),
     /** Lo que se lista en la página web como incluido en el plan */
-    funciones: z.array(z.string().trim().min(1).max(120)).max(14).default([]),
+    funciones: z.array(z.string().trim().min(1).max(120)).max(40).default([]),
     destacado: z.boolean().default(false),
     /** Pago único: la licencia de sus clientes no vence */
     permanente: z.boolean().default(false),

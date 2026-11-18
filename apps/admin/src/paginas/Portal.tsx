@@ -443,6 +443,22 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
 }
 
 /* ---------------- Planes ---------------- */
+/** Funciones del sistema que se pueden marcar en cada plan (de la más básica a la más completa). Lo marcado se lista en la página web. */
+const CATALOGO_FUNCIONES: { grupo: string; items: string[] }[] = [
+  { grupo: "Venta", items: [
+    "Caja rápida con escaneo y búsqueda por nombre", "Pago mixto (efectivo, tarjeta y transferencia)", "Ventas en pausa", "Descuentos con aprobación del supervisor",
+    "Ofertas y cupones", "Delivery con liquidación del repartidor", "Terminal de ventas para vendedores (Windows y Android)", "Funciona sin internet y sincroniza al volver" ] },
+  { grupo: "Facturación", items: [
+    "Ticket de 58 mm y 80 mm", "Factura en media carta y carta (8½ × 11)", "Facturación electrónica e-CF (DGII)", "NCF serie B", "Notas de crédito y anulación con PIN", "Ayuda para la certificación ante la DGII" ] },
+  { grupo: "Inventario y clientes", items: [
+    "Inventario y compras", "Traspasos y conteos de inventario", "Lotes con fecha de vencimiento", "Clientes, crédito y cuentas por cobrar", "Verificador de precios (pantalla y QR)", "Importar productos desde Excel o CSV" ] },
+  { grupo: "Sucursales y control", items: [
+    "Varias sucursales con vista consolidada", "Administración web", "Reportes y cierres de caja", "Permisos por usuario y PIN de supervisor", "Verificación en 2 pasos y respaldos cifrados" ] },
+  { grupo: "Restaurantes, bares y discotecas", items: [
+    "Cuentas por mesa y división de cuenta", "Comandas a la barra y la cocina", "Propina legal del 10 %", "Botellas y tragos del mismo inventario", "Entradas, aforo y vales de consumo", "Control de cortesías y anulaciones" ] },
+];
+const FUNCIONES_CATALOGO_PLANO = new Set(CATALOGO_FUNCIONES.flatMap((g) => g.items));
+
 const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], funciones: [] as string[], destacado: false, permanente: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
 
 function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) {
@@ -481,8 +497,21 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
           </div>
           <label className="campo"><span>Descripción (la ve usted al elegir el plan)</span><input value={edit.descripcion ?? ""} onChange={(e) => setEdit({ ...edit, descripcion: e.target.value })} /></label>
           <div className="dos-col">
-            <label className="campo"><span>Funciones que incluye (una por línea; las ve la página web)</span>
-              <textarea rows={6} value={(edit.funciones ?? []).join("\n")} onChange={(e) => setEdit({ ...edit, funciones: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 14) })} placeholder={"1 tienda, con sus cajas y usuarios\nFacturación electrónica y NCF\nCompras con IA"} /></label>
+            <div className="campo"><span>Funciones que incluye (marque las que lleva este plan; las ve la página web)</span>
+              {CATALOGO_FUNCIONES.map((g) => (
+                <fieldset key={g.grupo} style={{ border: 0, padding: 0, margin: "6px 0 0" }}>
+                  <legend className="suave pequeno" style={{ padding: 0 }}>{g.grupo}</legend>
+                  {g.items.map((f) => {
+                    const on = (edit.funciones ?? []).includes(f);
+                    return <label key={f} className="regla"><input type="checkbox" checked={on} onChange={(e) => setEdit({ ...edit, funciones: e.target.checked ? [...(edit.funciones ?? []), f].slice(0, 40) : (edit.funciones ?? []).filter((x) => x !== f) })} /><span>{f}</span></label>;
+                  })}
+                </fieldset>
+              ))}
+              <span style={{ marginTop: 8 }}>Otras funciones (una por línea; opcional)</span>
+              <textarea rows={3} value={(edit.funciones ?? []).filter((x) => !FUNCIONES_CATALOGO_PLANO.has(x)).join("\n")}
+                onChange={(e) => setEdit({ ...edit, funciones: [...(edit.funciones ?? []).filter((x) => FUNCIONES_CATALOGO_PLANO.has(x)), ...e.target.value.split("\n").map((x) => x.trim()).filter(Boolean)].slice(0, 40) })}
+                placeholder="Algo propio de este plan" />
+            </div>
             <div>
               <label className="campo"><span>Etiqueta en la página (opcional)</span><input value={edit.etiqueta ?? ""} maxLength={40} placeholder="Para 2 sucursales" onChange={(e) => setEdit({ ...edit, etiqueta: e.target.value })} /></label>
               <label className="regla" style={{ marginTop: 8 }}><input type="checkbox" checked={edit.permanente} onChange={(e) => setEdit({ ...edit, permanente: e.target.checked, ...(e.target.checked ? { permiteActualizaciones: false } : {}) })} /><span><b>Licencia permanente (pago único)</b><small>No vence y no tiene mensualidad. El precio se cobra una sola vez.</small></span></label>
