@@ -1,32 +1,23 @@
-import { useState } from "react";
-import { api } from "../api";
-import { Aviso } from "../ui";
+const DESCARGA = "https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/App%20Firma%20Digital/App%20Firma%20Digital.zip";
+const INSTRUCTIVO = "https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Documentacin%20sobre%20eCF/Instructivos%20sobre%20Facturaci%C3%B3n%20Electr%C3%B3nica/Instructivo%20App%20Firma%20Digital.pdf";
 
-/** Firma con el certificado de la empresa el XML que genera el portal de la DGII (no hace falta la «App Firma Digital»). */
+/**
+ * La postulación, las delegaciones de roles y la declaración jurada se firman con el «Aplicativo para firma digital» de la DGII
+ * (la herramienta oficial; así la DGII siempre acepta la firma). FactPOS firma por su cuenta los comprobantes y las aprobaciones.
+ */
 export function FirmarXmlDgii() {
-  const [msg, setMsg] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
-  const [trabajando, setTrabajando] = useState(false);
-
-  const firmar = async (archivo: File | undefined) => {
-    if (!archivo) return;
-    setMsg(null); setTrabajando(true);
-    try {
-      const r = await api<{ xmlFirmado: string }>("/central/fiscal/firmar-xml", { metodo: "POST", cuerpo: { xml: await archivo.text() } });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([r.xmlFirmado], { type: "application/xml" }));
-      a.download = archivo.name.replace(/\.xml$/i, "") + "-firmado.xml";
-      a.click(); URL.revokeObjectURL(a.href);
-      setMsg({ tipo: "ok", texto: "Listo: se descargó el XML firmado. Súbalo a la DGII en el mismo lugar de donde bajó el original." });
-    } catch (e) { setMsg({ tipo: "error", texto: (e as Error).message }); }
-    setTrabajando(false);
-  };
-
   return (
     <div className="panel" style={{ marginTop: 14 }}>
-      <h3 style={{ marginTop: 0 }}>Firmar un XML de la DGII</h3>
-      <p className="suave pequeno">La postulación, las delegaciones de roles y la declaración jurada se descargan de la DGII sin firma. Elija aquí ese archivo y FactPOS lo firma con el certificado digital cargado de la empresa; después súbalo de nuevo a la DGII. Así no necesita la «App Firma Digital».</p>
-      <input type="file" accept=".xml,text/xml,application/xml" disabled={trabajando} onChange={(e) => { firmar(e.target.files?.[0]); e.target.value = ""; }} />
-      {msg && <Aviso tipo={msg.tipo} texto={msg.texto} />}
+      <h3 style={{ marginTop: 0 }}>Firmar la postulación y otros XML de la DGII</h3>
+      <p className="suave pequeno">
+        La postulación, las delegaciones de roles y la declaración jurada se descargan de la DGII sin firma. Fírmelos con el <b>Aplicativo para firma digital</b> de
+        la DGII: elija el XML y el certificado (.p12), escriba su clave y pulse «Descargar XML firmado»; después súbalo de nuevo al portal de la DGII.
+      </p>
+      <div className="fila-acciones">
+        <a className="boton primario" href={DESCARGA} target="_blank" rel="noopener noreferrer">Descargar el firmador de la DGII</a>
+        <a className="enlace" href={INSTRUCTIVO} target="_blank" rel="noopener noreferrer">Instructivo (PDF)</a>
+      </div>
+      <p className="suave pequeno" style={{ marginBottom: 0 }}>Los comprobantes del set de pruebas y las aprobaciones comerciales no pasan por aquí: FactPOS los firma al enviarlos.</p>
     </div>
   );
 }
