@@ -17,7 +17,7 @@ interface Cliente {
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
-  sucursalesIncluidas: number; modulos: string[]; funciones: string[]; destacado: boolean; permanente: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
+  sucursalesIncluidas: number; modulos: string[]; funciones: string[]; ecfPlanId?: string | null; destacado: boolean; permanente: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
 }
 interface Instalacion {
   id: string; estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA"; empresa: string | null; rnc: string | null; equipo: string | null; versionApp: string | null;
@@ -462,6 +462,7 @@ const FUNCIONES_CATALOGO_PLANO = new Set(CATALOGO_FUNCIONES.flatMap((g) => g.ite
 const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], funciones: [] as string[], destacado: false, permanente: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
 
 function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) {
+  const comprobantes = useDatos<{ id: string; nombre: string; maxMes: number; activo: boolean }[]>("/central/portal/ecf-planes");
   const [edit, setEdit] = useState<(Omit<Plan, "id" | "clientes" | "descripcion"> & { id: string; descripcion: string | null }) | null>(null);
   const [msg, setMsg] = useState("");
   const guardar = async () => {
@@ -496,6 +497,12 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
             <label className="campo"><span>Sucursales incluidas por defecto</span><input type="number" min={1} value={edit.sucursalesIncluidas} onChange={(e) => setEdit({ ...edit, sucursalesIncluidas: Math.max(1, Number(e.target.value) || 1) })} /></label>
           </div>
           <label className="campo"><span>Descripción (la ve usted al elegir el plan)</span><input value={edit.descripcion ?? ""} onChange={(e) => setEdit({ ...edit, descripcion: e.target.value })} /></label>
+          <label className="campo"><span>Comprobantes al mes (según el plan de facturación electrónica con MSeller)</span>
+            <select value={edit.ecfPlanId ?? ""} onChange={(e) => setEdit({ ...edit, ecfPlanId: e.target.value || null })}>
+              <option value="">Sin indicar</option>
+              {(comprobantes.datos ?? []).filter((x) => x.activo || x.id === edit.ecfPlanId).map((x) => <option key={x.id} value={x.id}>{x.nombre} · hasta {x.maxMes.toLocaleString("es-DO")} comprobantes al mes</option>)}
+            </select>
+            <small className="suave">La página web muestra la cantidad de comprobantes de este plan, no lo que cuesta MSeller.</small></label>
           <div className="dos-col">
             <div className="campo"><span>Funciones que incluye (marque las que lleva este plan; las ve la página web)</span>
               {CATALOGO_FUNCIONES.map((g) => (
