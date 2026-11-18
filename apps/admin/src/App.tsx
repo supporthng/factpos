@@ -99,6 +99,7 @@ const SECCIONES = [
   { id: "ncf", titulo: "Comprobantes (NCF)", grupo: "Fiscal", C: ComprobantesNcf, i: "fiscal", p: ["admin.fiscal"] },
   { id: "impuestos", titulo: "Planilla de impuestos", grupo: "Fiscal", C: Impuestos, i: "fiscal", p: ["admin.fiscal"] },
   { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
+  { id: "certificacion", titulo: "Certificación DGII", grupo: "Fiscal", C: CertificacionDgii, i: "fiscal", p: ["admin.fiscal"] },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, i: "reportes", p: ["admin.reportes"] },
   { id: "empresa", titulo: "Datos de la empresa", grupo: "Negocio", C: DatosEmpresa, i: "ajustes", p: ["admin.config"] },
   { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Negocio", C: Sucursales, i: "sucursales", p: ["admin.config"] },
