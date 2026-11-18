@@ -38,7 +38,9 @@ export function armarSimulacion(casos: CasoSim[], emp: DatosEmisor, hoy: string,
     const tiene = (k: string) => clave.has(k);
     // Fechas: todas se corren los mismos días para que la emisión sea hoy
     const base = f[clave.get("fechaemision") ?? ""];
-    if (base && esFecha(base)) {
+    // Con impuestos adicionales/selectivos la DGII valida la tasa contra la fecha de emisión: se conservan las fechas del set
+    const conSelectivo = [...clave.keys()].some((k) => k.startsWith("tasaimpuestoadicional"));
+    if (base && esFecha(base) && !conSelectivo) {
       const dias = Math.round((Date.parse(`${hoy}T12:00:00Z`) - Date.parse(`${aIso(base)}T12:00:00Z`)) / 86400_000);
       for (const [k, v] of Object.entries(f)) {
         const kl = k.toLowerCase();
