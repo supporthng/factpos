@@ -47,10 +47,13 @@ function partir(texto: string, tam: number, ancho: number, negrita = false): str
   return lineas;
 }
 
+/** Lo único que se usa del XML: buscar etiquetas por nombre (sirve igual para el documento y para sus elementos). */
+interface Nodo { getElementsByTagName(tag: string): ArrayLike<unknown> }
+
 export function representacionPdf(xml: string, ambiente = "CERTECF"): { pdf: Uint8Array; encf: string; rnc: string } {
   const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const de = (padre: Element | Document, tag: string) => padre.getElementsByTagName(tag)[0]?.textContent?.trim() ?? "";
-  const seccion = (tag: string) => doc.getElementsByTagName(tag)[0] ?? null;
+  const de = (padre: Nodo, tag: string) => (padre.getElementsByTagName(tag)[0] as { textContent: string | null } | undefined)?.textContent?.trim() ?? "";
+  const seccion = (tag: string): Nodo | null => (doc.getElementsByTagName(tag)[0] as Nodo | undefined) ?? null;
 
   const tipo = de(doc, "TipoeCF");
   const encf = de(doc, "eNCF");
@@ -147,7 +150,7 @@ export function representacionPdf(xml: string, ambiente = "CERTECF"): { pdf: Uin
     y -= 22;
   };
   cabecera();
-  for (const it of Array.from(doc.getElementsByTagName("Item"))) {
+  for (const it of Array.from(doc.getElementsByTagName("Item")) as Nodo[]) {
     const desc = partir(de(it, "NombreItem"), 8, cols[1].w - 10);
     const alto = 6 + desc.length * 10;
     if (y - alto < 190) { pdf.nuevaPagina(ANCHO, ALTO); y = ALTO - MARGEN; cabecera(); }
