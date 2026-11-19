@@ -187,7 +187,7 @@ function Recibidos() {
 
 /** Anulación ante la DGII de los e-NCF asignados que no se van a usar (ANECF). */
 function AnularSinUsar() {
-  const d = useDatos<{ libres: any[]; hechas: any[] }>("/central/fiscal/anulaciones");
+  const d = useDatos<{ libres: any[]; hechas: any[]; ambiente?: string }>("/central/fiscal/anulaciones");
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   const anular = async (f: any) => {
     if (!window.confirm(`¿Anular ${num(Number(f.hasta) - Number(f.desde) + 1)} e-NCF ${f.tipo_ecf} (${f.desde}–${f.hasta}) de ${f.sucursal} ante la DGII? Estos números no se podrán volver a usar.`)) return;
@@ -197,6 +197,15 @@ function AnularSinUsar() {
       d.recargar();
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
   };
+  const retirar = async (f: any) => {
+    if (!window.confirm(`¿Retirar los ${num(Number(f.hasta) - Number(f.desde) + 1)} e-NCF ${f.tipo_ecf} de prueba (${f.desde}–${f.hasta}) de ${f.sucursal}? No se avisa a la DGII: la sucursal solo deja de usarlos.`)) return;
+    try {
+      const r = await api<{ retirados: number }>(`/central/fiscal/rangos/${f.id}/retirar`, { cuerpo: {} });
+      setMsg({ t: `Bloque retirado: ${num(r.retirados)} números de prueba dejan de usarse.`, tipo: "ok" });
+      d.recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const enPrueba = !!d.datos?.ambiente && d.datos.ambiente !== "ECF";
   return (
     <>
       <p className="suave pequeno">Informe a la DGII los e-NCF que asignó a una sucursal y no va a usar (por ejemplo, un rango por vencer). Se anula lo que queda sin usar de cada bloque.</p>
@@ -208,7 +217,12 @@ function AnularSinUsar() {
           { titulo: "Tipo", valor: (f) => f.tipo_ecf },
           { titulo: "Sin usar", valor: (f) => <span className="mono">{f.tipo_ecf}{String(f.desde).padStart(10, "0")} – {f.tipo_ecf}{String(f.hasta).padStart(10, "0")}</span> },
           { titulo: "Cantidad", der: true, valor: (f) => num(Number(f.hasta) - Number(f.desde) + 1) },
-          { titulo: "", valor: (f) => <button className="enlace" onClick={() => anular(f)}>Anular ante la DGII</button> },
+          { titulo: "", valor: (f) => (
+            <>
+              <button className="enlace" onClick={() => anular(f)}>Anular ante la DGII</button>
+              {enPrueba && <> · <button className="enlace" title="Para números de prueba (certificación o pruebas): no se avisa a la DGII" onClick={() => retirar(f)}>Retirar bloque de prueba</button></>}
+            </>
+          ) },
         ]} />
       <h2 style={{ marginTop: 20 }}>Anulaciones hechas</h2>
       <Tabla filas={d.datos?.hechas ?? []} clave={(f) => f.id} vacio="Aún no hay anulaciones"
