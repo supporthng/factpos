@@ -153,27 +153,20 @@ const VERSION_PG = process.env.FACTPOS_PG_VERSION || "16.15.0-beta.19";
   console.log(`Listo: ${relative(raiz, zip)} (${(statSync(zip).size / 1e6).toFixed(1)} MB, paquete de actualización)`);
 }
 
-// Los .exe que se descargan llevan la versión como la ve el cliente en la administración (48.6.0 → 4.8.6, 48.0.x → 4.8),
-// la misma regla de versionCliente() del panel. El ZIP de actualización conserva la versión real: el servidor la lee de su nombre.
-const etiquetaCliente = (v) => {
-  const m = /^(\d+)(?:\.(\d))?(?:\.|$)/.exec(v);
-  if (!m || m[1].length < 2) return v;
-  const n = Number(m[1]);
-  return `${Math.floor(n / 10)}.${n % 10}${m[2] && m[2] !== "0" ? "." + m[2] : ""}`;
-};
-const versionExe = etiquetaCliente(version);
+// Los .exe que se descargan NO llevan la versión en el nombre (siempre FactPOS-Setup.exe, etc.). El ZIP de actualización sí conserva la
+// versión real: el servidor la lee de su nombre.
 
 // El instalador (EXE) es lo que se descarga para instalar; el ZIP de arriba, para actualizar. NSIS comprime el contenido directamente.
-// Instalador gráfico de Windows (FactPOS-Setup-<versión>.exe) si está NSIS (makensis)
+// Instalador gráfico de Windows (FactPOS-Setup.exe) si está NSIS (makensis)
 let makensis = null;
 try { execSync("makensis -VERSION", { stdio: "ignore" }); makensis = "makensis"; } catch { /* sin NSIS */ }
 if (makensis) {
-  const setup = join(salida, `FactPOS-Setup-${versionExe}.exe`);
+  const setup = join(salida, `FactPOS-Setup.exe`);
   execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${setup}" FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
   console.log(`Listo: ${relative(raiz, setup)} (${(statSync(setup).size / 1e6).toFixed(1)} MB)`);
   // Instalador solo de Caja (sin servidor ni base de datos: pesa mucho menos). Si fallara, no impide publicar el completo.
   try {
-    const caja = join(salida, `FactPOS-Caja-Setup-${versionExe}.exe`);
+    const caja = join(salida, `FactPOS-Caja-Setup.exe`);
     execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${caja}" -DTIPO_FIJO=caja FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
     console.log(`Listo: ${relative(raiz, caja)} (${(statSync(caja).size / 1e6).toFixed(1)} MB, solo Caja)`);
   } catch (e) {
@@ -181,7 +174,7 @@ if (makensis) {
   }
   // Desinstalador / limpieza total de la Caja (un solo .exe). Si fallara, no impide publicar lo demás.
   try {
-    const limpiar = join(salida, `FactPOS-Caja-Limpiar-${versionExe}.exe`);
+    const limpiar = join(salida, `FactPOS-Caja-Limpiar.exe`);
     execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${limpiar}" LimpiarCaja.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
     console.log(`Listo: ${relative(raiz, limpiar)} (${(statSync(limpiar).size / 1e6).toFixed(1)} MB, limpieza de Caja)`);
   } catch (e) {

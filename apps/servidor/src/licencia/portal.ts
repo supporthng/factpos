@@ -389,7 +389,7 @@ export async function rutasPortal(app: FastifyInstance) {
       const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [leerLicencia(token).id])).rows[0];
       if (l && !(await versionHabilitada(l, v.version))) throw new ErrorNegocio("Esta versión todavía no está habilitada para su empresa. Su proveedor se la enviará.", 403);
     }
-    // tipo=setup: el instalador completo (FactPOS-Setup-*.exe); por omisión, el paquete de actualización (.zip)
+    // tipo=setup: el instalador completo (FactPOS-Setup.exe); por omisión, el paquete de actualización (.zip)
     const tipo = String((req.query as { tipo?: string }).tipo ?? "");
     if (tipo === "setup") {
       if (!v?.setup) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
@@ -1039,9 +1039,9 @@ export async function ultimaVersion(): Promise<Publicada | null> {
     const encontrada = publicadas[0];
     const v = encontrada ? { version: encontrada.version, notas: encontrada.rel.body, publicada: encontrada.asset.updated_at ?? encontrada.rel.published_at, // la etiqueta «ultima» se reutiliza: su fecha propia no cambia, la del archivo sí
       asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url },
-      setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup-.*\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
+      setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
       // Instalador solo de Caja (sin servidor ni base de datos)
-      caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup-.*\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })() } : null;
+      caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })() } : null;
     cacheVersion = { v, t: Date.now() };
     return v;
   } catch {
