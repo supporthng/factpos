@@ -253,6 +253,102 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     return r;
   });
 
+  // ---- Editar o eliminar lo ya registrado (sin tocar números que ya se usaron) ----
+  const solapado = (e: unknown, msg: string) => { if ((e as { code?: string }).code === "23P01") throw new ErrorNegocio(msg, 409); throw e; };
+
+  /** Autorizaciones con sus bloques asignados, para poder editarlos. */
+  app.get("/central/fiscal/rangos", async (req) => {
+    const e = empresaDe(req);
+    const aut = (await pool.query(
+      `SELECT id, tipo_ecf AS tipo, desde::text, hasta::text, vence_en AS "venceEn" FROM ecf_autorizaciones WHERE empresa_id = $1 ORDER BY tipo_ecf, desde`, [e])).rows;
+    const bloques = (await pool.query(
+      `SELECT r.id, r.autorizacion_id AS "autorizacionId", r.sucursal_id AS "sucursalId", s.nombre AS sucursal, r.tipo_ecf AS tipo,
+              r.desde::text, r.hasta::text, r.siguiente::text, r.vence_en AS "venceEn",
+              EXISTS (SELECT 1 FROM ecf_documentos d WHERE d.rango_id = r.id) OR EXISTS (SELECT 1 FROM ecf_reservas v WHERE v.rango_id = r.id) AS "enUso"
+         FROM ecf_rangos r JOIN sucursales s ON s.id = r.sucursal_id JOIN ecf_autorizaciones a ON a.id = r.autorizacion_id
+        WHERE a.empresa_id = $1 ORDER BY r.tipo_ecf, r.desde`, [e])).rows;
+    return aut.map((a) => ({ ...a, bloques: bloques.filter((b) => b.autorizacionId === a.id) }));
+  });
+
+  /** Corrige una autorización: el fin del rango y su vencimiento; el inicio solo si todavía no tiene bloques asignados. */
+  app.put("/central/fiscal/autorizaciones/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ desde: z.number().int().min(1).optional(), hasta: z.number().int().max(9999999999).optional(), venceEn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.body);
+    return enTransaccion(async (c) => {
+      const a = (await c.query("SELECT * FROM ecf_autorizaciones WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [id, empresaDe(req)])).rows[0];
+      if (!a) throw new ErrorNegocio("Autorización no encontrada", 404);
+      const rg = (await c.query("SELECT MIN(desde) AS d, MAX(hasta) AS h, COUNT(*)::int AS n FROM ecf_rangos WHERE autorizacion_id = $1", [id])).rows[0];
+      const desde = b.desde ?? Number(a.desde), hasta = b.hasta ?? Number(a.hasta);
+      if (hasta < desde) throw new ErrorNegocio("El rango es inválido: «Hasta» no puede ser menor que «Desde».");
+      if (rg.n > 0) {
+        if (desde !== Number(a.desde)) throw new ErrorNegocio("Este rango ya tiene bloques asignados a sucursales: el inicio no se puede cambiar. Retire o elimine los bloques primero.");
+        if (hasta < Number(rg.h)) throw new ErrorNegocio(`«Hasta» no puede ser menor que ${rg.h}, donde termina el último bloque asignado.`);
+      }
+      try {
+        await c.query("UPDATE ecf_autorizaciones SET desde = $2, hasta = $3, vence_en = COALESCE($4::date, vence_en) WHERE id = $1", [id, desde, hasta, b.venceEn ?? null]);
+      } catch (e) { solapado(e, "Ese rango se cruza con otro ya registrado."); }
+      if (b.venceEn) await c.query("UPDATE ecf_rangos SET vence_en = $2 WHERE autorizacion_id = $1", [id, b.venceEn]);
+      return { ok: true };
+    });
+  });
+
+  /** Elimina una autorización que no tiene bloques asignados. */
+  app.delete("/central/fiscal/autorizaciones/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return enTransaccion(async (c) => {
+      const a = (await c.query("SELECT id FROM ecf_autorizaciones WHERE id = $1 AND empresa_id = $2 FOR UPDATE", [id, empresaDe(req)])).rows[0];
+      if (!a) throw new ErrorNegocio("Autorización no encontrada", 404);
+      const n = (await c.query("SELECT COUNT(*)::int AS n FROM ecf_rangos WHERE autorizacion_id = $1", [id])).rows[0].n;
+      if (n > 0) throw new ErrorNegocio("Esta autorización tiene bloques asignados a sucursales: elimine o retire primero esos bloques.", 409);
+      await c.query("DELETE FROM ecf_autorizaciones WHERE id = $1", [id]);
+      return { ok: true };
+    });
+  });
+
+  /** Corrige un bloque asignado: dónde termina, su vencimiento y —si todavía no se usó— la sucursal. Los números ya usados no se tocan. */
+  app.put("/central/fiscal/rangos/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = z.object({ hasta: z.number().int().max(9999999999).optional(), sucursalId: uuid.optional(), venceEn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.body);
+    return enTransaccion(async (c) => {
+      const rg = (await c.query(
+        `SELECT r.*, a.hasta AS aut_hasta FROM ecf_rangos r JOIN ecf_autorizaciones a ON a.id = r.autorizacion_id
+          WHERE r.id = $1 AND a.empresa_id = $2 FOR UPDATE OF r`, [id, empresaDe(req)])).rows[0];
+      if (!rg) throw new ErrorNegocio("Bloque no encontrado", 404);
+      const reservado = (await c.query("SELECT COALESCE(MAX(hasta), 0) AS h FROM ecf_reservas WHERE rango_id = $1", [id])).rows[0].h;
+      const documentos = (await c.query("SELECT 1 FROM ecf_documentos WHERE rango_id = $1 LIMIT 1", [id])).rowCount;
+      const hasta = b.hasta ?? Number(rg.hasta);
+      const minimo = Math.max(Number(rg.siguiente) - 1, Number(rg.desde), Number(reservado));
+      if (hasta < minimo) throw new ErrorNegocio(`El bloque no puede terminar antes del ${minimo}: esos números ya se usaron o están reservados por una caja.`);
+      if (hasta > Number(rg.aut_hasta)) throw new ErrorNegocio(`El bloque no puede pasar de ${rg.aut_hasta}, donde termina el rango autorizado por la DGII.`);
+      const sucursal = b.sucursalId ?? rg.sucursal_id;
+      if (sucursal !== rg.sucursal_id) {
+        if (documentos || Number(reservado) > 0 || Number(rg.siguiente) !== Number(rg.desde)) throw new ErrorNegocio("Este bloque ya se empezó a usar: no se puede pasar a otra sucursal.", 409);
+        const ok = (await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [sucursal, empresaDe(req)])).rowCount;
+        if (!ok) throw new ErrorNegocio("Sucursal no encontrada", 404);
+      }
+      try {
+        await c.query("UPDATE ecf_rangos SET hasta = $2, sucursal_id = $3, vence_en = COALESCE($4::date, vence_en) WHERE id = $1", [id, hasta, sucursal, b.venceEn ?? null]);
+      } catch (e) { solapado(e, "Esos números se cruzan con otro bloque ya asignado de ese tipo."); }
+      return { ok: true };
+    });
+  });
+
+  /** Elimina un bloque asignado que todavía no se ha usado ni está reservado por una caja. */
+  app.delete("/central/fiscal/rangos/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return enTransaccion(async (c) => {
+      const rg = (await c.query(
+        `SELECT r.* FROM ecf_rangos r JOIN ecf_autorizaciones a ON a.id = r.autorizacion_id WHERE r.id = $1 AND a.empresa_id = $2 FOR UPDATE OF r`, [id, empresaDe(req)])).rows[0];
+      if (!rg) throw new ErrorNegocio("Bloque no encontrado", 404);
+      const usado = Number(rg.siguiente) !== Number(rg.desde)
+        || (await c.query("SELECT 1 FROM ecf_documentos WHERE rango_id = $1 LIMIT 1", [id])).rowCount
+        || (await c.query("SELECT 1 FROM ecf_reservas WHERE rango_id = $1 LIMIT 1", [id])).rowCount;
+      if (usado) throw new ErrorNegocio("Este bloque ya se usó o está reservado por una caja: no se puede eliminar. Si es de prueba, use «Retirar bloque de prueba»; si es real, use «Anular ante la DGII».", 409);
+      await c.query("DELETE FROM ecf_rangos WHERE id = $1", [id]);
+      return { ok: true };
+    });
+  });
+
   app.get("/central/fiscal/secuencias", async (req) => {
     const r = await pool.query(
       `SELECT s.*, COALESCE(cf.alerta_restantes, 500) AS alerta
