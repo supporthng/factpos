@@ -10,6 +10,7 @@ import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
 import { firmarXml } from "../fiscal/firma.js";
 import { PORTAL_URL } from "../licencia/cliente.js";
+import { estadoTunel, tunelActivo } from "../tunel.js";
 
 /** Estado de la certificación del software en el portal de FactPOS (caché de 10 min). */
 let cacheCert: { t: number; v: { autorizado: boolean; fecha: string | null; software: string; pasosHechos: number; totalPasos: number } | null } | null = null;
@@ -502,6 +503,15 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       else poner("sec-" + tipo, nombre, "ok", "Hay números vigentes en todas las sucursales.");
     }
 
+    {
+      // Notas de crédito (E34): no es obligatoria, pero si hay rangos registrados y ninguno vigente, se avisa
+      const hay34 = (await pool.query("SELECT 1 FROM ecf_rangos WHERE tipo_ecf = 'E34' AND sucursal_id = ANY($1::uuid[]) LIMIT 1", [sucs.map((s) => s.id)])).rowCount;
+      const sin34 = sucs.filter((s) => !disp.some((x) => x.sucursal_id === s.id && x.tipo_ecf === "E34" && Number(x.disponibles) > 0)).map((s) => s.nombre);
+      if (hay34 && sin34.length) poner("sec-E34", "e-NCF de notas de crédito (E34)", "aviso", `Sin números vigentes en: ${sin34.join(", ")}. Sin ellos no se pueden anular ni devolver facturas.`, "Solicítelos en la Oficina Virtual y regístrelos en Fiscal › Secuencias e-NCF.");
+      else if (hay34) poner("sec-E34", "e-NCF de notas de crédito (E34)", "ok", "Hay números vigentes en todas las sucursales.");
+      else poner("sec-E34", "e-NCF de notas de crédito (E34)", "aviso", "No hay secuencia de notas de crédito: sin ella no se pueden anular ni devolver facturas.", "Solicite el rango E34 en la Oficina Virtual y regístrelo en Fiscal › Secuencias e-NCF.");
+    }
+
     // 5. Conexión y autenticación con la DGII (la prueba real de que está autorizado)
     if (real && emp.transmisor === "DGII") {
       let certCargado = true;
@@ -518,6 +528,33 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
                ON CONFLICT (empresa_id) DO UPDATE SET etapa_dgii = 'AUTORIZADO', autenticacion_ok_en = now()`, [e]);
           }
           poner("dgii", "Conexión con la DGII", "ok", `La DGII aceptó la autenticación con su certificado (${emp.ambiente}).`);
+
+          // Registro de la empresa en el directorio de la DGII y direcciones públicas (recepción de e-CF y aprobaciones de los proveedores)
+          const baseTunel = tunelActivo() ? (estadoTunel().url ?? "").replace(/\/$/, "") : "";
+          const responde = async (url: string) => {
+            try { return (await fetch(`${new URL(url).origin}/fe/autenticacion/api/semilla`, { signal: AbortSignal.timeout(10_000), cache: "no-store" })).ok; } catch { return false; }
+          };
+          try {
+            const dir = (await dgii(emp.ambiente).directorio!(rnc)) ?? [];
+            const yo = dir.find((x) => x.rnc.replace(/\D/g, "") === rnc) ?? dir[0];
+            if (!yo) poner("directorio", "Registro en la DGII", "falta", "La DGII todavía no tiene a la empresa en su directorio de facturadores electrónicos.", "Complete la certificación y espere a que la DGII la habilite.");
+            else {
+              poner("directorio", "Registro en la DGII", "ok", `Habilitada como facturador electrónico${yo.nombre ? ` (${yo.nombre})` : ""}.`);
+              const recep = yo.urlRecepcion;
+              if (recep && baseTunel && !recep.toLowerCase().startsWith(baseTunel.toLowerCase())) {
+                poner("recepcion", "Dirección de recepción", await responde(recep) ? "ok" : "aviso",
+                  await responde(recep) ? `${recep} · responde.` : `La DGII tiene registrada ${recep}, que no responde (esta empresa usa ${baseTunel}). Los proveedores no podrán enviarle e-CF.`,
+                  "Corrija la dirección en la Oficina Virtual de la DGII.");
+              } else if (recep) poner("recepcion", "Dirección de recepción", "ok", recep);
+              else poner("recepcion", "Dirección de recepción", "aviso", "La DGII no tiene registrada una dirección de recepción: los proveedores no podrán enviarle e-CF.", "Regístrela en la Oficina Virtual de la DGII.");
+            }
+          } catch (err) {
+            poner("directorio", "Registro en la DGII", "aviso", `No se pudo consultar el directorio de la DGII: ${(err as Error).message}`);
+          }
+          if (tunelActivo()) {
+            if (!baseTunel) poner("publica", "Acceso por internet", "falta", "No está activo: la DGII y los proveedores no pueden llegar a este servidor.", "Revise que el servidor tenga internet y que el túnel esté activo (Configuración › Acceso por internet).");
+            else poner("publica", "Direcciones públicas", await responde(baseTunel) ? "ok" : "falta", await responde(baseTunel) ? `${baseTunel} responde.` : `${baseTunel} no responde desde internet.`, "Revise el túnel y que el servidor esté encendido.");
+          }
         } catch (err) {
           poner("dgii", "Conexión con la DGII", "falta", `No se pudo autenticar: ${(err as Error).message}`,
             "Si es un error de conexión, revise el internet. Si la DGII rechazó el certificado, confirme en la Oficina Virtual que su solicitud de emisor electrónico fue aprobada y que el certificado es el mismo.");
