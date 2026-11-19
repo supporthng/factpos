@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { SetPruebasDgii } from "./SetPruebasDgii";
-import { FirmarXmlDgii } from "./FirmarXmlDgii";
 import { Aviso, Encabezado, SelectorSucursal, useCatalogo, useDatos } from "../ui";
 
 /**
- * Portal de FactPOS: avance de la certificación del software ante la DGII (una sola para todos los clientes).
+ * Portal de FactPOS: seguimiento interno de la certificación ante la DGII.
  * Sigue los 15 pasos del «Proceso de Certificación para ser Emisor Electrónico» de la DGII.
  */
 type Estado = "PENDIENTE" | "EN_CURSO" | "HECHO";
@@ -131,7 +129,7 @@ function VerificacionEcf() {
 
 interface FilaEnsayo { tipo: string; encf: string; modo: string; enviado: boolean; estado: string; trackId?: string; mensaje?: string }
 /** Ensayo: un comprobante de cada tipo (31, 32, 41, 43, 44, 45, 46, 47, 33, 34), armado, firmado y —en pruebas/certificación— enviado. */
-function EnsayoTipos() {
+export function EnsayoTipos() {
   const { sucursales } = useCatalogo();
   const [sucursal, setSucursal] = useState("");
   const elegida = sucursal || sucursales[0]?.id || "";
@@ -172,18 +170,6 @@ function EnsayoTipos() {
   );
 }
 
-/** En la app de cada empresa: las herramientas que trabajan con SU certificado y SU servidor (firmar XML, ensayo, set de pruebas). El avance de los 15 pasos vive en el portal. */
-export function CertificacionEmpresa() {
-  return (
-    <>
-      <Encabezado titulo="Certificación DGII" descripcion="Herramientas para la certificación ante la DGII con el certificado digital de esta empresa: firmar los XML del portal de la DGII, ensayo por tipo de comprobante, set de pruebas, simulación y aprobaciones comerciales." />
-      <EnsayoTipos />
-      <FirmarXmlDgii />
-      <SetPruebasDgii />
-    </>
-  );
-}
-
 export function CertificacionDgii() {
   const { datos, error, recargar } = useDatos<Datos>("/central/portal/certificacion-dgii");
   const [f, setF] = useState<Datos | null>(null);
@@ -204,7 +190,7 @@ export function CertificacionDgii() {
 
   return (
     <>
-      <Encabezado titulo="Certificación DGII" descripcion="Avance de la certificación de FactPOS como software de facturación electrónica ante la DGII. Es una sola para todos los clientes.">
+      <Encabezado titulo="Certificación DGII" descripcion="Seguimiento interno de la certificación de FactPOS ante la DGII. Las herramientas de certificación de cada empresa están en la sección «Certificación DGII» de su propio sistema.">
         <button className="boton primario" disabled={guardando} onClick={guardar}>Guardar</button>
       </Encabezado>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
@@ -216,9 +202,6 @@ export function CertificacionDgii() {
         </div>
       </div>
       <VerificacionEcf />
-      <EnsayoTipos />
-      <FirmarXmlDgii />
-      <SetPruebasDgii />
       <ChecklistSolicitud />
       <Aviso tipo={f.autorizado ? "ok" : "info"} texto={f.autorizado ? `FactPOS está autorizado por la DGII${f.autorizadoFecha ? ` desde el ${new Date(f.autorizadoFecha + "T12:00:00").toLocaleDateString("es-DO")}` : ""}.` : `FactPOS aún no está autorizado por la DGII para emitir e-CF · ${hechos} de ${PASOS.length} pasos hechos.`} />
 

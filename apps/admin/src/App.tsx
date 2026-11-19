@@ -14,7 +14,7 @@ const PorCobrarTodas = lazy(() => import("./paginas/PorCobrarTodas").then((m) =>
 const Vender = lazy(() => import("./paginas/Vender").then((m) => ({ default: m.Vender })));
 const Series = lazy(() => import("./paginas/Series").then((m) => ({ default: m.Series })));
 const Facturas = lazy(() => import("./paginas/Facturas").then((m) => ({ default: m.Facturas })));
-const CertificacionEmpresa = lazy(() => import("./paginas/CertificacionDgii").then((m) => ({ default: m.CertificacionEmpresa })));
+const CertificacionEmpresa = lazy(() => import("./paginas/AsistenteCertificacion").then((m) => ({ default: m.AsistenteCertificacion })));
 const CertificacionDgii = lazy(() => import("./paginas/CertificacionDgii").then((m) => ({ default: m.CertificacionDgii })));
 const FacturacionElectronica = lazy(() => import("./paginas/FacturacionElectronica").then((m) => ({ default: m.FacturacionElectronica })));
 import { DosPasos } from "./paginas/DosPasos";
