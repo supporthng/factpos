@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import { Aviso } from "../ui";
 import { leerHojasXlsx, type Tabla } from "../leerTabla";
@@ -46,6 +46,13 @@ async function descargarPdf(r: Resultado): Promise<void> {
 interface Aprobacion { clave: string; fila: Record<string, string> }
 const ENCF_DE = (f: Record<string, string>) => Object.entries(f).find(([k]) => k.toLowerCase() === "encf")?.[1] ?? "";
 
+/** Los números de simulación no se pueden reutilizar en la DGII: se recuerda el último usado en este navegador y se propone el siguiente bloque libre. */
+const CLAVE_SIM = "factpos.certificacion.simulacion.ultimo";
+const leerUltimo = () => { try { return Number(localStorage.getItem(CLAVE_SIM)) || 0; } catch { return 0; } };
+const guardarUltimo = (n: number) => { try { if (n > leerUltimo()) localStorage.setItem(CLAVE_SIM, String(n)); } catch { /* sin almacenamiento: no pasa nada */ } };
+const siguienteBloque = () => { const u = leerUltimo(); return u ? Math.floor(u / 100) * 100 + 101 : 101; };
+const numeroDeEncf = (encf: string) => Number(encf.slice(3)) || 0;
+
 export function SetPruebasDgii() {
   const [aprob, setAprob] = useState<Aprobacion[]>([]);
   const [resAprob, setResAprob] = useState<Record<string, Resultado>>({});
@@ -58,7 +65,9 @@ export function SetPruebasDgii() {
   /** Casos tal como vienen del Excel; la simulación se arma a partir de ellos */
   const [base, setBase] = useState<Caso[]>([]);
   const [sim, setSim] = useState(false);
-  const [inicio, setInicio] = useState("101");
+  const [inicio, setInicio] = useState(String(siguienteBloque()));
+  /** e-NCF ya aceptados por la DGII en esta sesión: un reintento del lote no los vuelve a enviar (reenviar reinicia las pruebas) */
+  const aceptados = useRef(new Set<string>());
 
   const cargar = async (f: File | undefined) => {
     if (!f) return;
@@ -73,7 +82,7 @@ export function SetPruebasDgii() {
         setAprob(filas.map((fila) => ({ clave: ENCF_DE(fila), fila }))); setResAprob({});
         return;
       }
-      setRes({}); setCasos([]); setBase([]); setSim(false);
+      setRes({}); setCasos([]); setBase([]); setSim(false); aceptados.current.clear();
       const nombre = (n: string) => Object.keys(hojas).find((k) => k.trim().toUpperCase() === n);
       const hEcf = nombre("ECF");
       if (!hEcf) throw new Error("El archivo no tiene la hoja «ECF». Suba el Excel del set de pruebas tal como lo descargó del portal de la DGII.");
@@ -90,10 +99,14 @@ export function SetPruebasDgii() {
   const correr = async (lista: Caso[], enviar: boolean) => {
     setError(null);
     for (const c of lista) {
+      // En un lote no se repite lo que la DGII ya aceptó: reenviarlo se rechaza y la DGII reinicia las pruebas
+      if (enviar && lista.length > 1 && aceptados.current.has(c.clave)) continue;
+      if (enviar && sim) guardarUltimo(numeroDeEncf(c.encf));
       setCorriendo(c.clave);
       try {
         const r = await api<Resultado>("/central/fiscal/set-pruebas/caso", { cuerpo: { ecf: c.ecf, rfce: c.rfce, enviar } });
         ultimo[c.clave] = r.estado;
+        if (enviar && (r.estado === "ACEPTADO" || r.estado === "ACEPTADO_COND")) aceptados.current.add(c.clave);
         setRes((x) => ({ ...x, [c.clave]: r }));
       } catch (e) {
         setRes((x) => ({ ...x, [c.clave]: { estado: "ERROR", mensajes: (e as Error).message } }));
@@ -101,7 +114,7 @@ export function SetPruebasDgii() {
         if (enviar) break;
       }
       // En la simulación la DGII no deja repetir números: si rechaza uno, se detiene para no gastar los demás
-      if (enviar && sim && resultadoDe(c.clave) === "RECHAZADO") { setError("La DGII rechazó un comprobante de la simulación. Revise el detalle, corrija y use «Reiniciar simulación»."); break; }
+      if (enviar && sim && resultadoDe(c.clave) === "RECHAZADO") { setError(`La DGII rechazó un comprobante de la simulación y reinició las pruebas. Revise el detalle, use «Reiniciar simulación» (se propondrá el número ${siguienteBloque()}) y vuelva a enviar todo UNA sola vez.`); break; }
     }
     setCorriendo(null);
   };
@@ -128,10 +141,10 @@ export function SetPruebasDgii() {
       const datos: DatosEmisor = { rnc: e.rnc, razonSocial: e.razonSocial, nombreComercial: e.nombreComercial, direccion: e.direccion, telefono: e.telefono, correo: e.correo };
       const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo" }).format(new Date());
       const n = Math.max(1, Math.floor(Number(inicio) || 101));
-      setRes({}); setCasos(armarSimulacion(base, datos, hoy, n)); setSim(true);
+      setRes({}); aceptados.current.clear(); setCasos(armarSimulacion(base, datos, hoy, n)); setSim(true);
     } catch (err) { setError((err as Error).message); }
   };
-  const volverAlSet = () => { setRes({}); setCasos(base); setSim(false); };
+  const volverAlSet = () => { setRes({}); aceptados.current.clear(); setCasos(base); setSim(false); setInicio(String(siguienteBloque())); };
 
   const rnc = casos[0]?.ecf["RNCEmisor"];
   const ok = Object.values(res).filter((r) => r.estado === "ACEPTADO" || r.estado === "ACEPTADO_COND" || r.estado === "ARMADO").length;
