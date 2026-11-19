@@ -133,8 +133,9 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
     const q = z.object({ sucursalId: uuid.optional() }).parse(req.query);
     const r = await pool.query(
       `SELECT COALESCE(e.nombre_comercial, e.razon_social) AS nombre, e.razon_social AS "razonSocial", e.rnc, m.logo,
-              s.direccion, s.telefono
-         FROM empresas e LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
+              COALESCE(NULLIF(trim(s.direccion), ''), NULLIF(concat_ws(', ', NULLIF(trim(e.direccion), ''), NULLIF(trim(e.municipio), ''), NULLIF(trim(e.provincia), '')), ''), NULLIF(trim(cf.direccion_emisor), '')) AS direccion,
+              COALESCE(NULLIF(trim(s.telefono), ''), NULLIF(trim(e.telefono), '')) AS telefono
+         FROM empresas e LEFT JOIN configuracion_fiscal cf ON cf.empresa_id = e.id LEFT JOIN configuracion_marca m ON m.empresa_id = e.id
          LEFT JOIN LATERAL (SELECT direccion, telefono FROM sucursales
                              WHERE empresa_id = e.id AND activo AND ($2::uuid IS NULL OR id = $2)
                              ORDER BY (tipo = 'TIENDA') DESC, codigo LIMIT 1) s ON true
