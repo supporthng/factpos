@@ -4,7 +4,7 @@ import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { guardarCertificado, huellaEnUso, cifrarTexto, descifrarTexto } from "../fiscal/certificado-guardado.js";
-import { usarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
+import { usarCertificado, quitarCertificado, certificado, rncDelCertificado } from "../fiscal/firma.js";
 import { dgii, transmisorPse, leerCredencialesMseller } from "../fiscal/transmisor.js";
 import { rncValido } from "@factpos/compartido";
 import { construirAcecf, construirAnecf } from "../fiscal/servicios-dgii.js";
@@ -684,6 +684,17 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       [empresaDe(req), b.sucursalIds, b.habilitado],
     );
     return { cambiadas: r.rowCount };
+  });
+
+  /** Quitar el certificado de la empresa (se borra el archivo cifrado). En Producción exige confirmación expresa. */
+  app.delete("/central/fiscal/certificado", async (req) => {
+    const e = empresaDe(req);
+    const amb = (await pool.query("SELECT ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [e])).rows[0]?.ambiente as string | undefined;
+    const q = z.object({ confirmar: z.string().optional() }).parse(req.query);
+    if (amb === "ECF" && q.confirmar !== "si") throw new ErrorNegocio("El ambiente es Producción: sin certificado no se podrá facturar. Confirme que desea quitarlo.", 409);
+    const r = await pool.query("DELETE FROM certificados_digitales WHERE empresa_id = $1", [e]);
+    quitarCertificado(); // esta central en una PC deja de firmar con él
+    return { quitados: r.rowCount };
   });
 
   /** Subir (o reemplazar) el certificado. Se revisa la contraseña y la vigencia antes de guardarlo. */
