@@ -27,6 +27,8 @@ export interface Transmisor {
   /** Anulación de rangos de e-NCF (ANECF). Solo el envío directo a la DGII. */
   /** Aprobación comercial (ACECF) de un e-CF recibido. Solo el envío directo a la DGII. */
   aprobarComercial?(xmlFirmado: string, rncComprador: string, nombreArchivo?: string): Promise<{ aceptada: boolean; respuesta: string }>;
+  /** Directorio de facturadores electrónicos de la DGII: lo que la DGII tiene registrado de este RNC (direcciones de recepción y aprobación). */
+  directorio?(rnc: string): Promise<{ nombre: string; rnc: string; urlRecepcion: string; urlAceptacion: string }[]>;
   anularRango?(xmlFirmado: string, rncEmisor: string): Promise<{ aceptada: boolean; respuesta: string }>;
 }
 
@@ -110,6 +112,16 @@ export function dgii(ambiente: "TESTECF" | "CERTECF" | "ECF"): Transmisor {
 
   return {
     async probar() { token = null; await autenticar(); },
+    async directorio(rnc) {
+      const r = await conToken((t) => http(`${base}/consultadirectorio/api/consultas/obtenerdirectorioporrnc?RNC=${encodeURIComponent(rnc)}`, {
+        method: "GET", headers: { authorization: `Bearer ${t}` },
+      }));
+      if (r.status === 404) return [];
+      if (r.status >= 400) throw new Error(`La DGII respondió ${r.status}: ${typeof r.cuerpo?.texto === "string" ? r.cuerpo.texto.slice(0, 160) : JSON.stringify(r.cuerpo).slice(0, 160)}`);
+      const c = r.cuerpo;
+      const lista: any[] = Array.isArray(c) ? c : c && typeof c === "object" && (c.rnc || c.nombre || c.urlRecepcion) ? [c] : [];
+      return lista.map((x) => ({ nombre: String(x.nombre ?? ""), rnc: String(x.rnc ?? ""), urlRecepcion: String(x.urlRecepcion ?? ""), urlAceptacion: String(x.urlAceptacion ?? "") }));
+    },
     async aprobarComercial(xml, rnc, nombre) {
       const r = await conToken((t) => http(`${base}/aprobacioncomercial/api/aprobacioncomercial`, {
         method: "POST", headers: { authorization: `Bearer ${t}` }, body: archivo(xml, nombre ?? `${rnc}ACECF.xml`),
