@@ -8,17 +8,36 @@ let localResuelta: string | null = null;
  *  En el servidor principal (modo central) que también atiende cajas de una tienda: la de SUCURSAL_LOCAL (nombre, código o id). Si no, null. */
 export const sucursalPropia = (): string | null => (config.modo === "sucursal" ? process.env.SUCURSAL_ID || null : localResuelta);
 
-/** Busca la sucursal de SUCURSAL_LOCAL (solo modo central). Se llama al arrancar. */
+/** Servidor principal instalado en el negocio (MODO=central con túnel): es también la tienda. */
+const esPrincipalDeTienda = () => config.modo !== "sucursal" && process.env.TUNEL === "cloudflare";
+let vigilando = false;
+
+/** Busca la sucursal de SUCURSAL_LOCAL (solo modo central). Se llama al arrancar.
+ *  Si no se puso SUCURSAL_LOCAL y este es el servidor principal del negocio (instalado con túnel), usa su única sucursal activa:
+ *  así anular, corregir y vender funcionan sin tocar el .env. Como la sucursal puede crearse después de instalar, se reintenta cada minuto. */
 export async function resolverSucursalLocal(log: (m: string) => void = () => {}): Promise<void> {
   localResuelta = null;
   const v = (process.env.SUCURSAL_LOCAL ?? "").trim();
-  if (config.modo === "sucursal" || !v) return;
+  if (config.modo === "sucursal") return;
+  const automatica = !v && esPrincipalDeTienda();
+  if (!v && !automatica) return;
+  if (automatica && !vigilando) {
+    vigilando = true;
+    setInterval(() => { if (!localResuelta) void buscar("", true, () => {}); }, 60_000).unref();
+  }
+  await buscar(v, automatica, log);
+}
+
+async function buscar(v: string, automatica: boolean, log: (m: string) => void): Promise<void> {
   try {
-    const r = await pool.query(
-      `SELECT id FROM sucursales WHERE activo AND (id::text = $1 OR lower(codigo) = lower($1) OR lower(nombre) = lower($1)) ORDER BY codigo LIMIT 2`,
-      [v],
-    );
-    if (r.rowCount === 1) { localResuelta = r.rows[0].id; log(`Sucursal local de este servidor: ${v}`); }
+    const r = automatica
+      ? await pool.query(`SELECT id, nombre FROM sucursales WHERE activo ORDER BY codigo LIMIT 2`)
+      : await pool.query(
+          `SELECT id, nombre FROM sucursales WHERE activo AND (id::text = $1 OR lower(codigo) = lower($1) OR lower(nombre) = lower($1)) ORDER BY codigo LIMIT 2`,
+          [v],
+        );
+    if (r.rowCount === 1) { localResuelta = r.rows[0].id; log(`Sucursal local de este servidor: ${r.rows[0].nombre}${automatica ? " (automática: es la única sucursal)" : ""}`); }
+    else if (automatica) { if (r.rowCount) log("Hay varias sucursales: ponga SUCURSAL_LOCAL=nombre en el .env para indicar cuál atiende este servidor."); }
     else log(`SUCURSAL_LOCAL=${v}: ${r.rowCount ? "hay más de una sucursal con ese nombre" : "no existe una sucursal activa con ese nombre"}; se ignora.`);
   } catch { /* la base aún no responde */ }
 }
