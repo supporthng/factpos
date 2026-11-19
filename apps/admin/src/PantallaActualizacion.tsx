@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { puede } from "./api";
 import { versionCliente } from "./ui";
 
 /**
@@ -84,6 +85,18 @@ export function PantallaActualizacion({ servidor, alCambiarVersion }: { servidor
   const activa = (e?.actualizando || (visto.current && sinConexion)) && !ocultar;
   const pasados = desde ? Math.floor((Date.now() - desde) / 60_000) : 0;
   if (!activa && !aviso) return null;
+  // Quien no puede actualizar (cajeros, vendedores…) no ve el avance ni los errores de la instalación: solo un aviso discreto
+  // que no tapa el trabajo, porque la pantalla se recarga sola cuando el servidor termine.
+  const autorizado = puede("*") || puede("admin.config");
+  if (!autorizado) {
+    if (!activa) return null;
+    return (
+      <div className="aviso-actualizar" role="status" aria-live="polite">
+        <b>El sistema se está actualizando</b>
+        <p className="suave pequeno" style={{ margin: "4px 0 0" }}>Se reiniciará en unos minutos y le pedirá su usuario y contraseña. Termine lo que está haciendo.</p>
+      </div>
+    );
+  }
   if (!activa && aviso) {
     return (
       <div className="actualizando-fondo" role="alertdialog">
