@@ -236,11 +236,17 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
       const hasta = Math.min(desde + b.cantidad - 1, Number(a.hasta));
       if (desde > Number(a.hasta)) throw new ErrorNegocio("Esta autorización ya está asignada completa. Solicite un nuevo rango a la DGII.");
       const id = uuidv7();
-      await c.query(
-        `INSERT INTO ecf_rangos (id, autorizacion_id, sucursal_id, tipo_ecf, desde, hasta, siguiente, vence_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$5,$7)`,
-        [id, a.id, b.sucursalId, a.tipo_ecf, desde, hasta, a.vence_en],
-      );
+      try {
+        await c.query(
+          `INSERT INTO ecf_rangos (id, autorizacion_id, sucursal_id, tipo_ecf, desde, hasta, siguiente, vence_en)
+           VALUES ($1,$2,$3,$4,$5,$6,$5,$7)`,
+          [id, a.id, b.sucursalId, a.tipo_ecf, desde, hasta, a.vence_en],
+        );
+      } catch (e) {
+        // Restricción «ningún número en dos bloques del mismo tipo»: esos números ya están asignados (p. ej. un rango registrado dos veces)
+        if ((e as { code?: string }).code === "23P01") throw new ErrorNegocio(`Los números ${a.tipo_ecf} ${desde}–${hasta} ya pertenecen a un bloque asignado. Probablemente este rango está registrado dos veces: asigne otra autorización de la DGII.`, 409);
+        throw e;
+      }
       return { id, tipo: a.tipo_ecf, desde, hasta, cantidad: hasta - desde + 1 };
     });
     rep.code(201);
