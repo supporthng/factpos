@@ -305,7 +305,76 @@ function Secuencias() {
         </div>
       </div>
       {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      <RangosRegistrados alCambiar={() => { aut.recargar(); sec.recargar(); }} avisar={setMsg} />
     </>
+  );
+}
+
+interface BloqueReg { id: string; sucursalId: string; sucursal: string; desde: string; hasta: string; siguiente: string; venceEn: string; enUso: boolean }
+interface AutReg { id: string; tipo: string; desde: string; hasta: string; venceEn: string; bloques: BloqueReg[] }
+type Edicion = { clase: "aut" | "blq"; id: string; desde: string; hasta: string; venceEn: string; sucursalId: string };
+
+/** Lo ya registrado, para corregirlo: los números que ya se usaron no se tocan (el servidor lo valida y explica). */
+function RangosRegistrados({ alCambiar, avisar }: { alCambiar: () => void; avisar: (m: { t: string; tipo: "ok" | "error" } | null) => void }) {
+  const d = useDatos<AutReg[]>("/central/fiscal/rangos");
+  const [ed, setEd] = useState<Edicion | null>(null);
+  const hecho = (t: string) => { avisar({ t, tipo: "ok" }); setEd(null); d.recargar(); alCambiar(); };
+  const fallo = (e: unknown) => avisar({ t: (e as Error).message, tipo: "error" });
+  const guardar = async () => {
+    if (!ed) return;
+    try {
+      if (ed.clase === "aut") await api(`/central/fiscal/autorizaciones/${ed.id}`, { metodo: "PUT", cuerpo: { desde: Number(ed.desde), hasta: Number(ed.hasta), venceEn: ed.venceEn } });
+      else await api(`/central/fiscal/rangos/${ed.id}`, { metodo: "PUT", cuerpo: { hasta: Number(ed.hasta), sucursalId: ed.sucursalId, venceEn: ed.venceEn } });
+      hecho("Cambios guardados.");
+    } catch (e) { fallo(e); }
+  };
+  const borrar = async (clase: "autorizaciones" | "rangos", id: string, texto: string) => {
+    if (!window.confirm(texto)) return;
+    try { await api(`/central/fiscal/${clase}/${id}`, { metodo: "DELETE" }); hecho("Eliminado."); } catch (e) { fallo(e); }
+  };
+  const lista = d.datos ?? [];
+  if (!lista.length) return null;
+  const campo = (k: "desde" | "hasta" | "venceEn", etiqueta: string, tipo = "text") => (
+    <label className="campo" style={{ minWidth: 130 }}><span>{etiqueta}</span>
+      <input type={tipo} inputMode={tipo === "text" ? "numeric" : undefined} value={ed![k]} onChange={(e) => setEd({ ...ed!, [k]: tipo === "text" ? e.target.value.replace(/\D/g, "") : e.target.value })} />
+    </label>
+  );
+  return (
+    <div className="panel" style={{ marginTop: 20 }}>
+      <h3 style={{ marginTop: 0 }}>3. Rangos y bloques registrados</h3>
+      <p className="suave pequeno">Corrija lo que se registró mal. Los números que ya se usaron no se pueden cambiar; un bloque o rango sin uso se puede eliminar.</p>
+      {lista.map((a) => (
+        <div key={a.id} style={{ borderTop: "1px solid var(--borde, #e5e7eb)", padding: "8px 0" }}>
+          <div className="fila-acciones" style={{ marginTop: 0 }}>
+            <b>{a.tipo} · {a.desde}–{a.hasta}</b><span className="suave pequeno">vence {a.venceEn?.slice(0, 10)}</span><span className="flex" />
+            <button className="enlace" onClick={() => setEd({ clase: "aut", id: a.id, desde: a.desde, hasta: a.hasta, venceEn: a.venceEn?.slice(0, 10) ?? "", sucursalId: "" })}>Editar rango</button>
+            <button className="enlace" onClick={() => void borrar("autorizaciones", a.id, `¿Eliminar el rango ${a.tipo} ${a.desde}–${a.hasta}? Solo se puede si no tiene bloques asignados.`)}>Eliminar</button>
+          </div>
+          {ed?.clase === "aut" && ed.id === a.id && (
+            <div className="fila-acciones" style={{ alignItems: "flex-end" }}>
+              {campo("desde", "Desde")}{campo("hasta", "Hasta")}{campo("venceEn", "Vence", "date")}
+              <button className="boton primario" onClick={guardar}>Guardar</button><button className="boton" onClick={() => setEd(null)}>Cancelar</button>
+            </div>
+          )}
+          {a.bloques.map((b) => (
+            <div key={b.id} style={{ marginLeft: 18 }}>
+              <div className="fila-acciones" style={{ marginTop: 4 }}>
+                <span className="pequeno">{b.sucursal}: {b.desde}–{b.hasta} · próximo {Math.min(Number(b.siguiente), Number(b.hasta) + 1)}{b.enUso ? " · en uso" : ""}</span><span className="flex" />
+                <button className="enlace" onClick={() => setEd({ clase: "blq", id: b.id, desde: b.desde, hasta: b.hasta, venceEn: b.venceEn?.slice(0, 10) ?? "", sucursalId: b.sucursalId })}>Editar bloque</button>
+                <button className="enlace" onClick={() => void borrar("rangos", b.id, `¿Eliminar el bloque ${b.desde}–${b.hasta} de ${b.sucursal}? Solo se puede si no se ha usado.`)}>Eliminar</button>
+              </div>
+              {ed?.clase === "blq" && ed.id === b.id && (
+                <div className="fila-acciones" style={{ alignItems: "flex-end" }}>
+                  {campo("hasta", "Hasta")}{campo("venceEn", "Vence", "date")}
+                  <label className="campo"><span>Sucursal</span><SelectorSucursal valor={ed.sucursalId} onCambio={(v) => setEd({ ...ed, sucursalId: v })} todas={false} /></label>
+                  <button className="boton primario" onClick={guardar}>Guardar</button><button className="boton" onClick={() => setEd(null)}>Cancelar</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
