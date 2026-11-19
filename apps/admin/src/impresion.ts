@@ -58,6 +58,11 @@ export const empresaParaImprimir = (sucursalId?: string | null) =>
   api<EmpresaImpresion>(`/central/empresa/impresion${sucursalId ? `?sucursalId=${sucursalId}` : ""}`).catch(() => ({} as EmpresaImpresion));
 
 export async function imprimirCarta(doc: DocumentoCarta, sucursalId?: string | null) {
+  await imprimirHtml(await htmlCarta(doc, sucursalId));
+}
+
+/** El documento en CARTA como HTML completo (para imprimirlo o mostrarlo en una vista previa). */
+export async function htmlCarta(doc: DocumentoCarta, sucursalId?: string | null): Promise<string> {
   const emp = await empresaParaImprimir(sucursalId);
   let qr = "";
   if (doc.fiscal?.urlQr) { try { qr = await QRCode.toDataURL(doc.fiscal.urlQr, { margin: 0, width: 220 }); } catch { /* sin QR */ } }
@@ -121,9 +126,8 @@ ${f ? `<div class="fiscal">${qr ? `<img src="${qr}" alt="QR">` : ""}<div><b>e-NC
   ${f.fechaFirma ? `Fecha de firma digital: ${esc(new Date(f.fechaFirma).toLocaleString("es-DO"))}<br>` : ""}
   ${f.codigoSeguridad ? `Código de seguridad: ${esc(f.codigoSeguridad)}<br>` : ""}
   ${f.venceSecuencia ? `Fecha de vencimiento de la secuencia: ${esc(new Date(f.venceSecuencia).toLocaleDateString("es-DO"))}` : ""}</div></div>` : ""}
-${!f && !doc.pie?.length ? "" : ""}
 </body></html>`;
-  await imprimirHtml(html);
+  return html;
 }
 
 export { rd };

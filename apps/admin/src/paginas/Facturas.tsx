@@ -1,7 +1,7 @@
 import { SelectorPeriodo } from "../periodos";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, esLocal, hoy, num, puede, rd } from "../api";
-import { imprimirCarta, imprimirHtml } from "../impresion";
+import { htmlCarta, imprimirHtml } from "../impresion";
 import { NuevaFactura } from "./NuevaFactura";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
@@ -35,8 +35,8 @@ const fecha = (v: string) => new Date(v).toLocaleString("es-DO", { dateStyle: "s
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 /** Factura en CARTA (8½ × 11): encabezado de la empresa, cliente, detalle, totales y, en e-CF, el QR y datos de la firma. */
-function imprimirCartaFactura(d: Detalle) {
-  void imprimirCarta({
+function htmlCartaFactura(d: Detalle) {
+  return htmlCarta({
     titulo: NOMBRE[d.tipoDocumento] ?? d.tipoDocumento,
     numero: d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`,
     datos: [["Fecha", fecha(d.fecha)], ["Factura interna", String(d.numero)], ["Sucursal", d.sucursal], ...(d.cajero ? [["Atendido por", d.cajero] as [string, string]] : [])],
@@ -52,10 +52,29 @@ function imprimirCartaFactura(d: Detalle) {
   }, d.sucursalId);
 }
 
-/** Abre una página lista para imprimir (la representación con QR se reimprime desde la caja). */
-function imprimir(d: Detalle) {
+/** Vista previa del documento tal como saldrá impreso, con el botón Imprimir. */
+function VistaPrevia({ titulo, html, ancho, onCerrar }: { titulo: string; html: Promise<string> | string; ancho: number; onCerrar: () => void }) {
+  const [doc, setDoc] = useState<string | null>(null);
+  useEffect(() => { let vivo = true; void Promise.resolve(html).then((h) => { if (vivo) setDoc(h); }); return () => { vivo = false; }; }, [html]);
+  return (
+    <div className="fondo-modal" style={{ zIndex: 60 }} onMouseDown={(e) => { e.stopPropagation(); onCerrar(); }}>
+      <div className="modal ancho" style={{ maxWidth: ancho + 48 }} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="fila-acciones" style={{ marginTop: 0 }}>
+          <h3 style={{ margin: 0 }}>Vista previa · {titulo}</h3><span className="flex" />
+          <button className="boton primario" disabled={!doc} onClick={() => doc && void imprimirHtml(doc)}>Imprimir</button>
+          <button className="boton" onClick={onCerrar}>Cerrar</button>
+        </div>
+        {doc === null ? <p className="suave">Preparando la vista previa…</p>
+          : <iframe title="Vista previa de la factura" srcDoc={doc} style={{ width: "100%", maxWidth: ancho, height: "70vh", border: "1px solid #cfd6dd", borderRadius: 6, background: "#fff", display: "block", margin: "10px auto 0" }} />}
+      </div>
+    </div>
+  );
+}
+
+/** Página para el ticket angosto (la representación con QR se reimprime desde la caja). */
+function htmlTicket(d: Detalle) {
   const filas = (d.lineas ?? []).map((l) => `<tr><td>${esc(l.descripcion)}<br><small>${num(l.cantidad, 3)} × ${rd(l.precio)}</small></td><td class="d">${rd(l.total)}</td></tr>`).join("");
-  void imprimirHtml(`<!doctype html><meta charset="utf-8"><title>Factura ${esc(d.numeroDocumento ?? d.fiscal?.encf ?? d.numero)}</title>
+  return (`<!doctype html><meta charset="utf-8"><title>Factura ${esc(d.numeroDocumento ?? d.fiscal?.encf ?? d.numero)}</title>
 <style>body{font:13px system-ui,sans-serif;margin:16px;max-width:380px}h1{font-size:16px;margin:0 0 4px}table{width:100%;border-collapse:collapse}td{padding:3px 0;vertical-align:top}.d{text-align:right}hr{border:0;border-top:1px dashed #888;margin:8px 0}small{color:#555}.anulada{color:#b00;font-weight:700;text-align:center;border:2px solid #b00;padding:4px;margin:8px 0}</style>
 <h1>${esc(NOMBRE[d.tipoDocumento] ?? d.tipoDocumento)}</h1>
 <div>${esc(d.fiscal?.encf ?? d.numeroDocumento ?? "")} · Nº ${d.numero}</div>
@@ -128,6 +147,7 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
   const [cliente, setCliente] = useState<{ id: string | null; nombre: string } | undefined>(undefined);
   const [msg, setMsg] = useState("");
   const [envio, setEnvio] = useState<{ para: string; enviando: boolean } | null>(null);
+  const [previa, setPrevia] = useState<{ titulo: string; html: Promise<string> | string; ancho: number } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const interna = d?.tipoDocumento === "SIN";
   // Edición de líneas (solo facturas sin comprobante): al guardar se corrige la factura (nueva con los cambios, la original queda anulada)
@@ -180,8 +200,8 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
       <div className="modal ancho" onMouseDown={(e) => e.stopPropagation()}>
         <div className="fila-acciones" style={{ marginTop: 0 }}>
           <h2 style={{ margin: 0 }}>{d ? `${d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`}` : "Factura"}</h2><span className="flex" />
-          {d && <button className="boton chico" onClick={() => imprimirCartaFactura(d)} title="Hoja carta 8½ × 11">Imprimir carta</button>}
-          {d && <button className="boton chico" onClick={() => imprimir(d)} title="Ticket angosto">Imprimir ticket</button>}
+          {d && <button className="boton chico" onClick={() => setPrevia({ titulo: "carta", html: htmlCartaFactura(d), ancho: 816 })} title="Ver cómo saldrá en hoja carta 8½ × 11">Imprimir carta</button>}
+          {d && <button className="boton chico" onClick={() => setPrevia({ titulo: "ticket", html: htmlTicket(d), ancho: 380 })} title="Ver cómo saldrá en ticket angosto">Imprimir ticket</button>}
           {d && !d.anulada && <button className="boton chico" onClick={() => setEnvio(envio ? null : { para: d.clienteCorreo ?? "", enviando: false })}>Enviar al cliente</button>}
         </div>
         <Aviso texto={error} />
@@ -286,6 +306,7 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
         </>}
         <div className="fila-acciones"><span className="flex" /><button className="boton" onClick={onCerrar}>Cerrar</button></div>
       </div>
+      {previa && <VistaPrevia {...previa} onCerrar={() => setPrevia(null)} />}
     </div>
   );
 }
