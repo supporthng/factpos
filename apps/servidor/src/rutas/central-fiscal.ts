@@ -165,7 +165,29 @@ export async function rutasCentralFiscal(app: FastifyInstance) {
     const hechas = (await pool.query(
       `SELECT id, tipo_ecf, desde::text, hasta::text, cantidad::text, estado, respuesta, creado_en
          FROM ecf_anulaciones WHERE empresa_id = $1 ORDER BY creado_en DESC LIMIT 50`, [e])).rows;
-    return { libres, hechas };
+    const ambiente = (await pool.query<{ ambiente: string | null }>("SELECT ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [e])).rows[0]?.ambiente ?? "SIMULADO";
+    return { libres, hechas, ambiente };
+  });
+
+  /**
+   * Retira un bloque que se registró con números de PRUEBA (TesteCF/CerteCF o simulado): deja de usarse en esta empresa sin avisar a la DGII.
+   * Así la sucursal no sigue numerando con esos números cuando se pase a producción y se registren los rangos reales.
+   * No se permite en producción: ahí lo que no se usa se anula ante la DGII.
+   */
+  app.post("/central/fiscal/rangos/:id/retirar", async (req) => {
+    const e = empresaDe(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return enTransaccion(async (c) => {
+      const amb = (await c.query<{ ambiente: string | null }>("SELECT ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [e])).rows[0]?.ambiente ?? "SIMULADO";
+      if (amb === "ECF") throw new ErrorNegocio("En producción los números sin usar se anulan ante la DGII: use «Anular ante la DGII». Para retirar un bloque de prueba, cambie antes el ambiente a Certificación o Pruebas.", 409);
+      const rg = (await c.query(
+        `SELECT r.* FROM ecf_rangos r JOIN sucursales s ON s.id = r.sucursal_id WHERE r.id = $1 AND s.empresa_id = $2 FOR UPDATE OF r`, [id, e])).rows[0];
+      if (!rg) throw new ErrorNegocio("Bloque no encontrado", 404);
+      if (Number(rg.siguiente) > Number(rg.hasta)) throw new ErrorNegocio("Este bloque ya se usó completo: no queda nada por retirar.");
+      const cantidad = Number(rg.hasta) - Number(rg.siguiente) + 1;
+      await c.query("UPDATE ecf_rangos SET siguiente = hasta + 1 WHERE id = $1", [id]);
+      return { retirados: cantidad };
+    });
   });
 
   /** Anula ante la DGII lo que queda sin usar de un bloque. Esos números no se vuelven a usar. */
