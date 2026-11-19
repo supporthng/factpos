@@ -544,6 +544,17 @@ function CertificadoDigital() {
   const dias = c ? Math.floor((new Date(c.vence).getTime() - Date.now()) / 86400e3) : 0;
   const tono = !c ? "" : dias < 0 ? "vencido" : dias <= 30 ? "pronto" : dias <= 60 ? "atento" : "bien";
 
+  const quitar = async () => {
+    if (!window.confirm("¿Quitar el certificado digital de la empresa? Se borra el archivo guardado y las sucursales dejarán de firmar con él (cada servidor lo suelta en unos minutos). Para volver a facturar ante la DGII tendrá que subirlo de nuevo.")) return;
+    try {
+      try { await api("/central/fiscal/certificado", { metodo: "DELETE" }); }
+      catch (e) {
+        if (!/Producción/.test((e as Error).message) || !window.confirm("El ambiente es PRODUCCIÓN: sin certificado no se podrá facturar. ¿Quitarlo de todos modos?")) throw e;
+        await api("/central/fiscal/certificado?confirmar=si", { metodo: "DELETE" });
+      }
+      setMsg({ t: "Certificado quitado.", tipo: "ok" }); recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
   const subir = async () => {
     if (!archivo) return;
     if (!/\.(p12|pfx)$/i.test(archivo.name)) { setMsg({ t: "El archivo debe ser el certificado con extensión .p12 o .pfx (un .cer o .crt no sirve: no trae la llave).", tipo: "error" }); return; }
@@ -617,7 +628,12 @@ function CertificadoDigital() {
             </dl>
             {dias >= 0 && dias <= 30 && <Aviso tipo="error" texto="Pida la renovación ya: cuando venza, las sucursales no podrán firmar facturas." />}
             {dias < 0 && <Aviso tipo="error" texto="Con el certificado vencido no se pueden firmar e-CF. Suba el renovado." />}
-            {!reemplazar && <button className="boton" onClick={() => setReemplazar(true)}>Reemplazar por uno nuevo</button>}
+            {!reemplazar && (
+              <div className="fila-acciones">
+                <button className="boton" onClick={() => setReemplazar(true)}>Reemplazar por uno nuevo</button>
+                <button className="boton peligro" onClick={quitar}>Quitar certificado</button>
+              </div>
+            )}
           </div>
           {reemplazar && formulario}
         </div>
