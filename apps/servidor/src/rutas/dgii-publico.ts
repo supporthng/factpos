@@ -87,12 +87,16 @@ export async function rutasDgiiPublico(app: FastifyInstance) {
       const existe = emp && /^E\d{12}$/.test(encf)
         ? (await pool.query("SELECT 1 FROM ecf_documentos d JOIN sucursales s ON s.id = d.sucursal_id WHERE s.empresa_id = $1 AND d.encf = $2", [emp.id, encf])).rowCount
         : 0;
-      const ok = firmaOk && !!existe && (estado === 1 || estado === 2);
+      // En certificación (TesteCF/CerteCF) la DGII aprueba comprobantes del set de pruebas, que se enviaron desde el set y no existen
+      // como documentos del sistema: se acepta si la empresa es la emisora. En producción sí debe existir el documento.
+      const ambiente = emp ? (await pool.query<{ ambiente: string }>("SELECT ambiente FROM configuracion_fiscal WHERE empresa_id = $1", [emp.id])).rows[0]?.ambiente : undefined;
+      const enCertificacion = ambiente === "TESTECF" || ambiente === "CERTECF";
+      const ok = firmaOk && (!!existe || (enCertificacion && /^E\d{12}$/.test(encf))) && (estado === 1 || estado === 2);
       await pool.query(
         `INSERT INTO ecf_aprobaciones_recibidas (id, empresa_id, rnc_emisor, rnc_comprador, encf, monto_total, estado, motivo, xml, firma_valida, resultado)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [uuidv7(), emp?.id ?? null, rncEmisor, rncComprador || null, encf, monto(valorDe(xml, "MontoTotal")), estado || null, valorDe(xml, "DetalleMotivoRechazo"), xml, firmaOk, ok ? "OK" : "Error"]);
-      const mensaje = ok ? "Aprobación comercial recibida" : !firmaOk ? "La firma del XML no es válida" : !existe ? "Factura no encontrada para esta aprobación comercial" : "Estado no válido";
+      const mensaje = ok ? "Aprobación comercial recibida" : !firmaOk ? "La firma del XML no es válida" : !existe && !enCertificacion ? "Factura no encontrada para esta aprobación comercial" : "Estado no válido";
       return rep.code(ok ? 200 : 400).send({ mensaje: [mensaje], estado: ok ? "OK" : "Error", codigo: ok ? "1" : "2" });
     });
   });
