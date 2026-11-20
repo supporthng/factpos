@@ -3,13 +3,15 @@ import { createHash, createPrivateKey, randomBytes, randomInt, timingSafeEqual }
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
 import { rutasInvitaciones } from "./invitaciones.js";
 import { PAGINA_WEB } from "./pagina-web.js";
+import { PAGINA_FUNCIONES } from "./pagina-funciones.js";
+import { PAGINA_ECF } from "./pagina-ecf.js";
 import { PAGINA_DEMO } from "./pagina-demo.js";
 import { verificarSoftware } from "../fiscal/verificacion-software.js";
 import { firmarLicencia, leerLicencia, DIAS_AVISO, DIAS_GRACIA, type DatosLicencia } from "./nucleo.js";
@@ -41,7 +43,8 @@ const normalizarClave = (t: string) => {
 };
 /** Rutas que no pueden ser el nombre corto de un cliente */
 const RESERVADAS = new Set(["central", "licencias", "salud", "assets", "iconos", "admin", "terminal", "alta", "sync", "cajas", "api", "portal",
-  "descubrir", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt", "clientes", "www", "c"]);
+  "descubrir", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt", "sitemap.xml", "clientes", "www", "c",
+  "demo", "entrar", "funciones", "facturacion-electronica"]);
 /** Código de conexión corto (FP-K7M4QX): el nombre corto no puede parecerse a uno para que las apps no los confundan */
 export const CODIGO_CONEXION = /^FP-[2-9A-HJKMNP-Z]{6}$/;
 export const slugValido = (s: string) => /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(s) && !RESERVADAS.has(s) && !/^fp-?[a-z0-9]{6}$/.test(s);
@@ -1193,6 +1196,19 @@ async function rutasPaginas(app: FastifyInstance) {
     const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").replace(/[^a-zA-Z0-9.:-]/g, "");
     const base = host ? `https://${host}` : "";
     return rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_WEB.replaceAll("__BASE__", base));
+  });
+  // El resto del sitio público: cada página lleva el dominio con el que se entró en sus enlaces absolutos
+  const dominio = (req: FastifyRequest) => {
+    const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").replace(/[^a-zA-Z0-9.:-]/g, "");
+    return host ? `https://${host}` : "";
+  };
+  app.get("/funciones", (req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_FUNCIONES.replaceAll("__BASE__", dominio(req))));
+  app.get("/facturacion-electronica", (req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_ECF.replaceAll("__BASE__", dominio(req))));
+  app.get("/robots.txt", (req, rep) => rep.type("text/plain; charset=utf-8").send(`User-agent: *\nAllow: /\nDisallow: /entrar\nDisallow: /demo\nSitemap: ${dominio(req)}/sitemap.xml\n`));
+  app.get("/sitemap.xml", (req, rep) => {
+    const b = dominio(req);
+    const urls = ["/", "/funciones", "/facturacion-electronica"].map((u) => `<url><loc>${b}${u}</loc></url>`).join("");
+    return rep.type("application/xml; charset=utf-8").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`);
   });
   app.get("/demo", (_req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_DEMO));
   app.get("/entrar", (_req, rep) => pagina(rep, { modo: "portal", api: "" }));
