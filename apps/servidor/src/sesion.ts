@@ -126,6 +126,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   if (/^\/central\/(facturas|series)(\/|$)/.test(ruta)) return "admin.facturas";
   if (/^\/central\/impuestos(\/|$)/.test(ruta) && escribe) return "admin.fiscal"; // la planilla de impuestos se edita en Fiscal; leerla basta con sesión
   if (/^\/central\/cierres(\/|$)/.test(ruta)) return "admin.cierres"; // también leer: muestra el cuadre de todos los cajeros
+  if (/^\/central\/estadisticas(\/|$)/.test(ruta)) return "admin.reportes"; // las estadísticas muestran ventas y márgenes de todo el negocio
   if (!escribe) return null;
   if (/^\/central\/traspasos\/[^/]+\/recibir$/.test(ruta)) return "admin.recibir";
   const mapa: [RegExp, string][] = [
