@@ -34,6 +34,7 @@ import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
 const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) => ({ default: m.RecibosIngreso })));
+const Entregas = lazy(() => import("./paginas/Entregas").then((m) => ({ default: m.Entregas })));
 const MoraRecuperacion = lazy(() => import("./paginas/MoraRecuperacion").then((m) => ({ default: m.MoraRecuperacion })));
 const PlanesFinanciamiento = lazy(() => import("./paginas/PlanesFinanciamiento").then((m) => ({ default: m.PlanesFinanciamiento })));
 const Estadisticas = lazy(() => import("./paginas/Estadisticas").then((m) => ({ default: m.Estadisticas })));
@@ -99,6 +100,7 @@ const SECCIONES = [
   { id: "verificador", titulo: "Verificador de precios", grupo: "Precios", C: Verificador, i: "precios", p: ["admin.precios"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
+  { id: "entregas", titulo: "Entregas", grupo: "Ventas", C: Entregas, i: "traspasos", p: ["admin.entregas"] },
   { id: "mora", titulo: "Mora y recuperación", grupo: "Finanzas", C: MoraRecuperacion, i: "cxc", p: ["admin.cxc"] },
   { id: "recibos", titulo: "Recibos de ingreso", grupo: "Finanzas", C: RecibosIngreso, i: "cxc", p: ["admin.cxc"] },
   { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
@@ -195,6 +197,7 @@ const DESCRIPCION: Record<string, string> = {
   delivery: "Pedidos a domicilio y repartidores",
   cxc: "Clientes a crédito, abonos y estados de cuenta",
   planes: "Plazos de financiamiento, interés, inicial mínima y mora",
+  entregas: "Programar entregas a clientes, asignar chofer, documento de entrega y hoja de ruta del día",
   mora: "Clientes atrasados, actas de recuperación de mercancía y mercancía recuperada",
   recibos: "Recibo numerado de cada inicial y abono de crédito; búsqueda y reimpresión",
   cierres: "Cuadre de cada turno, revisión de diferencias y depósitos",
