@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
 import {
-  validarPagos, uuidv7, cotizarCarrito, ErrorCarrito, type LineaCotizada as LineaCotizadaBase,
+  validarPagos, uuidv7, cotizarCarrito, ErrorCarrito, esNegocioDeMesas, type LineaCotizada as LineaCotizadaBase,
 } from "@factpos/compartido";
 import { enTransaccion, ErrorNegocio, pool } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type ContextoCaja, type PresentacionVenta } from "../contexto.js";
@@ -365,7 +365,7 @@ export async function registrarVenta(
   if (propina.gt(0)) {
     if (cont) throw new ErrorNegocio("Sin servidor no se cobra propina legal");
     const tn = (await c.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0]?.t;
-    if (!tn || tn === "TIENDA") throw new ErrorNegocio("La propina legal solo aplica a restaurantes, bares y discotecas", 400);
+    if (!esNegocioDeMesas(tn)) throw new ErrorNegocio("La propina legal solo aplica a restaurantes, bares y discotecas", 400);
     if (propina.gt(q.totales.subtotal)) throw new ErrorNegocio("La propina no puede ser mayor que el consumo", 400);
   }
   const aCobrar = new Decimal(q.totales.total).plus(propina);

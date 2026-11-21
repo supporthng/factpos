@@ -33,6 +33,7 @@ import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
+const PlanesFinanciamiento = lazy(() => import("./paginas/PlanesFinanciamiento").then((m) => ({ default: m.PlanesFinanciamiento })));
 const Estadisticas = lazy(() => import("./paginas/Estadisticas").then((m) => ({ default: m.Estadisticas })));
 import { EstadoSistema } from "./paginas/InicioCifras";
 import { PuestaEnMarcha } from "./paginas/PuestaEnMarcha";
@@ -95,6 +96,7 @@ const SECCIONES = [
   { id: "ofertas", titulo: "Ofertas", grupo: "Precios", C: Ofertas, i: "ofertas", p: ["admin.precios"] },
   { id: "verificador", titulo: "Verificador de precios", grupo: "Precios", C: Verificador, i: "precios", p: ["admin.precios"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
+  { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
   { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
   { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, i: "fiscal", p: ["admin.fiscal"] },
@@ -188,12 +190,14 @@ const DESCRIPCION: Record<string, string> = {
   cotizaciones: "Preparar cotizaciones y enviarlas por correo",
   delivery: "Pedidos a domicilio y repartidores",
   cxc: "Clientes a crédito, abonos y estados de cuenta",
+  planes: "Plazos de financiamiento, interés, inicial mínima y mora",
   cierres: "Cuadre de cada turno, revisión de diferencias y depósitos",
   caja: "Retiros, gastos y movimientos de caja",
   fiscal: "e-CF, envíos a la DGII y certificado digital",
   ncf: "Rangos NCF (serie B) y secuencias e-NCF por sucursal",
   impuestos: "Tasas de ITBIS, ISC, otros impuestos y propina legal",
   padron: "Consulta de RNC y cédulas de la DGII",
+  estadisticas: "Cómo va el negocio: ventas, productos y lo que merece atención",
   reportes: "Ventas, cierres, inventario, impuestos y más",
   sucursales: "Tiendas, cajas y servidores de cada local",
   incidentes: "Fallas, caídas de conexión y soporte",

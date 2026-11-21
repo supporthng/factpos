@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Decimal } from "decimal.js";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
+import { esNegocioDeMesas } from "@factpos/compartido";
 import { leerToken } from "../sesion.js";
 import { usuarioVigente } from "./sesion.js";
 import { FORMAS_CONTADAS, diferenciaCierre, efectivoContado, efectivoEsperado, esperadoPorForma } from "./cuadre.js";
@@ -196,7 +197,7 @@ export async function rutasCierre(app: FastifyInstance) {
     // Las tiendas siguen con el día de calendario.
     const ctxDia = await contextoCaja(cajaId);
     const tn = (await pool.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctxDia.empresaId])).rows[0]?.t ?? "TIENDA";
-    const desfaseH = tn === "TIENDA" ? 0 : 6;
+    const desfaseH = esNegocioDeMesas(tn) ? 6 : 0; // los negocios de noche cierran el día a las 6 a. m.
     const hoy = (await pool.query<{ d: string }>("SELECT ((now() AT TIME ZONE 'America/Santo_Domingo') - make_interval(hours => $1))::date::text AS d", [desfaseH])).rows[0].d;
     const fechaDia = fecha ?? hoy;
     const r = await pool.query(
