@@ -14,7 +14,7 @@ interface FilaMora { planId: string; clienteId: string; cliente: string; telefon
 interface Acta { id: string; acta: string; estado: "ABIERTA" | "APLICADA" | "CANCELADA"; motivo: string; fechaRecogida: string; valorTotal: string; saldoAntes: string | null; saldoDespues: string | null;
   cliente: string; clienteId: string; factura: number | null; sucursal: string; creadaPor: string | null; aplicadaPor: string | null; items: { id: string; descripcion: string; serie: string | null; cantidad: string; estadoFisico: string; valoracion: string }[] | null }
 interface Recuperada { id: string; descripcion: string; serie: string | null; cantidad: string; estadoFisico: string; valoracion: string; costoReparacion: string; precioUsado: string | null;
-  proceso: "EN_REVISION" | "EN_REPARACION" | "LISTA" | "VENDIDA"; acta: string; fechaRecogida: string; cliente: string }
+  proceso: "EN_REVISION" | "EN_REPARACION" | "LISTA" | "VENDIDA"; acta: string; fechaRecogida: string; cliente: string; garantiaMeses: number; productoUsadoId: string | null; skuUsado: string | null }
 interface Recuperables { planId: string | null; ventaId: string | null; lineas: { itemId: string; presentacionId: string; descripcion: string; cantidad: string; factor: string; total: string; usaSeries: boolean; series: string[] }[] }
 interface Pieza { clave: string; presentacionId: string; descripcion: string; serie: string; estadoFisico: "BUENO" | "REGULAR" | "DANADO"; valoracion: string }
 
@@ -118,7 +118,7 @@ export function MoraRecuperacion() {
               {(rec.datos ?? []).map((r) => <FilaRecuperada key={r.id} r={r} onGuardar={actualizar} />)}
             </tbody>
           </table>
-          <p className="suave pequeno" style={{ marginBottom: 0 }}>La mercancía está en el almacén «Recuperada», aparte del piso de venta. La reventa como USADO con su etiqueta y garantía reducida se activa en la siguiente entrega.</p>
+          <p className="suave pequeno" style={{ marginBottom: 0 }}>La mercancía está en el almacén «Recuperada», aparte del piso de venta. Al marcarla «Lista para la venta» se publica como producto «… (USADO)» con su precio de usado y 3 meses de garantía: sale de «Recuperada», entra al piso de venta y se factura como cualquier artículo (con su serie).</p>
         </div>
       )}
     </>
@@ -137,8 +137,10 @@ function FilaRecuperada({ r, onGuardar }: { r: Recuperada; onGuardar: (id: strin
       <td className="der">{rd(r.valoracion)}</td>
       <td className="der"><input className="numero" style={{ width: 90 }} disabled={vendida} inputMode="decimal" value={rep} onChange={(e) => setRep(decimal(e.target.value))} onBlur={() => rep !== r.costoReparacion && onGuardar(r.id, { costoReparacion: rep || "0" })} /></td>
       <td className="der"><input className="numero" style={{ width: 100 }} disabled={vendida} inputMode="decimal" value={precio} placeholder="Sin precio" onChange={(e) => setPrecio(decimal(e.target.value))} onBlur={() => precio !== (r.precioUsado ?? "") && precio && onGuardar(r.id, { precioUsado: precio })} /></td>
-      <td>{vendida ? <span className="pastilla">Vendida</span> : (
-        <select value={r.proceso} onChange={(e) => onGuardar(r.id, { proceso: e.target.value, ...(precio ? { precioUsado: precio } : {}) })}>
+      <td>{vendida ? <span className="pastilla">Vendida</span> : r.productoUsadoId ? (
+        <><span className="pastilla recibida">En el piso de venta</span><div className="suave pequeno">{r.skuUsado} · garantía {r.garantiaMeses} meses</div></>
+      ) : (
+        <select value={r.proceso} onChange={(e) => { if (e.target.value === "LISTA" && !confirm("Se publicará como producto USADO en el piso de venta con el precio indicado. ¿Continuar?")) return; onGuardar(r.id, { proceso: e.target.value, ...(precio ? { precioUsado: precio } : {}) }); }}>
           {(["EN_REVISION", "EN_REPARACION", "LISTA"] as const).map((p) => <option key={p} value={p}>{PROCESO[p]}</option>)}
         </select>)}</td>
     </tr>
