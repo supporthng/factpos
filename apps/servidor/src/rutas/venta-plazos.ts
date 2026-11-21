@@ -5,6 +5,7 @@ import { cedulaValida, uuidv7 } from "@factpos/compartido";
 import { ErrorNegocio } from "../db.js";
 import { armarCuotas, type Frecuencia } from "./credito-plan.js";
 import { encolarFilas } from "../sync/outbox.js";
+import { devengarComision } from "./comision.js";
 
 /**
  * Venta a plazos (mueblería): el vendedor elige un plan del catálogo, fija la inicial y registra la cédula del cliente y del garante.
@@ -136,6 +137,10 @@ export async function emitirRecibo(c: Db, d: DatosRecibo) {
      VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM recibos_ingreso WHERE sucursal_id = $2),$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13) RETURNING numero::text`,
     [id, d.sucursalId, d.tipo, d.clienteId, d.ventaId ?? null, new Decimal(d.monto).toFixed(2), d.formaPago, d.referencia ?? null,
      new Decimal(d.saldoAnterior).toFixed(2), new Decimal(d.saldoNuevo).toFixed(2), JSON.stringify(d.aplicaciones ?? []), d.usuarioId, d.turnoId ?? null]);
+  // Comisión del vendedor sobre lo que se aplicó a cada factura suya
+  for (const a of (d.aplicaciones ?? []) as { ventaId?: string | null; aplicado?: string | number }[]) {
+    if (a.ventaId && a.aplicado) await devengarComision(c, { ventaId: a.ventaId, cobrado: a.aplicado, concepto: d.tipo });
+  }
   const cod = (await c.query<{ codigo: string }>("SELECT codigo FROM sucursales WHERE id = $1", [d.sucursalId])).rows[0]?.codigo ?? "S";
   return { id, numero: r.rows[0].numero, codigo: `REC-${cod}-${r.rows[0].numero.padStart(6, "0")}` };
 }

@@ -7,6 +7,7 @@ import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { Decimal } from "decimal.js";
 import { cotizar, resumen, registrarVenta, exigirSinComprobante } from "./ventas.js";
 import { crearPlanDeVenta, emitirRecibo } from "./venta-plazos.js";
+import { devengarComision } from "./comision.js";
 
 /**
  * Ventas por cobrar (lado de la caja): las que la administración envió a esta caja.
@@ -105,7 +106,11 @@ export async function rutasPorCobrar(app: FastifyInstance) {
       }, { exigirSeries: true, omitirLimiteCredito: !!f.excepcionPor });
       const ventaId = (v as { id: string }).id;
       await c.query("UPDATE ventas_por_cobrar SET estado = 'COBRADA', cerrada_en = now(), cerrada_por = $2, venta_id = $3 WHERE id = $1", [id, usuarioId, ventaId]);
-      if (!f.planId) return v;
+      if (!f.planId) {
+        // Venta sin plan: comisión sobre lo que entró de verdad (el crédito simple se comisiona al cobrarlo)
+        await devengarComision(c, { ventaId, cobrado: pagos.filter((p) => p.formaPago !== "CREDITO").reduce((a, p) => a.plus(p.monto), new Decimal(0)), concepto: "CONTADO" });
+        return v;
+      }
       const sucursalId = ctx.sucursalId;
       const plan = await crearPlanDeVenta(c, {
         empresaId: ctx.empresaId, sucursalId, clienteId: f.clienteId!, ventaId, usuarioId, planId: f.planId, financiado: new Decimal(pagos[pagos.length - 1].monto).toFixed(2), inicial: f.inicial,

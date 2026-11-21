@@ -34,6 +34,7 @@ import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
 const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) => ({ default: m.RecibosIngreso })));
+const Comisiones = lazy(() => import("./paginas/Comisiones").then((m) => ({ default: m.Comisiones })));
 const Entregas = lazy(() => import("./paginas/Entregas").then((m) => ({ default: m.Entregas })));
 const MoraRecuperacion = lazy(() => import("./paginas/MoraRecuperacion").then((m) => ({ default: m.MoraRecuperacion })));
 const PlanesFinanciamiento = lazy(() => import("./paginas/PlanesFinanciamiento").then((m) => ({ default: m.PlanesFinanciamiento })));
@@ -100,6 +101,7 @@ const SECCIONES = [
   { id: "verificador", titulo: "Verificador de precios", grupo: "Precios", C: Verificador, i: "precios", p: ["admin.precios"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
+  { id: "comisiones", titulo: "Comisiones", grupo: "Ventas", C: Comisiones, i: "clientes", p: ["admin.comisiones"] },
   { id: "entregas", titulo: "Entregas", grupo: "Ventas", C: Entregas, i: "traspasos", p: ["admin.entregas"] },
   { id: "mora", titulo: "Mora y recuperación", grupo: "Finanzas", C: MoraRecuperacion, i: "cxc", p: ["admin.cxc"] },
   { id: "recibos", titulo: "Recibos de ingreso", grupo: "Finanzas", C: RecibosIngreso, i: "cxc", p: ["admin.cxc"] },
