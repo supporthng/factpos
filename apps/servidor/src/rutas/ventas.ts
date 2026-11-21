@@ -328,6 +328,8 @@ export async function registrarVenta(
     contingencia?: { creadoEn: string; encf: string; rangoId: string; turnoId: string };
     /** Facturación de administración: los productos con número de serie deben traer una serie por unidad */
     exigirSeries?: boolean;
+    /** Un supervisor autorizó el crédito aunque pase el límite del cliente (venta a plazos con excepción) */
+    omitirLimiteCredito?: boolean;
   } = {},
 ) {
   await c.query("SELECT 1 FROM cajas WHERE id = $1 FOR UPDATE", [cajaId]); // numeración por caja
@@ -392,7 +394,7 @@ export async function registrarVenta(
     );
     // Límite 0 = sin límite de crédito
     const disponible = new Decimal(s.rows[0].limite).gt(0) ? new Decimal(s.rows[0].limite).minus(s.rows[0].saldo) : null;
-    if (disponible && credito.gt(disponible)) throw new ErrorNegocio(`Crédito insuficiente: disponible RD$${disponible.toFixed(2)}`);
+    if (disponible && credito.gt(disponible) && !opciones.omitirLimiteCredito) throw new ErrorNegocio(`Crédito insuficiente: disponible RD$${disponible.toFixed(2)}`);
   }
 
   const ventaId = body.ventaId ?? uuidv7();

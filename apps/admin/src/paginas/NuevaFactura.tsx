@@ -15,6 +15,7 @@ interface Cotizacion {
   lineas: { presentacionId: string; descripcion: string; cantidad: string; precio: string | null; oferta: string | null; descuento?: string; itbis?: string; total: string }[];
 }
 interface LineaF { clave: string; presentacionId: string; nombre: string; cantidad: string; descuento: string; /** precio libre (vacío = el de lista) */ precio: string; /** el producto pide número de serie por unidad */ usaSeries?: boolean; /** series escritas (una por unidad; separadas por coma, espacio o renglón) */ series: string }
+interface PrevPlazos { plan: { nombre: string; cuotas: number; frecuencia: string; interesPct: string }; total: string; inicial: string; financiado: string; interes: string; totalAPagar: string; cuotaMonto: string; excepciones: string[]; puedeAprobar: boolean }
 interface PagoF { id: string; forma: (typeof FORMAS)[number][0]; monto: string; recibido: string; referencia: string }
 
 const TIPOS: { id: string; nombre: string; fiscal: boolean; pideCliente: boolean }[] = [
@@ -120,6 +121,33 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   const [sinPlan, setSinPlan] = useState<{ id: string; error: string } | null>(null);
   const montoCredito = pagos.filter((p) => p.forma === "CREDITO").reduce((a, p) => a + montoDe(p), 0);
   const planElegido = planes.datos?.find((p) => p.id === planId);
+  // Venta a plazos (solo en la pantalla del vendedor): plan del catálogo, inicial y garante; la caja cobra solo la inicial
+  const planesVenta = useDatos<{ id: string; nombre: string; cuotas: number; frecuencia: string; interesPct: string; inicialMinPct: string; montoMinimo: string }[]>(soloEnviar ? "/central/por-cobrar/planes" : null);
+  const [aPlazos, setAPlazos] = useState(false);
+  const [planVenta, setPlanVenta] = useState("");
+  const [inicial, setInicial] = useState("");
+  const [gNombre, setGNombre] = useState(""); const [gDoc, setGDoc] = useState(""); const [gTel, setGTel] = useState("");
+  const [motivoCredito, setMotivoCredito] = useState("");
+  const [prev, setPrev] = useState<PrevPlazos | null>(null);
+  const [errPrev, setErrPrev] = useState("");
+  const financiamiento = () => ({
+    planId: planVenta, inicial: n(inicial).toFixed(2),
+    garante: { nombre: gNombre.trim(), documento: gDoc.trim(), ...(gTel.trim() ? { telefono: gTel.trim() } : {}) },
+    ...(motivoCredito.trim() ? { motivoExcepcion: motivoCredito.trim() } : {}),
+  });
+  useEffect(() => {
+    if (!aPlazos || !planVenta || !cliente || !cot || n(inicial) <= 0) { setPrev(null); setErrPrev(""); return; }
+    let vivo = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await api<PrevPlazos>("/central/por-cobrar/plazos/previsualizar", { cuerpo: { clienteId: cliente.id, total: cot.total, financiamiento: financiamiento() } });
+        if (vivo) { setPrev(r); setErrPrev(""); }
+      } catch (e) { if (vivo) { setPrev(null); setErrPrev((e as Error).message); } }
+    }, 350);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [aPlazos, planVenta, cliente?.id, cot?.total, inicial, gNombre, gDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  const planSel = planesVenta.datos?.find((p) => p.id === planVenta);
+  const inicialMinima = planSel && cot ? Math.ceil(n(cot.total) * n(planSel.inicialMinPct)) / 100 : 0;
   const puedeEnviar = !!cajaSel && cajaSel.tipo !== "FACTURACION";
   const enviando = modo === "enviar" && puedeEnviar;
   const cambio = pagos.reduce((a, p) => a + (p.forma === "EFECTIVO" && n(p.recibido) > montoDe(p) ? n(p.recibido) - montoDe(p) : 0), 0);
@@ -134,6 +162,15 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
     if (hayPrecioLibre && motivoPrecio.trim().length < 5) return "Escriba el motivo del cambio de precio.";
     const sinSeries = validas.find((l) => l.usaSeries && seriesDe(l).length !== n(l.cantidad));
     if (sinSeries) return `${sinSeries.nombre}: escriba ${n(sinSeries.cantidad)} número(s) de serie (lleva ${seriesDe(sinSeries).length}).`;
+    if (enviando && soloEnviar && aPlazos) {
+      if (!cliente) return "La venta a plazos requiere un cliente.";
+      if (!planVenta) return "Elija el plan de financiamiento.";
+      if (n(inicial) <= 0) return "Escriba la inicial que paga el cliente.";
+      if (errPrev) return errPrev;
+      if (!prev) return "Calculando el plan…";
+      if (prev.excepciones.length && !prev.puedeAprobar) return `Un supervisor debe decidir: ${prev.excepciones.join("; ")}.`;
+      if (prev.excepciones.length && motivoCredito.trim().length < 5) return "Escriba el motivo para aprobar el crédito.";
+    }
     if (enviando) return "";
     if (t.pideCliente && !(cliente?.documento)) return "Este comprobante requiere un cliente con RNC o cédula.";
     if (pagos.some((p) => p.forma === "CREDITO") && !cliente) return "La venta a crédito requiere un cliente.";
@@ -141,7 +178,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
     if (pagos.some((p) => montoDe(p) <= 0)) return "Cada pago debe tener un monto.";
     if (pagos.some((p) => p.forma === "EFECTIVO" && p.recibido && n(p.recibido) < montoDe(p))) return "El efectivo recibido es menor que el monto en efectivo.";
     return "";
-  }, [enviando, hayPrecioLibre, motivoPrecio, cajas.datos, validas.length, errCot, cot, t.pideCliente, cliente, pagos, falta, hayDescuento, motivo, total]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aPlazos, planVenta, inicial, prev, errPrev, motivoCredito, enviando, hayPrecioLibre, motivoPrecio, cajas.datos, validas.length, errCot, cot, t.pideCliente, cliente, pagos, falta, hayDescuento, motivo, total]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enviar = async () => {
     if (problema || !cot) return;
@@ -150,8 +187,10 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
       const r = await api<{ numero: string }>("/central/por-cobrar", { cuerpo: {
         cajaId, clienteId: cliente?.id, notas: notas.trim() || undefined, items: items(),
         ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}), ...(hayPrecioLibre ? { motivoPrecio: motivoPrecio.trim() } : {}),
+        ...(soloEnviar && aPlazos ? { financiamiento: financiamiento() } : {}),
       } });
-      setEnviada(`Venta #${r.numero} enviada a ${cajaSel?.caja ?? "la caja"}: el cajero la verá en «Por cobrar».`);
+      setEnviada(`Venta #${r.numero} enviada a ${cajaSel?.caja ?? "la caja"}: el cajero la verá en «Por cobrar»${aPlazos ? ` y cobrará la inicial de ${rd(n(inicial))}` : ""}.`);
+      setAPlazos(false); setPlanVenta(""); setInicial(""); setGNombre(""); setGDoc(""); setGTel(""); setMotivoCredito(""); setPrev(null);
       setLineas([]); setCliente(null); setNotas(""); setMotivo(""); setMotivoPrecio(""); setCupon(""); setCuponTxt(""); setCot(null);
       ventaId.current = crypto.randomUUID();
     } catch (e) { setMsg((e as Error).message); }
@@ -291,6 +330,46 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
               </div>
             )}
           </div>
+          {(planesVenta.datos?.length ?? 0) > 0 && (
+            <div className="panel tv-datos">
+              <label className="en-linea"><input type="checkbox" checked={aPlazos} onChange={(e) => setAPlazos(e.target.checked)} /> <b>Vender a plazos (financiamiento)</b></label>
+              {aPlazos && (
+                <>
+                  {!cliente && <p className="suave pequeno">Elija primero el cliente: el crédito se registra a su nombre.</p>}
+                  <label className="campo"><span>Plan</span>
+                    <select value={planVenta} onChange={(e) => { setPlanVenta(e.target.value); const p = planesVenta.datos?.find((x) => x.id === e.target.value); if (p && cot && !n(inicial)) setInicial((Math.ceil(n(cot.total) * n(p.inicialMinPct)) / 100 || "").toString()); }}>
+                      <option value="">Elija el plan…</option>
+                      {(planesVenta.datos ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre} · {n(p.interesPct) > 0 ? `${n(p.interesPct)} % de interés` : "sin interés"}</option>)}
+                    </select></label>
+                  <label className="campo"><span>Inicial (RD$){planSel && n(planSel.inicialMinPct) > 0 ? ` · mínimo ${n(planSel.inicialMinPct)} % = ${rd(inicialMinima)}` : ""}</span>
+                    <input className="numero" inputMode="decimal" value={inicial} onChange={(e) => setInicial(limpiar(e.target.value))} /></label>
+                  <h4 style={{ margin: "8px 0 2px" }}>Garante</h4>
+                  <label className="campo"><span>Nombre</span><input value={gNombre} maxLength={120} onChange={(e) => setGNombre(e.target.value)} /></label>
+                  <label className="campo"><span>Cédula del garante</span><input value={gDoc} inputMode="numeric" maxLength={13} placeholder="000-0000000-0" onChange={(e) => setGDoc(e.target.value)} /></label>
+                  <label className="campo"><span>Teléfono (opcional)</span><input value={gTel} maxLength={30} onChange={(e) => setGTel(e.target.value)} /></label>
+                  {errPrev && n(inicial) > 0 && planVenta && <p className="texto-alerta pequeno">{errPrev}</p>}
+                  {prev && (
+                    <div className="tv-fila-plazos">
+                      <div className="tv-fila"><span>Inicial (la cobra la caja)</span><b>{rd(prev.inicial)}</b></div>
+                      <div className="tv-fila"><span>Se financia</span><span>{rd(prev.financiado)}</span></div>
+                      <div className="tv-fila"><span>{n(prev.plan.interesPct) > 0 ? `Interés ${n(prev.plan.interesPct)} %` : "Sin interés"}</span><span>{rd(prev.interes)}</span></div>
+                      <div className="tv-fila"><span>{prev.plan.cuotas} cuotas de</span><b>{rd(prev.cuotaMonto)}</b></div>
+                      <div className="tv-fila"><span>Total a pagar a plazos</span><span>{rd(prev.totalAPagar)}</span></div>
+                      {prev.excepciones.length > 0 && (
+                        <div className="panel" style={{ marginTop: 6 }}>
+                          <b className="texto-alerta">El cliente no cumple todo:</b>
+                          <ul style={{ margin: "4px 0 6px 18px", padding: 0 }}>{prev.excepciones.map((x) => <li key={x}>{x}</li>)}</ul>
+                          {prev.puedeAprobar
+                            ? <label className="campo"><span>Usted puede aprobarlo: escriba el motivo (queda registrado)</span><input value={motivoCredito} maxLength={200} onChange={(e) => setMotivoCredito(e.target.value)} /></label>
+                            : <p className="suave pequeno">Un supervisor con el permiso «Vender a crédito» debe decidir y enviar esta venta.</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           <div className="panel tv-datos">{bloqueCaja}</div>
           <div className="panel tv-datos">{bloqueNotas}{bloqueCupon}</div>
           <div className="panel tv-total">
@@ -302,7 +381,8 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
               </>
             ) : <div className="tv-fila suave"><span>{lineas.length ? "Calculando…" : "Sin productos"}</span><span /></div>}
             <div className="tv-gran"><span>Total</span><b>{rd(total)}</b></div>
-            <button className="boton primario tv-enviar" disabled={!!problema || guardando} onClick={enviar}>{guardando ? "Enviando…" : "Enviar a caja"}</button>
+            <button className="boton primario tv-enviar" disabled={!!problema || guardando} onClick={enviar}>{guardando ? "Enviando…" : aPlazos && n(inicial) > 0 ? `Enviar a caja · inicial ${rd(n(inicial))}` : "Enviar a caja"}</button>
+            {aPlazos && <p className="suave pequeno" style={{ margin: "8px 0 0" }}>La caja cobra la inicial, emite la factura y crea el plan de cuotas. El interés de cada plan solo lo cambia el administrador.</p>}
             {problema && lineas.length > 0 && <p className="suave pequeno" style={{ margin: "8px 0 0" }}>{problema}</p>}
           </div>
         </aside>
