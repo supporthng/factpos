@@ -9,6 +9,7 @@ import { encolarFilas } from "../sync/outbox.js";
 import { tienePermiso, type SesionCaja } from "../sesion.js";
 import { reporteTurno } from "./cierre.js";
 import { aplicarAbono } from "./cxc-aplicar.js";
+import { emitirRecibo } from "./venta-plazos.js";
 
 /**
  * Entradas y salidas de dinero en la caja, fuera de las ventas:
@@ -221,9 +222,13 @@ export async function rutasCajaMovimientos(app: FastifyInstance) {
       );
       await encolarFilas(c, "cxc_movimientos", partes.map((x) => x.id));
       await encolarFilas(c, "movimientos_caja", [movId]);
+      const rec = await emitirRecibo(c, {
+        sucursalId: ctx.sucursalId, tipo: "ABONO", clienteId, ventaId: aplicaciones.find((a) => a.ventaId)?.ventaId ?? null, monto: valor, formaPago: b.formaPago, referencia: b.referencia ?? null,
+        saldoAnterior: saldo, saldoNuevo: saldo.minus(valor), aplicaciones, usuarioId: b.usuarioId, turnoId,
+      });
       return {
         aplicaciones,
-        recibo: movId.slice(-8).toUpperCase(),
+        recibo: rec.codigo, reciboId: rec.id,
         cliente: { id: clienteId, nombre: cl.rows[0].nombre, documento: cl.rows[0].documento },
         saldoAnterior: saldo.toFixed(2),
         abono: valor.toFixed(2),

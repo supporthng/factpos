@@ -9,6 +9,7 @@ import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPre
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
+import { FinanciamientoSchema, evaluarFinanciamiento } from "./venta-plazos.js";
 import { enviarCorreo, correoListo } from "../correo/transporte.js";
 import { marcaDe } from "../correo/envios.js";
 import { correoFactura } from "../correo/plantillas.js";
@@ -302,6 +303,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const b = z.object({
       cajaId: uuid, clienteId: uuid.optional(), items: ItemsSchema, notas: z.string().trim().max(300).optional(),
       motivoDescuento: z.string().trim().max(200).optional(), motivoPrecio: z.string().trim().max(200).optional(),
+      financiamiento: FinanciamientoSchema.optional(),
     }).parse(req.body);
     const ctx = await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
@@ -309,16 +311,47 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     await exigirSeriesPresentes(pool, b.items);
     const q = resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false)); // valida precios, existencia y cliente
     const id = uuidv7();
+    // Venta a plazos: plan, inicial y garante. Si el cliente no cumple, solo un supervisor con «Vender a crédito» la puede enviar.
+    let fin: { planId: string; inicial: string; primera: string | null; garante: { nombre: string; documento: string; telefono: string | null } | null; excepciones: string[]; motivo: string | null; por: string | null } | null = null;
+    if (b.financiamiento) {
+      const ev = await evaluarFinanciamiento(pool, { empresaId: empresaDe(req), clienteId: b.clienteId, total: (q as { total: string }).total, f: b.financiamiento });
+      let motivo: string | null = null, por: string | null = null;
+      if (ev.excepciones.length) {
+        if (!tienePermiso(permisos(req), "venta.credito")) throw new ErrorNegocio(`El crédito necesita la decisión de un supervisor: ${ev.excepciones.join("; ")}.`, 403);
+        motivo = b.financiamiento.motivoExcepcion ?? null;
+        if (!motivo || motivo.length < 5) throw new ErrorNegocio(`Indique el motivo para aprobar el crédito (mínimo 5 caracteres): ${ev.excepciones.join("; ")}.`);
+        por = usuarioDe(req);
+      }
+      const g = b.financiamiento.garante;
+      fin = { planId: ev.plan.id, inicial: ev.inicial, primera: b.financiamiento.primeraCuota ?? null, garante: g && g.nombre ? { nombre: g.nombre, documento: g.documento, telefono: g.telefono ?? null } : null, excepciones: ev.excepciones, motivo, por };
+    }
     const numero = await enTransaccion(async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(hashtext('por_cobrar:' || $1))", [ctx.sucursalId]);
       const r = await c.query<{ numero: string }>(
-        `INSERT INTO ventas_por_cobrar (id, sucursal_id, numero, caja_id, cliente_id, items, total, notas, motivo_descuento, motivo_precio, creada_por)
-         VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM ventas_por_cobrar WHERE sucursal_id = $2),$3,$4,$5::jsonb,$6,$7,$8,$9,$10) RETURNING numero::text`,
-        [id, ctx.sucursalId, b.cajaId, b.clienteId ?? null, JSON.stringify(b.items), (q as { total: string }).total, b.notas ?? null, b.motivoDescuento ?? null, b.motivoPrecio ?? null, usuarioDe(req)]);
+        `INSERT INTO ventas_por_cobrar (id, sucursal_id, numero, caja_id, cliente_id, items, total, notas, motivo_descuento, motivo_precio, creada_por,
+                                        plan_id, inicial, primera_cuota, garante_nombre, garante_documento, garante_telefono, excepciones, excepcion_motivo, excepcion_por)
+         VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM ventas_por_cobrar WHERE sucursal_id = $2),$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING numero::text`,
+        [id, ctx.sucursalId, b.cajaId, b.clienteId ?? null, JSON.stringify(b.items), (q as { total: string }).total, b.notas ?? null, b.motivoDescuento ?? null, b.motivoPrecio ?? null, usuarioDe(req),
+         fin?.planId ?? null, fin?.inicial ?? "0", fin?.primera ?? null, fin?.garante?.nombre ?? null, fin?.garante?.documento ?? null, fin?.garante?.telefono ?? null, fin?.excepciones ?? [], fin?.motivo ?? null, fin?.por ?? null]);
       return r.rows[0].numero;
     });
     rep.code(201);
     return { id, numero, total: (q as { total: string }).total };
+  });
+
+  /** Planes de financiamiento activos: el vendedor los elige (solo el administrador los crea y cambia el interés) */
+  app.get("/central/por-cobrar/planes", async (req) => {
+    const r = await pool.query(
+      `SELECT id, nombre, cuotas, frecuencia, interes_pct::text AS "interesPct", inicial_min_pct::text AS "inicialMinPct", monto_minimo::text AS "montoMinimo"
+         FROM cxc_planes_catalogo WHERE empresa_id = $1 AND activo ORDER BY cuotas, nombre`, [empresaDe(req)]);
+    return r.rows;
+  });
+
+  /** Vista previa del crédito mientras el vendedor arma la venta: cuota, interés, total y qué requisitos faltan (sin guardar nada) */
+  app.post("/central/por-cobrar/plazos/previsualizar", async (req) => {
+    const b = z.object({ clienteId: uuid.optional(), total: z.string().regex(/^\d+(\.\d{1,2})?$/), financiamiento: FinanciamientoSchema }).parse(req.body);
+    const ev = await evaluarFinanciamiento(pool, { empresaId: empresaDe(req), clienteId: b.clienteId, total: b.total, f: b.financiamiento });
+    return { ...ev, puedeAprobar: tienePermiso(permisos(req), "venta.credito") };
   });
 
   const listarPorCobrar = async (req: any, soloMias: boolean) => {
@@ -326,7 +359,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const mias = soloMias;
     const r = await pool.query(
       `SELECT v.id, v.numero::text, v.total::text, v.estado, v.creada_en AS "creadaEn", ca.nombre AS caja, s.nombre AS sucursal,
-              cl.nombre AS cliente, u.nombre AS vendedor, jsonb_array_length(v.items) AS lineas, ed.encf
+              cl.nombre AS cliente, u.nombre AS vendedor, jsonb_array_length(v.items) AS lineas, ed.encf, v.inicial::text AS inicial, (v.plan_id IS NOT NULL) AS "aPlazos"
          FROM ventas_por_cobrar v JOIN cajas ca ON ca.id = v.caja_id JOIN sucursales s ON s.id = v.sucursal_id
          LEFT JOIN clientes cl ON cl.id = v.cliente_id LEFT JOIN usuarios u ON u.id = v.creada_por
          LEFT JOIN ecf_documentos ed ON ed.venta_id = v.venta_id

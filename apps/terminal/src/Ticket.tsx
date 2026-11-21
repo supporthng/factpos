@@ -22,6 +22,10 @@ export interface VentaRegistrada {
   notas?: string | null;
   /** Hecha en la caja sin servidor: el e-CF se firma al volver el servidor */
   contingencia?: boolean;
+  /** Venta a plazos: lo financiado, el calendario de cuotas y el recibo de la inicial */
+  plazos?: { plan: string; cuotas: number; frecuencia: string; interesPct: string; inicial: string; financiado: string; interes: string; totalAPagar: string;
+    calendario: { numero: number; vence: string; monto: string }[]; garante: { nombre: string | null; documento: string | null } | null };
+  recibo?: { codigo: string };
 }
 
 /** Encabezado del ticket según el formato elegido por el administrador (logo, datos del negocio y líneas extra). */
@@ -145,6 +149,18 @@ export function Ticket({ venta, copia = false, auto = false, config, usuario, on
             <div key={i} className="t-fila"><span>{PAGO[p.formaPago] ?? p.formaPago}{p.formaPago === "TARJETA" && p.referencia ? ` · Aprob. ${p.referencia}` : ""}</span><span>{rd(p.recibido ?? p.monto)}</span></div>
           ))}
           {Number(venta.cambio) > 0 && <div className="t-fila"><span>Cambio</span><span>{rd(venta.cambio)}</span></div>}
+          {venta.plazos && (
+            <>
+              <div className="t-linea" />
+              <div className="t-centro"><b>VENTA A PLAZOS · {venta.plazos.plan}</b></div>
+              <div className="t-fila"><span>Inicial pagada{venta.recibo ? ` (${venta.recibo.codigo})` : ""}</span><span>{rd(venta.plazos.inicial)}</span></div>
+              <div className="t-fila"><span>Financiado</span><span>{rd(venta.plazos.financiado)}</span></div>
+              {Number(venta.plazos.interes) > 0 ? <div className="t-fila"><span>Interés {Number(venta.plazos.interesPct)} %</span><span>{rd(venta.plazos.interes)}</span></div> : <div className="t-fila"><span>Sin interés</span><span /></div>}
+              <div className="t-fila t-total"><span>A pagar en {venta.plazos.calendario.length} cuotas</span><span>{rd(venta.plazos.totalAPagar)}</span></div>
+              {venta.plazos.calendario.map((q) => <div key={q.numero} className="t-fila"><span>Cuota {q.numero} · {q.vence.split("-").reverse().join("/")}</span><span>{rd(q.monto)}</span></div>)}
+              {venta.plazos.garante?.nombre && <div className="t-nota">Garante: {venta.plazos.garante.nombre}{venta.plazos.garante.documento ? ` · ${venta.plazos.garante.documento}` : ""}</div>}
+            </>
+          )}
           {venta.notas && <div className="t-nota">Nota: {venta.notas}</div>}
           {venta.vales?.map((v) => (
             <div key={v.codigo} className="t-centro" style={{ border: "1px dashed #000", margin: "6px 0", padding: 4 }}>

@@ -8,11 +8,14 @@ import type { VentaRegistrada } from "./Ticket";
  * Ventas por cobrar: las que la oficina armó y envió a esta caja. El cajero elige comprobante y forma de pago y cobra;
  * el comprobante fiscal sale en este momento. Los precios y descuentos ya fueron autorizados al enviarla.
  */
-export interface PorCobrarResumen { id: string; numero: string; total: string; notas: string | null; creadaEn: string; cliente: string | null; vendedor: string | null; lineas: number }
+export interface PorCobrarResumen { id: string; numero: string; total: string; notas: string | null; creadaEn: string; cliente: string | null; vendedor: string | null; lineas: number; inicial?: string; aPlazos?: boolean }
 interface Detalle {
   id: string; numero: string; notas: string | null; total: string; subtotal: string; descuento: string; itbis: string;
   cliente: { id: string; nombre: string; tipoDocumento: string; documento: string | null } | null;
   lineas: { linea: number; descripcion: string; cantidad: string; precio: string | null; total: string }[];
+  /** Venta a plazos: la caja cobra solo la inicial; el resto queda a crédito con su plan de cuotas */
+  plazos: { plan: string; cuotas: number; frecuencia: string; interesPct: string; inicial: string; financiado: string; interes: string; totalAPagar: string;
+    garante: { nombre: string | null; documento: string | null; telefono: string | null } | null; excepciones: string[]; excepcionMotivo: string | null } | null;
 }
 const FORMAS = [["EFECTIVO", "Efectivo"], ["TARJETA", "Tarjeta"], ["TRANSFERENCIA", "Transferencia"], ["MIXTO", "Mixto"]] as const;
 type Forma = (typeof FORMAS)[number][0];
@@ -57,8 +60,10 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
 
   const abrirCobro = () => { setTipo("E32"); setForma("EFECTIVO"); setRecibido(""); setTarjeta(""); setRefTarjeta(""); setTransferencia(""); setRefTransf(""); setMsg(""); setCobrando(true); };
 
-  const total = Number(detalle?.total ?? 0);
-  const totalC = cent(detalle?.total ?? "0");
+  // En una venta a plazos la caja cobra solo la inicial
+  const cobraC = detalle?.plazos ? cent(detalle.plazos.inicial) : cent(detalle?.total ?? "0");
+  const total = cobraC / 100;
+  const totalC = cobraC;
   const falla = detalle && requiereDocumento(tipo) && ["E31", "B01", "B14", "B15", "B16"].includes(tipo) && !tieneDocumentoFiscal(detalle.cliente as never)
     ? "Este comprobante requiere un cliente con RNC o cédula; la venta no lo tiene. Use consumo final o pida a la oficina que la reenvíe con cliente." : "";
   // Mixto: tarjeta y transferencia se escriben; el efectivo cubre lo que falta
@@ -95,7 +100,8 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
     return (
       <Modal titulo={`Cobrar #${detalle.numero}`} onCerrar={() => setCobrando(false)}>
         <p><b>{detalle.cliente?.nombre ?? "Consumidor final"}</b>{detalle.cliente?.documento && <span className="suave"> · {detalle.cliente.documento}</span>}</p>
-        <p style={{ margin: "4px 0 10px" }}><span className="suave">Total a cobrar</span><br /><b style={{ fontSize: "1.9em" }}>{rd(total)}</b></p>
+        <p style={{ margin: "4px 0 10px" }}><span className="suave">{detalle.plazos ? "Inicial a cobrar" : "Total a cobrar"}</span><br /><b style={{ fontSize: "1.9em" }}>{rd(total)}</b></p>
+        {detalle.plazos && <p className="suave" style={{ margin: "0 0 10px" }}>La factura es de {rd(detalle.total)}. Al cobrar la inicial, {rd(detalle.plazos.financiado)} quedan a crédito en {detalle.plazos.cuotas} cuotas.</p>}
         <SelectorComprobante tipo={tipo} onTipo={setTipo} permitirSin={permitirSin} compacto />
         <div className="fila-acciones" style={{ marginTop: 8 }}>
           {FORMAS.map(([id, nombre]) => <button key={id} className={"boton" + (forma === id ? " primario" : "")} onClick={() => { setForma(id); setRecibido(""); setTarjeta(""); setTransferencia(""); }}>{nombre}</button>)}
@@ -124,7 +130,7 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
         <div className="fila-acciones">
           <button className="boton" onClick={() => setCobrando(false)}>← Ver factura</button>
           <span className="flex" />
-          <button className="boton primario" disabled={!!falla || !!errorPago || trabajando} onClick={cobrar}>{trabajando ? "Cobrando…" : `Cobrar ${rd(total)}`}</button>
+          <button className="boton primario" disabled={!!falla || !!errorPago || trabajando} onClick={cobrar}>{trabajando ? "Cobrando…" : detalle.plazos ? `Cobrar inicial ${rd(total)}` : `Cobrar ${rd(total)}`}</button>
         </div>
       </Modal>
     );
@@ -139,7 +145,7 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
           <div className="pc-lista">
             {lista.map((p) => (
               <button key={p.id} className={"pc-fila" + (p.id === elegida ? " activa" : "")} onClick={() => setElegida(p.id)}>
-                <span><b>#{p.numero}</b> · {p.cliente ?? "Consumidor final"}</span>
+                <span><b>#{p.numero}</b> · {p.cliente ?? "Consumidor final"}{p.aPlazos && <span className="suave"> · a plazos</span>}</span>
                 <span className="suave">{p.vendedor ?? ""} · {hora(p.creadaEn)} · {p.lineas} {p.lineas === 1 ? "línea" : "líneas"}</span>
                 <b>{rd(p.total)}</b>
               </button>
@@ -156,12 +162,21 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
                     <tr key={l.linea}><td>{l.descripcion}</td><td className="der">{Number(l.cantidad)}</td><td className="der">{l.precio ? rd(l.precio) : ""}</td><td className="der">{rd(l.total)}</td></tr>
                   ))}
                 </tbody></table></div>
+                {detalle.plazos && (
+                  <div className="nota" style={{ margin: "8px 0" }}>
+                    <b>Venta a plazos · {detalle.plazos.plan}</b>
+                    <div>Inicial a cobrar ahora: <b>{rd(detalle.plazos.inicial)}</b></div>
+                    <div>Queda a crédito: {rd(detalle.plazos.financiado)}{Number(detalle.plazos.interes) > 0 ? ` + ${rd(detalle.plazos.interes)} de interés (${Number(detalle.plazos.interesPct)} %)` : " (sin interés)"} = {rd(detalle.plazos.totalAPagar)} en {detalle.plazos.cuotas} cuotas</div>
+                    {detalle.plazos.garante?.nombre && <div>Garante: {detalle.plazos.garante.nombre}{detalle.plazos.garante.documento ? ` · ${detalle.plazos.garante.documento}` : ""}</div>}
+                    {detalle.plazos.excepciones.length > 0 && <div className="suave">Aprobado por un supervisor: {detalle.plazos.excepciones.join("; ")}{detalle.plazos.excepcionMotivo ? ` — ${detalle.plazos.excepcionMotivo}` : ""}</div>}
+                  </div>
+                )}
                 <p className="der">Subtotal {rd(detalle.subtotal)}{Number(detalle.descuento) > 0 && ` · Descuento ${rd(detalle.descuento)}`} · ITBIS {rd(detalle.itbis)}<br /><b style={{ fontSize: "1.5em" }}>Total {rd(detalle.total)}</b></p>
                 <div className="fila-acciones">
                   <button className="boton" onClick={devolver}>Devolver sin cobrar</button>
                   <span className="flex" />
                   <button className="boton" onClick={onCerrar}>Cerrar</button>
-                  <button className="boton primario" onClick={abrirCobro}>Cobrar {rd(detalle.total)}</button>
+                  <button className="boton primario" onClick={abrirCobro}>{detalle.plazos ? `Cobrar inicial ${rd(detalle.plazos.inicial)}` : `Cobrar ${rd(detalle.total)}`}</button>
                 </div>
               </>
             )}

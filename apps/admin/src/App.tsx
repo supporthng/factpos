@@ -33,6 +33,7 @@ import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
+const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) => ({ default: m.RecibosIngreso })));
 const PlanesFinanciamiento = lazy(() => import("./paginas/PlanesFinanciamiento").then((m) => ({ default: m.PlanesFinanciamiento })));
 const Estadisticas = lazy(() => import("./paginas/Estadisticas").then((m) => ({ default: m.Estadisticas })));
 import { EstadoSistema } from "./paginas/InicioCifras";
@@ -97,6 +98,7 @@ const SECCIONES = [
   { id: "verificador", titulo: "Verificador de precios", grupo: "Precios", C: Verificador, i: "precios", p: ["admin.precios"] },
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
+  { id: "recibos", titulo: "Recibos de ingreso", grupo: "Finanzas", C: RecibosIngreso, i: "cxc", p: ["admin.cxc"] },
   { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
   { id: "caja", titulo: "Retiros y gastos", grupo: "Finanzas", C: MovimientosCaja, i: "caja", p: ["admin.reportes"] },
   { id: "fiscal", titulo: "Facturación electrónica", grupo: "Fiscal", C: Fiscal, i: "fiscal", p: ["admin.fiscal"] },
@@ -191,6 +193,7 @@ const DESCRIPCION: Record<string, string> = {
   delivery: "Pedidos a domicilio y repartidores",
   cxc: "Clientes a crédito, abonos y estados de cuenta",
   planes: "Plazos de financiamiento, interés, inicial mínima y mora",
+  recibos: "Recibo numerado de cada inicial y abono de crédito; búsqueda y reimpresión",
   cierres: "Cuadre de cada turno, revisión de diferencias y depósitos",
   caja: "Retiros, gastos y movimientos de caja",
   fiscal: "e-CF, envíos a la DGII y certificado digital",

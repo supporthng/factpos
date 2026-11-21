@@ -6,6 +6,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { SQL_MOVIMIENTO } from "./caja-movimientos.js";
 import { aplicarAbono } from "./cxc-aplicar.js";
+import { emitirRecibo } from "./venta-plazos.js";
 
 /**
  * Cuentas por cobrar (clientes a crédito / fiado) y movimientos de caja, vistos
@@ -25,6 +26,29 @@ export async function rutasCentralCxc(app: FastifyInstance) {
     if (!r.rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
     return r.rows[0] as { id: string; nombre: string };
   };
+
+  /** Recibos de ingreso (inicial de una venta a plazos y abonos): buscar y reimprimir. */
+  const SQL_RECIBO = `SELECT r.id, 'REC-' || s.codigo || '-' || lpad(r.numero::text, 6, '0') AS recibo, r.tipo, r.monto::text, r.forma_pago AS "formaPago", r.referencia,
+        r.saldo_anterior::text AS "saldoAnterior", r.saldo_nuevo::text AS "saldoNuevo", r.aplicaciones, r.creado_en AS fecha, s.nombre AS sucursal,
+        cl.id AS "clienteId", cl.nombre AS cliente, cl.documento, u.nombre AS cajero
+      FROM recibos_ingreso r JOIN sucursales s ON s.id = r.sucursal_id JOIN clientes cl ON cl.id = r.cliente_id LEFT JOIN usuarios u ON u.id = r.usuario_id`;
+  app.get("/central/cxc/recibos-ingreso", async (req) => {
+    const f = z.object({ q: z.string().trim().max(60).optional(), desde: fecha.optional(), hasta: fecha.optional(), clienteId: uuid.optional() }).parse(req.query);
+    const permitidas = sucursalesDe(req);
+    const r = await pool.query(
+      `${SQL_RECIBO} WHERE s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[]))
+          AND ($3::text IS NULL OR cl.nombre ILIKE '%' || $3 || '%' OR cl.documento LIKE $3 || '%' OR ('REC-' || s.codigo || '-' || lpad(r.numero::text, 6, '0')) ILIKE '%' || $3 || '%')
+          AND ($4::date IS NULL OR r.creado_en >= $4::date) AND ($5::date IS NULL OR r.creado_en < $5::date + 1) AND ($6::uuid IS NULL OR r.cliente_id = $6)
+        ORDER BY r.creado_en DESC LIMIT 200`, [empresaDe(req), permitidas, f.q ?? null, f.desde ?? null, f.hasta ?? null, f.clienteId ?? null]);
+    return r.rows;
+  });
+  app.get("/central/cxc/recibos-ingreso/:id", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const permitidas = sucursalesDe(req);
+    const r = await pool.query(`${SQL_RECIBO} WHERE r.id = $1 AND s.empresa_id = $2 AND ($3::uuid[] IS NULL OR s.id = ANY($3::uuid[]))`, [id, empresaDe(req), permitidas]);
+    if (!r.rowCount) throw new ErrorNegocio("Recibo no encontrado", 404);
+    return { ...r.rows[0], empresa: (await pool.query("SELECT COALESCE(nombre_comercial, razon_social) AS nombre, rnc FROM empresas WHERE id = $1", [empresaDe(req)])).rows[0] ?? null };
+  });
 
   /** Clientes con saldo y antigüedad de la deuda. */
   app.get("/central/cxc", async (req) => {
@@ -132,7 +156,11 @@ export async function rutasCentralCxc(app: FastifyInstance) {
         clienteId, sucursalId: suc, usuarioId: usuarioDe(req), monto: valor, formaPago: b.formaPago, referencia: b.referencia ?? null,
         notas: b.notas ?? "Abono en la oficina", modo: b.modo, ventaId: b.ventaId ?? null,
       });
-      return { id: partes[0]!.id, partes, saldoNuevo: saldo.minus(valor).toFixed(2) };
+      const rec = await emitirRecibo(c, {
+        sucursalId: suc, tipo: "ABONO", clienteId, ventaId: partes.find((x) => x.ventaId)?.ventaId ?? null, monto: valor, formaPago: b.formaPago, referencia: b.referencia ?? null,
+        saldoAnterior: saldo, saldoNuevo: saldo.minus(valor), aplicaciones: partes, usuarioId: usuarioDe(req),
+      });
+      return { id: partes[0]!.id, partes, saldoNuevo: saldo.minus(valor).toFixed(2), recibo: rec.codigo, reciboId: rec.id };
     });
     rep.code(201);
     return r;
