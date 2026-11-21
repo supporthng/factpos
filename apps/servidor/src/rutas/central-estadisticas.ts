@@ -29,7 +29,7 @@ export async function rutasCentralEstadisticas(app: FastifyInstance) {
     // «Hasta la misma hora»: la semana pasada solo cuenta lo vendido hasta esta hora, para que la comparación sea justa
     const periodo = `(${dia} = ${hoyRd} OR (${dia} = ${hoyRd} - 7 AND v.creado_en <= now() - interval '7 days'))`;
 
-    const [kpi, util, hora, suc, pago, top, anul, sync, cxc, bajoCosto] = await Promise.all([
+    const [kpi, util, hora, suc, pago, top, anul, sync, cxc, bajoCosto, muerto] = await Promise.all([
       pool.query(
         `SELECT (${dia} = ${hoyRd}) AS es_hoy,
                 COALESCE(SUM(${SIGNO} * v.total), 0)::text AS venta,
@@ -78,6 +78,12 @@ export async function rutasCentralEstadisticas(app: FastifyInstance) {
                 (SUM(u.venta_neta) / NULLIF(SUM(u.unidades), 0))::text AS precio, (SUM(u.costo) / NULLIF(SUM(u.unidades), 0))::text AS costo
            FROM rpt_utilidad_producto u WHERE ${ENSUC("u.sucursal_id")} AND u.fecha = ${hoyRd}
           GROUP BY u.producto_id, u.nombre, u.sku HAVING SUM(u.unidades) > 0 AND SUM(u.utilidad) < 0 ORDER BY SUM(u.utilidad) LIMIT 3`, p),
+      // Dinero parado: existencias que no se venden hace más de 60 días (o nunca)
+      pool.query(
+        `SELECT COUNT(DISTINCT m.producto_id)::int AS productos, COALESCE(SUM(m.valor), 0)::text AS valor,
+                (SELECT m2.nombre FROM rpt_stock_muerto m2 WHERE ${ENSUC("m2.sucursal_id")} ORDER BY m2.valor DESC LIMIT 1) AS mayor,
+                (SELECT m2.valor::text FROM rpt_stock_muerto m2 WHERE ${ENSUC("m2.sucursal_id")} ORDER BY m2.valor DESC LIMIT 1) AS valor_mayor
+           FROM rpt_stock_muerto m WHERE ${ENSUC("m.sucursal_id")}`, p),
     ]);
 
     const del = (filas: { es_hoy: boolean }[], hoy: boolean) => filas.find((f) => f.es_hoy === hoy) as Record<string, any> | undefined;
@@ -103,6 +109,10 @@ export async function rutasCentralEstadisticas(app: FastifyInstance) {
       hallazgos.push({ tono: "aviso", titulo: `RD$ ${Number(c.valor).toLocaleString("es-DO", { maximumFractionDigits: 0 })} por cobrar con más de 30 días`, detalle: `${c.facturas} factura(s) de ${c.clientes} cliente(s).`, ir: "cxc", accion: "Ver clientes" });
     }
 
+    if (muerto.rows[0].productos > 0) {
+      const m = muerto.rows[0];
+      hallazgos.push({ tono: "aviso", titulo: `${m.productos} producto(s) sin venderse en más de 60 días`, detalle: `RD$ ${Number(m.valor).toLocaleString("es-DO", { maximumFractionDigits: 0 })} al costo parados. El mayor: ${m.mayor} (RD$ ${Number(m.valor_mayor).toLocaleString("es-DO", { maximumFractionDigits: 0 })}).`, ir: "reportes", accion: "Ver stock muerto" });
+    }
     return {
       fecha: (await pool.query(`SELECT ${hoyRd}::text AS f, to_char(now() AT TIME ZONE '${RD}', 'HH24:MI') AS hora`)).rows[0],
       kpis: {
@@ -170,6 +180,55 @@ export async function rutasCentralEstadisticas(app: FastifyInstance) {
       porCajero: cajeros.rows.map((r) => ({ nombre: r.nombre, venta: Number(r.venta), facturas: r.facturas })),
       porSucursal: suc.rows.map((r) => ({ nombre: r.nombre, venta: Number(r.venta), facturas: r.facturas })),
       formasPago: pago.rows.map((r) => ({ forma: r.forma, monto: Number(r.monto) })),
+    };
+  });
+
+  app.get("/central/estadisticas/productos", async (req) => {
+    const f = z.object({ desde: fecha, hasta: fecha, sucursalId: uuid.optional() }).parse(req.query);
+    if (f.desde > f.hasta) throw new ErrorNegocio("La fecha inicial es posterior a la final");
+    if (Date.parse(f.hasta) - Date.parse(f.desde) > 366 * 86400e3) throw new ErrorNegocio("El período no puede pasar de un año");
+    const p = [empresaDe(req), sucursalesDe(req), f.sucursalId ?? null, f.desde, f.hasta];
+    const rango = "u.fecha BETWEEN $4::date AND $5::date";
+    const [res, top, bajo, cat, abc, muerto] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(DISTINCT u.producto_id) FILTER (WHERE u.unidades > 0)::int AS productos, COALESCE(SUM(u.unidades), 0)::text AS unidades,
+                COALESCE(SUM(u.venta_neta), 0)::text AS venta_neta, COALESCE(SUM(u.utilidad), 0)::text AS utilidad
+           FROM rpt_utilidad_producto u WHERE ${ENSUC("u.sucursal_id")} AND ${rango}`, p),
+      pool.query(
+        `SELECT u.nombre, u.sku, SUM(u.unidades)::text AS unidades, SUM(u.venta_neta)::text AS venta, SUM(u.utilidad)::text AS utilidad
+           FROM rpt_utilidad_producto u WHERE ${ENSUC("u.sucursal_id")} AND ${rango}
+          GROUP BY u.producto_id, u.nombre, u.sku HAVING SUM(u.unidades) > 0 ORDER BY SUM(u.venta_neta) DESC LIMIT 10`, p),
+      // Los que dejan menos: vendidos con margen por debajo del 5 % o con pérdida (al menos 5 unidades para no alarmar por una venta suelta)
+      pool.query(
+        `SELECT u.nombre, u.sku, SUM(u.unidades)::text AS unidades, SUM(u.venta_neta)::text AS venta, SUM(u.utilidad)::text AS utilidad
+           FROM rpt_utilidad_producto u WHERE ${ENSUC("u.sucursal_id")} AND ${rango}
+          GROUP BY u.producto_id, u.nombre, u.sku
+         HAVING SUM(u.unidades) >= 5 AND SUM(u.venta_neta) > 0 AND SUM(u.utilidad) / SUM(u.venta_neta) < 0.05
+          ORDER BY SUM(u.utilidad) / SUM(u.venta_neta) LIMIT 8`, p),
+      pool.query(
+        `SELECT m.categoria AS nombre, SUM(m.venta_neta)::text AS venta, SUM(m.utilidad)::text AS utilidad
+           FROM rpt_margen_base m WHERE ${ENSUC("m.sucursal_id")} AND m.fecha BETWEEN $4::date AND $5::date
+          GROUP BY m.categoria HAVING SUM(m.venta_neta) <> 0 ORDER BY SUM(m.venta_neta) DESC LIMIT 10`, p),
+      // Clasificación ABC de los últimos 90 días (fija, no sigue el período): cuántos productos hacen el 80 % de la venta
+      pool.query(
+        `SELECT a.clase, COUNT(*)::int AS productos, COALESCE(SUM(a.venta_neta_90d), 0)::text AS venta
+           FROM rpt_rotacion_abc a WHERE ${ENSUC("a.sucursal_id")} GROUP BY a.clase ORDER BY a.clase`, p),
+      pool.query(
+        `SELECT m.nombre, m.sku, SUM(m.existencia)::text AS existencia, SUM(m.valor)::text AS valor, MIN(m.dias_sin_vender) AS dias
+           FROM rpt_stock_muerto m WHERE ${ENSUC("m.sucursal_id")} GROUP BY m.producto_id, m.nombre, m.sku ORDER BY SUM(m.valor) DESC LIMIT 8`, p),
+    ]);
+    const r = res.rows[0];
+    const margen = (u: string, v: string) => (Number(v) !== 0 ? (100 * Number(u)) / Number(v) : null);
+    const fila = (x: { nombre: string; sku: string; unidades: string; venta: string; utilidad: string }) =>
+      ({ nombre: x.nombre, sku: x.sku, unidades: Number(x.unidades), venta: Number(x.venta), utilidad: Number(x.utilidad), margen: margen(x.utilidad, x.venta) });
+    return {
+      desde: f.desde, hasta: f.hasta,
+      resumen: { productos: r.productos, unidades: Number(r.unidades), venta: Number(r.venta_neta), utilidad: Number(r.utilidad), margen: margen(r.utilidad, r.venta_neta) },
+      masVendidos: top.rows.map(fila),
+      pocoMargen: bajo.rows.map(fila),
+      porCategoria: cat.rows.map((c) => ({ nombre: c.nombre, venta: Number(c.venta), utilidad: Number(c.utilidad), margen: margen(c.utilidad, c.venta) })),
+      abc: abc.rows.map((a) => ({ clase: a.clase, productos: a.productos, venta: Number(a.venta) })),
+      stockMuerto: muerto.rows.map((m) => ({ nombre: m.nombre, sku: m.sku, existencia: Number(m.existencia), valor: Number(m.valor), dias: m.dias })),
     };
   });
 }

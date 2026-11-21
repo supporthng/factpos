@@ -29,6 +29,17 @@ interface Ventas {
   formasPago: { forma: string; monto: number }[];
 }
 
+interface FilaProducto { nombre: string; sku: string; unidades: number; venta: number; utilidad: number; margen: number | null }
+interface Productos {
+  desde: string; hasta: string;
+  resumen: { productos: number; unidades: number; venta: number; utilidad: number; margen: number | null };
+  masVendidos: FilaProducto[];
+  pocoMargen: FilaProducto[];
+  porCategoria: { nombre: string; venta: number; utilidad: number; margen: number | null }[];
+  abc: { clase: string; productos: number; venta: number }[];
+  stockMuerto: { nombre: string; sku: string; existencia: number; valor: number; dias: number | null }[];
+}
+
 const NOMBRE_PAGO: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", TRANSFERENCIA: "Transferencia", CREDITO: "Crédito", CHEQUE: "Cheque" };
 const COLOR_PAGO = ["#1d4ed8", "#0e7490", "#c2570c", "#64748b", "#7c3aed"];
 const DIAS = ["", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -158,18 +169,101 @@ function PestanaResumen({ sucursalId }: { sucursalId: string }) {
   );
 }
 
+const pct = (v: number | null) => (v === null ? "—" : `${num(v, 1)} %`);
+
+function TablaProductos({ filas, vacio }: { filas: FilaProducto[]; vacio: string }) {
+  if (!filas.length) return <p className="suave">{vacio}</p>;
+  return (
+    <table className="es-tabla">
+      <thead><tr><th>Producto</th><th className="der">Unid.</th><th className="der">Venta</th><th className="der">Margen</th></tr></thead>
+      <tbody>{filas.map((p) => <tr key={p.sku}><td>{p.nombre}</td><td className="der">{num(p.unidades)}</td><td className="der"><b>{rd(p.venta)}</b></td><td className={"der " + (p.utilidad < 0 ? "texto-alerta" : "")}>{pct(p.margen)}</td></tr>)}</tbody>
+    </table>
+  );
+}
+
+function SelectorRango({ desde, hasta, setRango }: { desde: string; hasta: string; setRango: (r: [string, string]) => void }) {
+  const [maxFecha] = useState(hoy);
+  return (
+    <div className="es-filtros">
+      <SelectorPeriodo desde={desde} hasta={hasta} onCambio={(a, b) => setRango([a, b])} />
+      <label>Desde <input type="date" value={desde} max={maxFecha} onChange={(e) => setRango([e.target.value, hasta])} /></label>
+      <label>Hasta <input type="date" value={hasta} max={maxFecha} onChange={(e) => setRango([desde, e.target.value])} /></label>
+    </div>
+  );
+}
+
+function PestanaProductos({ sucursalId }: { sucursalId: string }) {
+  const [[desde, hasta], setRango] = useState<[string, string]>(() => rangoPeriodo("ult30"));
+  const { datos: d, error } = useDatos<Productos>(desde && hasta && desde <= hasta ? `/central/estadisticas/productos?desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ""}` : null, [desde, hasta, sucursalId]);
+  const totalAbc = d?.abc.reduce((a, x) => a + x.venta, 0) ?? 0;
+  const valorMuerto = d?.stockMuerto.reduce((a, x) => a + x.valor, 0) ?? 0;
+  return (
+    <>
+      <SelectorRango desde={desde} hasta={hasta} setRango={setRango} />
+      <Aviso texto={error} />
+      {!d ? (error ? null : <p className="suave">Cargando…</p>) : (
+        <>
+          <div className="es-kpis">
+            <Tarjeta titulo="Productos vendidos" valor={num(d.resumen.productos)}><span className="es-delta suave">{num(d.resumen.unidades)} unidades</span></Tarjeta>
+            <Tarjeta titulo="Venta sin ITBIS" valor={rd(d.resumen.venta)}><span className="es-delta suave">Del período elegido</span></Tarjeta>
+            <Tarjeta titulo="Utilidad" valor={rd(d.resumen.utilidad)}><span className="es-delta suave">Venta menos costo</span></Tarjeta>
+            <Tarjeta titulo="Margen bruto" valor={pct(d.resumen.margen)}><span className="es-delta suave">Utilidad sobre venta</span></Tarjeta>
+          </div>
+          <div className="es-dos">
+            <section className="pn-tarjeta"><h2>Los 10 que más venden</h2><TablaProductos filas={d.masVendidos} vacio="No hay ventas en este período." /></section>
+            <section className="pn-tarjeta">
+              <h2>Dejan poco margen</h2>
+              <p className="suave es-nota">Vendidos (5 unidades o más) con margen menor de 5 % o con pérdida.</p>
+              <TablaProductos filas={d.pocoMargen} vacio="Ninguno: todo lo que se vendió deja más de 5 %." />
+            </section>
+          </div>
+          <div className="es-dos">
+            <section className="pn-tarjeta">
+              <h2>Por categoría</h2>
+              {d.porCategoria.length === 0 ? <p className="suave">Sin ventas.</p> : (
+                <table className="es-tabla">
+                  <thead><tr><th>Categoría</th><th className="der">Venta</th><th className="der">Utilidad</th><th className="der">Margen</th></tr></thead>
+                  <tbody>{d.porCategoria.map((c) => <tr key={c.nombre}><td>{c.nombre}</td><td className="der">{rd(c.venta)}</td><td className="der">{rd(c.utilidad)}</td><td className="der"><b>{pct(c.margen)}</b></td></tr>)}</tbody>
+                </table>
+              )}
+            </section>
+            <section className="pn-tarjeta">
+              <h2>Clasificación ABC (últimos 90 días)</h2>
+              <p className="suave es-nota">A: el 80 % de la venta · B: el siguiente 15 % · C: el resto.</p>
+              {d.abc.length === 0 ? <p className="suave">Todavía no hay ventas suficientes.</p> : (
+                <div className="es-lista">
+                  {d.abc.map((a) => (
+                    <div key={a.clase}>
+                      <div className="es-fila"><b>Clase {a.clase}</b><span>{num(a.productos)} producto(s) <span className="suave">· {totalAbc > 0 ? num((a.venta / totalAbc) * 100) : 0} % de la venta</span></span></div>
+                      <div className="es-pista"><span style={{ width: `${totalAbc > 0 ? (a.venta / totalAbc) * 100 : 0}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+          <section className="pn-tarjeta">
+            <div className="pn-cab"><h2>Dinero parado: sin venderse en más de 60 días</h2>{valorMuerto > 0 && <span className="suave">{rd(valorMuerto)} al costo (los 8 mayores)</span>}</div>
+            {d.stockMuerto.length === 0 ? <p className="suave">No hay existencias paradas.</p> : (
+              <table className="es-tabla">
+                <thead><tr><th>Producto</th><th className="der">Existencia</th><th className="der">Sin venderse</th><th className="der">Valor al costo</th></tr></thead>
+                <tbody>{d.stockMuerto.map((m) => <tr key={m.sku}><td>{m.nombre}</td><td className="der">{num(m.existencia, 0)}</td><td className="der">{m.dias === null ? "Nunca se ha vendido" : `${num(m.dias)} días`}</td><td className="der"><b>{rd(m.valor)}</b></td></tr>)}</tbody>
+              </table>
+            )}
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
 function PestanaVentas({ sucursalId }: { sucursalId: string }) {
   const [[desde, hasta], setRango] = useState<[string, string]>(() => rangoPeriodo("ult30"));
-  const [maxFecha] = useState(hoy);
   const { datos: d, error } = useDatos<Ventas>(desde && hasta && desde <= hasta ? `/central/estadisticas/ventas?desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ""}` : null, [desde, hasta, sucursalId]);
   const mejorDia = d?.serie.reduce((m, s) => (s.venta > m.venta ? s : m), { fecha: "", venta: 0, facturas: 0 });
   return (
     <>
-      <div className="es-filtros">
-        <SelectorPeriodo desde={desde} hasta={hasta} onCambio={(a, b) => setRango([a, b])} />
-        <label>Desde <input type="date" value={desde} max={maxFecha} onChange={(e) => setRango([e.target.value, hasta])} /></label>
-        <label>Hasta <input type="date" value={hasta} max={maxFecha} onChange={(e) => setRango([desde, e.target.value])} /></label>
-      </div>
+      <SelectorRango desde={desde} hasta={hasta} setRango={setRango} />
       <Aviso texto={error} />
       {!d ? (error ? null : <p className="suave">Cargando…</p>) : (
         <>
@@ -203,7 +297,7 @@ function PestanaVentas({ sucursalId }: { sucursalId: string }) {
 }
 
 export function Estadisticas() {
-  const [pestana, setPestana] = useState<"resumen" | "ventas">("resumen");
+  const [pestana, setPestana] = useState<"resumen" | "ventas" | "productos">("resumen");
   const [sucursalId, setSucursalId] = useState("");
   const { datos: sucs } = useDatos<{ sucursal_id: string; sucursal: string }[]>(puede("admin.reportes") ? "/central/sucursales" : null);
   const hoyTexto = new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" });
@@ -220,8 +314,9 @@ export function Estadisticas() {
       <div className="pestanas" role="tablist">
         <button role="tab" aria-selected={pestana === "resumen"} className={pestana === "resumen" ? "activa" : ""} onClick={() => setPestana("resumen")}>Resumen</button>
         <button role="tab" aria-selected={pestana === "ventas"} className={pestana === "ventas" ? "activa" : ""} onClick={() => setPestana("ventas")}>Ventas</button>
+        <button role="tab" aria-selected={pestana === "productos"} className={pestana === "productos" ? "activa" : ""} onClick={() => setPestana("productos")}>Productos</button>
       </div>
-      {pestana === "resumen" ? <PestanaResumen sucursalId={sucursalId} /> : <PestanaVentas sucursalId={sucursalId} />}
+      {pestana === "resumen" ? <PestanaResumen sucursalId={sucursalId} /> : pestana === "ventas" ? <PestanaVentas sucursalId={sucursalId} /> : <PestanaProductos sucursalId={sucursalId} />}
     </>
   );
 }
