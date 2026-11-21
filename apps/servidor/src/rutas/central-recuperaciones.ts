@@ -245,30 +245,82 @@ export async function rutasCentralRecuperaciones(app: FastifyInstance) {
   app.get("/central/cxc/recuperada", async (req) => {
     const r = await pool.query(
       `SELECT i.id, i.descripcion, i.serie, i.cantidad::text, i.estado_fisico AS "estadoFisico", i.valoracion::text, i.costo_reparacion::text AS "costoReparacion",
-              i.precio_usado::text AS "precioUsado", i.proceso, i.nota, 'RM-' || lpad(r.numero::text, 6, '0') AS acta, to_char(r.fecha_recogida,'YYYY-MM-DD') AS "fechaRecogida",
+              i.precio_usado::text AS "precioUsado", i.garantia_meses AS "garantiaMeses", i.producto_usado_id AS "productoUsadoId", pu.sku AS "skuUsado",
+              CASE WHEN i.proceso = 'VENDIDA' OR (i.producto_usado_id IS NOT NULL AND EXISTS (SELECT 1 FROM kardex_movimientos k WHERE k.producto_id = i.producto_usado_id AND k.tipo = 'VENTA')) THEN 'VENDIDA' ELSE i.proceso END AS proceso, i.nota, 'RM-' || lpad(r.numero::text, 6, '0') AS acta, to_char(r.fecha_recogida,'YYYY-MM-DD') AS "fechaRecogida",
               cl.nombre AS cliente, s.nombre AS sucursal
          FROM recuperacion_items i JOIN recuperaciones r ON r.id = i.recuperacion_id JOIN clientes cl ON cl.id = r.cliente_id JOIN sucursales s ON s.id = r.sucursal_id
+         LEFT JOIN productos pu ON pu.id = i.producto_usado_id
         WHERE r.estado = 'APLICADA' AND s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[]))
         ORDER BY (i.proceso = 'VENDIDA'), r.aplicada_en DESC, i.descripcion LIMIT 500`, [empresaDe(req), sucursalesDe(req)]);
     return r.rows;
   });
+  /**
+   * Cambiar un artículo recuperado. Al pasarlo a «Lista» se publica como producto USADO: sale de «Recuperada», entra al piso de venta
+   * con su precio de usado y garantía reducida, y se factura como cualquier artículo (con su serie).
+   */
   app.put("/central/cxc/recuperada/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = z.object({
       proceso: z.enum(["EN_REVISION", "EN_REPARACION", "LISTA"]).optional(), estadoFisico: z.enum(["BUENO", "REGULAR", "DANADO"]).optional(),
-      costoReparacion: monto.optional(), precioUsado: monto.nullable().optional(), nota: z.string().trim().max(200).optional(),
+      costoReparacion: monto.optional(), precioUsado: monto.nullable().optional(), garantiaMeses: z.number().int().min(0).max(60).optional(), nota: z.string().trim().max(200).optional(),
     }).parse(req.body);
-    if (b.proceso === "LISTA" && (b.precioUsado === undefined || b.precioUsado === null || Number(b.precioUsado) <= 0)) {
-      const actual = (await pool.query("SELECT precio_usado FROM recuperacion_items WHERE id = $1", [id])).rows[0]?.precio_usado;
-      if (!actual) throw new ErrorNegocio("Para marcarla lista ponga el precio de usado");
-    }
-    const r = await pool.query(
-      `UPDATE recuperacion_items i SET proceso = COALESCE($3, i.proceso), estado_fisico = COALESCE($4, i.estado_fisico), costo_reparacion = COALESCE($5::numeric, i.costo_reparacion),
-              precio_usado = CASE WHEN $6::boolean THEN $7::numeric ELSE i.precio_usado END, nota = COALESCE($8, i.nota)
-        FROM recuperaciones r JOIN sucursales s ON s.id = r.sucursal_id
-        WHERE i.id = $1 AND r.id = i.recuperacion_id AND s.empresa_id = $2 AND r.estado = 'APLICADA' AND i.proceso <> 'VENDIDA'`,
-      [id, empresaDe(req), b.proceso ?? null, b.estadoFisico ?? null, b.costoReparacion ?? null, b.precioUsado !== undefined, b.precioUsado ?? null, b.nota ?? null]);
-    if (!r.rowCount) throw new ErrorNegocio("El artículo no existe o ya se vendió", 404);
-    return { ok: true };
+    const empresaId = empresaDe(req);
+    const usuarioId = usuarioDe(req);
+    return enTransaccion(async (c) => {
+      const it = (await c.query<{ id: string; recuperacion_id: string; producto_id: string; descripcion: string; serie: string | null; cantidad: string; valoracion: string; costo_reparacion: string;
+        precio_usado: string | null; proceso: string; producto_usado_id: string | null; sucursal_id: string; numero: string; garantia_meses: number }>(
+        `SELECT i.id, i.recuperacion_id, i.producto_id, i.descripcion, i.serie, i.cantidad::text, i.valoracion::text, i.costo_reparacion::text, i.precio_usado::text, i.proceso, i.producto_usado_id,
+                r.sucursal_id, r.numero::text, i.garantia_meses
+           FROM recuperacion_items i JOIN recuperaciones r ON r.id = i.recuperacion_id JOIN sucursales s ON s.id = r.sucursal_id
+          WHERE i.id = $1 AND s.empresa_id = $2 AND r.estado = 'APLICADA' FOR UPDATE OF i`, [id, empresaId])).rows[0];
+      if (!it) throw new ErrorNegocio("El artículo no existe", 404);
+      const vendida = it.proceso === "VENDIDA" || (it.producto_usado_id && (await c.query("SELECT 1 FROM kardex_movimientos WHERE producto_id = $1 AND tipo = 'VENTA' LIMIT 1", [it.producto_usado_id])).rowCount);
+      if (vendida) throw new ErrorNegocio("Ese artículo ya se vendió", 409);
+      const precio = b.precioUsado === undefined ? it.precio_usado : b.precioUsado;
+      const repar = b.costoReparacion ?? it.costo_reparacion;
+      const garantia = b.garantiaMeses ?? it.garantia_meses;
+      const proceso = b.proceso ?? it.proceso;
+      if (it.producto_usado_id && b.proceso && b.proceso !== "LISTA") throw new ErrorNegocio("Ya está en el piso de venta: no se puede regresar a revisión. Si no se va a vender, ajuste su existencia en inventario.", 409);
+      let productoUsadoId = it.producto_usado_id;
+      if (proceso === "LISTA" && !productoUsadoId) {
+        if (!precio || Number(precio) <= 0) throw new ErrorNegocio("Para marcarla lista ponga el precio de usado");
+        productoUsadoId = uuidv7();
+        const sku = `USADO-${it.id.slice(-8).toUpperCase()}`;
+        const nombre = `${it.descripcion} (USADO)${it.serie ? ` · ${it.serie}` : ""}`.slice(0, 200);
+        const ins = await c.query(
+          `INSERT INTO productos (id, empresa_id, categoria_id, sku, nombre, unidad_base, es_pesable, controla_stock, impuesto_id, isc_id, precio_incluye_impuesto, tipo, nombre_corto, marca,
+                                  permite_sin_existencia, usa_series, garantia_meses)
+           SELECT $1, empresa_id, categoria_id, $2, $3, unidad_base, false, true, impuesto_id, isc_id, precio_incluye_impuesto, 'INVENTARIABLE', LEFT($3, 32), marca, false, (SELECT $6::text IS NOT NULL), $5
+             FROM productos WHERE id = $4 AND empresa_id = $7`,
+          [productoUsadoId, sku, nombre, it.producto_id, garantia, it.serie, empresaId]);
+        if (!ins.rowCount) throw new ErrorNegocio("El producto original ya no existe", 404);
+        const presId = uuidv7();
+        await c.query("INSERT INTO presentaciones (id, producto_id, nombre, factor, es_principal) VALUES ($1,$2,'Unidad',1,true)", [presId, productoUsadoId]);
+        await c.query(
+          "INSERT INTO precios (id, lista_precio_id, presentacion_id, sucursal_id, precio) SELECT gen_random_uuid(), l.id, $1, NULL, $2 FROM listas_precio l WHERE l.empresa_id = $3",
+          [presId, precio, empresaId]);
+        // La mercancía sale de «Recuperada» y entra al piso de venta con su costo (lo reconocido al cliente más la reparación)
+        const costo = new Decimal(it.valoracion).plus(repar).div(it.cantidad).toDecimalPlaces(4);
+        const rec = await almacenRecuperada(c, it.sucursal_id);
+        const piso = (await c.query<{ id: string }>("SELECT id FROM almacenes WHERE sucursal_id = $1 AND es_principal ORDER BY nombre LIMIT 1", [it.sucursal_id])).rows[0]?.id;
+        if (!piso) throw new ErrorNegocio("La sucursal no tiene almacén principal");
+        const doc = `Reventa como USADO · acta RM-${it.numero.padStart(6, "0")}`;
+        await c.query(
+          `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario, documento_tipo, documento_id, motivo, usuario_id)
+           VALUES ($1,$2,$3,$4,'AJUSTE_SALIDA',$5,0,'recuperacion',$6,$7,$8)`,
+          [uuidv7(), it.sucursal_id, rec, it.producto_id, new Decimal(it.cantidad).neg().toFixed(3), it.recuperacion_id, doc, usuarioId]);
+        await c.query(
+          `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario, documento_tipo, documento_id, motivo, usuario_id)
+           VALUES ($1,$2,$3,$4,'AJUSTE_ENTRADA',$5,$6,'recuperacion',$7,$8,$9)`,
+          [uuidv7(), it.sucursal_id, piso, productoUsadoId, it.cantidad, costo.toFixed(4), it.recuperacion_id, doc, usuarioId]);
+      } else if (productoUsadoId && b.precioUsado && Number(b.precioUsado) > 0) {
+        // Ya publicado: cambiar el precio de usado actualiza el precio de venta
+        await c.query("UPDATE precios SET precio = $2 WHERE presentacion_id IN (SELECT id FROM presentaciones WHERE producto_id = $1)", [productoUsadoId, b.precioUsado]);
+      }
+      await c.query(
+        `UPDATE recuperacion_items SET proceso = $2, estado_fisico = COALESCE($3, estado_fisico), costo_reparacion = $4, precio_usado = $5, garantia_meses = $6, nota = COALESCE($7, nota), producto_usado_id = $8 WHERE id = $1`,
+        [id, proceso, b.estadoFisico ?? null, repar, precio ?? null, garantia, b.nota ?? null, productoUsadoId]);
+      return { ok: true, publicado: !!productoUsadoId && !it.producto_usado_id };
+    });
   });
 }
