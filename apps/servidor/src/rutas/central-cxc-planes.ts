@@ -43,23 +43,23 @@ export async function rutasCentralCxcPlanes(app: FastifyInstance) {
 
   app.get("/central/cxc/config/planes", async (req) => {
     const r = await pool.query(
-      `SELECT id, nombre, cuotas, frecuencia, interes_pct::text AS "interesPct", activo FROM cxc_planes_catalogo WHERE empresa_id = $1 ORDER BY activo DESC, cuotas, nombre`, [empresaDe(req)]);
+      `SELECT id, nombre, cuotas, frecuencia, interes_pct::text AS "interesPct", inicial_min_pct::text AS "inicialMinPct", monto_minimo::text AS "montoMinimo", activo FROM cxc_planes_catalogo WHERE empresa_id = $1 ORDER BY activo DESC, cuotas, nombre`, [empresaDe(req)]);
     return r.rows;
   });
-  const PlanCatalogo = z.object({ nombre: z.string().trim().min(2).max(60), cuotas: z.number().int().min(1).max(60), frecuencia: FRECUENCIA, interesPct: z.number().min(0).max(300), activo: z.boolean().default(true) });
+  const PlanCatalogo = z.object({ nombre: z.string().trim().min(2).max(60), cuotas: z.number().int().min(1).max(60), frecuencia: FRECUENCIA, interesPct: z.number().min(0).max(300), inicialMinPct: z.number().min(0).max(100).optional(), montoMinimo: z.number().min(0).max(100000000).optional(), activo: z.boolean().default(true) });
   app.post("/central/cxc/config/planes", async (req, rep) => {
     const b = PlanCatalogo.parse(req.body);
     const id = uuidv7();
-    await pool.query("INSERT INTO cxc_planes_catalogo (id, empresa_id, nombre, cuotas, frecuencia, interes_pct, activo) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-      [id, empresaDe(req), b.nombre, b.cuotas, b.frecuencia, b.interesPct, b.activo]);
+    await pool.query("INSERT INTO cxc_planes_catalogo (id, empresa_id, nombre, cuotas, frecuencia, interes_pct, activo, inicial_min_pct, monto_minimo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+      [id, empresaDe(req), b.nombre, b.cuotas, b.frecuencia, b.interesPct, b.activo, b.inicialMinPct ?? 0, b.montoMinimo ?? 0]);
     rep.code(201);
     return { id };
   });
   app.put("/central/cxc/config/planes/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = PlanCatalogo.parse(req.body);
-    const r = await pool.query("UPDATE cxc_planes_catalogo SET nombre=$3, cuotas=$4, frecuencia=$5, interes_pct=$6, activo=$7 WHERE id=$1 AND empresa_id=$2",
-      [id, empresaDe(req), b.nombre, b.cuotas, b.frecuencia, b.interesPct, b.activo]);
+    const r = await pool.query("UPDATE cxc_planes_catalogo SET nombre=$3, cuotas=$4, frecuencia=$5, interes_pct=$6, activo=$7, inicial_min_pct=COALESCE($8, inicial_min_pct), monto_minimo=COALESCE($9, monto_minimo) WHERE id=$1 AND empresa_id=$2",
+      [id, empresaDe(req), b.nombre, b.cuotas, b.frecuencia, b.interesPct, b.activo, b.inicialMinPct ?? null, b.montoMinimo ?? null]);
     if (!r.rowCount) throw new ErrorNegocio("Plan no encontrado", 404);
     return { ok: true };
   });

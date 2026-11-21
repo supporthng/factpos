@@ -60,9 +60,10 @@ const TIPOS: [string, string][] = [
   ["BAR", "Bar"],
   ["DISCOTECA", "Discoteca"],
   ["COMIDA_RAPIDA", "Comida rápida"],
+  ["MUEBLERIA", "Mueblería y electrodomésticos (venta a plazos, apartados y entregas)"],
 ];
 
-/** Con un tipo distinto de «Tienda» las cajas muestran Cuentas: mesas o clientes con varias personas, que se dividen antes o después de ordenar. */
+/** Restaurante, bar, discoteca y comida rápida muestran Cuentas en la caja (mesas, división de cuenta). Tienda y mueblería no. */
 function TipoNegocio() {
   const [tipo, setTipo] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
@@ -70,13 +71,13 @@ function TipoNegocio() {
   if (tipo === null) return null;
   const guardar = async (nuevo: string) => {
     setMsg(null);
-    try { await api("/central/empresa/tipo-negocio", { metodo: "PUT", cuerpo: { tipoNegocio: nuevo } }); setTipo(nuevo); setMsg({ t: nuevo === "TIENDA" ? "Listo: las cajas siguen como siempre." : "Guardado. En unos segundos las cajas mostrarán el botón Cuentas (al recargar la pantalla de venta).", tipo: "ok" }); }
+    try { await api("/central/empresa/tipo-negocio", { metodo: "PUT", cuerpo: { tipoNegocio: nuevo } }); setTipo(nuevo); setMsg({ t: nuevo === "TIENDA" ? "Listo: las cajas siguen como siempre." : nuevo === "MUEBLERIA" ? "Guardado. Verá los planes de financiamiento en Finanzas; las cajas siguen sin mesas." : "Guardado. En unos segundos las cajas mostrarán el botón Cuentas (al recargar la pantalla de venta).", tipo: "ok" }); }
     catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
   };
   return (
     <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
       <h3 style={{ marginTop: 0 }}>Tipo de negocio</h3>
-      <p className="suave">«Tienda» deja todo como está. Los demás activan <b>Cuentas</b> en la caja: mesas o clientes con varias personas, para dividir la cuenta antes o después de ordenar.</p>
+      <p className="suave">«Tienda» deja todo como está. Restaurante, bar, discoteca y comida rápida activan <b>Cuentas</b> en la caja: mesas o clientes con varias personas, para dividir la cuenta antes o después de ordenar. «Mueblería» es para venta de muebles y electrodomésticos a crédito, sin mesas.</p>
       <select value={tipo} onChange={(e) => void guardar(e.target.value)}>
         {TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
       </select>

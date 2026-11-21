@@ -4,7 +4,7 @@ import { versionCliente } from "./version";
 import { modoInicial } from "./vista";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  cotizarCarrito, marcaEfectiva, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito,
+  cotizarCarrito, marcaEfectiva, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito, esNegocioDeMesas,
   type Catalogo, type ProductoCatalogo, type Cupon, type Cotizacion,
 } from "@factpos/compartido";
 import { Decimal } from "decimal.js";
@@ -101,7 +101,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
   const [cupon, setCupon] = useState<Cupon | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   // Restaurante, bar o discoteca: la caja abre en el salón (mesas y cuentas). Se cierra para vender al mostrador.
-  useEffect(() => { if (config.tipoNegocio && config.tipoNegocio !== "TIENDA") setModal("cuentas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (esNegocioDeMesas(config.tipoNegocio)) setModal("cuentas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [aviso, setAviso] = useState<{ texto: string; tipo: "error" | "ok" } | null>(null);
   const [ultima, setUltima] = useState<ResultadoVenta | null>(null);
   const [codigo, setCodigo] = useState("");
@@ -811,7 +811,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
-                ...(config.tipoNegocio && config.tipoNegocio !== "TIENDA" ? [["Mesas y cuentas", () => setModal("cuentas"), false] as const, ["Barra", () => setModal("barra"), false] as const] : []),
+                ...(esNegocioDeMesas(config.tipoNegocio) ? [["Mesas y cuentas", () => setModal("cuentas"), false] as const, ["Barra", () => setModal("barra"), false] as const] : []),
                 ...(config.aforoActivo ? [[etiquetaAforo(aforo), () => setModal("aforo"), false] as const] : []),
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ["Cerrar turno", () => setModal("turno"), false],
@@ -823,8 +823,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
               <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
               <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
-              {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("cuentas")}>Mesas y cuentas</button>}
-              {config.tipoNegocio && config.tipoNegocio !== "TIENDA" && <button onClick={() => setModal("barra")}>Barra</button>}
+              {esNegocioDeMesas(config.tipoNegocio) && <button onClick={() => setModal("cuentas")}>Mesas y cuentas</button>}
+              {esNegocioDeMesas(config.tipoNegocio) && <button onClick={() => setModal("barra")}>Barra</button>}
               {config.aforoActivo && <button className={aforoLleno(aforo) ? "error" : ""} onClick={() => setModal("aforo")}>{etiquetaAforo(aforo)}</button>}
               {verCatalogo
                 ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
@@ -954,7 +954,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             const cta = cuentaActiva;
             if (cta) { // las líneas de la cuenta quedan ligadas a esta venta; si faltan partes, se vuelve a la cuenta
               const avisarCobrada = (n: number) => api<{ estado: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/cuentas/${cta.cuentaId}/cobrada`, { cuerpo: { ventaId: r.id, lineaIds: cta.lineaIds } })
-                .then((c) => { if (c.estado === "ABIERTA" || (config.tipoNegocio && config.tipoNegocio !== "TIENDA")) setModal("cuentas"); })
+                .then((c) => { if (c.estado === "ABIERTA" || (esNegocioDeMesas(config.tipoNegocio))) setModal("cuentas"); })
                 .catch(() => { if (n > 0) setTimeout(() => avisarCobrada(n - 1), 5000); });
               avisarCobrada(5);
             }

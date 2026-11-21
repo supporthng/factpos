@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PoolClient } from "pg";
 import { z } from "zod";
-import { uuidv7 } from "@factpos/compartido";
+import { uuidv7, TIPOS_NEGOCIO } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 
 /**
@@ -585,7 +585,7 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     return { ok: true };
   });
   app.put("/central/empresa/tipo-negocio", async (req) => {
-    const { tipoNegocio } = z.object({ tipoNegocio: z.enum(["TIENDA", "RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"]) }).parse(req.body);
+    const { tipoNegocio } = z.object({ tipoNegocio: z.enum(TIPOS_NEGOCIO) }).parse(req.body);
     await pool.query("UPDATE empresas SET tipo_negocio = $2 WHERE id = $1", [empresaDe(req), tipoNegocio]);
     return { tipoNegocio };
   });
