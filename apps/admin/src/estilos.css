@@ -1626,3 +1626,61 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .55; cu
 .aa-opcion:disabled { opacity: .55; cursor: default; }
 .aa-opcion small { display: block; opacity: .7; margin-top: 2px; }
 .aa-num { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: rgba(0,0,0,.07); font-weight: 600; font-size: 13px; }
+
+/* ---- Estadísticas ---- */
+.es-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 8px; }
+.es-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.es-kpi { background: var(--panel); border: 1px solid var(--borde); border-radius: 16px; box-shadow: var(--sombra); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.es-kpi > b { font-size: 26px; line-height: 1.15; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.es-delta { font-size: 13px; font-weight: 600; }
+.es-delta.bien { color: var(--ok); }
+.es-delta.mal { color: var(--error); }
+.es-delta .suave { font-weight: 400; }
+.es-nota { margin: 0 0 14px; font-size: 13px; }
+.es-dos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.es-dos > .pn-tarjeta h2, .pn-tarjeta > h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.es-svg { display: block; overflow: visible; }
+.es-rejilla { stroke: var(--borde); stroke-width: 1; }
+.es-barra { fill: var(--primario); }
+.es-barra.mejor { fill: color-mix(in srgb, var(--primario) 70%, #000); }
+.es-linea { fill: none; stroke: #c2570c; stroke-width: 2.5; stroke-dasharray: 6 5; stroke-linejoin: round; }
+.es-eje { font-size: 12px; fill: var(--suave); }
+.es-leyenda-linea { display: flex; gap: 16px; font-size: 13px; color: var(--suave); }
+.es-leyenda-linea span { display: inline-flex; align-items: center; gap: 6px; }
+.es-leyenda-linea .cuadro { width: 12px; height: 12px; border-radius: 3px; background: var(--primario); display: inline-block; }
+.es-leyenda-linea .raya { width: 16px; border-top: 2px dashed #c2570c; display: inline-block; }
+.es-hallazgos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.es-hallazgos li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 10px 12px; border-left: 4px solid; border-top: 1px solid var(--borde); margin-top: -1px; }
+.es-hallazgos li.grave { border-left-color: var(--error); }
+.es-hallazgos li.aviso { border-left-color: var(--alerta); }
+.es-hallazgos li > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; }
+.es-hallazgos li .suave { font-size: 13px; }
+.es-hallazgos button { flex: none; }
+.es-lista { display: flex; flex-direction: column; gap: 12px; }
+.es-fila { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; flex-wrap: wrap; }
+.es-pista { height: 8px; border-radius: 99px; background: var(--primario-suave); margin-top: 5px; overflow: hidden; }
+.es-pista span { display: block; height: 100%; background: var(--primario); border-radius: 99px; }
+.es-apilada { display: flex; height: 18px; border-radius: 8px; overflow: hidden; gap: 2px; }
+.es-apilada span { display: block; min-width: 2px; }
+.es-leyenda { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.es-leyenda li { display: grid; grid-template-columns: 12px 1fr auto 52px; align-items: center; gap: 10px; }
+.es-leyenda li i { width: 12px; height: 12px; border-radius: 3px; }
+.es-leyenda li b { text-align: right; }
+.es-tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
+.es-tabla th { text-align: left; font-size: 12.5px; font-weight: 500; color: var(--suave); padding: 4px 0; }
+.es-tabla td { padding: 9px 0; border-top: 1px solid var(--borde); font-variant-numeric: tabular-nums; }
+.es-tabla .der { text-align: right; }
+.es-tabla th.der:nth-child(2) { width: 110px; }
+.es-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.es-filtros label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--suave); }
+.pn-tarjeta + .es-dos, .es-dos + .pn-tarjeta, .es-nota + .pn-tarjeta { margin-top: 0; }
+section.pn-tarjeta { margin-bottom: 14px; }
+.es-dos > section.pn-tarjeta { margin-bottom: 0; }
+@media (max-width: 900px) {
+  .es-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .es-dos { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .es-kpi > b { font-size: 22px; }
+  .es-hallazgos li { flex-direction: column; align-items: flex-start; }
+}

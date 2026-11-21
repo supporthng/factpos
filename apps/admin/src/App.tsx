@@ -33,6 +33,7 @@ import { Actualizaciones } from "./paginas/Actualizaciones";
 import { Licencia, AvisoLicencia } from "./paginas/Licencia";
 import { CatalogoCtx, type CatalogoAdmin } from "./ui";
 import { Resumen } from "./paginas/Resumen";
+const Estadisticas = lazy(() => import("./paginas/Estadisticas").then((m) => ({ default: m.Estadisticas })));
 import { EstadoSistema } from "./paginas/InicioCifras";
 import { PuestaEnMarcha } from "./paginas/PuestaEnMarcha";
 const Inventario = lazy(() => import("./paginas/Inventario").then((m) => ({ default: m.Inventario })));
@@ -101,6 +102,7 @@ const SECCIONES = [
   { id: "impuestos", titulo: "Planilla de impuestos", grupo: "Fiscal", C: Impuestos, i: "fiscal", p: ["admin.fiscal"] },
   { id: "padron", titulo: "Padrón de RNC (DGII)", grupo: "Fiscal", C: Padron, i: "padron", p: ["admin.fiscal"] },
   { id: "certificacion", titulo: "Certificación DGII", grupo: "Fiscal", C: CertificacionEmpresa, i: "fiscal", p: ["admin.fiscal"] },
+  { id: "estadisticas", titulo: "Estadísticas", grupo: "Reportes", C: Estadisticas, i: "reportes", p: ["admin.reportes"] },
   { id: "reportes", titulo: "Reportes", grupo: "Reportes", C: Reportes, i: "reportes", p: ["admin.reportes"] },
   { id: "empresa", titulo: "Datos de la empresa", grupo: "Negocio", C: DatosEmpresa, i: "ajustes", p: ["admin.config"] },
   { id: "sucursales", titulo: "Sucursales y terminales", grupo: "Negocio", C: Sucursales, i: "sucursales", p: ["admin.config"] },
@@ -122,7 +124,7 @@ const SECCIONES = [
   { id: "incidentes", titulo: "Incidentes y soporte", grupo: "Sistema", C: Incidentes, i: "incidentes", p: ["admin.config"] },
 ] as const;
 /** Versión celular (pantalla angosta): solo lo que el dueño necesita en el día a día. */
-const SECCIONES_MOVIL_BASE = ["vender", "consultaexistencias", "resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "cierres", "caja", "reportes"];
+const SECCIONES_MOVIL_BASE = ["vender", "consultaexistencias", "resumen", "productos", "compras", "inventario", "ajustes", "conteos", "traspasos", "kardex", "precios", "ofertas", "clientela", "cotizaciones", "facturas", "pedidos", "cxc", "cierres", "caja", "estadisticas", "reportes"];
 interface CfgMovil { habilitada: boolean; secciones: string[]; aplica: boolean }
 const lee = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const guarda = (k: string, v: string | null) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
