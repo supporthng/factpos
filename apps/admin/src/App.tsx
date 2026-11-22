@@ -37,6 +37,7 @@ const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) =>
 const Comisiones = lazy(() => import("./paginas/Comisiones").then((m) => ({ default: m.Comisiones })));
 const Cobranza = lazy(() => import("./paginas/Cobranza").then((m) => ({ default: m.Cobranza })));
 const ServicioTecnico = lazy(() => import("./paginas/ServicioTecnico").then((m) => ({ default: m.ServicioTecnico })));
+const ClientesAtrasados = lazy(() => import("./paginas/ClientesAtrasados").then((m) => ({ default: m.ClientesAtrasados })));
 const Entregas = lazy(() => import("./paginas/Entregas").then((m) => ({ default: m.Entregas })));
 const MoraRecuperacion = lazy(() => import("./paginas/MoraRecuperacion").then((m) => ({ default: m.MoraRecuperacion })));
 const PlanesFinanciamiento = lazy(() => import("./paginas/PlanesFinanciamiento").then((m) => ({ default: m.PlanesFinanciamiento })));
@@ -107,6 +108,7 @@ const SECCIONES = [
   { id: "servicio", titulo: "Servicio técnico", grupo: "Ventas", C: ServicioTecnico, i: "traspasos", p: ["admin.servicio"] },
   { id: "entregas", titulo: "Entregas", grupo: "Ventas", C: Entregas, i: "traspasos", p: ["admin.entregas"] },
   { id: "cobranza", titulo: "Cobranza en ruta", grupo: "Finanzas", C: Cobranza, i: "cxc", p: ["admin.cobranza"] },
+  { id: "atrasados", titulo: "Clientes atrasados", grupo: "Finanzas", C: ClientesAtrasados, i: "cxc", p: ["admin.cxc"] },
   { id: "mora", titulo: "Mora y recuperación", grupo: "Finanzas", C: MoraRecuperacion, i: "cxc", p: ["admin.cxc"] },
   { id: "recibos", titulo: "Recibos de ingreso", grupo: "Finanzas", C: RecibosIngreso, i: "cxc", p: ["admin.cxc"] },
   { id: "cierres", titulo: "Cierres de caja", grupo: "Finanzas", C: Cierres, i: "caja", p: ["admin.cierres"] },
@@ -204,6 +206,7 @@ const DESCRIPCION: Record<string, string> = {
   cxc: "Clientes a crédito, abonos y estados de cuenta",
   planes: "Plazos de financiamiento, interés, inicial mínima y mora",
   entregas: "Programar entregas a clientes, asignar chofer, documento de entrega y hoja de ruta del día",
+  atrasados: "Quién debe y cuántos días lleva atrasado: 1 a 30, 31 a 60, 61 a 90 y más de 90 días",
   mora: "Clientes atrasados, actas de recuperación de mercancía y mercancía recuperada",
   recibos: "Recibo numerado de cada inicial y abono de crédito; búsqueda y reimpresión",
   cierres: "Cuadre de cada turno, revisión de diferencias y depósitos",
