@@ -231,4 +231,54 @@ export async function rutasCentralEstadisticas(app: FastifyInstance) {
       stockMuerto: muerto.rows.map((m) => ({ nombre: m.nombre, sku: m.sku, existencia: Number(m.existencia), valor: Number(m.valor), dias: m.dias })),
     };
   });
+
+  /**
+   * Clientes y cobros: quién compra más, cuánto se cobró de crédito en el período (iniciales y abonos con recibo),
+   * lo que se debe y qué tan atrasado está, quiénes deben más y cómo va la gestión de cobranza.
+   * Lo que se debe es por cliente (no depende de la sucursal elegida); los cobros y las compras sí.
+   */
+  app.get("/central/estadisticas/clientes", async (req) => {
+    const f = z.object({ desde: fecha, hasta: fecha, sucursalId: uuid.optional() }).parse(req.query);
+    if (f.desde > f.hasta) throw new ErrorNegocio("La fecha inicial es posterior a la final");
+    if (Date.parse(f.hasta) - Date.parse(f.desde) > 366 * 86400e3) throw new ErrorNegocio("El período no puede pasar de un año");
+    const empresaId = empresaDe(req);
+    const p = [empresaId, sucursalesDe(req), f.sucursalId ?? null, f.desde, f.hasta];
+    const diaV = `(v.creado_en AT TIME ZONE '${RD}')::date`;
+    const diaR = `(r.creado_en AT TIME ZONE '${RD}')::date`;
+    const [deuda, deudores, cobros, formas, compran, gestiones] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE saldo > 0)::int AS clientes, COALESCE(SUM(saldo) FILTER (WHERE saldo > 0), 0)::text AS saldo,
+                COALESCE(SUM(al_dia), 0)::text AS al_dia, COALESCE(SUM(vencido_30), 0)::text AS v30, COALESCE(SUM(vencido_60), 0)::text AS v60, COALESCE(SUM(vencido_mas), 0)::text AS vmas,
+                COUNT(*) FILTER (WHERE vencido_30 + vencido_60 + vencido_mas > 0)::int AS en_mora
+           FROM rpt_cxc_antiguedad WHERE empresa_id = $1 AND saldo > 0`, [empresaId]),
+      pool.query(
+        `SELECT nombre, telefono, saldo::text, (vencido_30 + vencido_60 + vencido_mas)::text AS vencido,
+                GREATEST(0, (CURRENT_DATE - (deuda_desde AT TIME ZONE '${RD}')::date))::int AS dias_deuda, ultimo_abono
+           FROM rpt_cxc_antiguedad WHERE empresa_id = $1 AND saldo > 0 ORDER BY (vencido_30 + vencido_60 + vencido_mas) DESC, saldo DESC LIMIT 10`, [empresaId]),
+      pool.query(
+        `SELECT COUNT(*)::int AS recibos, COALESCE(SUM(r.monto), 0)::text AS total,
+                COALESCE(SUM(r.monto) FILTER (WHERE r.tipo = 'INICIAL'), 0)::text AS iniciales, COALESCE(SUM(r.monto) FILTER (WHERE r.tipo = 'ABONO'), 0)::text AS abonos
+           FROM recibos_ingreso r WHERE ${ENSUC("r.sucursal_id")} AND ${diaR} BETWEEN $4::date AND $5::date`, p),
+      pool.query(
+        `SELECT r.forma_pago AS forma, SUM(r.monto)::text AS monto FROM recibos_ingreso r
+          WHERE ${ENSUC("r.sucursal_id")} AND ${diaR} BETWEEN $4::date AND $5::date GROUP BY r.forma_pago ORDER BY SUM(r.monto) DESC`, p),
+      pool.query(
+        `SELECT cl.nombre, COALESCE(SUM(${SIGNO} * (v.total - v.itbis - v.isc)), 0)::text AS venta, COUNT(*) FILTER (WHERE v.tipo_documento <> 'E34')::int AS facturas
+           FROM ventas v JOIN clientes cl ON cl.id = v.cliente_id WHERE ${ENSUC("v.sucursal_id")} AND ${diaV} BETWEEN $4::date AND $5::date
+          GROUP BY cl.id, cl.nombre HAVING SUM(${SIGNO} * (v.total - v.itbis - v.isc)) > 0 ORDER BY SUM(${SIGNO} * (v.total - v.itbis - v.isc)) DESC LIMIT 10`, p),
+      pool.query(
+        `SELECT g.resultado, COUNT(*)::int AS n FROM cobranza_gestiones g
+          WHERE g.empresa_id = $1 AND (g.creada_en AT TIME ZONE '${RD}')::date BETWEEN $2::date AND $3::date GROUP BY g.resultado ORDER BY COUNT(*) DESC`, [empresaId, f.desde, f.hasta]),
+    ]);
+    const d = deuda.rows[0], c = cobros.rows[0];
+    return {
+      desde: f.desde, hasta: f.hasta,
+      deuda: { clientes: d.clientes, saldo: Number(d.saldo), alDia: Number(d.al_dia), vencido30: Number(d.v30), vencido60: Number(d.v60), vencidoMas: Number(d.vmas), enMora: d.en_mora },
+      cobros: { recibos: c.recibos, total: Number(c.total), iniciales: Number(c.iniciales), abonos: Number(c.abonos) },
+      formasCobro: formas.rows.map((x) => ({ forma: x.forma, monto: Number(x.monto) })),
+      deudores: deudores.rows.map((x) => ({ nombre: x.nombre, telefono: x.telefono, saldo: Number(x.saldo), vencido: Number(x.vencido), diasDeuda: x.dias_deuda, ultimoAbono: x.ultimo_abono })),
+      compradores: compran.rows.map((x) => ({ nombre: x.nombre, venta: Number(x.venta), facturas: x.facturas })),
+      gestiones: gestiones.rows.map((x) => ({ resultado: x.resultado, n: x.n })),
+    };
+  });
 }
