@@ -5,7 +5,7 @@ import { SelectorPeriodo, rangoPeriodo } from "../periodos";
 
 /**
  * Estadísticas: cómo va el negocio, comparado con lo normal, y qué merece atención.
- * Pestañas: Resumen (hoy contra el mismo día de la semana pasada) y Ventas (cualquier período contra el anterior).
+ * Pestañas: Resumen (hoy contra el mismo día de la semana pasada), Ventas (cualquier período contra el anterior), Productos y Clientes y cobros.
  * Cada cifra sale de las facturas reales; las notas de crédito restan.
  */
 interface KpiPar<T = number> { hoy: T; antes: T }
@@ -257,6 +257,96 @@ function PestanaProductos({ sucursalId }: { sucursalId: string }) {
   );
 }
 
+interface ClientesCobros {
+  desde: string; hasta: string;
+  deuda: { clientes: number; saldo: number; alDia: number; vencido30: number; vencido60: number; vencidoMas: number; enMora: number };
+  cobros: { recibos: number; total: number; iniciales: number; abonos: number };
+  formasCobro: { forma: string; monto: number }[];
+  deudores: { nombre: string; telefono: string | null; saldo: number; vencido: number; diasDeuda: number; ultimoAbono: string | null }[];
+  compradores: { nombre: string; venta: number; facturas: number }[];
+  gestiones: { resultado: string; n: number }[];
+}
+const RESULTADO_GESTION: Record<string, string> = { PROMESA: "Prometieron pagar", PAGO: "Pagaron", NO_LOCALIZADO: "No localizados", SIN_PAGO: "Sin pago", OTRO: "Otro" };
+const FORMA_COBRO: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", TRANSFERENCIA: "Transferencia", MIXTO: "Mixto" };
+
+function PestanaClientes({ sucursalId }: { sucursalId: string }) {
+  const [[desde, hasta], setRango] = useState<[string, string]>(() => rangoPeriodo("ult30"));
+  const { datos: d, error } = useDatos<ClientesCobros>(desde && hasta && desde <= hasta ? `/central/estadisticas/clientes?desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ""}` : null, [desde, hasta, sucursalId]);
+  const vencidoTotal = d ? d.deuda.vencido30 + d.deuda.vencido60 + d.deuda.vencidoMas : 0;
+  const tramos = d ? [["Al día", d.deuda.alDia], ["Vencido hasta 30 días", d.deuda.vencido30], ["Vencido 31 a 60 días", d.deuda.vencido60], ["Vencido más de 60 días", d.deuda.vencidoMas]] as const : [];
+  return (
+    <>
+      <SelectorRango desde={desde} hasta={hasta} setRango={setRango} />
+      <Aviso texto={error} />
+      {!d ? (error ? null : <p className="suave">Cargando…</p>) : (
+        <>
+          <div className="es-kpis">
+            <Tarjeta titulo="Por cobrar" valor={rd(d.deuda.saldo)}><span className="es-delta suave">{num(d.deuda.clientes)} clientes con saldo</span></Tarjeta>
+            <Tarjeta titulo="Vencido" valor={rd(vencidoTotal)}><span className="es-delta suave">{num(d.deuda.enMora)} clientes atrasados · {d.deuda.saldo > 0 ? num((vencidoTotal / d.deuda.saldo) * 100) : 0} % de lo que se debe</span></Tarjeta>
+            <Tarjeta titulo="Cobrado en el período" valor={rd(d.cobros.total)}><span className="es-delta suave">{num(d.cobros.recibos)} recibos · iniciales {rd(d.cobros.iniciales)} · abonos {rd(d.cobros.abonos)}</span></Tarjeta>
+            <Tarjeta titulo="Gestiones de cobranza" valor={num(d.gestiones.reduce((a, g) => a + g.n, 0))}><span className="es-delta suave">Llamadas, visitas y mensajes del período</span></Tarjeta>
+          </div>
+          <div className="es-dos">
+            <section className="pn-tarjeta">
+              <h2>Qué tan atrasado está lo que se debe</h2>
+              <p className="suave es-nota">Por la antigüedad de cada deuda contra los días de crédito del cliente. Es la situación de hoy.</p>
+              {d.deuda.saldo <= 0 ? <p className="suave">Nadie debe nada.</p> : (
+                <div className="es-lista">
+                  {tramos.map(([t, v]) => (
+                    <div key={t}>
+                      <div className="es-fila"><b>{t}</b><span>{rd(v)} <span className="suave">· {num((v / d.deuda.saldo) * 100)} %</span></span></div>
+                      <div className="es-pista"><span style={{ width: `${(v / d.deuda.saldo) * 100}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section className="pn-tarjeta">
+              <h2>Cómo cobraron</h2>
+              {d.formasCobro.length === 0 ? <p className="suave">No hubo cobros de crédito en este período.</p> : (
+                <table className="es-tabla">
+                  <thead><tr><th>Forma</th><th className="der">Monto</th></tr></thead>
+                  <tbody>{d.formasCobro.map((f) => <tr key={f.forma}><td>{FORMA_COBRO[f.forma] ?? f.forma}</td><td className="der">{rd(f.monto)}</td></tr>)}</tbody>
+                </table>
+              )}
+              {d.gestiones.length > 0 && <>
+                <h2 style={{ marginTop: 14 }}>Resultado de las gestiones</h2>
+                <table className="es-tabla">
+                  <tbody>{d.gestiones.map((g) => <tr key={g.resultado}><td>{RESULTADO_GESTION[g.resultado] ?? g.resultado}</td><td className="der">{num(g.n)}</td></tr>)}</tbody>
+                </table></>}
+            </section>
+          </div>
+          <div className="es-dos">
+            <section className="pn-tarjeta">
+              <h2>Los que más deben</h2>
+              <p className="suave es-nota">Primero los más atrasados.</p>
+              {d.deudores.length === 0 ? <p className="suave">Nadie con saldo.</p> : (
+                <table className="es-tabla">
+                  <thead><tr><th>Cliente</th><th className="der">Saldo</th><th className="der">Vencido</th><th className="der">Último abono</th></tr></thead>
+                  <tbody>{d.deudores.map((c) => (
+                    <tr key={c.nombre + c.saldo}><td>{c.nombre}{c.telefono && <div className="suave">{c.telefono}</div>}</td><td className="der">{rd(c.saldo)}</td><td className="der"><b>{c.vencido > 0 ? rd(c.vencido) : "—"}</b></td>
+                      <td className="der">{c.ultimoAbono ? new Date(c.ultimoAbono).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo", day: "2-digit", month: "short" }) : <span className="suave">Nunca</span>}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </section>
+            <section className="pn-tarjeta">
+              <h2>Los que más compran</h2>
+              <p className="suave es-nota">Venta sin ITBIS en el período, restando notas de crédito.</p>
+              {d.compradores.length === 0 ? <p className="suave">No hay ventas a clientes registrados en este período.</p> : (
+                <table className="es-tabla">
+                  <thead><tr><th>Cliente</th><th className="der">Facturas</th><th className="der">Venta</th></tr></thead>
+                  <tbody>{d.compradores.map((c) => <tr key={c.nombre}><td>{c.nombre}</td><td className="der">{num(c.facturas)}</td><td className="der"><b>{rd(c.venta)}</b></td></tr>)}</tbody>
+                </table>
+              )}
+            </section>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function PestanaVentas({ sucursalId }: { sucursalId: string }) {
   const [[desde, hasta], setRango] = useState<[string, string]>(() => rangoPeriodo("ult30"));
   const { datos: d, error } = useDatos<Ventas>(desde && hasta && desde <= hasta ? `/central/estadisticas/ventas?desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ""}` : null, [desde, hasta, sucursalId]);
@@ -297,7 +387,7 @@ function PestanaVentas({ sucursalId }: { sucursalId: string }) {
 }
 
 export function Estadisticas() {
-  const [pestana, setPestana] = useState<"resumen" | "ventas" | "productos">("resumen");
+  const [pestana, setPestana] = useState<"resumen" | "ventas" | "productos" | "clientes">("resumen");
   const [sucursalId, setSucursalId] = useState("");
   const { datos: sucs } = useDatos<{ sucursal_id: string; sucursal: string }[]>(puede("admin.reportes") ? "/central/sucursales" : null);
   const hoyTexto = new Date().toLocaleDateString("es-DO", { weekday: "long", day: "numeric", month: "long" });
@@ -315,8 +405,9 @@ export function Estadisticas() {
         <button role="tab" aria-selected={pestana === "resumen"} className={pestana === "resumen" ? "activa" : ""} onClick={() => setPestana("resumen")}>Resumen</button>
         <button role="tab" aria-selected={pestana === "ventas"} className={pestana === "ventas" ? "activa" : ""} onClick={() => setPestana("ventas")}>Ventas</button>
         <button role="tab" aria-selected={pestana === "productos"} className={pestana === "productos" ? "activa" : ""} onClick={() => setPestana("productos")}>Productos</button>
+        <button role="tab" aria-selected={pestana === "clientes"} className={pestana === "clientes" ? "activa" : ""} onClick={() => setPestana("clientes")}>Clientes y cobros</button>
       </div>
-      {pestana === "resumen" ? <PestanaResumen sucursalId={sucursalId} /> : pestana === "ventas" ? <PestanaVentas sucursalId={sucursalId} /> : <PestanaProductos sucursalId={sucursalId} />}
+      {pestana === "resumen" ? <PestanaResumen sucursalId={sucursalId} /> : pestana === "ventas" ? <PestanaVentas sucursalId={sucursalId} /> : pestana === "clientes" ? <PestanaClientes sucursalId={sucursalId} /> : <PestanaProductos sucursalId={sucursalId} />}
     </>
   );
 }
