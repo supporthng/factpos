@@ -36,6 +36,7 @@ import { Resumen } from "./paginas/Resumen";
 const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) => ({ default: m.RecibosIngreso })));
 const Comisiones = lazy(() => import("./paginas/Comisiones").then((m) => ({ default: m.Comisiones })));
 const Cobranza = lazy(() => import("./paginas/Cobranza").then((m) => ({ default: m.Cobranza })));
+const ServicioTecnico = lazy(() => import("./paginas/ServicioTecnico").then((m) => ({ default: m.ServicioTecnico })));
 const Entregas = lazy(() => import("./paginas/Entregas").then((m) => ({ default: m.Entregas })));
 const MoraRecuperacion = lazy(() => import("./paginas/MoraRecuperacion").then((m) => ({ default: m.MoraRecuperacion })));
 const PlanesFinanciamiento = lazy(() => import("./paginas/PlanesFinanciamiento").then((m) => ({ default: m.PlanesFinanciamiento })));
@@ -103,6 +104,7 @@ const SECCIONES = [
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
   { id: "comisiones", titulo: "Comisiones", grupo: "Ventas", C: Comisiones, i: "clientes", p: ["admin.comisiones"] },
+  { id: "servicio", titulo: "Servicio técnico", grupo: "Ventas", C: ServicioTecnico, i: "traspasos", p: ["admin.servicio"] },
   { id: "entregas", titulo: "Entregas", grupo: "Ventas", C: Entregas, i: "traspasos", p: ["admin.entregas"] },
   { id: "cobranza", titulo: "Cobranza en ruta", grupo: "Finanzas", C: Cobranza, i: "cxc", p: ["admin.cobranza"] },
   { id: "mora", titulo: "Mora y recuperación", grupo: "Finanzas", C: MoraRecuperacion, i: "cxc", p: ["admin.cxc"] },
