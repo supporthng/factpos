@@ -17,6 +17,11 @@ const MAX_CACHE = 60;
 const Cuerpo = z.object({
   texto: z.string().trim().min(2).max(700),
   vozId: z.string().trim().regex(/^[A-Za-z0-9]{8,40}$/).optional(),
+  /** Ajustes de la voz (0 a 1): estabilidad alta = más pareja y seria; baja = más expresiva. Si no vienen, se usan los de la voz en ElevenLabs. */
+  estabilidad: z.number().min(0).max(1).optional(), similitud: z.number().min(0).max(1).optional(), estilo: z.number().min(0).max(1).optional(),
+  velocidad: z.number().min(0.7).max(1.2).optional(),
+  /** Solo una muestra corta (las primeras palabras) para probar una voz sin gastar en el video completo */
+  muestra: z.boolean().optional(),
 });
 
 export async function rutasPortalVideos(app: FastifyInstance) {
@@ -33,13 +38,17 @@ export async function rutasPortalVideos(app: FastifyInstance) {
     const b = Cuerpo.parse(req.body);
     const voz = b.vozId || process.env.ELEVENLABS_VOZ_ID?.trim();
     if (!voz) throw new ErrorNegocio("Falta la voz: ponga ELEVENLABS_VOZ_ID en el servidor o escriba el identificador de la voz.");
-    const huella = createHash("sha256").update(`${voz}|${MODELO()}|${b.texto}`).digest("hex");
+    const texto = b.muestra ? (b.texto.length > 170 ? b.texto.slice(0, 170).replace(/\s+\S*$/, "") + "." : b.texto) : b.texto;
+    const ajustes = b.estabilidad == null && b.similitud == null && b.estilo == null && b.velocidad == null ? undefined : {
+      stability: b.estabilidad ?? 0.5, similarity_boost: b.similitud ?? 0.8, style: b.estilo ?? 0, use_speaker_boost: true, ...(b.velocidad != null ? { speed: b.velocidad } : {}),
+    };
+    const huella = createHash("sha256").update(`${voz}|${MODELO()}|${JSON.stringify(ajustes ?? null)}|${texto}`).digest("hex");
     const hecho = cache.get(huella);
     if (hecho) return { audio: hecho, formato: "mp3", reutilizado: true };
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voz}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "content-type": "application/json", "xi-api-key": clave },
-      body: JSON.stringify({ text: b.texto, model_id: MODELO(), language_code: "es" }),
+      body: JSON.stringify({ text: texto, model_id: MODELO(), language_code: "es", ...(ajustes ? { voice_settings: ajustes } : {}) }),
       signal: AbortSignal.timeout(60_000),
     });
     if (!r.ok) {
