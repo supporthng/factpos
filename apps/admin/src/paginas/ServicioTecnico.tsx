@@ -25,6 +25,7 @@ const SIGUIENTE: Record<string, string[]> = {
 };
 const GARANTIA: Record<string, string> = { TIENDA: "Garantía de la tienda", FABRICANTE: "Garantía del fabricante", SIN: "Sin garantía" };
 const MEDIO: Record<string, string> = { PRESENCIAL: "Presencial", TELEFONO: "Por teléfono", WHATSAPP: "Por WhatsApp" };
+const MEDIO_VER: Record<string, string> = { ...MEDIO, ENLACE: "Por el enlace del celular" };
 const fechaCorta = (s: string) => s.slice(0, 10).split("-").reverse().join("/");
 const fechaHora = (iso: string) => new Date(iso).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo", day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 const decimal = (v: string) => v.replace(/[^\d.]/g, "");
@@ -178,6 +179,7 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
   const [cMo, setCMo] = useState(""); const [cPz, setCPz] = useState(""); const [cNota, setCNota] = useState("");
   const [decPor, setDecPor] = useState(""); const [decMedio, setDecMedio] = useState("PRESENCIAL"); const [revision, setRevision] = useState<string | null>(null);
   const [fabRef, setFabRef] = useState<string | null>(null);
+  const [enlace, setEnlace] = useState<{ url: string; alcanzable: boolean; wa: string | null; vence: string; mensaje: string } | null>(null);
   const cfg = useDatos<{ cobrarRevision: boolean; montoRevision: string }>("/central/servicio/config", []);
   if (!o) return <div className="tarjeta suave">{d.error || "Cargando…"}</div>;
   const cerrada = ["ENTREGADO", "SIN_REPARACION", "CANCELADO"].includes(o.estado);
@@ -185,6 +187,14 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
   const aprobada = o.enGarantia || o.aprobacion === "APROBADA";
   const cotizacion = Number(o.cotizManoObra ?? 0) + Number(o.cotizPiezas ?? 0);
   const revisionSugerida = cfg.datos?.cobrarRevision ? cfg.datos.montoRevision : "0";
+  const generarEnlace = async (accion: "wa" | "copiar") => {
+    try {
+      const r = await api<{ url: string; alcanzable: boolean; wa: string | null; vence: string; mensaje: string }>(`/central/servicio/${id}/enlace`, { metodo: "POST", cuerpo: {} });
+      setEnlace(r);
+      if (accion === "wa" && r.wa) window.open(r.wa, "_blank", "noopener");
+      if (accion === "copiar" || !r.wa) await navigator.clipboard?.writeText(r.mensaje).catch(() => {});
+    } catch (e) { onError((e as Error).message); }
+  };
   const llamar = async (cuerpo: Record<string, unknown>, despues?: () => void) => {
     try { await api(`/central/servicio/${id}`, { metodo: "PUT", cuerpo }); despues?.(); d.recargar(); onCambio(); } catch (e) { onError((e as Error).message); }
   };
@@ -209,8 +219,8 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
       <p style={{ margin: "4px 0" }}><span className="suave">Garantía:</span> {o.tipoGarantia === "TIENDA" ? `Garantía de la tienda (hasta ${fechaCorta(o.garantiaHasta!)}): no se cobra` : o.tipoGarantia === "FABRICANTE" ? "Garantía del fabricante: no se cobra al cliente" : o.garantiaHasta ? `Vencida el ${fechaCorta(o.garantiaHasta)}: se cobra` : "Sin garantía: se cotiza y se cobra"}</p>
       {o.tipoGarantia === "FABRICANTE" && (o.fabricanteReferencia || o.fabricanteEnvio) && <p style={{ margin: "4px 0" }}><span className="suave">Fabricante:</span> ref. {o.fabricanteReferencia ?? "—"}{o.fabricanteEnvio && ` · enviado ${fechaCorta(o.fabricanteEnvio)}`}{o.fabricanteRegreso && ` · regresó ${fechaCorta(o.fabricanteRegreso)}`}</p>}
       {o.cotizEn && <p style={{ margin: "4px 0" }}><span className="suave">Cotización:</span> <b>{rd(Number(o.cotizManoObra) + Number(o.cotizPiezas))}</b> (mano de obra {rd(Number(o.cotizManoObra))} + piezas {rd(Number(o.cotizPiezas))}){o.cotizNota && ` · ${o.cotizNota}`}
-        {o.aprobacion === "APROBADA" && o.aprobacionEn && ` · Aprobada por ${o.aprobacionPor} (${MEDIO[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
-        {o.aprobacion === "RECHAZADA" && o.aprobacionEn && ` · Rechazada por ${o.aprobacionPor} (${MEDIO[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
+        {o.aprobacion === "APROBADA" && o.aprobacionEn && ` · Aprobada por ${o.aprobacionPor} (${MEDIO_VER[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
+        {o.aprobacion === "RECHAZADA" && o.aprobacionEn && ` · Rechazada por ${o.aprobacionPor} (${MEDIO_VER[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
         {o.aprobacion === "PENDIENTE" && " · Esperando respuesta del cliente"}</p>}
       {o.aprobacion === "RECHAZADA" && Number(o.cobroRevision) > 0 && <p style={{ margin: "4px 0" }}><b>Revisión a cobrar: {rd(Number(o.cobroRevision))}</b> (se cobra con una factura normal)</p>}
       {cerrada && <>
@@ -233,6 +243,17 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
           </div>
           {o.aprobacion === "PENDIENTE" && <div className="panel" style={{ marginTop: 8 }}>
             <b>Respuesta del cliente a {rd(cotizacion)}</b>
+            <div className="fila-acciones" style={{ margin: "6px 0" }}>
+              <button className="boton primario" onClick={() => generarEnlace("wa")}>Enviar por WhatsApp (el cliente aprueba desde su celular)</button>
+              <button className="boton" onClick={() => generarEnlace("copiar")}>Copiar mensaje con enlace</button>
+              <button className="boton" onClick={() => { d.recargar(); onCambio(); }}>Ver si ya respondió</button>
+            </div>
+            {enlace && <div className="suave pequeno" style={{ marginBottom: 6 }}>
+              Enlace (vale hasta el {fechaCorta(enlace.vence)}): <span className="mono" style={{ wordBreak: "break-all" }}>{enlace.url}</span>
+              {!enlace.wa && <><br />El cliente no tiene teléfono en la orden: el mensaje quedó copiado para que lo pegue donde prefiera.</>}
+              {!enlace.alcanzable && <><br /><b>Atención:</b> este servidor no tiene una dirección pública (túnel o dirección de internet): el cliente solo podría abrir el enlace dentro de su red. Active el acceso por internet para que le funcione desde su celular.</>}
+            </div>}
+            <p className="suave pequeno" style={{ margin: "0 0 6px" }}>O registre usted la respuesta si el cliente la dio en persona o por teléfono:</p>
             <div className="panel cab-compra">
               <label className="campo"><span>Quién respondió</span><input value={decPor} onChange={(e) => setDecPor(e.target.value)} placeholder={o.cliente ?? "Nombre"} /></label>
               <label className="campo"><span>Por qué medio</span><select value={decMedio} onChange={(e) => setDecMedio(e.target.value)}>{Object.entries(MEDIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
