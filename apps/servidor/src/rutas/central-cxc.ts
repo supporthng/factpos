@@ -219,6 +219,43 @@ export async function rutasCentralCxc(app: FastifyInstance) {
     return { id };
   });
 
+  /**
+   * Saldos iniciales al migrar de otro sistema: un movimiento por documento pendiente (CARGO) con su fecha original, para que la antigüedad
+   * (al día, vencido a 30, 60…) salga bien; los créditos a favor entran con monto negativo (AJUSTE). Se puede volver a enviar: lo que ya
+   * existe con la misma referencia para ese cliente se salta.
+   */
+  app.post("/central/cxc/saldos-iniciales", async (req, rep) => {
+    const b = z.object({
+      sucursalId: uuid.optional(), origen: z.string().trim().min(2).max(30),
+      items: z.array(z.object({
+        clienteId: uuid, monto: z.string().regex(/^-?\d+(\.\d{1,2})?$/, "Monto inválido"), fecha: z.string().datetime({ offset: true }).nullable().default(null),
+        referencia: z.string().trim().min(3).max(40), notas: z.string().trim().max(200).default(""),
+      })).min(1).max(500),
+    }).parse(req.body);
+    const empresaId = empresaDe(req);
+    const usuarioId = usuarioDe(req);
+    const r = await enTransaccion(async (c) => {
+      const suc = b.sucursalId
+        ? (await c.query("SELECT id FROM sucursales WHERE id = $1 AND empresa_id = $2", [b.sucursalId, empresaId])).rows[0]?.id
+        : (await c.query("SELECT id FROM sucursales WHERE empresa_id = $1 AND activo ORDER BY tipo = 'ALMACEN', codigo LIMIT 1", [empresaId])).rows[0]?.id;
+      if (!suc) throw new ErrorNegocio("Sucursal no encontrada", 404);
+      const ids = [...new Set(b.items.map((i) => i.clienteId))];
+      const ok = await c.query("SELECT 1 FROM clientes WHERE empresa_id = $1 AND id = ANY($2::uuid[])", [empresaId, ids]);
+      if (ok.rowCount !== ids.length) throw new ErrorNegocio("Algún cliente no existe en esta empresa");
+      if (b.items.some((i) => new Decimal(i.monto).isZero())) throw new ErrorNegocio("Hay un saldo en cero");
+      const ins = await c.query(
+        `INSERT INTO cxc_movimientos (id, sucursal_id, cliente_id, tipo, monto, usuario_id, creado_en, referencia, notas)
+         SELECT x.id, $1, x.cliente_id, CASE WHEN x.monto > 0 THEN 'CARGO' ELSE 'AJUSTE' END, x.monto, $2, COALESCE(x.fecha, now()), x.referencia, x.notas
+           FROM jsonb_to_recordset($3::jsonb) AS x(id uuid, cliente_id uuid, monto numeric, fecha timestamptz, referencia text, notas text)
+          WHERE NOT EXISTS (SELECT 1 FROM cxc_movimientos m WHERE m.cliente_id = x.cliente_id AND m.referencia = x.referencia)`,
+        [suc, usuarioId, JSON.stringify(b.items.map((i) => ({ id: uuidv7(), cliente_id: i.clienteId, monto: i.monto, fecha: i.fecha, referencia: i.referencia, notas: i.notas || `Saldo inicial de ${b.origen}` })))],
+      );
+      return { nuevos: ins.rowCount ?? 0, existentes: b.items.length - (ins.rowCount ?? 0) };
+    });
+    rep.code(201);
+    return r;
+  });
+
   /** Límite y días de crédito: bajan a las cajas de todas las sucursales. */
   app.put("/central/cxc/:clienteId/credito", async (req) => {
     const { clienteId } = z.object({ clienteId: uuid }).parse(req.params);

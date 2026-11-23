@@ -22,5 +22,13 @@ Se puede volver a correr: los productos llevan SKU `WIL-<número anterior>` y lo
 - No carga como documentos: compras ni cuentas por pagar. Quedan en CSV de consulta. Los saldos pendientes por pagar se cargan a mano.
 - No trae claves de usuario (no sirven en FactPOS); `usuarios_del_sistema_anterior.csv` sirve de lista para crearlos.
 
+## Mónica (respaldo .bak de SQL Server)
+`--fuente monica --archivo monica.bak`. En la app basta elegir el archivo: si termina en `.bak` se usa Mónica. Se lee directo, **sin instalar SQL Server** (solo sirve el `.bak` sin comprimir; si está comprimido o cifrado el importador lo avisa).
+- Carga: categorías, proveedores, clientes (RNC o cédula válidos, **límite y días de crédito**), productos y servicios (los artículos de inventario con su existencia, costo y precio 1 como ajuste en el kardex; el resto como servicios) y el historial de facturas (solo consulta, igual que arriba; con NCF y tipo de comprobante).
+- **Cuentas por cobrar:** cada documento pendiente entra como saldo inicial del cliente **con su fecha original** (para que la antigüedad —al día, vencido a 30, 60…— salga bien) y los créditos sin aplicar, a favor del cliente. Se puede volver a correr sin duplicar. `--sin-saldos` los omite.
+- Si el «balance» guardado en un cliente no coincide con la suma de sus documentos, se carga la suma de los documentos y el cliente queda listado en `problemas.csv`.
+- Clientes con el mismo RNC o el mismo nombre (sin RNC) se unen en uno. Los clientes inactivos sin deuda y los productos inactivos sin existencia no se cargan.
+- No carga: cuentas por pagar, compras, kardex ni devoluciones (compras y cuentas por pagar quedan en CSV de consulta).
+
 ## Agregar otro sistema
-Cree `fuentes/<sistema>.mjs` que exporte `nombre` y `leer(ruta)` devolviendo `{ categorias, proveedores, clientes, productos, cuentasPagar, historialVentas, historialCompras, usuarios }` (ver `fuentes/wilpos.mjs`). El cargador no cambia.
+Cree `fuentes/<sistema>.mjs` que exporte `nombre` y `leer(ruta)` devolviendo `{ categorias, proveedores, clientes, productos, cuentasPagar, historialVentas, historialCompras, usuarios }` (y, si el sistema las tiene, `cuentasCobrar` y `creditosAFavor`: ver `fuentes/monica.mjs`) (ver `fuentes/wilpos.mjs`). El cargador no cambia.

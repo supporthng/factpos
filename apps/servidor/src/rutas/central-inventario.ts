@@ -189,6 +189,12 @@ export async function rutasCentralInventario(app: FastifyInstance) {
     return { productos: productos.rows, clientes: clientes.rows };
   });
 
+  /** Todos los clientes de la empresa (con o sin documento): el importador los usa para no duplicar y para ligar sus saldos anteriores. */
+  app.get("/central/importacion/clientes", async (req) => {
+    const r = await pool.query("SELECT id, nombre, documento, activo FROM clientes WHERE empresa_id = $1", [empresaDe(req)]);
+    return r.rows;
+  });
+
   // -------------------------------------------------------------------
   // Ajustes de inventario
   // -------------------------------------------------------------------

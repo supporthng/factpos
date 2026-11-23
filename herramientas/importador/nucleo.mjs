@@ -2,14 +2,17 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as wilpos from "./fuentes/wilpos.mjs";
+import * as monica from "./fuentes/monica.mjs";
 
-const FUENTES = { wilpos };
+const FUENTES = { wilpos, monica };
 
 /** o: { fuente, archivo, salida, aplicar, sinFotos, servidor, usuario, clave, rnc, codigo, dispositivo, sucursal }. Lanza Error si algo impide seguir. */
 export async function importar(o, emitir = console.log) {
   const fuente = FUENTES[o.fuente ?? "wilpos"];
   if (!fuente) throw new Error("Fuente desconocida");
   const datos = fuente.leer(String(o.archivo));
+  datos.cuentasCobrar ??= [];
+  datos.creditosAFavor ??= [];
   const salida = String(o.salida ?? "./salida-importacion");
   mkdirSync(salida, { recursive: true });
   const aplicar = !!o.aplicar;
@@ -31,6 +34,10 @@ log(`# Importación desde ${fuente.nombre}`);
 log(`Archivo: ${o.archivo}  ·  Modo: ${aplicar ? "APLICAR" : "vista previa (no se cambia nada)"}`);
 log(`Leído: ${datos.productos.length} productos, ${datos.categorias.length} categorías, ${datos.clientes.length} clientes, ${datos.proveedores.length} proveedores, ${datos.historialVentas.length} ventas, ${datos.historialCompras.length} compras, ${datos.cuentasPagar.length} cuentas por pagar con saldo.`);
 
+for (const a of datos.avisos ?? []) log(`Aviso: ${a}`);
+const sumaCxC = Math.round((datos.cuentasCobrar.reduce((t, x) => t + x.saldo, 0) - datos.creditosAFavor.reduce((t, x) => t + x.monto, 0)) * 100) / 100;
+if (datos.cuentasCobrar.length || datos.creditosAFavor.length) log(`Cuentas por cobrar: ${datos.cuentasCobrar.length} documentos con saldo y ${datos.creditosAFavor.length} créditos a favor; saldo neto RD$${sumaCxC.toLocaleString("es-DO", { minimumFractionDigits: 2 })}.`);
+
 // ---------- historial y consulta (siempre se genera) ----------
 escribir("historial_ventas.csv", csv(datos.historialVentas.map((v) => ({ ...v, lineas: v.lineas.map((l) => `${l.cantidad} x ${l.producto} @ ${l.precio}`).join(" | ") })), ["id", "fecha", "cliente", "total", "descuento", "itbis", "metodo", "estado", "lineas"]));
 escribir("historial_compras.csv", csv(datos.historialCompras.map((v) => ({ ...v, lineas: v.lineas.map((l) => `${l.cantidad} x ${l.producto} @ ${l.costo}`).join(" | ") })), ["id", "fecha", "proveedor", "factura", "ncf", "subtotal", "itbis", "total", "estado", "metodo", "lineas"]));
@@ -41,6 +48,7 @@ log(`Cuentas por pagar pendientes: ${datos.cuentasPagar.length} por RD$${saldoCx
 
 // ---------- validación previa ----------
 const problemas = [];
+for (const d of datos.diferenciasSaldo ?? []) problemas.push(["saldo", "", d.cliente, `Documentos suman ${d.documentos}, el balance guardado en el sistema anterior dice ${d.balanceGuardado} (diferencia ${d.diferencia}): se carga la suma de los documentos`]);
 const barrasVistas = new Map();
 const productos = [];
 for (const p of datos.productos) {
@@ -131,23 +139,35 @@ if (aplicar) {
     log(`Reemplazo: en FactPOS hay ${previos.productos.length} productos y ${previos.clientes.length} clientes de importaciones anteriores.`);
   }
   const clientePrevio = new Map(previos.clientes.map((c) => [String(c.documento), c]));
+  const claveNombre = (x) => String(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  // Lo que ya hay en FactPOS: para no duplicar al volver a correr y para ligar cada cliente anterior con el suyo (saldos de cuentas por cobrar)
+  const enFactPOS = await api("/central/importacion/clientes");
+  const idPorDocumento = new Map(enFactPOS.filter((x) => x.documento).map((x) => [String(x.documento), x.id]));
+  const idPorNombreSinDoc = new Map(enFactPOS.filter((x) => !x.documento).map((x) => [claveNombre(x.nombre), x.id]));
+  const clienteIdPorOrigen = new Map();
   const clientesVistos = new Set();
   resultado.actualizados = { productos: 0, clientes: 0 };
   resultado.desactivados = { productos: 0, clientes: 0 };
   for (const c of clientes) {
     const cuerpoC = { nombre: c.nombre.slice(0, 120), tipoDocumento: c.tipo, documento: c.doc, telefono: c.telefono?.slice(0, 20) ?? null, correo: c.correo, direccion: c.direccion?.slice(0, 250) ?? null, confirmarDocumento: true };
     const previo = c.doc ? clientePrevio.get(String(c.doc).replace(/\D/g, "")) ?? clientePrevio.get(String(c.doc)) : null;
+    const yaEsta = c.doc ? idPorDocumento.get(String(c.doc)) : idPorNombreSinDoc.get(claveNombre(c.nombre.slice(0, 120)));
+    if (!previo && yaEsta) { resultado.existentes.clientes++; clienteIdPorOrigen.set(c.origenId, yaEsta); continue; }
     if (previo) {
       clientesVistos.add(previo.id);
+      clienteIdPorOrigen.set(c.origenId, previo.id);
       try { await api(`/central/clientes/${previo.id}`, "PUT", { ...cuerpoC, nivel: previo.nivel, limiteCredito: previo.limiteCredito, diasCredito: previo.diasCredito, activo: true }); resultado.actualizados.clientes++; }
       catch (e) { problemas.push(["cliente", c.origenId, c.nombre, e.message]); }
       continue;
     }
     try {
-      await api("/central/clientes", "POST", { ...cuerpoC, nivel: 1 });
+      const cred = c.diasCredito != null ? { limiteCredito: Number(c.limiteCredito || 0).toFixed(2), diasCredito: c.diasCredito } : {};
+      const nuevo = await api("/central/clientes", "POST", { ...cuerpoC, ...cred, nivel: 1 });
       resultado.creados.clientes++;
+      clienteIdPorOrigen.set(c.origenId, nuevo.id);
+      if (c.doc) idPorDocumento.set(String(c.doc), nuevo.id); else idPorNombreSinDoc.set(claveNombre(c.nombre.slice(0, 120)), nuevo.id);
     } catch (e) {
-      if (e.estado === 409) resultado.existentes.clientes++; else problemas.push(["cliente", c.origenId, c.nombre, e.message]);
+      if (e.estado === 409) { resultado.existentes.clientes++; const id = c.doc ? idPorDocumento.get(String(c.doc)) : null; if (id) clienteIdPorOrigen.set(c.origenId, id); } else problemas.push(["cliente", c.origenId, c.nombre, e.message]);
     }
   }
   // clientes que ya no vienen en el backup: se desactivan (solo los importados antes, con documento)
@@ -246,6 +266,30 @@ if (aplicar) {
         resultado.desactivados.productos++;
       } catch (e) { problemas.push(["producto", "", pr.sku, `No se pudo desactivar: ${e.message}`]); }
     }
+  }
+  // cuentas por cobrar: saldo inicial por documento, con su fecha original para que la antigüedad (al día, vencido) salga bien
+  if (!o.sinSaldos && (datos.cuentasCobrar.length || datos.creditosAFavor.length)) {
+    log(`Cargando cuentas por cobrar: ${datos.cuentasCobrar.length} documentos y ${datos.creditosAFavor.length} créditos a favor…`);
+    resultado.saldos = { nuevos: 0, existentes: 0, sinCliente: 0, total: 0 };
+    const items = [];
+    for (const x of datos.cuentasCobrar) {
+      const clienteId = clienteIdPorOrigen.get(x.clienteOrigenId);
+      if (!clienteId) { resultado.saldos.sinCliente++; problemas.push(["saldo", x.referencia, x.cliente, `No se cargó el saldo ${x.saldo} (${x.documento}): el cliente no está en FactPOS`]); continue; }
+      items.push({ clienteId, monto: x.saldo.toFixed(2), fecha: x.fecha ? `${x.fecha}T12:00:00-04:00` : null, referencia: x.referencia, notas: `Saldo inicial de ${fuente.nombre}: ${x.documento}${x.nota ? " · " + x.nota : ""}`.slice(0, 200) });
+    }
+    for (const x of datos.creditosAFavor) {
+      const clienteId = clienteIdPorOrigen.get(x.clienteOrigenId);
+      if (!clienteId) { resultado.saldos.sinCliente++; problemas.push(["saldo", x.referencia, x.cliente, `No se cargó el crédito a favor ${x.monto}: el cliente no está en FactPOS`]); continue; }
+      items.push({ clienteId, monto: (-x.monto).toFixed(2), fecha: x.fecha ? `${x.fecha}T12:00:00-04:00` : null, referencia: x.referencia, notas: `Crédito a favor de ${fuente.nombre}${x.nota ? ": " + x.nota : ""}`.slice(0, 200) });
+    }
+    for (let i = 0; i < items.length; i += 300) {
+      try {
+        const r = await api("/central/cxc/saldos-iniciales", "POST", { sucursalId: idSuc(suc), origen: fuente.nombre, items: items.slice(i, i + 300) });
+        resultado.saldos.nuevos += r.nuevos; resultado.saldos.existentes += r.existentes;
+      } catch (e) { problemas.push(["saldo", "", `lote ${i / 300 + 1}`, e.message]); }
+      if ((i / 300) % 5 === 4) log(`  cuentas por cobrar: ${Math.min(i + 300, items.length)} de ${items.length}…`);
+    }
+    log(`Cuentas por cobrar: ${resultado.saldos.nuevos} movimientos cargados, ${resultado.saldos.existentes} ya estaban${resultado.saldos.sinCliente ? `, ${resultado.saldos.sinCliente} sin cliente (ver problemas.csv)` : ""}.`);
   }
   // historial de ventas: solo consulta y reportes (no son facturas de FactPOS: sin e-NCF, sin tocar existencias, caja ni CxC)
   if (!o.sinHistorial && datos.historialVentas.length) {
