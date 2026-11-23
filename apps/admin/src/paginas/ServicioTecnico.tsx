@@ -166,7 +166,7 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
     } catch (e) { onError((e as Error).message); }
   };
   return (
-    <div className="tarjeta no-imprimir" style={{ marginBottom: 12, maxWidth: 860 }}>
+    <div className="tarjeta no-imprimir" style={{ marginBottom: 12 }}>
       <b style={{ fontSize: 16 }}>Nueva orden de servicio</b>
       {!serie && !libre && <>
         <div className="panel cab-compra">
@@ -184,7 +184,8 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
         </tbody></table>}
         <p><button className="boton chico" onClick={() => setLibre(true)}>El equipo no se vendió aquí (abrir sin factura)</button></p>
       </>}
-      {(serie || libre) && <>
+      {(serie || libre) && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", columnGap: 28, alignItems: "start" }}>
+        <div style={{ minWidth: 0 }}>
         <Seccion titulo="1 · Cliente">
           {serie?.cliente
             ? <p style={{ margin: 0 }}><b>{serie.cliente}</b> <span className="suave">(el de la venta de este equipo)</span></p>
@@ -204,6 +205,8 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
               </div>
             </>}
         </Seccion>
+        </div>
+        <div style={{ minWidth: 0 }}>
         <Seccion titulo="3 · Garantía y estado en que llega">
           <div style={REJILLA}>
             <label className="campo"><span>Garantía</span>
@@ -225,7 +228,8 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
           </div>
           {lugar === "DOMICILIO" && <label className="campo" style={{ marginTop: 8 }}><span>Dirección</span><input value={direccion} onChange={(e) => setDireccion(e.target.value)} /></label>}
         </Seccion>
-      </>}
+        </div>
+      </div>}
       <div className="fila-acciones" style={{ marginTop: 8 }}>
         {(serie || libre) && <button className="boton primario" onClick={guardar} disabled={falla.trim().length < 3 || sinCliente || !serieOk || (!serie && descripcion.trim().length < 2)}>Abrir orden</button>}
         <button className="boton" onClick={onCerrar}>Cancelar</button>
