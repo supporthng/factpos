@@ -147,7 +147,7 @@ const versionApp = () => {
 /** La edición de la licencia fija el tipo de negocio INICIAL de la empresa: solo si todavía está en el de siempre (TIENDA). Después el cliente lo cambia en Datos de la empresa. */
 async function aplicarEdicion(edicion: string | undefined) {
   const ed = edicionPorId(edicion);
-  if (!ed || ed.tipoNegocio === "TIENDA") return;
+  if (!ed) return;
   await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE tipo_negocio = 'TIENDA'", [ed.tipoNegocio]).catch(() => {});
 }
 
