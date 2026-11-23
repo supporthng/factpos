@@ -78,11 +78,13 @@ button.sec { width:100%; margin-top:8px; padding:12px; border-radius:12px; borde
   <div class="campo"><label>Video<select id="negocio"></select></label><label>Voz<select id="voz"></select></label></div>
   <div class="fila-v"><span>Velocidad</span><input id="vel" type="range" min="0.7" max="1.3" step="0.05" value="0.95"><span id="velv">0.95×</span></div>
   <div class="fila-v"><input id="sinvoz" type="checkbox"><label for="sinvoz">Sin voz (solo imagen)</label></div>
+  <div class="fila-v"><input id="musica" type="checkbox" checked><label for="musica">Música de fondo</label><input id="volmus" type="range" min="0" max="100" step="5" value="40"></div>
   <button class="grande" id="ir">▶ Reproducir con voz</button>
   <button class="sec" id="grabar">Modo grabación (cuenta regresiva 3 s, sin controles)</button>
   <div id="aviso">Toque la pantalla durante el video para pausarlo. Las voces disponibles dependen del dispositivo: en el celular, instale la voz en español (Dominicana, México o Latinoamérica) en los ajustes de voz del sistema para que suene mejor.</div>
 </div>
 <div id="sub"></div>
+<script src="musica.js"></script>
 <script>
 const IMGS = new Proxy({}, { get: (_, k) => `img/${k}.jpg` });
 let NEGOCIOS = {};
@@ -161,6 +163,7 @@ function cargarVoces() {
   voces.forEach((v, i) => s.add(new Option(`${v.name} · ${v.lang}`, i)));
 }
 try { cargarVoces(); speechSynthesis.onvoiceschanged = cargarVoces; } catch (e) { $("#voz").add(new Option("(este navegador no tiene voz)", "")); }
+$("#volmus").oninput = () => MUSICA.volumen(+$("#volmus").value / 100 * 0.35);
 $("#vel").oninput = () => ($("#velv").textContent = (+$("#vel").value).toFixed(2) + "×");
 
 let corre = false, pausado = false, ficha = 0;
@@ -178,7 +181,10 @@ async function reproducir(grabando) {
   const yo = ++ficha; corre = true; pausado = false;
   const g = NEGOCIOS[$("#negocio").value];
   $("#panel").classList.add("oculto"); try { speechSynthesis.cancel(); } catch (e) {}
+  try { MUSICA.detener(0.1); } catch (e) {}
   if (grabando) { const c = $("#cuenta"); c.style.display = "flex"; for (let i = 3; i > 0; i--) { c.textContent = i; await dormir(1000); } c.style.display = "none"; }
+  // La música arranca con el video y queda más baja mientras habla la voz
+  if ($("#musica").checked) MUSICA.iniciar(+$("#volmus").value / 100 * 0.35, !$("#sinvoz").checked);
   for (const e of g.escenas) {
     if (yo !== ficha) return;
     const estim = Math.max(+e.dur, (e.voz || "").split(/\s+/).length / 2.3 + .6);
@@ -191,6 +197,7 @@ async function reproducir(grabando) {
     await dormir($("#sinvoz").checked || VOCES_IA[g.escenas.indexOf(e) + 1] ? 0 : 600);
   }
   if (yo !== ficha) return;
+  MUSICA.detener(1.8);
   corre = false; if (!INCRUSTADO) { $("#panel").classList.remove("oculto"); $("#ir").textContent = "▶ Reproducir otra vez"; }
   parent.postMessage({ tipo: "fin" }, "*");
 }
@@ -199,7 +206,7 @@ $("#grabar").onclick = () => reproducir(true);
 $("#caja").onclick = () => {
   if (!corre) return;
   pausado = !pausado;
-  if (pausado) { try { speechSynthesis.pause(); window.__audio?.pause(); } catch (e) {} } else { try { speechSynthesis.resume(); window.__audio?.play(); } catch (e) {} }
+  if (pausado) { try { speechSynthesis.pause(); window.__audio?.pause(); MUSICA.pausar(); } catch (e) {} } else { try { speechSynthesis.resume(); window.__audio?.play(); MUSICA.seguir(); } catch (e) {} }
 };
 if (INCRUSTADO) $("#panel").classList.add("oculto");
 // Lo maneja el portal (ventana madre): le pasa el guion editado y las voces de IA, y le pide reproducir
@@ -208,8 +215,9 @@ addEventListener("message", (ev) => {
   const m = ev.data || {};
   if (m.tipo === "guion") { NEGOCIOS = m.guiones; llenarNegocios(); if (m.negocio) $("#negocio").value = m.negocio; }
   if (m.tipo === "voces") VOCES_IA = m.urls || {};
+  if (m.tipo === "musica") { $("#musica").checked = !!m.activa; $("#volmus").value = String(Math.round((m.volumen ?? 0.4) * 100)); MUSICA.volumen(+$("#volmus").value / 100 * 0.35); }
   if (m.tipo === "reproducir") { $("#sinvoz").checked = !!m.sinVoz; reproducir(false); }
-  if (m.tipo === "detener") { ficha++; corre = false; try { speechSynthesis.cancel(); window.__audio?.pause(); } catch (e) {} }
+  if (m.tipo === "detener") { ficha++; corre = false; try { speechSynthesis.cancel(); window.__audio?.pause(); MUSICA.detener(0.4); } catch (e) {} }
 });
 if (INCRUSTADO) parent.postMessage({ tipo: "listo" }, "*");
 </script>

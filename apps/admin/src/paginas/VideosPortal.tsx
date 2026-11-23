@@ -25,6 +25,10 @@ export function VideosPortal() {
   const [msg, setMsg] = useState(""); const [ok, setOk] = useState("");
   const [listo, setListo] = useState(false); const [grabando, setGrabando] = useState(false);
   const marco = useRef<HTMLIFrameElement>(null);
+  const [estab, setEstab] = useState(45); const [estilo, setEstilo] = useState(30); const [simil, setSimil] = useState(80); const [veloc, setVeloc] = useState(100);
+  const [musica, setMusica] = useState(true); const [volMus, setVolMus] = useState(40);
+  const [muestra, setMuestra] = useState<string | null>(null); const [probando, setProbando] = useState(false);
+  const ajustesVoz = () => ({ estabilidad: estab / 100, estilo: estilo / 100, similitud: simil / 100, velocidad: veloc / 100 });
   const grab = useRef<{ rec: MediaRecorder; trozos: Blob[]; pista: MediaStream } | null>(null);
 
   useEffect(() => {
@@ -49,7 +53,7 @@ export function VideosPortal() {
 
   async function generar(n: number) {
     const e = g?.escenas[n - 1]; if (!e?.voz?.trim()) return;
-    const r = await api<{ audio: string }>("/central/portal/videos/voz", { cuerpo: { texto: e.voz, ...(vozId.trim() ? { vozId: vozId.trim() } : {}) } });
+    const r = await api<{ audio: string }>("/central/portal/videos/voz", { cuerpo: { texto: e.voz, ...ajustesVoz(), ...(vozId.trim() ? { vozId: vozId.trim() } : {}) } });
     const u = URL.createObjectURL(aBlob(r.audio));
     setAudios((a) => { if (a[n]) URL.revokeObjectURL(a[n]!); return { ...a, [n]: u }; });
   }
@@ -64,7 +68,18 @@ export function VideosPortal() {
   // Si cambia el texto de una escena, su voz ya no corresponde: se quita para no grabar una voz que dice otra cosa
   const textoCambiado = (i: number, t: string) => { cambiarTexto(i, t); setAudios((a) => { const { [i + 1]: viejo, ...resto } = a; if (viejo) URL.revokeObjectURL(viejo); return resto; }); };
 
-  const reproducir = () => { setMsg(""); enviarAlMarco({ tipo: "guion", guiones, negocio }); enviarAlMarco({ tipo: "reproducir" }); };
+  const enviarMusica = (activa = musica, volumen = volMus) => enviarAlMarco({ tipo: "musica", activa, volumen: volumen / 100 });
+  useEffect(() => { if (listo) enviarMusica(); }, [listo]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Escuchar solo las primeras palabras de la escena 1 con los ajustes actuales: sirve para probar voces sin generar todo el video */
+  async function probarVoz() {
+    const e = g?.escenas[0]; if (!e?.voz?.trim()) return;
+    setMsg(""); setOk(""); setProbando(true);
+    try {
+      const r = await api<{ audio: string }>("/central/portal/videos/voz", { cuerpo: { texto: e.voz, muestra: true, ...ajustesVoz(), ...(vozId.trim() ? { vozId: vozId.trim() } : {}) } });
+      setMuestra((a) => { if (a) URL.revokeObjectURL(a); return URL.createObjectURL(aBlob(r.audio)); });
+    } catch (er) { setMsg((er as Error).message); } finally { setProbando(false); }
+  }
+  const reproducir = () => { setMsg(""); enviarMusica(); enviarAlMarco({ tipo: "guion", guiones, negocio }); enviarAlMarco({ tipo: "reproducir" }); };
   const detener = () => enviarAlMarco({ tipo: "detener" });
 
   async function grabar() {
@@ -78,7 +93,7 @@ export function VideosPortal() {
       const trozos: Blob[] = []; rec.ondataavailable = (e) => e.data.size && trozos.push(e.data);
       grab.current = { rec, trozos, pista }; rec.start(1000); setGrabando(true);
       await new Promise((r) => setTimeout(r, 600));
-      enviarAlMarco({ tipo: "guion", guiones, negocio }); enviarAlMarco({ tipo: "reproducir" });
+      enviarMusica(); enviarAlMarco({ tipo: "guion", guiones, negocio }); enviarAlMarco({ tipo: "reproducir" });
     } catch (e) { setGrabando(false); setMsg((e as Error).name === "NotAllowedError" ? "Grabación cancelada" : (e as Error).message); }
   }
   function terminarGrabacion() {
@@ -108,6 +123,15 @@ export function VideosPortal() {
             <input placeholder={estado?.vozPorDefecto ? "Voz (por defecto la del servidor)" : "ID de la voz de ElevenLabs"} value={vozId} onChange={(e) => setVozId(e.target.value)} style={{ minWidth: 220 }} />
             <button className="boton primario" disabled={!estado?.configurado || !!ocupada} onClick={generarTodas}>{ocupada === -1 ? "Generando…" : "Generar todas las voces"}</button>
           </div>
+          <div style={{ display: "grid", gap: 6, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", marginBottom: 10 }}>
+            {([["Estabilidad (más pareja ↔ más expresiva)", estab, setEstab, 0, 100, 5, "%"], ["Expresividad del estilo", estilo, setEstilo, 0, 100, 5, "%"], ["Parecido a la voz original", simil, setSimil, 0, 100, 5, "%"], ["Velocidad", veloc, setVeloc, 70, 120, 5, "%"]] as const).map(([t, val, set, mn, mx, st, u]) => (
+              <label key={t} className="campo"><span>{t}: <b>{val}{u}</b></span><input type="range" min={mn} max={mx} step={st} value={val} onChange={(ev) => set(Number(ev.target.value))} /></label>))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+            <button className="boton" disabled={!estado?.configurado || probando || !g?.escenas[0]?.voz?.trim()} onClick={probarVoz}>{probando ? "Generando muestra…" : "▶ Escuchar muestra (5 segundos)"}</button>
+            {muestra && <audio controls autoPlay src={muestra} style={{ height: 30, maxWidth: 220 }} />}
+            <span className="suave" style={{ fontSize: 12 }}>Cambie los ajustes y escuche de nuevo; al gustarle, genere todas las voces.</span>
+          </div>
           {g?.escenas.map((e, i) => (
             <div key={i} style={{ borderTop: "1px solid var(--borde, #e5e7eb)", padding: "8px 0" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -129,6 +153,11 @@ export function VideosPortal() {
             <button className="boton primario" disabled={!listo || grabando} onClick={reproducir}>{hayVoces ? "▶ Reproducir con voz IA" : "▶ Reproducir"}</button>
             <button className="boton" disabled={!listo || grabando} onClick={detener}>■ Detener</button>
             <button className="boton" disabled={!listo || grabando} onClick={grabar}>● Grabar y descargar</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={musica} onChange={(e) => { setMusica(e.target.checked); enviarMusica(e.target.checked, volMus); }} /> Música de fondo</label>
+            <input type="range" min={0} max={100} step={5} value={volMus} disabled={!musica} aria-label="Volumen de la música" onChange={(e) => { setVolMus(Number(e.target.value)); enviarMusica(musica, Number(e.target.value)); }} style={{ width: 120 }} />
+            <span className="suave" style={{ fontSize: 12 }}>{volMus}%</span>
           </div>
           <p className="suave" style={{ fontSize: 12, marginTop: 8 }}>«Grabar» (Chrome o Edge en computadora): elija esta pestaña y marque «Compartir audio de la pestaña». En el celular: reproduzca y use la grabación de pantalla del teléfono.</p>
         </div>
