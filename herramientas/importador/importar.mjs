@@ -12,6 +12,8 @@ if (arg("ayuda") || !arg("archivo")) {
   --usuario / --clave / --rnc   Credenciales de un administrador (--codigo si tiene verificación en dos pasos)
   --sucursal NOMBRE  Sucursal que recibe la existencia inicial (por omisión, la primera)
   --sin-fotos        No importar las fotos de los productos
+  --sin-saldos       No cargar las cuentas por cobrar (solo Mónica)
+  --fuente monica    Respaldo .bak de SQL Server de Mónica (--archivo monica.bak)
   --dispositivo ID   Credencial de dispositivo, si el servidor la exige
   --salida CARPETA   Dónde dejar el informe y los CSV (por omisión ./salida-importacion)
   --aplicar          Hacer los cambios (sin esto solo se muestra qué pasaría)`);
@@ -19,6 +21,6 @@ if (arg("ayuda") || !arg("archivo")) {
 }
 const v = (n) => { const x = arg(n); return x === true ? undefined : x; };
 try {
-  await importar({ fuente: v("fuente"), archivo: v("archivo"), salida: v("salida"), aplicar: !!arg("aplicar"), sinFotos: !!arg("sin-fotos"), sinHistorial: !!arg("sin-historial"), reemplazar: !!arg("reemplazar"),
+  await importar({ fuente: v("fuente"), archivo: v("archivo"), salida: v("salida"), aplicar: !!arg("aplicar"), sinFotos: !!arg("sin-fotos"), sinHistorial: !!arg("sin-historial"), sinSaldos: !!arg("sin-saldos"), reemplazar: !!arg("reemplazar"),
     servidor: v("servidor"), usuario: v("usuario"), clave: v("clave"), rnc: v("rnc"), codigo: v("codigo"), dispositivo: v("dispositivo"), sucursal: v("sucursal") });
 } catch (e) { console.error(e.message); process.exit(1); }

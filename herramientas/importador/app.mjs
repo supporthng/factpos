@@ -17,7 +17,7 @@ const trabajo = join(tmpdir(), "importador-factpos-" + randomBytes(4).toString("
 mkdirSync(trabajo, { recursive: true });
 const archivo = join(trabajo, "respaldo.sql");
 const salida = join(homedir(), "Importacion-FactPOS");
-let hayArchivo = false, corriendo = false;
+let hayArchivo = false, corriendo = false, fuente = "wilpos";
 
 const json = (r, c, o) => { r.writeHead(c, { "content-type": "application/json; charset=utf-8" }); r.end(JSON.stringify(o)); };
 const conexion = () => { try { return JSON.parse(readFileSync(rutaConexion, "utf8")); } catch { return {}; } };
@@ -43,6 +43,9 @@ const srv = http.createServer((q, r) => {
     return r.end(readFileSync(p));
   }
   if (q.method === "POST" && u.pathname === "/subir") {
+    // El sistema de origen se reconoce por el archivo: .bak = respaldo de SQL Server (Mónica); lo demás = respaldo SQL de WilPOS
+    fuente = (u.searchParams.get("nombre") ?? "").toLowerCase().endsWith(".bak") ? "monica" : "wilpos";
+    hayArchivo = false;
     const f = createWriteStream(archivo);
     q.pipe(f);
     f.on("finish", () => { hayArchivo = true; json(r, 200, { ok: true }); });
@@ -65,7 +68,7 @@ const srv = http.createServer((q, r) => {
       r.write(" ".repeat(2048) + "\nIniciando…\n");
       corriendo = true;
       try {
-        await importar({ fuente: "wilpos", archivo, salida, aplicar: !!o.aplicar, sinFotos: !!o.sinFotos, reemplazar: !!o.reemplazar,
+        await importar({ fuente, archivo, salida, aplicar: !!o.aplicar, sinFotos: !!o.sinFotos, reemplazar: !!o.reemplazar,
           servidor: String(o.servidor ?? "").trim(), usuario: String(o.usuario ?? "").trim(), clave: String(o.clave ?? ""),
           rnc: String(o.rnc ?? "").trim() || undefined, codigo: String(o.codigo ?? "").trim() || undefined, sucursal: String(o.sucursal ?? "").trim() || undefined },
         (t) => r.write(t + "\n"));
