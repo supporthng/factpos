@@ -284,6 +284,11 @@ NUBE DE CADA CLIENTE (MODO=central) · su Vercel + su Supabase (cuentas del clie
 SERVIDORES DE SUS SUCURSALES (MODO=sucursal) + cajas
 ```
 
+- **Videos promocionales** (Portal › «Videos promocionales», solo administrador principal): guion por escena, voz con IA de ElevenLabs
+  generada por el servidor y reproductor/grabador del video. Variables del servidor del portal (Vercel, nunca en el código):
+  `ELEVENLABS_API_KEY`, `ELEVENLABS_VOZ_ID` (voz por defecto) y, opcional, `ELEVENLABS_MODELO` (por defecto `eleven_multilingual_v2`).
+  «Grabar y descargar» funciona en Chrome/Edge de computadora (graba la pestaña con su sonido, `.webm`); en el celular se reproduce y se usa
+  la grabación de pantalla, o se bajan los mp3. Los guiones y capturas están en `apps/admin/public/video/`.
 - **Portal** (`MODO=portal`, variable `LICENCIAS_CLAVE_PRIVADA`): `/` es la administración del
   proveedor (Clientes y licencias, Usuarios del portal) y `/<cliente>/` la administración web de cada
   cliente, conectada a la API de su nube. API pública: `POST /licencias/activar`, `POST /licencias/renovar`,

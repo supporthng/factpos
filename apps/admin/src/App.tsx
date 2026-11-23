@@ -20,6 +20,7 @@ const FacturacionElectronica = lazy(() => import("./paginas/FacturacionElectroni
 import { DosPasos } from "./paginas/DosPasos";
 const ConfigMovil = lazy(() => import("./paginas/ConfigMovil").then((m) => ({ default: m.ConfigMovil })));
 import { PantallaActualizacion, usePreparado } from "./PantallaActualizacion";
+const VideosPortal = lazy(() => import("./paginas/VideosPortal").then((m) => ({ default: m.VideosPortal })));
 const Correo = lazy(() => import("./paginas/Correo").then((m) => ({ default: m.Correo })));
 import { FranjaEmpresa, SelectorEmpresa } from "./paginas/Empresas";
 import { AgregarAInicio } from "./AgregarAInicio";
@@ -170,6 +171,7 @@ const SECCIONES_PORTAL = [
   { id: "instaladores", titulo: "Instaladores", grupo: "Portal FactPOS", C: InstaladoresPortal, i: "actualizaciones", p: ["*"] },
   { id: "envios", titulo: "Envío de actualizaciones", grupo: "Portal FactPOS", C: ActualizacionesPortal, i: "actualizaciones", p: ["*"] },
   { id: "usuarios", titulo: "Usuarios del portal", grupo: "Portal FactPOS", C: Usuarios, i: "usuarios", p: ["admin.usuarios"] },
+  { id: "videos", titulo: "Videos promocionales", grupo: "Portal FactPOS", C: VideosPortal, i: "actualizaciones", p: ["*"] },
   { id: "correo", titulo: "Correo del portal", grupo: "Portal FactPOS", C: Correo, i: "correo", p: ["admin.config"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];

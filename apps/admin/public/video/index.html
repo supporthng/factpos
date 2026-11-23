@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Videos FactPOS</title>
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;800&family=Poppins:wght@600;800&display=swap">
+<style>
+
+:root { --marca:#0e1b26; --color:#2563eb; --claro:#e8f0fe; }
+* { box-sizing: border-box; margin: 0; }
+html, body { overflow: hidden; background: var(--marca); font-family: "Inter", sans-serif; color: #fff; }
+.fondo { position: absolute; inset: 0; background:
+  radial-gradient(900px 700px at 85% 8%, color-mix(in srgb, var(--color) 55%, transparent), transparent 70%),
+  radial-gradient(800px 800px at 0% 100%, color-mix(in srgb, var(--color) 30%, transparent), transparent 70%), var(--marca); }
+.puntos { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.07) 2px, transparent 2px); background-size: 54px 54px; }
+.escena { position: absolute; inset: 0; padding: 0 84px; }
+.marca { position: absolute; top: 200px; left: 84px; font: 800 44px "Poppins"; letter-spacing: -.5px; display: flex; align-items: center; gap: 16px; }
+.marca i { width: 18px; height: 18px; border-radius: 6px; background: var(--color); box-shadow: 0 0 0 6px color-mix(in srgb, var(--color) 30%, transparent); }
+.pie { position: absolute; bottom: 330px; left: 84px; right: 84px; font: 600 38px "Inter"; color: rgba(255,255,255,.6); display: flex; justify-content: space-between; }
+.centro { position: absolute; left: 84px; right: 84px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; }
+.titular { font: 800 112px/1.04 "Poppins"; letter-spacing: -3px; }
+.titular span { display: block; }
+.enfasis { color: var(--color); filter: brightness(1.45); }
+.sup { font: 600 40px "Inter"; letter-spacing: 6px; text-transform: uppercase; color: rgba(255,255,255,.65); margin-bottom: 28px; }
+.sub { font: 500 54px/1.25 "Inter"; color: rgba(255,255,255,.85); margin-top: 36px; }
+.gigante { font: 800 230px/1 "Poppins"; letter-spacing: -8px; }
+.num { font: 800 150px/1 "Poppins"; color: var(--color); filter: brightness(1.45); letter-spacing: -4px; }
+.fn-titulo { font: 800 88px/1.05 "Poppins"; letter-spacing: -2.5px; margin: 8px 0 26px; }
+.fn-texto { font: 500 46px/1.3 "Inter"; color: rgba(255,255,255,.82); margin-bottom: 54px; }
+.panel { background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.14); border-radius: 36px; padding: 18px 40px; backdrop-filter: blur(2px); }
+.fila { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px 0; font: 600 46px "Inter"; border-bottom: 2px solid rgba(255,255,255,.1); }
+.fila:last-child { border-bottom: 0; }
+.fila b { font: 800 46px "Poppins"; white-space: nowrap; }
+.ok { color: #4ade80; } .mal { color: #f87171; }
+.barra { padding: 12px 0; }
+.barra .et { display: flex; justify-content: space-between; font: 600 42px "Inter"; margin-bottom: 14px; }
+.barra .et b { font: 800 42px "Poppins"; }
+.pista { height: 34px; border-radius: 17px; background: rgba(255,255,255,.1); overflow: hidden; }
+.pista div { height: 100%; border-radius: 20px; transform-origin: left center; }
+.ejemplo { position: absolute; left: 84px; right: 84px; top: 1580px; font: 500 34px "Inter"; color: rgba(255,255,255,.5); }
+.boton { display: inline-block; margin-top: 56px; padding: 34px 64px; border-radius: 999px; background: var(--color); font: 800 56px "Poppins"; box-shadow: 0 20px 60px color-mix(in srgb, var(--color) 55%, transparent); }
+.pantalla { position: relative; width: 912px; height: 620px; border-radius: 28px; overflow: hidden; background: #fff; border: 3px solid rgba(255,255,255,.25); box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+.pantalla .barra-nav { position: absolute; top: 0; left: 0; right: 0; height: 40px; background: #eef1f5; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+.pantalla .barra-nav i { width: 14px; height: 14px; border-radius: 50%; background: #cbd2dc; }
+.pantalla .barra-nav span { margin-left: 14px; font: 600 20px "Inter"; color: #6b7686; }
+.pantalla img { will-change: transform; position: absolute; left: 0; top: 40px; transform-origin: 0 0; animation: recorrer var(--dur) ease-in-out both; }
+@keyframes recorrer { from { transform: translate(var(--x0), var(--y0)); } to { transform: translate(var(--x1), var(--y1)); } }
+.sube { animation: sube .6s cubic-bezier(.2,.8,.2,1) both; }
+.aparece { animation: aparece .6s ease-out both; }
+.crece { animation: crece .9s cubic-bezier(.2,.8,.2,1) both; }
+.pop { animation: pop .55s cubic-bezier(.2,1.4,.4,1) both; }
+@keyframes sube { from { opacity: 0; transform: translateY(70px); } to { opacity: 1; transform: none; } }
+@keyframes aparece { from { opacity: 0; } to { opacity: 1; } }
+@keyframes crece { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+@keyframes entrar { from { opacity: 0; } to { opacity: 1; } }
+@keyframes salir { from { opacity: 1; } to { opacity: 0; } }
+
+html, body { margin:0; width:100%; height:100%; background:#0e1b26; color:#fff; font-family:Inter,system-ui,sans-serif; }
+#caja { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#06101a; }
+#lienzo { position:relative; width:1080px; height:1920px; flex:none; transform-origin:center center; overflow:hidden; background:var(--marca); }
+#panel { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; justify-content:flex-end; padding:16px max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); background:linear-gradient(transparent 30%, rgba(6,16,26,.94) 70%); }
+#panel.oculto { display:none; }
+#panel h1 { font:800 22px Poppins,Inter; margin:0 0 4px; } #panel p { margin:0 0 12px; color:#aab7c4; font-size:14px; line-height:1.4; }
+.campo { display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; } .campo label { flex:1 1 140px; min-width:0; font-size:12px; color:#aab7c4; display:block; }
+select, input[type=range] { width:100%; margin-top:4px; background:#14283a; color:#fff; border:1px solid #2a4258; border-radius:10px; padding:10px; font:500 15px Inter; }
+.fila-v { display:flex; align-items:center; gap:8px; font-size:14px; margin-bottom:12px; }
+button.grande { width:100%; padding:16px; border:0; border-radius:14px; background:#2563eb; color:#fff; font:800 18px Poppins,Inter; }
+button.sec { width:100%; margin-top:8px; padding:12px; border-radius:12px; border:1px solid #2a4258; background:transparent; color:#cfd9e3; font:600 14px Inter; }
+#cuenta { position:fixed; inset:0; z-index:15; display:none; align-items:center; justify-content:center; font:800 160px Poppins; color:#fff; background:rgba(6,16,26,.7); }
+#aviso { font-size:12px; color:#8da0b3; margin-top:10px; line-height:1.4; }
+#sub { position:fixed; left:0; right:0; bottom:0; z-index:10; padding:10px 16px max(10px,env(safe-area-inset-bottom)); text-align:center; font-size:13px; color:#cfd9e3; background:rgba(6,16,26,.75); display:none; }
+</style>
+<div id="caja"><div id="lienzo"><div class="fondo"></div><div class="puntos"></div><div id="raiz"></div></div></div>
+<div id="cuenta"></div>
+<div id="panel">
+  <h1>Estudio de video FactPOS</h1>
+  <p>Reproduce el video con la voz de su equipo. Para guardarlo como archivo, use la grabación de pantalla del celular o de la computadora.</p>
+  <div class="campo"><label>Video<select id="negocio"></select></label><label>Voz<select id="voz"></select></label></div>
+  <div class="fila-v"><span>Velocidad</span><input id="vel" type="range" min="0.7" max="1.3" step="0.05" value="0.95"><span id="velv">0.95×</span></div>
+  <div class="fila-v"><input id="sinvoz" type="checkbox"><label for="sinvoz">Sin voz (solo imagen)</label></div>
+  <button class="grande" id="ir">▶ Reproducir con voz</button>
+  <button class="sec" id="grabar">Modo grabación (cuenta regresiva 3 s, sin controles)</button>
+  <div id="aviso">Toque la pantalla durante el video para pausarlo. Las voces disponibles dependen del dispositivo: en el celular, instale la voz en español (Dominicana, México o Latinoamérica) en los ajustes de voz del sistema para que suene mejor.</div>
+</div>
+<div id="sub"></div>
+<script>
+const IMGS = new Proxy({}, { get: (_, k) => `img/${k}.jpg` });
+let NEGOCIOS = {};
+
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+let delay = 0;
+const d = (extra = 0) => `animation-delay:${(delay + extra).toFixed(2)}s`;
+const paso = (x = .18) => { delay += x; return delay; };
+
+function visual(v) {
+  if (!v) return "";
+  if (v.tipo === "lista") {
+    return `<div class="panel">${v.filas.map((f, i) => `<div class="fila sube" style="${d(.9 + i * .28)}"><span>${esc(f[0])}</span><b class="${f[2] || ""}">${esc(f[1])}</b></div>`).join("")}</div>`;
+  }
+  if (v.tipo === "barras") {
+    return `<div class="panel">${v.filas.map((f, i) => `<div class="barra"><div class="et aparece" style="${d(.9 + i * .28)}"><span>${esc(f[0])}</span><b>${esc(f[1])}</b></div>
+      <div class="pista"><div class="crece" style="width:${f[2]}%;background:${f[3]};${d(1 + i * .28)}"></div></div></div>`).join("")}</div>`;
+  }
+  return "";
+}
+
+function montar(e, marca, dur) {
+  document.documentElement.style.setProperty("--color", marca.color);
+  document.documentElement.style.setProperty("--marca", marca.fondo);
+  delay = 0.15;
+  let h = "";
+  if (e.tipo === "gancho") {
+    h = `<div class="centro"><div class="titular">${e.lineas.map((l, i) => `<span class="sube ${i === e.enfasis ? "enfasis" : ""}" style="${d(i * .45)}">${esc(l)}</span>`).join("")}</div></div>`;
+  } else if (e.tipo === "titulo") {
+    h = `<div class="centro"><div class="sup aparece" style="${d()}">${esc(e.sup)}</div><div class="gigante pop" style="${d(.25)}">${esc(e.titulo)}</div><div class="sub sube" style="${d(.8)}">${esc(e.sub)}</div></div>`;
+  } else if (e.tipo === "funcion") {
+    h = `<div class="centro" style="padding-top:270px;padding-bottom:300px"><div class="num pop" style="${d()}">${esc(e.num)}</div>
+      <div class="fn-titulo sube" style="${d(.25)}">${esc(e.titulo)}</div><div class="fn-texto sube" style="${d(.5)}">${esc(e.texto)}</div>${visual(e.visual)}</div>
+`;
+  } else if (e.tipo === "captura") {
+    const v = e.vista, k = 912 / v.w;                  // k: cuánto se agranda la captura (1600 px de ancho = pantalla original)
+    const x0 = -(v.x0 ?? v.x) * k, x1 = -(v.x1 ?? v.x) * k, y0 = -v.y0 * k, y1 = -v.y1 * k;
+    h = `<div class="centro" style="padding-top:270px;padding-bottom:300px"><div class="num pop" style="${d()}">${esc(e.num)}</div>
+      <div class="fn-titulo sube" style="${d(.25)}">${esc(e.titulo)}</div><div class="fn-texto sube" style="${d(.5)}">${esc(e.texto)}</div>
+      <div class="pantalla sube" style="${d(.8)}"><div class="barra-nav"><i></i><i></i><i></i><span>${esc(marca.nombre)} · Administración</span></div>
+        <img src="${IMGS[e.img]}" width="${(1600 * k).toFixed(1)}" style="--x0:${x0}px;--x1:${x1}px;--y0:${y0}px;--y1:${y1}px;--dur:${dur}s"></div></div>`;
+  } else if (e.tipo === "cta") {
+    h = `<div class="centro"><div class="titular"><span class="sube" style="${d()}">${esc(e.titular)}</span></div><div class="sub sube" style="${d(.5)}">${esc(e.sub)}</div>
+      <div><span class="boton pop" style="${d(1)}">${esc(e.boton)}</span></div></div>`;
+  }
+  const marcaHtml = e.tipo === "titulo" ? "" : `<div class="marca"><i></i>${esc(marca.nombre)}</div>`;
+  const pie = e.tipo === "cta" ? "" : `<div class="pie"><span>${esc(marca.web)}</span><span>${esc(e.ejemplo || marca.lema || "")}</span></div>`;
+  document.getElementById("raiz").innerHTML =
+    `<div class="escena" style="animation: entrar .35s both, salir .35s both; animation-delay: 0s, ${(dur - .35).toFixed(2)}s">${marcaHtml}${h}${pie}</div>`;
+}
+
+// Lleva todas las animaciones al instante t (segundos): así cada cuadro sale igual cada vez
+function buscar(t) {
+  document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * 1000; });
+}
+
+const $ = (s) => document.querySelector(s);
+const lienzo = $("#lienzo");
+function ajustar() { const k = Math.min(innerWidth / 1080, innerHeight / 1920); lienzo.style.transform = `scale(${k})`; }
+addEventListener("resize", ajustar); ajustar();
+function llenarNegocios() { const s = $("#negocio"); s.innerHTML = ""; for (const n of Object.keys(NEGOCIOS)) s.add(new Option(n, n)); }
+fetch("guiones.json").then((r) => r.json()).then((g) => { NEGOCIOS = g; llenarNegocios(); }).catch(() => {});
+const INCRUSTADO = new URLSearchParams(location.search).has("incrustado");
+let VOCES_IA = {};            // número de escena -> dirección del audio generado con IA
+function audioIA(n) {
+  return new Promise((res) => { const a = new Audio(VOCES_IA[n]); a.onended = res; a.onerror = res; a.play().catch(res); window.__audio = a; });
+}
+function duracionIA(n) { return new Promise((res) => { const a = new Audio(VOCES_IA[n]); a.onloadedmetadata = () => res(a.duration || 0); a.onerror = () => res(0); }); }
+let voces = [];
+function cargarVoces() {
+  voces = (speechSynthesis.getVoices() || []).filter((v) => /^es/i.test(v.lang));
+  const orden = (v) => (/es[-_]DO/i.test(v.lang) ? 0 : /es[-_](MX|US|419|CO|AR)/i.test(v.lang) ? 1 : 2);
+  voces.sort((a, b) => orden(a) - orden(b) || a.name.localeCompare(b.name));
+  const s = $("#voz"); s.innerHTML = "";
+  if (!voces.length) s.add(new Option("(sin voces en español en este dispositivo)", ""));
+  voces.forEach((v, i) => s.add(new Option(`${v.name} · ${v.lang}`, i)));
+}
+try { cargarVoces(); speechSynthesis.onvoiceschanged = cargarVoces; } catch (e) { $("#voz").add(new Option("(este navegador no tiene voz)", "")); }
+$("#vel").oninput = () => ($("#velv").textContent = (+$("#vel").value).toFixed(2) + "×");
+
+let corre = false, pausado = false, ficha = 0;
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+function hablar(texto) {
+  return new Promise((res) => {
+    if ($("#sinvoz").checked || !("speechSynthesis" in window)) return res();
+    const u = new SpeechSynthesisUtterance(texto);
+    const v = voces[+$("#voz").value]; if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "es-DO";
+    u.rate = +$("#vel").value; u.onend = res; u.onerror = res;
+    speechSynthesis.speak(u);
+  });
+}
+async function reproducir(grabando) {
+  const yo = ++ficha; corre = true; pausado = false;
+  const g = NEGOCIOS[$("#negocio").value];
+  $("#panel").classList.add("oculto"); try { speechSynthesis.cancel(); } catch (e) {}
+  if (grabando) { const c = $("#cuenta"); c.style.display = "flex"; for (let i = 3; i > 0; i--) { c.textContent = i; await dormir(1000); } c.style.display = "none"; }
+  for (const e of g.escenas) {
+    if (yo !== ficha) return;
+    const estim = Math.max(+e.dur, (e.voz || "").split(/\s+/).length / 2.3 + .6);
+    montar(e, g.marca, 9999);
+    const t0 = performance.now();
+    const n = g.escenas.indexOf(e) + 1;
+    if (VOCES_IA[n]) { const d = await duracionIA(n); await Promise.all([audioIA(n), dormir(Math.max(+e.dur, d + 0.6) * 1000)]); }
+    else await Promise.all([hablar(e.voz || ""), dormir(+e.dur * 1000)]);
+    while (pausado) await dormir(150);
+    await dormir($("#sinvoz").checked || VOCES_IA[g.escenas.indexOf(e) + 1] ? 0 : 600);
+  }
+  if (yo !== ficha) return;
+  corre = false; if (!INCRUSTADO) { $("#panel").classList.remove("oculto"); $("#ir").textContent = "▶ Reproducir otra vez"; }
+  parent.postMessage({ tipo: "fin" }, "*");
+}
+$("#ir").onclick = () => reproducir(false);
+$("#grabar").onclick = () => reproducir(true);
+$("#caja").onclick = () => {
+  if (!corre) return;
+  pausado = !pausado;
+  if (pausado) { try { speechSynthesis.pause(); window.__audio?.pause(); } catch (e) {} } else { try { speechSynthesis.resume(); window.__audio?.play(); } catch (e) {} }
+};
+if (INCRUSTADO) $("#panel").classList.add("oculto");
+// Lo maneja el portal (ventana madre): le pasa el guion editado y las voces de IA, y le pide reproducir
+addEventListener("message", (ev) => {
+  if (ev.origin !== location.origin) return;
+  const m = ev.data || {};
+  if (m.tipo === "guion") { NEGOCIOS = m.guiones; llenarNegocios(); if (m.negocio) $("#negocio").value = m.negocio; }
+  if (m.tipo === "voces") VOCES_IA = m.urls || {};
+  if (m.tipo === "reproducir") { $("#sinvoz").checked = !!m.sinVoz; reproducir(false); }
+  if (m.tipo === "detener") { ficha++; corre = false; try { speechSynthesis.cancel(); window.__audio?.pause(); } catch (e) {} }
+});
+if (INCRUSTADO) parent.postMessage({ tipo: "listo" }, "*");
+</script>

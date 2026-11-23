@@ -1,0 +1,170 @@
+{
+ "Mueblería y electrodomésticos": {
+  "formato": {
+   "ancho": 1080,
+   "alto": 1920,
+   "fps": 30
+  },
+  "marca": {
+   "nombre": "FactPOS",
+   "color": "#2563eb",
+   "fondo": "#0e1b26",
+   "web": "factpos.app",
+   "lema": "Mueblería y electrodomésticos"
+  },
+  "salida": "factpos-promo-muebleria-vertical-v2",
+  "escenas": [
+   {
+    "tipo": "gancho",
+    "dur": 3.6,
+    "lineas": [
+     "¿Vende a plazos",
+     "y no sabe",
+     "quién le debe?"
+    ],
+    "enfasis": 2,
+    "voz": "¿Vende a plazos y no sabe quién le debe?"
+   },
+   {
+    "tipo": "titulo",
+    "dur": 3.2,
+    "sup": "Presentamos",
+    "titulo": "FactPOS",
+    "sub": "El sistema para mueblerías y tiendas de electrodomésticos",
+    "voz": "Presentamos FactPOS, el sistema para mueblerías y tiendas de electrodomésticos."
+   },
+   {
+    "tipo": "funcion",
+    "dur": 4.6,
+    "num": "01",
+    "titulo": "Venta a plazos",
+    "texto": "Inicial, cuotas, garante y cédulas. Si algo no cumple, decide el supervisor.",
+    "visual": {
+     "tipo": "lista",
+     "filas": [
+      [
+       "Inicial cobrada en caja",
+       "Recibo REC-000124"
+      ],
+      [
+       "Cuotas mensuales",
+       "12 × sin intereses"
+      ],
+      [
+       "Cédula del cliente y del garante",
+       "✓",
+       "ok"
+      ],
+      [
+       "Excepción",
+       "Autoriza el supervisor"
+      ]
+     ]
+    },
+    "ejemplo": "Ejemplo ilustrativo",
+    "voz": "Venta a plazos con inicial, cuotas, garante y cédulas. Si algo no cumple, decide el supervisor."
+   },
+   {
+    "tipo": "captura",
+    "dur": 4.6,
+    "num": "02",
+    "titulo": "Sepa quién está atrasado",
+    "texto": "Cada cliente con lo que debe a 30, 60, 90 días o más.",
+    "ejemplo": "Datos de ejemplo",
+    "img": "atrasados",
+    "vista": {
+     "x0": 50,
+     "x1": 300,
+     "w": 900,
+     "y0": 290,
+     "y1": 300
+    },
+    "voz": "Sepa quién está atrasado: cada cliente, con lo que debe a treinta, sesenta y noventa días o más."
+   },
+   {
+    "tipo": "captura",
+    "dur": 4.6,
+    "num": "03",
+    "titulo": "Cobranza en ruta",
+    "texto": "A quién cobrar hoy, quién va a cobrar y qué prometió el cliente.",
+    "img": "cobranza",
+    "vista": {
+     "x0": 50,
+     "x1": 300,
+     "w": 900,
+     "y0": 235,
+     "y1": 290
+    },
+    "ejemplo": "Datos de ejemplo",
+    "voz": "Cobranza en ruta: sepa a quién cobrar hoy, quién va a cobrar, y qué prometió el cliente."
+   },
+   {
+    "tipo": "captura",
+    "dur": 4.6,
+    "num": "04",
+    "titulo": "Si no paga, recupere la mercancía",
+    "texto": "Acta de recogida, ajuste de la cuenta y reventa como usado.",
+    "img": "mora",
+    "vista": {
+     "x0": 50,
+     "x1": 300,
+     "w": 900,
+     "y0": 140,
+     "y1": 185
+    },
+    "ejemplo": "Datos de ejemplo",
+    "voz": "¿No paga? Recupere la mercancía con su acta, el ajuste de la cuenta, y véndala como usada."
+   },
+   {
+    "tipo": "funcion",
+    "dur": 4.6,
+    "num": "05",
+    "titulo": "Entrega sin errores",
+    "texto": "Documento para el chofer sin precios, con constancia de recibido, y hoja de ruta.",
+    "visual": {
+     "tipo": "lista",
+     "filas": [
+      [
+       "Documento de entrega",
+       "Sin precios"
+      ],
+      [
+       "Constancia de recibido",
+       "Firma del cliente"
+      ],
+      [
+       "Hoja de ruta del día",
+       "Por chofer"
+      ]
+     ]
+    },
+    "voz": "Entregas sin errores: el chofer lleva un documento sin precios, con constancia de recibido."
+   },
+   {
+    "tipo": "captura",
+    "dur": 4.6,
+    "num": "06",
+    "titulo": "Comisiones justas",
+    "texto": "Sus vendedores ganan sobre lo que el cliente realmente paga.",
+    "img": "comisiones",
+    "vista": {
+     "x0": 100,
+     "x1": 220,
+     "w": 900,
+     "y0": 135,
+     "y1": 300
+    },
+    "ejemplo": "Datos de ejemplo",
+    "voz": "Comisiones justas: sus vendedores ganan sobre lo que el cliente realmente paga."
+   },
+   {
+    "tipo": "cta",
+    "dur": 4.2,
+    "titular": "Ponga en orden su negocio",
+    "sub": "Entre a factpos.app y vea cómo funciona",
+    "boton": "Pida su demostración",
+    "voz": "Ponga en orden su negocio. Entre a factpos punto app y vea cómo funciona."
+   }
+  ]
+ }
+}
