@@ -102,7 +102,10 @@ export async function rutasCentralServicio(app: FastifyInstance) {
     const out = await enTransaccion(async (c) => {
       let sucursalId = b.sucursalId, clienteId = b.clienteId ?? null, ventaId: string | null = null, productoId: string | null = null, serie: string | null = null, garantiaHasta: string | null = null;
       let descripcion = b.descripcion ?? "";
-      if (!b.serieId) serie = b.serieLibre || null;
+      if (!b.serieId) {
+        serie = (b.serieLibre ?? "").replace(/\s+/g, " ").toUpperCase() || null;
+        if (!serie || serie.length < 3) throw new ErrorNegocio("Escriba la serie del equipo: queda en su historial de servicio");
+      }
       if (b.serieId) {
         const s = (await c.query<{ sucursal_id: string; producto_id: string; producto: string; serie: string; venta_id: string; cliente_id: string | null; garantia: string | null }>(
           `SELECT v.sucursal_id, sp.producto_id, p.nombre AS producto, sp.serie, sp.venta_id, sp.cliente_id, to_char(sp.garantia_hasta,'YYYY-MM-DD') AS garantia

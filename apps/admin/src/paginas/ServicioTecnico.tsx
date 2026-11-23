@@ -140,6 +140,8 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
   const [accesorios, setAccesorios] = useState(""); const [estadoEquipo, setEstadoEquipo] = useState("");
   const elegir = (s: Serie) => { setSerie(s); setDireccion(s.direccion ?? ""); setTelefono(s.telefono ?? ""); };
   const elegirCliente = (c: ClienteB | null) => { setCliente(c); if (c) { setTelefono((t) => t || (c.telefono ?? "")); setDireccion((d) => d || (c.direccion ?? "")); } };
+  const serieOk = !!serie || serieLibre.trim().length >= 3;
+  const hist = useDatos<{ codigo: string; recibidaEn: string }[]>(!serie && serieLibre.trim().length >= 4 ? `/central/servicio?q=${encodeURIComponent(serieLibre.trim())}` : null, [serieLibre]).datos ?? [];
   const sinCliente = !(serie?.cliente) && !cliente; // la venta ya trae su cliente; si no, hay que elegirlo
   const guardar = async () => {
     try {
@@ -180,7 +182,7 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
             <div className="panel cab-compra">
               <label className="campo"><span>Marca</span><input value={marca} onChange={(e) => setMarca(e.target.value)} /></label>
               <label className="campo"><span>Modelo</span><input value={modelo} onChange={(e) => setModelo(e.target.value)} /></label>
-              <label className="campo"><span>Serie</span><input value={serieLibre} onChange={(e) => setSerieLibre(e.target.value)} /></label>
+              <label className="campo"><span>Serie (obligatoria)</span><input value={serieLibre} onChange={(e) => setSerieLibre(e.target.value)} placeholder="Número de serie del equipo" />{hist.length > 0 && <span className="suave pequeno" style={{ color: "var(--aviso, #b45309)" }}>Este equipo ya tiene {hist.length} orden(es) de servicio: {hist.slice(0, 3).map((h) => `${h.codigo} (${fechaCorta(h.recibidaEn)})`).join(", ")}</span>}</label>
             </div>
           </>}
         <div className="panel cab-compra">
@@ -203,7 +205,7 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
         {lugar === "DOMICILIO" && <label className="campo"><span>Dirección</span><input value={direccion} onChange={(e) => setDireccion(e.target.value)} /></label>}
       </>}
       <div className="fila-acciones" style={{ marginTop: 8 }}>
-        {(serie || libre) && <button className="boton primario" onClick={guardar} disabled={falla.trim().length < 3 || sinCliente || (!serie && descripcion.trim().length < 2)}>Abrir orden</button>}
+        {(serie || libre) && <button className="boton primario" onClick={guardar} disabled={falla.trim().length < 3 || sinCliente || !serieOk || (!serie && descripcion.trim().length < 2)}>Abrir orden</button>}
         <button className="boton" onClick={onCerrar}>Cancelar</button>
       </div>
     </div>
