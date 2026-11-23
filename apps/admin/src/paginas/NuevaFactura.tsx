@@ -9,7 +9,7 @@ import { BuscadorLinea } from "./Compras";
  * con los precios, ofertas e ITBIS del servidor, igual que en la caja.
  */
 interface CajaAbierta { cajaId: string; caja: string; tipo?: string; sucursalId: string; sucursal: string; cajero: string | null; abiertoEn: string }
-interface ClienteB { id: string; nombre: string; documento: string | null; tipoDocumento?: string | null; telefono?: string | null; correo?: string | null; direccion?: string | null; nivel?: number | null; limiteCredito?: string; diasCredito?: number; saldo?: string }
+export interface ClienteB { id: string; nombre: string; documento: string | null; tipoDocumento?: string | null; telefono?: string | null; correo?: string | null; direccion?: string | null; nivel?: number | null; limiteCredito?: string; diasCredito?: number; saldo?: string }
 interface Cotizacion {
   subtotal: string; descuento: string; itbis: string; total: string; ofertasAgotadas?: unknown; cupon?: { codigo: string; total: string } | null;
   lineas: { presentacionId: string; descripcion: string; cantidad: string; precio: string | null; oferta: string | null; descuento?: string; itbis?: string; total: string }[];
@@ -33,7 +33,10 @@ const seriesDe = (l: { series: string }) => l.series.split(/[\s,;]+/).map((x) =>
 const limpiar = (v: string) => v.replace(/[^\d.]/g, "");
 
 /** `soloEnviar`: pantalla del vendedor (terminal de ventas): arma la venta y la envía a una caja; no cobra ni emite comprobantes. */
-export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCerrar: () => void; onCreada: (id: string) => void; soloEnviar?: boolean }) {
+/** Factura que se copia para hacer otra igual (Duplicar): cliente, tipo, notas y líneas; los precios se vuelven a calcular con los de hoy. */
+export interface BaseDuplicada { tipo: string; notas: string | null; cliente: ClienteB | null; lineas: { presentacionId: string; nombre: string; cantidad: string; descuento: string }[] }
+
+export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarDe }: { onCerrar: () => void; onCreada: (id: string) => void; soloEnviar?: boolean; duplicarDe?: BaseDuplicada }) {
   const base = soloEnviar ? "/central/ventas" : "/central/facturas";
   // «Sin comprobante» solo si un administrador lo activó en Sistema › Seguridad
   const { habilitada: sinComprobante } = useFuncionSeguridad("venta_sin_comprobante");
@@ -41,11 +44,11 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   const cajasTodas = useDatos<CajaAbierta[]>(`${base}/cajas-abiertas`);
   const cajas = { ...cajasTodas, datos: soloEnviar ? (cajasTodas.datos?.filter((c) => c.tipo !== "FACTURACION") ?? null) : cajasTodas.datos };
   const [cajaId, setCajaId] = useState("");
-  const [cliente, setCliente] = useState<ClienteB | null>(null);
+  const [cliente, setCliente] = useState<ClienteB | null>(duplicarDe?.cliente ?? null);
   const [busca, setBusca] = useState("");
   const [encontrados, setEncontrados] = useState<ClienteB[]>([]);
-  const [tipo, setTipo] = useState("E32");
-  const [lineas, setLineas] = useState<LineaF[]>([]);
+  const [tipo, setTipo] = useState(duplicarDe && TIPOS.some((x) => x.id === duplicarDe.tipo) ? duplicarDe.tipo : "E32");
+  const [lineas, setLineas] = useState<LineaF[]>(() => (duplicarDe?.lineas ?? []).map((l) => ({ clave: crypto.randomUUID(), presentacionId: l.presentacionId, nombre: l.nombre, cantidad: String(Number(l.cantidad)), descuento: Number(l.descuento) > 0 ? String(Number(l.descuento)) : "", precio: "", usaSeries: false, series: "" })));
   const [cot, setCot] = useState<Cotizacion | null>(null);
   const [errCot, setErrCot] = useState("");
   const [pagos, setPagos] = useState<PagoF[]>([{ id: crypto.randomUUID(), forma: "EFECTIVO", monto: "", recibido: "", referencia: "" }]);
@@ -58,7 +61,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   /** «cobrar» = se emite aquí mismo; «enviar» = se manda a una caja y allí se cobra (el comprobante sale al cobrar) */
   const [modo, setModo] = useState<"cobrar" | "enviar">(soloEnviar ? "enviar" : "cobrar");
   const [enviada, setEnviada] = useState("");
-  const [notas, setNotas] = useState("");
+  const [notas, setNotas] = useState(duplicarDe?.notas ?? "");
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
   const ventaId = useRef(crypto.randomUUID()); // si se reintenta por un corte de red, no se duplica la factura
@@ -66,6 +69,10 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false }: { onCer
   const cantRefs = useRef(new Map<string, HTMLInputElement>());
   const [foco, setFoco] = useState<string | null>(null);
 
+  useEffect(() => { // las líneas copiadas no saben si su producto pide series: se completa cuando carga el catálogo
+    if (!duplicarDe || productos.length === 0) return;
+    setLineas((ls) => ls.map((l) => (l.usaSeries ? l : { ...l, usaSeries: !!productos.find((x) => x.presentaciones.some((pr) => pr.id === l.presentacionId))?.usaSeries })));
+  }, [productos, duplicarDe]);
   useEffect(() => { if (!cajaId && cajas.datos?.[0]) setCajaId(cajas.datos[0].cajaId); }, [cajas.datos, cajaId]);
 
   useEffect(() => {
