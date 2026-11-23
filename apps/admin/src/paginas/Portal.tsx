@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { EDICIONES, nombreEdicion } from "@factpos/compartido";
 import { api } from "../api";
 import { Aviso, Encabezado, Kpi, useDatos } from "../ui";
 
@@ -9,7 +10,7 @@ import { Aviso, Encabezado, Kpi, useDatos } from "../ui";
  */
 interface Cliente {
   id: string; slug: string; nombre: string; rnc: string | null; contacto: string | null; correo: string | null; telefono: string | null;
-  apiUrl: string | null; notas: string | null; activo: boolean; creadoEn: string; tunelHost: string | null;
+  apiUrl: string | null; notas: string | null; edicion: string | null; activo: boolean; creadoEn: string; tunelHost: string | null;
   licenciaId: string | null; sucursales: number | null; vence: string | null; estadoLicencia: "ACTIVA" | "SUSPENDIDA" | null;
   clavePista: string | null; activada: boolean; activadaEn: string | null; ultimoContacto: string | null; versionApp: string | null;
   sucursalesEnUso: number | null; estado: "VIGENTE" | "POR_VENCER" | "GRACIA" | "VENCIDA" | null;
@@ -151,7 +152,7 @@ function Clientes({ planes }: { planes: Plan[] }) {
                   : !c.activada ? <span className="pastilla">Sin activar</span>
                   : c.estado ? <span className={`pastilla ${ESTADOS[c.estado].c}`}>{ESTADOS[c.estado].t}</span> : null}
               </header>
-              <div className="suave pequeno cli-sub">{[c.rnc && `RNC ${c.rnc}`, c.contacto, c.telefono].filter(Boolean).join(" · ") || "Sin datos de contacto"}</div>
+              <div className="suave pequeno cli-sub">{[c.edicion && nombreEdicion(c.edicion), c.rnc && `RNC ${c.rnc}`, c.contacto, c.telefono].filter(Boolean).join(" · ") || "Sin datos de contacto"}</div>
 
               <dl className="cli-datos">
                 <div><dt>Plan</dt><dd>{c.plan ?? <span className="suave">Sin plan</span>}{c.precioSucursal != null && c.sucursales ? <small>{rd(c.precioSucursal * c.sucursales)} / {c.periodo === "MENSUAL" ? "mes" : "año"}{c.precioEspecial != null ? " · especial" : ""}</small> : null}</dd></div>
@@ -253,7 +254,7 @@ function ClaveMostrada({ cliente, clave, onCerrar }: { cliente: string; clave: s
 
 function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar: () => void; onCreado: (c: { cliente: string; clave: string }) => void }) {
   const activos = planes.filter((p) => p.activo);
-  const [c, setC] = useState({ nombre: "", slug: "", rnc: "", contacto: "", correo: "", telefono: "", apiUrl: "" });
+  const [c, setC] = useState({ nombre: "", slug: "", rnc: "", contacto: "", correo: "", telefono: "", apiUrl: "", edicion: "" });
   const [slugTocado, setSlugTocado] = useState(false);
   const [planId, setPlanId] = useState(activos[0]?.id ?? "");
   const plan = activos.find((p) => p.id === planId);
@@ -269,7 +270,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
     setMsg("");
     try {
       const r = await api<{ clave: string }>("/central/portal/clientes", {
-        cuerpo: { cliente: { ...c, rnc: c.rnc || null, apiUrl: c.apiUrl || null, contacto: c.contacto || null, correo: c.correo || null, telefono: c.telefono || null },
+        cuerpo: { cliente: { ...c, edicion: c.edicion || null, rnc: c.rnc || null, apiUrl: c.apiUrl || null, contacto: c.contacto || null, correo: c.correo || null, telefono: c.telefono || null },
           licencia: { sucursales: l.sucursales, vence: l.vence, planId: planId || null, modulos: plan?.modulos ?? [] } },
       });
       onCreado({ cliente: c.nombre, clave: r.clave });
@@ -284,6 +285,7 @@ function NuevoCliente({ planes, onCerrar, onCreado }: { planes: Plan[]; onCerrar
           <input className="mono" value={c.slug} onChange={(e) => { setSlugTocado(true); set("slug", aSlug(e.target.value)); }} placeholder="royalliquorstore" />
         </label>
         <label className="campo"><span>RNC</span><input value={c.rnc} inputMode="numeric" onChange={(e) => set("rnc", e.target.value.replace(/\D/g, ""))} /></label>
+        <label className="campo"><span>Edición</span><select value={c.edicion} onChange={(e) => set("edicion", e.target.value)}><option value="">FactPOS (estándar)</option>{EDICIONES.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></label>
         <label className="campo"><span>Persona de contacto</span><input value={c.contacto} onChange={(e) => set("contacto", e.target.value)} /></label>
         <label className="campo"><span>Correo</span><input value={c.correo} onChange={(e) => set("correo", e.target.value)} /></label>
         <label className="campo"><span>Teléfono</span><input value={c.telefono} onChange={(e) => set("telefono", e.target.value)} /></label>
@@ -326,7 +328,7 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
   const [ren, setRen] = useState({ meses: mesesDe(periodo), monto: "", referencia: "" });
   const montoSugerido = precio * l.sucursales * (ren.meses / mesesDe(periodo));
   const [api_, setApi] = useState(c.apiUrl ?? "");
-  const [dat, setDat] = useState({ nombre: c.nombre, slug: c.slug });
+  const [dat, setDat] = useState({ nombre: c.nombre, slug: c.slug, edicion: c.edicion ?? "" });
   const [extraGb, setExtraGb] = useState(String(c.respaldoExtraGb ?? 0));
   const [cupoLector, setCupoLector] = useState(String(c.lectorCupo ?? 0));
   const [lectorPago, setLectorPago] = useState(!!c.lectorPago);
@@ -347,12 +349,13 @@ function DetalleCliente({ c, planes, onCambio, onClave }: { c: Cliente; planes: 
         <div className="panel">
           <div className="tres-col">
             <label className="campo"><span>Nombre de la empresa</span><input value={dat.nombre} onChange={(e) => setDat({ ...dat, nombre: e.target.value })} /></label>
+            <label className="campo"><span>Edición</span><select value={dat.edicion} onChange={(e) => setDat({ ...dat, edicion: e.target.value })}><option value="">FactPOS (estándar)</option>{EDICIONES.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></label>
             <label className="campo"><span>Nombre corto (su dirección)</span><input className="mono" value={dat.slug} disabled={!!c.tunelHost} title={c.tunelHost ? "Ya tiene su dirección fija creada; no se puede cambiar" : undefined} onChange={(e) => setDat({ ...dat, slug: aSlug(e.target.value) })} /></label>
           </div>
           <div className="fila-acciones">
             <span className="suave pequeno">{c.tunelHost ? <>Dirección fija: <b className="mono">{c.tunelHost}</b></> : <>Su administración web: <b className="mono">{location.origin}/{dat.slug || "nombrecorto"}/</b></>}</span><span className="flex" />
-            <button className="boton primario" disabled={dat.nombre.trim().length < 2 || dat.slug.length < 3 || (dat.nombre.trim() === c.nombre && dat.slug === c.slug)}
-              onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}`, { metodo: "PUT", cuerpo: { nombre: dat.nombre.trim(), slug: dat.slug } }), "Datos guardados.")}>Guardar nombre</button>
+            <button className="boton primario" disabled={dat.nombre.trim().length < 2 || dat.slug.length < 3 || (dat.nombre.trim() === c.nombre && dat.slug === c.slug && dat.edicion === (c.edicion ?? ""))}
+              onClick={() => hacer(() => api(`/central/portal/clientes/${c.id}`, { metodo: "PUT", cuerpo: { nombre: dat.nombre.trim(), slug: dat.slug, edicion: dat.edicion || null } }), "Datos guardados.")}>Guardar nombre</button>
           </div>
         </div>
 

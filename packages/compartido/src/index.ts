@@ -8,3 +8,4 @@ export * from "./documentos.js";
 export * from "./formato-ticket.js";
 export * from "./codigos-barra.js";
 export * from "./tipo-negocio.js";
+export * from "./ediciones.js";

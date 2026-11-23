@@ -32,6 +32,7 @@ export interface DatosLicencia {
   sucursales: number;        // máximo de sucursales (tiendas) activas
   modulos: string[];
   plan?: string;             // nombre del plan contratado (informativo)
+  edicion?: string;          // edición por tipo de negocio (MUEBLERIA, BAR_RESTAURANTE…); ausente = FactPOS estándar
   emitida: string;           // ISO
   vence: string;             // AAAA-MM-DD (incluido)
 }

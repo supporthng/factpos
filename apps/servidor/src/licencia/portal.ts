@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { uuidv7 } from "@factpos/compartido";
+import { uuidv7, IDS_EDICION } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
 import { rutasInvitaciones } from "./invitaciones.js";
@@ -62,10 +62,10 @@ function llavePrivada() {
 interface FilaLicencia {
   id: string; cliente_id: string; sucursales: number; modulos: string[]; vence: string; estado: string;
   instalacion_id: string | null; secreto_hash: string | null; slug: string; nombre: string; rnc: string | null; cliente_activo: boolean;
-  plan_nombre: string | null; plan_actualiza: boolean | null; version_aprobada: string | null; actualiza_siempre: boolean;
+  edicion: string | null; plan_nombre: string | null; plan_actualiza: boolean | null; version_aprobada: string | null; actualiza_siempre: boolean;
 }
 const SELECT_LIC = `SELECT l.id, l.cliente_id, l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado,
-                           l.instalacion_id, l.secreto_hash, c.slug, c.nombre, c.rnc, c.activo AS cliente_activo,
+                           l.instalacion_id, l.secreto_hash, c.slug, c.nombre, c.rnc, c.edicion, c.activo AS cliente_activo,
                            p.nombre AS plan_nombre, p.permite_actualizaciones AS plan_actualiza, l.version_aprobada, l.actualiza_siempre
                       FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id LEFT JOIN portal_planes p ON p.id = l.plan_id`;
 
@@ -83,7 +83,7 @@ async function versionHabilitada(l: { version_aprobada: string | null; actualiza
 function emitir(l: FilaLicencia, instalacion: string) {
   const datos: DatosLicencia = {
     v: 1, id: l.id, cliente: { id: l.cliente_id, nombre: l.nombre, slug: l.slug, rnc: l.rnc },
-    instalacion, sucursales: l.sucursales, modulos: l.modulos, ...(l.plan_nombre ? { plan: l.plan_nombre } : {}), emitida: new Date().toISOString(), vence: l.vence,
+    instalacion, sucursales: l.sucursales, modulos: l.modulos, ...(l.plan_nombre ? { plan: l.plan_nombre } : {}), ...(l.edicion ? { edicion: l.edicion } : {}), emitida: new Date().toISOString(), vence: l.vence,
   };
   return firmarLicencia(datos, llavePrivada());
 }
@@ -534,7 +534,7 @@ export async function rutasPortal(app: FastifyInstance) {
 
   app.get("/central/portal/clientes", async () => {
     const r = await pool.query(
-      `SELECT c.id, c.slug, c.codigo, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
+      `SELECT c.id, c.slug, c.codigo, c.nombre, c.rnc, c.contacto, c.correo, c.telefono, c.api_url AS "apiUrl", c.notas, c.edicion, c.activo, c.creado_en AS "creadoEn", c.tunel_host AS "tunelHost",
               l.id AS "licenciaId", l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado AS "estadoLicencia",
               l.clave_pista AS "clavePista", l.instalacion_id IS NOT NULL AS activada, l.activada_en AS "activadaEn",
               l.ultimo_contacto AS "ultimoContacto", l.version_app AS "versionApp", l.sucursales_en_uso AS "sucursalesEnUso",
@@ -564,6 +564,7 @@ export async function rutasPortal(app: FastifyInstance) {
     apiUrl: z.string().trim().url("Dirección de la API inválida (ej. https://royalliquorstore-api.vercel.app)").max(200).nullable().optional()
       .or(z.literal("").transform(() => null)),
     notas: z.string().max(1000).nullable().optional(),
+    edicion: z.enum(IDS_EDICION).nullable().optional().or(z.literal("").transform(() => null)),
     activo: z.boolean().optional(),
   });
   const esquemaLicencia = z.object({
@@ -583,10 +584,10 @@ export async function rutasPortal(app: FastifyInstance) {
     const r = await enTransaccion(async (c) => {
       const id = uuidv7(), lic = uuidv7(), clave = nuevaClave();
       try {
-        await c.query(`INSERT INTO portal_clientes (id, slug, nombre, rnc, contacto, correo, telefono, api_url, notas)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        await c.query(`INSERT INTO portal_clientes (id, slug, nombre, rnc, contacto, correo, telefono, api_url, notas, edicion)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
           [id, b.cliente.slug, b.cliente.nombre, b.cliente.rnc ?? null, b.cliente.contacto ?? null, b.cliente.correo ?? null,
-           b.cliente.telefono ?? null, b.cliente.apiUrl ?? null, b.cliente.notas ?? null]);
+           b.cliente.telefono ?? null, b.cliente.apiUrl ?? null, b.cliente.notas ?? null, b.cliente.edicion ?? null]);
       } catch (e) {
         if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un cliente con el nombre corto «${b.cliente.slug}»`, 409);
         throw e;
@@ -614,10 +615,11 @@ export async function rutasPortal(app: FastifyInstance) {
       const r = await pool.query(
         `UPDATE portal_clientes SET slug = COALESCE($2, slug), nombre = COALESCE($3, nombre), rnc = CASE WHEN $10 THEN $4 ELSE rnc END,
                 contacto = COALESCE($5, contacto), correo = COALESCE($6, correo), telefono = COALESCE($7, telefono),
-                api_url = CASE WHEN $11 THEN $8 ELSE api_url END, notas = COALESCE($9, notas), activo = COALESCE($12, activo)
+                api_url = CASE WHEN $11 THEN $8 ELSE api_url END, notas = COALESCE($9, notas), activo = COALESCE($12, activo),
+                edicion = CASE WHEN $13 THEN $14 ELSE edicion END
           WHERE id = $1 RETURNING id`,
         [id, b.slug ?? null, b.nombre ?? null, b.rnc ?? null, b.contacto ?? null, b.correo ?? null, b.telefono ?? null, b.apiUrl ?? null,
-         b.notas ?? null, "rnc" in b, "apiUrl" in b, b.activo ?? null]);
+         b.notas ?? null, "rnc" in b, "apiUrl" in b, b.activo ?? null, "edicion" in b, b.edicion ?? null]);
       if (!r.rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
     } catch (e) {
       if ((e as { code?: string }).code === "23505") throw new ErrorNegocio("Ese nombre corto ya lo usa otro cliente", 409);
