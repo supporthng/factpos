@@ -114,7 +114,8 @@ export async function rutasCentralServicio(app: FastifyInstance) {
       }
       if (!sucursalId) sucursalId = (await c.query<{ id: string }>("SELECT id FROM sucursales WHERE empresa_id = $1 AND activo ORDER BY tipo = 'ALMACEN', codigo LIMIT 1", [empresaId])).rows[0]?.id;
       if (!sucursalId || !(await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [sucursalId, empresaId])).rowCount) throw new ErrorNegocio("Sucursal no válida");
-      if (clienteId && !(await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2", [clienteId, empresaId])).rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
+      if (!clienteId) throw new ErrorNegocio("Elija el cliente de la orden: hace falta para avisarle y enviarle la cotización");
+      if (!(await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2", [clienteId, empresaId])).rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
       const vigente = !!garantiaHasta && garantiaHasta >= hoyRD();
       const tipoGarantia = b.tipoGarantia ?? (vigente ? "TIENDA" : "SIN");
       if (tipoGarantia === "TIENDA" && !vigente) throw new ErrorNegocio("La garantía de la tienda no está vigente para este artículo: use «Sin garantía» o «Garantía del fabricante»");
