@@ -2,7 +2,7 @@ import { SelectorPeriodo } from "../periodos";
 import { useEffect, useState } from "react";
 import { api, esLocal, hoy, num, puede, rd } from "../api";
 import { htmlCarta, imprimirHtml } from "../impresion";
-import { NuevaFactura } from "./NuevaFactura";
+import { NuevaFactura, type BaseDuplicada } from "./NuevaFactura";
 import { Aviso, Encabezado, SelectorSucursal, Tabla, useDatos } from "../ui";
 
 /**
@@ -94,16 +94,30 @@ export function Facturas() {
   const [estado, setEstado] = useState("");
   const [q, setQ] = useState("");
   const [recarga, setRecarga] = useState(0);
-  const [ver, setVer] = useState<string | null>(null);
+  const [ver, setVer] = useState<{ id: string; accion?: Accion } | null>(null);
+  const [duplicando, setDuplicando] = useState<BaseDuplicada | null>(null);
+  const [aviso, setAviso] = useState("");
   const params = new URLSearchParams({ desde, hasta, ...(sucursalId ? { sucursalId } : {}), ...(familia ? { familia } : {}), ...(estado ? { estado } : {}), ...(q.trim() ? { q: q.trim() } : {}) });
   const lista = useDatos<Fila[]>(`/central/facturas?${params}`, [recarga]);
   const [nueva, setNueva] = useState(false);
+  /** Duplicar: lee la factura y abre «Nueva factura» con el mismo cliente, tipo y líneas */
+  const duplicar = async (id: string) => {
+    setAviso("");
+    try {
+      const d = await api<Detalle>(`/central/facturas/${id}`);
+      setDuplicando({
+        tipo: d.tipoDocumento, notas: d.notas, cliente: d.cliente ? { id: d.cliente.id, nombre: d.cliente.nombre, documento: d.cliente.documento, telefono: d.clienteTelefono ?? null, correo: d.clienteCorreo ?? null } : null,
+        lineas: (d.lineas ?? []).map((l: any) => ({ presentacionId: l.presentacionId, nombre: l.descripcion, cantidad: l.cantidad, descuento: String(l.descuentoManual ?? 0) })),
+      });
+    } catch (e) { setAviso((e as Error).message); }
+  };
 
-  if (nueva) return <NuevaFactura onCerrar={() => setNueva(false)} onCreada={(id) => { setNueva(false); setRecarga((n) => n + 1); setVer(id); }} />;
+  if (nueva) return <NuevaFactura onCerrar={() => setNueva(false)} onCreada={(id) => { setNueva(false); setRecarga((n) => n + 1); setVer({ id }); }} />;
+  if (duplicando) return <NuevaFactura duplicarDe={duplicando} onCerrar={() => setDuplicando(null)} onCreada={(id) => { setDuplicando(null); setRecarga((n) => n + 1); setVer({ id }); }} />;
   return (
     <>
       <Encabezado titulo="Facturas" descripcion="Cree una factura, o busque cualquiera para reimprimirla, modificarla o anularla. Cada tipo se identifica por su prefijo: E (electrónico), B (NCF serie B) y FI- (sin comprobante).">
-        {esLocal() && <button className="boton primario" onClick={() => setNueva(true)}>Nueva factura</button>}
+        {esLocal() && <button className="boton primario" onClick={() => setNueva(true)}>Crear factura</button>}
       </Encabezado>
       <div className="fila-acciones" style={{ marginBottom: 12, flexWrap: "wrap" }}>
         <SelectorPeriodo desde={desde} hasta={hasta} onCambio={(a, b) => { setDesde(a); setHasta(b); }} />
@@ -119,26 +133,39 @@ export function Facturas() {
         <input placeholder="Número, e-NCF/NCF o cliente" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setRecarga((n) => n + 1)} />
         <button className="boton primario" onClick={() => setRecarga((n) => n + 1)}>Buscar</button>
       </div>
-      <Aviso texto={lista.error} />
+      <Aviso texto={lista.error || aviso} />
       <Tabla
         filas={lista.datos ?? []} clave={(f) => f.id} vacio="No hay facturas con este filtro."
         columnas={[
-          { titulo: "Comprobante", valor: (f) => <><button className="enlace" onClick={() => setVer(f.id)}>{f.comprobante ?? `Nº ${f.numero}`}</button><div className="suave">{prefijo(f.tipo)} · {NOMBRE[f.tipo] ?? f.tipo}</div></> },
+          { titulo: "Comprobante", valor: (f) => <><button className="enlace" onClick={() => setVer({ id: f.id })}>{f.comprobante ?? `Nº ${f.numero}`}</button><div className="suave">{prefijo(f.tipo)} · {NOMBRE[f.tipo] ?? f.tipo}</div></> },
           { titulo: "Fecha", valor: (f) => fecha(f.fecha) },
           { titulo: "Sucursal / caja", valor: (f) => <>{f.sucursal}<div className="suave">{f.caja ?? ""}{f.cajero ? ` · ${f.cajero}` : ""}</div></> },
           { titulo: "Cliente", valor: (f) => f.cliente ?? "Mostrador" },
           { titulo: "Total", der: true, valor: (f) => rd(f.total) },
           { titulo: "Estado", valor: (f) => <span className={"pastilla " + (f.anulada ? "alerta" : "ok")}>{f.anulada ? "Anulada" : "Emitida"}</span> },
+          { titulo: "Acciones", valor: (f) => (
+            <div className="fila-acciones" style={{ flexWrap: "wrap", gap: 4, margin: 0 }}>
+              <button className="boton chico" onClick={() => setVer({ id: f.id })}>Ver</button>
+              <button className="boton chico" onClick={() => setVer({ id: f.id, accion: "imprimir" })}>Imprimir</button>
+              {!f.anulada && puede("admin.facturas") && <button className="boton chico" onClick={() => setVer({ id: f.id, accion: "modificar" })}>Modificar</button>}
+              {esLocal() && puede("admin.facturas") && <button className="boton chico" onClick={() => void duplicar(f.id)}>Duplicar</button>}
+              {!f.anulada && puede("admin.cxc") && <button className="boton chico" onClick={() => setVer({ id: f.id, accion: "pagar" })}>Pagar</button>}
+              {!f.anulada && <button className="boton chico" onClick={() => setVer({ id: f.id, accion: "correo" })}>Correo</button>}
+              {!f.anulada && <button className="boton chico" onClick={() => setVer({ id: f.id, accion: "whatsapp" })}>WhatsApp</button>}
+              {!f.anulada && puede("venta.anular") && <button className="boton chico peligro" onClick={() => setVer({ id: f.id, accion: "anular" })}>Anular</button>}
+            </div>) },
         ]}
       />
-      {ver && <VerFactura id={ver} onCerrar={() => setVer(null)} onCambio={() => setRecarga((n) => n + 1)} />}
+      {ver && <VerFactura id={ver.id} accionInicial={ver.accion} onCerrar={() => setVer(null)} onCambio={() => setRecarga((n) => n + 1)} onDuplicar={esLocal() ? (id) => { setVer(null); void duplicar(id); } : undefined} />}
     </>
   );
 }
 
-function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => void; onCambio: () => void }) {
+type Accion = "imprimir" | "modificar" | "pagar" | "correo" | "whatsapp" | "anular";
+
+function VerFactura({ id, accionInicial, onCerrar, onCambio, onDuplicar }: { id: string; accionInicial?: Accion; onCerrar: () => void; onCambio: () => void; onDuplicar?: (id: string) => void }) {
   const { datos: d, error, recargar } = useDatos<Detalle>(`/central/facturas/${id}`);
-  const [modo, setModo] = useState<"ver" | "modificar" | "anular" | "devolver">("ver");
+  const [modo, setModo] = useState<"ver" | "modificar" | "anular" | "devolver" | "pagar">("ver");
   const [cantDev, setCantDev] = useState<Record<number, string>>({});
   const [motivo, setMotivo] = useState("");
   const [notas, setNotas] = useState<string | null>(null);
@@ -195,6 +222,44 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
   } }), "Devolución registrada: se emitió la nota de crédito por lo devuelto");
   const anular = () => ejecutar(() => api(`/central/facturas/${id}/anular`, { metodo: "POST", cuerpo: { motivo } }), "Factura anulada");
 
+  // Pagar: una factura a crédito con saldo pendiente se abona aquí (queda el recibo de ingreso, igual que desde Cuentas por cobrar)
+  const [pendiente, setPendiente] = useState<number | null>(null);
+  const [montoPago, setMontoPago] = useState(""); const [formaPago, setFormaPago] = useState("EFECTIVO"); const [refPago, setRefPago] = useState("");
+  const abrirPago = async () => {
+    setMsg(""); setModo("pagar"); setPendiente(null);
+    if (!d?.cliente) { setPendiente(0); return; }
+    try {
+      const fs = await api<{ ventaId: string; pendiente: string }[]>(`/central/cxc/${d.cliente.id}/facturas`);
+      const f = fs.find((x) => x.ventaId === id);
+      const pend = f ? Number(f.pendiente) : 0;
+      setPendiente(pend); setMontoPago(pend > 0 ? pend.toFixed(2) : "");
+    } catch (e) { setMsg((e as Error).message); setPendiente(0); }
+  };
+  const pagar = () => ejecutar(async () => {
+    const r: any = await api(`/central/cxc/${d!.cliente!.id}/abonos`, { cuerpo: { monto: Number(montoPago).toFixed(2), formaPago, referencia: refPago.trim() || undefined, modo: "FACTURA", ventaId: id } });
+    return r;
+  }, "Pago registrado: queda en el recibo de ingreso de la factura");
+  // La acción elegida en la lista de facturas se ejecuta apenas carga el detalle
+  const [hecha, setHecha] = useState(false);
+  useEffect(() => {
+    if (!d || hecha || !accionInicial) return;
+    setHecha(true);
+    const digitos = String(d.clienteTelefono ?? "").replace(/\D/g, "");
+    switch (accionInicial) {
+      case "imprimir": setPrevia({ titulo: "carta", html: htmlCartaFactura(d), ancho: 816 }); break;
+      case "modificar": if (d.tipoDocumento === "SIN") empezarEdicion(); else setModo("modificar"); break;
+      case "pagar": void abrirPago(); break;
+      case "anular": setModo("anular"); break;
+      case "correo": setEnvio({ para: d.clienteCorreo ?? "", enviando: false }); break;
+      case "whatsapp": {
+        const doc = d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`;
+        if (digitos.length >= 10) window.open(`https://wa.me/${digitos.length === 10 ? "1" + digitos : digitos}?text=${encodeURIComponent(`Hola${d.cliente ? `, ${d.cliente.nombre}` : ""}. Le enviamos su factura ${doc} por ${rd(d.total)}. ¡Gracias por su compra!`)}`, "_blank", "noopener");
+        else { setEnvio({ para: d.clienteCorreo ?? "", enviando: false }); setMsg("El cliente no tiene teléfono registrado: agréguelo en Clientes para enviarle la factura por WhatsApp."); }
+        break;
+      }
+    }
+  }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="fondo-modal" onMouseDown={onCerrar}>
       <div className="modal ancho" onMouseDown={(e) => e.stopPropagation()}>
@@ -203,9 +268,11 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
           {d && <button className="boton chico" onClick={() => setPrevia({ titulo: "carta", html: htmlCartaFactura(d), ancho: 816 })} title="Ver cómo saldrá en hoja carta 8½ × 11">Imprimir carta</button>}
           {d && <button className="boton chico" onClick={() => setPrevia({ titulo: "ticket", html: htmlTicket(d), ancho: 380 })} title="Ver cómo saldrá en ticket angosto">Imprimir ticket</button>}
           {d && !d.anulada && <button className="boton chico" onClick={() => setEnvio(envio ? null : { para: d.clienteCorreo ?? "", enviando: false })}>Enviar al cliente</button>}
+          {d && onDuplicar && puede("admin.facturas") && <button className="boton chico" onClick={() => onDuplicar(id)} title="Hacer otra factura igual a esta">Duplicar</button>}
+          {d && !d.anulada && puede("admin.cxc") && <button className="boton chico" onClick={() => void abrirPago()}>Pagar</button>}
         </div>
         <Aviso texto={error} />
-        {msg && <Aviso texto={msg} tipo={/modificada|anulada$|corregida|enviada|Devolución registrada/.test(msg) ? "ok" : "error"} />}
+        {msg && <Aviso texto={msg} tipo={/modificada|anulada$|corregida|enviada|Devolución registrada|Pago registrado/.test(msg) ? "ok" : "error"} />}
         {d && envio && (() => {
           const digitos = String(d.clienteTelefono ?? "").replace(/\D/g, "");
           const doc = d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`;
@@ -251,6 +318,21 @@ function VerFactura({ id, onCerrar, onCambio }: { id: string; onCerrar: () => vo
               {puede("venta.anular") && <button className="boton peligro" onClick={() => { setMsg(""); setModo("anular"); }}>Anular</button>}
             </div>
           )}
+          {modo === "pagar" && (
+            <div className="panel">
+              <b>Pagar esta factura</b>
+              {pendiente === null && <p className="suave">Buscando el saldo…</p>}
+              {pendiente === 0 && <p>{d.cliente ? "Esta factura no tiene saldo pendiente: ya está pagada o no se vendió a crédito." : "La factura es de mostrador (sin cliente): no tiene cuenta por cobrar."}</p>}
+              {pendiente !== null && pendiente > 0 && <>
+                <p>Saldo pendiente de esta factura: <b>{rd(pendiente)}</b></p>
+                <div className="panel cab-compra">
+                  <label className="campo"><span>Monto</span><input inputMode="decimal" value={montoPago} onChange={(e) => setMontoPago(e.target.value.replace(/[^\d.]/g, ""))} /></label>
+                  <label className="campo"><span>Forma de pago</span><select value={formaPago} onChange={(e) => setFormaPago(e.target.value)}><option value="EFECTIVO">Efectivo</option><option value="TARJETA">Tarjeta</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></label>
+                  <label className="campo"><span>Referencia</span><input value={refPago} maxLength={40} onChange={(e) => setRefPago(e.target.value)} placeholder="Nº de transferencia o cheque" /></label>
+                </div></>}
+              <div className="fila-acciones"><span className="flex" /><button className="boton" onClick={() => setModo("ver")}>Cancelar</button>
+                {pendiente !== null && pendiente > 0 && <button className="boton primario" disabled={ocupado || !(Number(montoPago) > 0) || Number(montoPago) > pendiente + 0.001} onClick={pagar}>Registrar pago</button>}</div>
+            </div>)}
           {modo === "modificar" && <>
             <p className="suave">{interna ? "Puede cambiar los productos, cantidades, descuentos, la nota y el cliente. Si cambia productos o montos, la factura original queda anulada («Corregida») y se emite una nueva con los cambios, siempre que su turno siga abierto." : "Esta factura tiene comprobante fiscal: solo se puede cambiar la nota. Para corregir otros datos, anúlela y emita una nueva."}</p>
             <label className="campo"><span>Nota de la factura</span><textarea maxLength={300} value={notas ?? d.notas ?? ""} onChange={(e) => setNotas(e.target.value)} /></label>
