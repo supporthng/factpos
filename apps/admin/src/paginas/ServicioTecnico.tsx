@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, num, rd } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 
@@ -25,6 +25,7 @@ const SIGUIENTE: Record<string, string[]> = {
 };
 const GARANTIA: Record<string, string> = { TIENDA: "Garantía de la tienda", FABRICANTE: "Garantía del fabricante", SIN: "Sin garantía" };
 const MEDIO: Record<string, string> = { PRESENCIAL: "Presencial", TELEFONO: "Por teléfono", WHATSAPP: "Por WhatsApp" };
+const MEDIO_VER: Record<string, string> = { ...MEDIO, ENLACE: "Por el enlace del celular" };
 const fechaCorta = (s: string) => s.slice(0, 10).split("-").reverse().join("/");
 const fechaHora = (iso: string) => new Date(iso).toLocaleString("es-DO", { timeZone: "America/Santo_Domingo", day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 const decimal = (v: string) => v.replace(/[^\d.]/g, "");
@@ -82,6 +83,45 @@ export function ServicioTecnico() {
   );
 }
 
+interface ClienteB { id: string; nombre: string; documento: string | null; telefono: string | null; direccion: string | null }
+
+/** Buscar un cliente (nombre, RNC o teléfono) o crear uno nuevo ahí mismo: toda orden lleva cliente para avisarle y enviarle la cotización. */
+function ElegirCliente({ valor, onElegir, onError }: { valor: ClienteB | null; onElegir: (c: ClienteB | null) => void; onError: (t: string) => void }) {
+  const [q, setQ] = useState("");
+  const [lista, setLista] = useState<ClienteB[]>([]);
+  const [nuevo, setNuevo] = useState(false);
+  const [nombre, setNombre] = useState(""); const [tel, setTel] = useState("");
+  useEffect(() => {
+    if (q.trim().length < 2) { setLista([]); return; }
+    const t = setTimeout(() => api<ClienteB[]>(`/central/clientes?q=${encodeURIComponent(q.trim())}`).then((r) => setLista(r.slice(0, 8))).catch(() => {}), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  const crear = async () => {
+    try {
+      const c = await api<ClienteB>("/central/clientes", { cuerpo: { nombre: nombre.trim(), telefono: tel.trim() || null, tipoDocumento: "NINGUNO", documento: null, nivel: 1 } });
+      onElegir(c); setNuevo(false);
+    } catch (e) { onError((e as Error).message); }
+  };
+  if (valor) return <p style={{ margin: "6px 0" }}><span className="suave">Cliente:</span> <b>{valor.nombre}</b>{valor.documento && ` · ${valor.documento}`}{valor.telefono && ` · ${valor.telefono}`} <button className="boton chico" onClick={() => onElegir(null)}>Cambiar</button></p>;
+  return (
+    <div className="panel" style={{ margin: "6px 0" }}>
+      <label className="campo"><span>Cliente (obligatorio)</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nombre, RNC, cédula o teléfono" /></label>
+      {lista.length > 0 && <table className="tabla"><tbody>{lista.map((c) => (
+        <tr key={c.id}><td><b>{c.nombre}</b><div className="suave">{[c.documento, c.telefono].filter(Boolean).join(" · ") || "sin documento ni teléfono"}</div></td>
+          <td className="der"><button className="boton chico primario" onClick={() => onElegir(c)}>Elegir</button></td></tr>))}</tbody></table>}
+      {q.trim().length >= 2 && lista.length === 0 && <p className="suave pequeno" style={{ margin: "4px 0" }}>No hay clientes con ese dato.</p>}
+      {!nuevo
+        ? <p style={{ margin: "4px 0" }}><button className="boton chico" onClick={() => { setNuevo(true); setNombre(q.trim()); }}>Cliente nuevo</button></p>
+        : <div className="panel cab-compra">
+          <label className="campo"><span>Nombre del cliente nuevo</span><input value={nombre} onChange={(e) => setNombre(e.target.value)} /></label>
+          <label className="campo"><span>Teléfono (WhatsApp)</span><input value={tel} onChange={(e) => setTel(e.target.value)} /></label>
+          <button className="boton primario" disabled={nombre.trim().length < 3} onClick={crear}>Guardar cliente</button>
+          <button className="boton" onClick={() => setNuevo(false)}>Cancelar</button>
+        </div>}
+    </div>
+  );
+}
+
 function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onListo: (id: string, codigo: string, enGarantia: boolean) => void; onError: (t: string) => void }) {
   const [q, setQ] = useState("");
   const [buscado, setBuscado] = useState("");
@@ -93,15 +133,20 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
   const [lugar, setLugar] = useState<"TALLER" | "DOMICILIO">("TALLER");
   const [direccion, setDireccion] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [cliente, setCliente] = useState<ClienteB | null>(null);
   const [tecnico, setTecnico] = useState("");
   const [tipoG, setTipoG] = useState<"" | "TIENDA" | "FABRICANTE" | "SIN">("");
   const [marca, setMarca] = useState(""); const [modelo, setModelo] = useState(""); const [serieLibre, setSerieLibre] = useState("");
   const [accesorios, setAccesorios] = useState(""); const [estadoEquipo, setEstadoEquipo] = useState("");
   const elegir = (s: Serie) => { setSerie(s); setDireccion(s.direccion ?? ""); setTelefono(s.telefono ?? ""); };
+  const elegirCliente = (c: ClienteB | null) => { setCliente(c); if (c) { setTelefono((t) => t || (c.telefono ?? "")); setDireccion((d) => d || (c.direccion ?? "")); } };
+  const serieOk = !!serie || serieLibre.trim().length >= 3;
+  const hist = useDatos<{ codigo: string; recibidaEn: string }[]>(!serie && serieLibre.trim().length >= 4 ? `/central/servicio?q=${encodeURIComponent(serieLibre.trim())}` : null, [serieLibre]).datos ?? [];
+  const sinCliente = !(serie?.cliente) && !cliente; // la venta ya trae su cliente; si no, hay que elegirlo
   const guardar = async () => {
     try {
       const r = await api<{ id: string; numero: string; enGarantia: boolean }>("/central/servicio", { cuerpo: {
-        ...(serie ? { serieId: serie.id } : { descripcion, ...(serieLibre.trim() ? { serieLibre: serieLibre.trim() } : {}) }), falla, lugar,
+        ...(cliente ? { clienteId: cliente.id } : {}), ...(serie ? { serieId: serie.id } : { descripcion, ...(serieLibre.trim() ? { serieLibre: serieLibre.trim() } : {}) }), falla, lugar,
         ...(tipoG ? { tipoGarantia: tipoG } : {}), ...(marca.trim() ? { marca: marca.trim() } : {}), ...(modelo.trim() ? { modelo: modelo.trim() } : {}),
         ...(accesorios.trim() ? { accesorios: accesorios.trim() } : {}), ...(estadoEquipo.trim() ? { estadoEquipo: estadoEquipo.trim() } : {}), ...(direccion.trim() ? { direccion: direccion.trim() } : {}), ...(telefono.trim() ? { telefono: telefono.trim() } : {}), ...(tecnico.trim() ? { tecnico: tecnico.trim() } : {}),
       } });
@@ -137,7 +182,7 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
             <div className="panel cab-compra">
               <label className="campo"><span>Marca</span><input value={marca} onChange={(e) => setMarca(e.target.value)} /></label>
               <label className="campo"><span>Modelo</span><input value={modelo} onChange={(e) => setModelo(e.target.value)} /></label>
-              <label className="campo"><span>Serie</span><input value={serieLibre} onChange={(e) => setSerieLibre(e.target.value)} /></label>
+              <label className="campo"><span>Serie (obligatoria)</span><input value={serieLibre} onChange={(e) => setSerieLibre(e.target.value)} placeholder="Número de serie del equipo" />{hist.length > 0 && <span className="suave pequeno" style={{ color: "var(--aviso, #b45309)" }}>Este equipo ya tiene {hist.length} orden(es) de servicio: {hist.slice(0, 3).map((h) => `${h.codigo} (${fechaCorta(h.recibidaEn)})`).join(", ")}</span>}</label>
             </div>
           </>}
         <div className="panel cab-compra">
@@ -150,6 +195,7 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
           <label className="campo"><span>Accesorios que deja</span><input value={accesorios} onChange={(e) => setAccesorios(e.target.value)} placeholder="Cable, control remoto…" /></label>
           <label className="campo"><span>Estado en que llega</span><input value={estadoEquipo} onChange={(e) => setEstadoEquipo(e.target.value)} placeholder="Rayones, golpes…" /></label>
         </div>
+        {!serie?.cliente && <ElegirCliente valor={cliente} onElegir={elegirCliente} onError={onError} />}
         <label className="campo"><span>Falla que reporta el cliente</span><input value={falla} maxLength={500} onChange={(e) => setFalla(e.target.value)} /></label>
         <div className="panel cab-compra">
           <label className="campo"><span>Dónde</span><select value={lugar} onChange={(e) => setLugar(e.target.value as "TALLER" | "DOMICILIO")}><option value="TALLER">En el taller</option><option value="DOMICILIO">A domicilio</option></select></label>
@@ -159,7 +205,7 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
         {lugar === "DOMICILIO" && <label className="campo"><span>Dirección</span><input value={direccion} onChange={(e) => setDireccion(e.target.value)} /></label>}
       </>}
       <div className="fila-acciones" style={{ marginTop: 8 }}>
-        {(serie || libre) && <button className="boton primario" onClick={guardar} disabled={falla.trim().length < 3 || (!serie && descripcion.trim().length < 2)}>Abrir orden</button>}
+        {(serie || libre) && <button className="boton primario" onClick={guardar} disabled={falla.trim().length < 3 || sinCliente || !serieOk || (!serie && descripcion.trim().length < 2)}>Abrir orden</button>}
         <button className="boton" onClick={onCerrar}>Cancelar</button>
       </div>
     </div>
@@ -178,6 +224,7 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
   const [cMo, setCMo] = useState(""); const [cPz, setCPz] = useState(""); const [cNota, setCNota] = useState("");
   const [decPor, setDecPor] = useState(""); const [decMedio, setDecMedio] = useState("PRESENCIAL"); const [revision, setRevision] = useState<string | null>(null);
   const [fabRef, setFabRef] = useState<string | null>(null);
+  const [enlace, setEnlace] = useState<{ url: string; alcanzable: boolean; wa: string | null; vence: string; mensaje: string } | null>(null);
   const cfg = useDatos<{ cobrarRevision: boolean; montoRevision: string }>("/central/servicio/config", []);
   if (!o) return <div className="tarjeta suave">{d.error || "Cargando…"}</div>;
   const cerrada = ["ENTREGADO", "SIN_REPARACION", "CANCELADO"].includes(o.estado);
@@ -185,6 +232,14 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
   const aprobada = o.enGarantia || o.aprobacion === "APROBADA";
   const cotizacion = Number(o.cotizManoObra ?? 0) + Number(o.cotizPiezas ?? 0);
   const revisionSugerida = cfg.datos?.cobrarRevision ? cfg.datos.montoRevision : "0";
+  const generarEnlace = async (accion: "wa" | "copiar") => {
+    try {
+      const r = await api<{ url: string; alcanzable: boolean; wa: string | null; vence: string; mensaje: string }>(`/central/servicio/${id}/enlace`, { metodo: "POST", cuerpo: {} });
+      setEnlace(r);
+      if (accion === "wa" && r.wa) window.open(r.wa, "_blank", "noopener");
+      if (accion === "copiar" || !r.wa) await navigator.clipboard?.writeText(r.mensaje).catch(() => {});
+    } catch (e) { onError((e as Error).message); }
+  };
   const llamar = async (cuerpo: Record<string, unknown>, despues?: () => void) => {
     try { await api(`/central/servicio/${id}`, { metodo: "PUT", cuerpo }); despues?.(); d.recargar(); onCambio(); } catch (e) { onError((e as Error).message); }
   };
@@ -209,8 +264,8 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
       <p style={{ margin: "4px 0" }}><span className="suave">Garantía:</span> {o.tipoGarantia === "TIENDA" ? `Garantía de la tienda (hasta ${fechaCorta(o.garantiaHasta!)}): no se cobra` : o.tipoGarantia === "FABRICANTE" ? "Garantía del fabricante: no se cobra al cliente" : o.garantiaHasta ? `Vencida el ${fechaCorta(o.garantiaHasta)}: se cobra` : "Sin garantía: se cotiza y se cobra"}</p>
       {o.tipoGarantia === "FABRICANTE" && (o.fabricanteReferencia || o.fabricanteEnvio) && <p style={{ margin: "4px 0" }}><span className="suave">Fabricante:</span> ref. {o.fabricanteReferencia ?? "—"}{o.fabricanteEnvio && ` · enviado ${fechaCorta(o.fabricanteEnvio)}`}{o.fabricanteRegreso && ` · regresó ${fechaCorta(o.fabricanteRegreso)}`}</p>}
       {o.cotizEn && <p style={{ margin: "4px 0" }}><span className="suave">Cotización:</span> <b>{rd(Number(o.cotizManoObra) + Number(o.cotizPiezas))}</b> (mano de obra {rd(Number(o.cotizManoObra))} + piezas {rd(Number(o.cotizPiezas))}){o.cotizNota && ` · ${o.cotizNota}`}
-        {o.aprobacion === "APROBADA" && o.aprobacionEn && ` · Aprobada por ${o.aprobacionPor} (${MEDIO[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
-        {o.aprobacion === "RECHAZADA" && o.aprobacionEn && ` · Rechazada por ${o.aprobacionPor} (${MEDIO[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
+        {o.aprobacion === "APROBADA" && o.aprobacionEn && ` · Aprobada por ${o.aprobacionPor} (${MEDIO_VER[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
+        {o.aprobacion === "RECHAZADA" && o.aprobacionEn && ` · Rechazada por ${o.aprobacionPor} (${MEDIO_VER[o.aprobacionMedio ?? ""]?.toLowerCase()}) el ${fechaHora(o.aprobacionEn)}`}
         {o.aprobacion === "PENDIENTE" && " · Esperando respuesta del cliente"}</p>}
       {o.aprobacion === "RECHAZADA" && Number(o.cobroRevision) > 0 && <p style={{ margin: "4px 0" }}><b>Revisión a cobrar: {rd(Number(o.cobroRevision))}</b> (se cobra con una factura normal)</p>}
       {cerrada && <>
@@ -233,6 +288,17 @@ function Detalle({ id, onCambio, onError }: { id: string; onCambio: () => void; 
           </div>
           {o.aprobacion === "PENDIENTE" && <div className="panel" style={{ marginTop: 8 }}>
             <b>Respuesta del cliente a {rd(cotizacion)}</b>
+            <div className="fila-acciones" style={{ margin: "6px 0" }}>
+              <button className="boton primario" onClick={() => generarEnlace("wa")}>Enviar por WhatsApp (el cliente aprueba desde su celular)</button>
+              <button className="boton" onClick={() => generarEnlace("copiar")}>Copiar mensaje con enlace</button>
+              <button className="boton" onClick={() => { d.recargar(); onCambio(); }}>Ver si ya respondió</button>
+            </div>
+            {enlace && <div className="suave pequeno" style={{ marginBottom: 6 }}>
+              Enlace (vale hasta el {fechaCorta(enlace.vence)}): <span className="mono" style={{ wordBreak: "break-all" }}>{enlace.url}</span>
+              {!enlace.wa && <><br />El cliente no tiene teléfono en la orden: el mensaje quedó copiado para que lo pegue donde prefiera.</>}
+              {!enlace.alcanzable && <><br /><b>Atención:</b> este servidor no tiene una dirección pública (túnel o dirección de internet): el cliente solo podría abrir el enlace dentro de su red. Active el acceso por internet para que le funcione desde su celular.</>}
+            </div>}
+            <p className="suave pequeno" style={{ margin: "0 0 6px" }}>O registre usted la respuesta si el cliente la dio en persona o por teléfono:</p>
             <div className="panel cab-compra">
               <label className="campo"><span>Quién respondió</span><input value={decPor} onChange={(e) => setDecPor(e.target.value)} placeholder={o.cliente ?? "Nombre"} /></label>
               <label className="campo"><span>Por qué medio</span><select value={decMedio} onChange={(e) => setDecMedio(e.target.value)}>{Object.entries(MEDIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>

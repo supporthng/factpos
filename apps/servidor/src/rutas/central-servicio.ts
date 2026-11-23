@@ -4,6 +4,9 @@ import { Decimal } from "decimal.js";
 import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { sucursalesDe } from "../sesion.js";
+import { createHash, randomBytes } from "node:crypto";
+import type pg from "pg";
+import { estadoTunel } from "../tunel.js";
 
 /**
  * Servicio técnico y reparaciones, para cualquier negocio: la orden de un artículo vendido aquí (con su serie se ve la garantía y a quién
@@ -17,6 +20,43 @@ const hoyRD = () => new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10)
 const ESTADOS = ["RECIBIDO", "EN_REVISION", "COTIZADO", "EN_REPARACION", "ESPERANDO_PIEZA", "EN_FABRICANTE", "LISTO", "ENTREGADO", "SIN_REPARACION", "CANCELADO"] as const;
 const FINALES = ["ENTREGADO", "SIN_REPARACION", "CANCELADO"];
 const monto = z.coerce.number().min(0).max(99999999);
+
+const huellaEnlace = (t: string) => createHash("sha256").update(t).digest("hex");
+export { huellaEnlace };
+
+/**
+ * El cliente aprueba o rechaza la cotización (la registra el personal, o el propio cliente desde el enlace de WhatsApp).
+ * Aprobada: la orden pasa a reparación y sus costos toman la cotización. Rechazada: se cierra sin reparación y, si la empresa lo activó,
+ * se anota la revisión a cobrar. Deja constancia de quién, por qué medio y cuándo.
+ */
+export async function aplicarDecision(c: pg.PoolClient, o: {
+  id: string; empresaId: string; resultado: "APROBADA" | "RECHAZADA"; por: string; medio: "PRESENCIAL" | "TELEFONO" | "WHATSAPP" | "ENLACE";
+  cobrarRevision?: number; usuarioId: string | null; ip?: string | null;
+}) {
+  const t = (await c.query<{ estado: string; aprobacion: string | null; cotiz_mano_obra: string | null; cotiz_piezas: string | null }>(
+    `SELECT t.estado, t.aprobacion, t.cotiz_mano_obra, t.cotiz_piezas FROM servicios_tecnicos t JOIN sucursales s ON s.id = t.sucursal_id
+      WHERE t.id = $1 AND s.empresa_id = $2 FOR UPDATE OF t`, [o.id, o.empresaId])).rows[0];
+  if (!t) throw new ErrorNegocio("Orden no encontrada", 404);
+  if (t.aprobacion !== "PENDIENTE" || t.estado !== "COTIZADO") throw new ErrorNegocio("Esta cotización ya no está esperando respuesta", 409);
+  let estado: string, nota: string, revision = 0;
+  if (o.resultado === "APROBADA") {
+    estado = "EN_REPARACION";
+    nota = `Cotización aprobada por ${o.por} (${o.medio === "ENLACE" ? "por el enlace" : o.medio.toLowerCase()})`;
+  } else {
+    const cfg = (await c.query<{ cobrar_revision: boolean; monto_revision: string }>("SELECT cobrar_revision, monto_revision FROM servicio_config WHERE empresa_id = $1", [o.empresaId])).rows[0];
+    revision = o.cobrarRevision ?? (cfg?.cobrar_revision ? Number(cfg.monto_revision) : 0);
+    estado = "SIN_REPARACION";
+    nota = `Cotización rechazada por ${o.por} (${o.medio === "ENLACE" ? "por el enlace" : o.medio.toLowerCase()})${revision > 0 ? `; se cobra la revisión: ${new Decimal(revision).toFixed(2)}` : ""}`;
+  }
+  await c.query(
+    `UPDATE servicios_tecnicos SET aprobacion = $2::varchar(10), aprobacion_en = now(), aprobacion_por = $3, aprobacion_medio = $4::varchar(12), aprobacion_ip = $5::text, estado = $6::varchar(16),
+            costo_mano_obra = CASE WHEN $2::varchar(10) = 'APROBADA' THEN COALESCE(cotiz_mano_obra, 0) ELSE costo_mano_obra END,
+            costo_piezas = CASE WHEN $2::varchar(10) = 'APROBADA' THEN COALESCE(cotiz_piezas, 0) ELSE costo_piezas END,
+            cobro_revision = $7, enlace_hash = NULL, enlace_vence = NULL WHERE id = $1`,
+    [o.id, o.resultado, o.por, o.medio, o.ip ?? null, estado, new Decimal(revision).toFixed(2)]);
+  await c.query("INSERT INTO servicio_historial (id, servicio_id, estado, nota, usuario_id) VALUES ($1,$2,$3,$4,$5)", [uuidv7(), o.id, estado, nota, o.usuarioId]);
+  return { estado, revision };
+}
 
 export async function rutasCentralServicio(app: FastifyInstance) {
   const empresaDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-empresa-id"]);
@@ -62,7 +102,10 @@ export async function rutasCentralServicio(app: FastifyInstance) {
     const out = await enTransaccion(async (c) => {
       let sucursalId = b.sucursalId, clienteId = b.clienteId ?? null, ventaId: string | null = null, productoId: string | null = null, serie: string | null = null, garantiaHasta: string | null = null;
       let descripcion = b.descripcion ?? "";
-      if (!b.serieId) serie = b.serieLibre || null;
+      if (!b.serieId) {
+        serie = (b.serieLibre ?? "").replace(/\s+/g, " ").toUpperCase() || null;
+        if (!serie || serie.length < 3) throw new ErrorNegocio("Escriba la serie del equipo: queda en su historial de servicio");
+      }
       if (b.serieId) {
         const s = (await c.query<{ sucursal_id: string; producto_id: string; producto: string; serie: string; venta_id: string; cliente_id: string | null; garantia: string | null }>(
           `SELECT v.sucursal_id, sp.producto_id, p.nombre AS producto, sp.serie, sp.venta_id, sp.cliente_id, to_char(sp.garantia_hasta,'YYYY-MM-DD') AS garantia
@@ -74,7 +117,8 @@ export async function rutasCentralServicio(app: FastifyInstance) {
       }
       if (!sucursalId) sucursalId = (await c.query<{ id: string }>("SELECT id FROM sucursales WHERE empresa_id = $1 AND activo ORDER BY tipo = 'ALMACEN', codigo LIMIT 1", [empresaId])).rows[0]?.id;
       if (!sucursalId || !(await c.query("SELECT 1 FROM sucursales WHERE id = $1 AND empresa_id = $2", [sucursalId, empresaId])).rowCount) throw new ErrorNegocio("Sucursal no válida");
-      if (clienteId && !(await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2", [clienteId, empresaId])).rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
+      if (!clienteId) throw new ErrorNegocio("Elija el cliente de la orden: hace falta para avisarle y enviarle la cotización");
+      if (!(await c.query("SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2", [clienteId, empresaId])).rowCount) throw new ErrorNegocio("Cliente no encontrado", 404);
       const vigente = !!garantiaHasta && garantiaHasta >= hoyRD();
       const tipoGarantia = b.tipoGarantia ?? (vigente ? "TIENDA" : "SIN");
       if (tipoGarantia === "TIENDA" && !vigente) throw new ErrorNegocio("La garantía de la tienda no está vigente para este artículo: use «Sin garantía» o «Garantía del fabricante»");
@@ -117,6 +161,35 @@ export async function rutasCentralServicio(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /**
+   * Genera el enlace para que el cliente apruebe o rechace la cotización desde su celular (vale 7 días; uno nuevo anula el anterior)
+   * y el mensaje listo para enviarlo por WhatsApp.
+   */
+  app.post("/central/servicio/:id/enlace", async (req) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const o = (await pool.query<{ estado: string; aprobacion: string | null; telefono: string | null; cliente: string | null; descripcion: string; total: string; empresa: string | null; codigo: string }>(
+      `SELECT t.estado, t.aprobacion, COALESCE(t.telefono, cl.telefono) AS telefono, cl.nombre AS cliente, t.descripcion,
+              (COALESCE(t.cotiz_mano_obra,0) + COALESCE(t.cotiz_piezas,0))::text AS total, e.nombre_comercial AS empresa,
+              'SRV-' || s.codigo || '-' || lpad(t.numero::text, 6, '0') AS codigo
+         FROM servicios_tecnicos t JOIN sucursales s ON s.id = t.sucursal_id JOIN empresas e ON e.id = s.empresa_id LEFT JOIN clientes cl ON cl.id = t.cliente_id
+        WHERE t.id = $1 AND s.empresa_id = $2`, [id, empresaDe(req)])).rows[0];
+    if (!o) throw new ErrorNegocio("Orden no encontrada", 404);
+    if (o.aprobacion !== "PENDIENTE" || o.estado !== "COTIZADO") throw new ErrorNegocio("Esta orden no tiene una cotización esperando respuesta: envíe primero la cotización", 409);
+    const token = randomBytes(24).toString("base64url");
+    await pool.query("UPDATE servicios_tecnicos SET enlace_hash = $2, enlace_vence = now() + interval '7 days' WHERE id = $1", [id, huellaEnlace(token)]);
+    const publica = estadoTunel().url ?? process.env.PUBLIC_URL?.trim() ?? null;
+    const alcanzable = !!publica || !!process.env.VERCEL;
+    const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").split(",")[0];
+    const proto = String(req.headers["x-forwarded-proto"] ?? "https").split(",")[0];
+    const base = (publica ?? (host ? `${proto}://${host}` : "")).replace(/\/+$/, "");
+    const url = `${base}/aprobar/${token}`;
+    const total = new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(o.total));
+    const mensaje = `Hola${o.cliente ? " " + o.cliente.split(" ")[0] : ""}, le enviamos la cotización de la reparación de su ${o.descripcion}: ${total}. Puede revisarla y aprobarla o rechazarla aquí: ${url}${o.empresa ? `\n${o.empresa}` : ""}`;
+    const dig = (o.telefono ?? "").replace(/\D/g, "");
+    const wa = dig.length >= 10 ? `https://wa.me/${dig.length === 10 ? "1" + dig : dig}?text=${encodeURIComponent(mensaje)}` : null;
+    return { url, vence: new Date(Date.now() + 7 * 86400e3).toISOString(), alcanzable, wa, mensaje };
+  });
+
   app.get("/central/servicio/:id", async (req) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const r = await pool.query(`${SQL} WHERE t.id = $1 AND s.empresa_id = $2`, [id, empresaDe(req)]);
@@ -153,27 +226,16 @@ export async function rutasCentralServicio(app: FastifyInstance) {
         if (t.en_garantia) throw new ErrorNegocio("Esta orden cubre garantía: no necesita cotización");
         if (!["RECIBIDO", "EN_REVISION", "COTIZADO"].includes(t.estado)) throw new ErrorNegocio("Ya no se puede cotizar: la orden está en " + t.estado, 409);
         add("cotiz_mano_obra", new Decimal(b.cotizar.manoObra).toFixed(2)); add("cotiz_piezas", new Decimal(b.cotizar.piezas).toFixed(2));
-        add("cotiz_nota", b.cotizar.nota || null); set.push("cotiz_en = now()", "aprobacion = 'PENDIENTE'", "aprobacion_en = NULL", "aprobacion_por = NULL", "aprobacion_medio = NULL");
+        add("cotiz_nota", b.cotizar.nota || null); set.push("cotiz_en = now()", "aprobacion = 'PENDIENTE'", "aprobacion_en = NULL", "aprobacion_por = NULL", "aprobacion_medio = NULL", "enlace_hash = NULL", "enlace_vence = NULL"); // una cotización nueva anula el enlace anterior
         estadoNuevo = "COTIZADO";
         notaHist = `Cotización enviada: ${new Decimal(b.cotizar.manoObra).plus(b.cotizar.piezas).toFixed(2)} (mano de obra ${new Decimal(b.cotizar.manoObra).toFixed(2)} + piezas ${new Decimal(b.cotizar.piezas).toFixed(2)})`;
       }
-      if (b.decision) {
-        if (t.aprobacion !== "PENDIENTE") throw new ErrorNegocio("Primero envíe la cotización: no hay ninguna esperando la respuesta del cliente", 409);
-        add("aprobacion", b.decision.resultado); set.push("aprobacion_en = now()"); add("aprobacion_por", b.decision.por); add("aprobacion_medio", b.decision.medio);
-        if (b.decision.resultado === "APROBADA") {
-          estadoNuevo = "EN_REPARACION";
-          add("costo_mano_obra", t.cotiz_mano_obra ?? "0"); add("costo_piezas", t.cotiz_piezas ?? "0");
-          notaHist = `Cotización aprobada por ${b.decision.por} (${b.decision.medio.toLowerCase()})`;
-        } else {
-          const cfg = (await c.query<{ cobrar_revision: boolean; monto_revision: string }>("SELECT cobrar_revision, monto_revision FROM servicio_config WHERE empresa_id = $1", [empresaDe(req)])).rows[0];
-          const revision = b.decision.cobrarRevision ?? (cfg?.cobrar_revision ? Number(cfg.monto_revision) : 0);
-          add("cobro_revision", new Decimal(revision).toFixed(2));
-          estadoNuevo = "SIN_REPARACION";
-          notaHist = `Cotización rechazada por ${b.decision.por} (${b.decision.medio.toLowerCase()})${revision > 0 ? `; se cobra la revisión: ${new Decimal(revision).toFixed(2)}` : ""}`;
-        }
+      if (b.decision) { // la respuesta del cliente se registra sola (no se mezcla con otros cambios)
+        await aplicarDecision(c, { id, empresaId: empresaDe(req), resultado: b.decision.resultado, por: b.decision.por, medio: b.decision.medio, cobrarRevision: b.decision.cobrarRevision, usuarioId: usuarioDe(req) });
+        return;
       }
       // Reparar sin aprobación del cliente no se puede cuando la reparación se cobra
-      if (estadoNuevo && ["EN_REPARACION", "ESPERANDO_PIEZA", "LISTO"].includes(estadoNuevo) && !t.en_garantia && !b.decision && t.aprobacion !== "APROBADA")
+      if (estadoNuevo && ["EN_REPARACION", "ESPERANDO_PIEZA", "LISTO"].includes(estadoNuevo) && !t.en_garantia && t.aprobacion !== "APROBADA")
         throw new ErrorNegocio("Falta la aprobación del cliente: envíe la cotización y registre su respuesta antes de reparar");
       if (estadoNuevo === "EN_FABRICANTE") {
         if (t.tipo_garantia !== "FABRICANTE") throw new ErrorNegocio("Solo las órdenes con garantía del fabricante se envían al fabricante");
