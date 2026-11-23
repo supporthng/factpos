@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { uuidv7 } from "@factpos/compartido";
+import { uuidv7, edicionPorId } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { evaluarLicencia, type ResultadoLicencia } from "./nucleo.js";
@@ -144,6 +144,13 @@ const versionApp = () => {
   return version;
 };
 
+/** La edición de la licencia fija el tipo de negocio INICIAL de la empresa: solo si todavía está en el de siempre (TIENDA). Después el cliente lo cambia en Datos de la empresa. */
+async function aplicarEdicion(edicion: string | undefined) {
+  const ed = edicionPorId(edicion);
+  if (!ed) return;
+  await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE tipo_negocio = 'TIENDA'", [ed.tipoNegocio]).catch(() => {});
+}
+
 export async function activarLicencia(clave: string, apiUrl?: string) {
   const f = await filaLicencia();
   apiUrl = estadoTunel().url ?? apiUrl; // master con túnel: la web y las sucursales entran por ahí
@@ -155,6 +162,7 @@ export async function activarLicencia(clave: string, apiUrl?: string) {
   await pool.query("UPDATE licencia SET token = $1, secreto = $2, portal_url = $3, clave_activacion = $4, ultimo_contacto = now(), ultimo_error = NULL, actualizado_en = now() WHERE id = 1",
     [r.licencia, r.secreto, PORTAL_URL(), clave.trim().toUpperCase()]);
   olvidarLicencia();
+  await aplicarEdicion(e.datos?.edicion);
   await reportarTunel(PORTAL_URL()).catch(() => false);
   // Master: con la licencia activa ya puede tener su dirección fija (<empresa>.factpos.app)
   const { guardarEnEnv } = await import("../sync/alta.js");
@@ -173,6 +181,7 @@ export async function renovarLicencia() {
     const e = evaluarLicencia(r.licencia, { instalacion: f.instalacion_id });
     if (e.error) throw new ErrorNegocio(`Licencia recibida inválida: ${e.error}`, 502);
     await pool.query("UPDATE licencia SET token = $1, ultimo_contacto = now(), ultimo_error = NULL, actualizado_en = now() WHERE id = 1", [r.licencia]);
+    await aplicarEdicion(e.datos?.edicion);
   } catch (err) {
     // Se conserva la licencia que había: sigue valiendo hasta su fecha
     await pool.query("UPDATE licencia SET ultimo_error = $1 WHERE id = 1", [(err as Error).message.slice(0, 300)]);
@@ -378,7 +387,7 @@ export async function politicaPortal(): Promise<Politica | null> {
 }
 
 const publico = (r: ResultadoLicencia) => ({
-  plan: r.datos?.plan ?? null,
+  plan: r.datos?.plan ?? null, edicion: r.datos?.edicion ?? null,
   estado: r.estado, permiteVender: r.permiteVender, dias: r.dias, mensaje: r.mensaje, error: r.error ?? null,
   cliente: r.datos?.cliente.nombre ?? null, sucursales: r.datos?.sucursales ?? null, vence: r.datos?.vence ?? null, modulos: r.datos?.modulos ?? [],
 });

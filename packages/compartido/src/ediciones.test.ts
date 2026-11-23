@@ -1,0 +1,23 @@
+import { describe, expect, it } from "vitest";
+import { EDICIONES, edicionPorId, nombreEdicion } from "./ediciones.js";
+import { TIPOS_NEGOCIO } from "./tipo-negocio.js";
+
+describe("ediciones", () => {
+  it("cada edición apunta a un tipo de negocio que existe y tiene id y slug únicos", () => {
+    for (const e of EDICIONES) expect(TIPOS_NEGOCIO).toContain(e.tipoNegocio);
+    expect(new Set(EDICIONES.map((e) => e.id)).size).toBe(EDICIONES.length);
+    expect(new Set(EDICIONES.map((e) => e.slug)).size).toBe(EDICIONES.length);
+  });
+  it("mueblería y bar/restaurante son derivados y fijan su tipo de negocio", () => {
+    expect(edicionPorId("MUEBLERIA")?.tipoNegocio).toBe("MUEBLERIA");
+    expect(edicionPorId("BAR_RESTAURANTE")?.tipoNegocio).toBe("RESTAURANTE");
+  });
+  it("abarrotes, supermercado y licorería son FactPOS a secas (no tienen edición)", () => {
+    for (const id of ["ABARROTES", "LICORERIA", "SUPERMERCADO"]) expect(edicionPorId(id)).toBeUndefined();
+  });
+  it("sin edición (o una desconocida) es FactPOS estándar", () => {
+    expect(nombreEdicion(null)).toBe("FactPOS");
+    expect(nombreEdicion("XYZ")).toBe("FactPOS");
+    expect(nombreEdicion("MUEBLERIA")).toBe("FactPOS Mueblería");
+  });
+});
