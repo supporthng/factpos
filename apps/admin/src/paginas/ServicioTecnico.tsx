@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api, num, rd } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 
@@ -83,6 +83,18 @@ export function ServicioTecnico() {
   );
 }
 
+/** Rejilla de campos: se acomoda sola a 1, 2 o 3 columnas según el ancho */
+const REJILLA = { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" } as const;
+/** Bloque numerado del formulario, con su título */
+function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <div style={{ borderTop: "1px solid var(--borde, #e5e7eb)", marginTop: 14, paddingTop: 10 }}>
+      <div className="suave" style={{ fontWeight: 700, fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>{titulo}</div>
+      {children}
+    </div>
+  );
+}
+
 interface ClienteB { id: string; nombre: string; documento: string | null; telefono: string | null; direccion: string | null }
 
 /** Buscar un cliente (nombre, RNC o teléfono) o crear uno nuevo ahí mismo: toda orden lleva cliente para avisarle y enviarle la cotización. */
@@ -154,8 +166,8 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
     } catch (e) { onError((e as Error).message); }
   };
   return (
-    <div className="tarjeta no-imprimir" style={{ marginBottom: 12, maxWidth: 760 }}>
-      <b>Nueva orden de servicio</b>
+    <div className="tarjeta no-imprimir" style={{ marginBottom: 12 }}>
+      <b style={{ fontSize: 16 }}>Nueva orden de servicio</b>
       {!serie && !libre && <>
         <div className="panel cab-compra">
           <label className="campo"><span>Serie, factura, cliente o cédula</span><input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setBuscado(q.trim())} /></label>
@@ -172,38 +184,52 @@ function NuevaOrden({ onCerrar, onListo, onError }: { onCerrar: () => void; onLi
         </tbody></table>}
         <p><button className="boton chico" onClick={() => setLibre(true)}>El equipo no se vendió aquí (abrir sin factura)</button></p>
       </>}
-      {(serie || libre) && <>
-        {serie
-          ? <p><b>{serie.producto}</b> · Serie {serie.serie} · Fact. #{serie.factura} · {serie.cliente ?? "sin cliente"}<br />
+      {(serie || libre) && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", columnGap: 28, alignItems: "start" }}>
+        <div style={{ minWidth: 0 }}>
+        <Seccion titulo="1 · Cliente">
+          {serie?.cliente
+            ? <p style={{ margin: 0 }}><b>{serie.cliente}</b> <span className="suave">(el de la venta de este equipo)</span></p>
+            : <ElegirCliente valor={cliente} onElegir={elegirCliente} onError={onError} />}
+        </Seccion>
+        <Seccion titulo="2 · Equipo">
+          {serie
+            ? <p style={{ margin: 0 }}><b>{serie.producto}</b> · Serie {serie.serie} · Fact. #{serie.factura} · {serie.cliente ?? "sin cliente"}<br />
             {serie.vigente ? <span style={{ color: "var(--ok, #1b7f3b)" }}>Garantía vigente hasta {fechaCorta(serie.garantiaHasta!)}: el servicio no se cobra.</span> : <span>{serie.garantiaHasta ? `La garantía venció el ${fechaCorta(serie.garantiaHasta)}` : "Sin garantía"}: el servicio se cobra.</span>}{" "}
             <button className="boton chico" onClick={() => setSerie(null)}>Cambiar</button></p>
-          : <>
-            <label className="campo"><span>Equipo</span><input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej. Nevera 14 pies" /></label>
-            <div className="panel cab-compra">
-              <label className="campo"><span>Marca</span><input value={marca} onChange={(e) => setMarca(e.target.value)} /></label>
-              <label className="campo"><span>Modelo</span><input value={modelo} onChange={(e) => setModelo(e.target.value)} /></label>
-              <label className="campo"><span>Serie (obligatoria)</span><input value={serieLibre} onChange={(e) => setSerieLibre(e.target.value)} placeholder="Número de serie del equipo" />{hist.length > 0 && <span className="suave pequeno" style={{ color: "var(--aviso, #b45309)" }}>Este equipo ya tiene {hist.length} orden(es) de servicio: {hist.slice(0, 3).map((h) => `${h.codigo} (${fechaCorta(h.recibidaEn)})`).join(", ")}</span>}</label>
-            </div>
-          </>}
-        <div className="panel cab-compra">
-          <label className="campo"><span>Garantía</span>
-            <select value={tipoG} onChange={(e) => setTipoG(e.target.value as typeof tipoG)}>
-              <option value="">{serie?.vigente ? "Garantía de la tienda (vigente)" : "Sin garantía (se cotiza y se cobra)"}</option>
-              {serie?.vigente && <option value="SIN">Sin garantía (se cotiza y se cobra)</option>}
-              <option value="FABRICANTE">Garantía del fabricante</option>
-            </select></label>
-          <label className="campo"><span>Accesorios que deja</span><input value={accesorios} onChange={(e) => setAccesorios(e.target.value)} placeholder="Cable, control remoto…" /></label>
-          <label className="campo"><span>Estado en que llega</span><input value={estadoEquipo} onChange={(e) => setEstadoEquipo(e.target.value)} placeholder="Rayones, golpes…" /></label>
+            : <>
+              <label className="campo"><span>Equipo</span><input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej. Nevera 14 pies" /></label>
+              <div style={REJILLA}>
+                <label className="campo"><span>Marca</span><input value={marca} onChange={(e) => setMarca(e.target.value)} /></label>
+                <label className="campo"><span>Modelo</span><input value={modelo} onChange={(e) => setModelo(e.target.value)} /></label>
+                <label className="campo"><span>Serie (obligatoria)</span><input value={serieLibre} onChange={(e) => setSerieLibre(e.target.value)} placeholder="Número de serie del equipo" />{hist.length > 0 && <span className="suave pequeno" style={{ color: "var(--aviso, #b45309)" }}>Este equipo ya tiene {hist.length} orden(es) de servicio: {hist.slice(0, 3).map((h) => `${h.codigo} (${fechaCorta(h.recibidaEn)})`).join(", ")}</span>}</label>
+              </div>
+            </>}
+        </Seccion>
         </div>
-        {!serie?.cliente && <ElegirCliente valor={cliente} onElegir={elegirCliente} onError={onError} />}
-        <label className="campo"><span>Falla que reporta el cliente</span><input value={falla} maxLength={500} onChange={(e) => setFalla(e.target.value)} /></label>
-        <div className="panel cab-compra">
-          <label className="campo"><span>Dónde</span><select value={lugar} onChange={(e) => setLugar(e.target.value as "TALLER" | "DOMICILIO")}><option value="TALLER">En el taller</option><option value="DOMICILIO">A domicilio</option></select></label>
-          <label className="campo"><span>Teléfono</span><input value={telefono} onChange={(e) => setTelefono(e.target.value)} /></label>
-          <label className="campo"><span>Técnico</span><input value={tecnico} onChange={(e) => setTecnico(e.target.value)} /></label>
+        <div style={{ minWidth: 0 }}>
+        <Seccion titulo="3 · Garantía y estado en que llega">
+          <div style={REJILLA}>
+            <label className="campo"><span>Garantía</span>
+              <select value={tipoG} onChange={(e) => setTipoG(e.target.value as typeof tipoG)}>
+                <option value="">{serie?.vigente ? "Garantía de la tienda (vigente)" : "Sin garantía (se cotiza y se cobra)"}</option>
+                {serie?.vigente && <option value="SIN">Sin garantía (se cotiza y se cobra)</option>}
+                <option value="FABRICANTE">Garantía del fabricante</option>
+              </select></label>
+            <label className="campo"><span>Accesorios que deja</span><input value={accesorios} onChange={(e) => setAccesorios(e.target.value)} placeholder="Cable, control remoto…" /></label>
+            <label className="campo"><span>Estado en que llega</span><input value={estadoEquipo} onChange={(e) => setEstadoEquipo(e.target.value)} placeholder="Rayones, golpes…" /></label>
+          </div>
+        </Seccion>
+        <Seccion titulo="4 · Falla y atención">
+          <label className="campo"><span>Falla que reporta el cliente</span><textarea rows={2} value={falla} maxLength={500} onChange={(e) => setFalla(e.target.value)} placeholder="Ej. No enciende, hace ruido, no enfría…" style={{ width: "100%", resize: "vertical", font: "inherit" }} /></label>
+          <div style={{ ...REJILLA, marginTop: 8 }}>
+            <label className="campo"><span>Dónde</span><select value={lugar} onChange={(e) => setLugar(e.target.value as "TALLER" | "DOMICILIO")}><option value="TALLER">En el taller</option><option value="DOMICILIO">A domicilio</option></select></label>
+            <label className="campo"><span>Teléfono (WhatsApp)</span><input value={telefono} onChange={(e) => setTelefono(e.target.value)} /></label>
+            <label className="campo"><span>Técnico</span><input value={tecnico} onChange={(e) => setTecnico(e.target.value)} /></label>
+          </div>
+          {lugar === "DOMICILIO" && <label className="campo" style={{ marginTop: 8 }}><span>Dirección</span><input value={direccion} onChange={(e) => setDireccion(e.target.value)} /></label>}
+        </Seccion>
         </div>
-        {lugar === "DOMICILIO" && <label className="campo"><span>Dirección</span><input value={direccion} onChange={(e) => setDireccion(e.target.value)} /></label>}
-      </>}
+      </div>}
       <div className="fila-acciones" style={{ marginTop: 8 }}>
         {(serie || libre) && <button className="boton primario" onClick={guardar} disabled={falla.trim().length < 3 || sinCliente || !serieOk || (!serie && descripcion.trim().length < 2)}>Abrir orden</button>}
         <button className="boton" onClick={onCerrar}>Cancelar</button>
@@ -351,10 +377,10 @@ function Opciones({ onMsg }: { onMsg: (t: string, tipo: "ok" | "error") => void 
   return (
     <div className="no-imprimir" style={{ marginBottom: 8 }}>
       <button className="boton chico" onClick={() => setAbierto(!abierto)}>{abierto ? "Ocultar opciones" : "Opciones del servicio"}</button>
-      {abierto && <div className="panel cab-compra" style={{ marginTop: 6 }}>
+      {abierto && <div className="panel" style={{ marginTop: 6, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <label className="campo" style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><input type="checkbox" checked={cobra} onChange={(e) => setCobrar(e.target.checked)} /><span>Cobrar la revisión si el cliente rechaza la cotización</span></label>
         {cobra && <label className="campo"><span>Monto de la revisión</span><input inputMode="decimal" value={m} onChange={(e) => setMonto(decimal(e.target.value))} /></label>}
-        <button className="boton primario" onClick={guardar}>Guardar</button>
+        <button className="boton primario" style={{ width: "auto" }} onClick={guardar}>Guardar</button>
       </div>}
     </div>
   );
