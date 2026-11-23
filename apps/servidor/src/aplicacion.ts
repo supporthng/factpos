@@ -15,6 +15,7 @@ import { rutasCentralEmpresas } from "./rutas/central-empresas.js";
 import { rutasDgiiPublico } from "./rutas/dgii-publico.js";
 import { rutasPortalLector } from "./lector/portal.js";
 import { rutasPortalGastos } from "./licencia/gastos.js";
+import { rutasPortalVideos } from "./licencia/videos.js";
 import { rutasLectorFacturas } from "./lector/central.js";
 import { rutasComprasBorradores } from "./rutas/central-compras-borradores.js";
 import { rutasRespaldos, rutasRestaurarRespaldo } from "./respaldo/respaldo.js";
@@ -275,6 +276,7 @@ export async function crearApp() {
     await app.register(rutasPortalRespaldo);
     await app.register(rutasPortalLector);
     await app.register(rutasPortalGastos);
+    await app.register(rutasPortalVideos);
     return app;
   }
 
