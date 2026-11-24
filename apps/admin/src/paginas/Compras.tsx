@@ -247,19 +247,27 @@ export function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionI
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [activo, setActivo] = useState(0);
+  // Farmacias: el vendedor ve dónde está el producto (estante-nivel-posición) y puede buscar por principio activo
+  const [farmacia, setFarmacia] = useState<Record<string, { ubicacion: string | null; principioActivo: string | null }>>({});
+  useEffect(() => {
+    api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => r.tipoNegocio === "FARMACIA"
+      ? api<{ productoId: string; ubicacion: string | null; principioActivo: string | null }[]>("/central/farmacia/mapa").then((l) => setFarmacia(Object.fromEntries(l.map((x) => [x.productoId, x]))))
+      : undefined).catch(() => {});
+  }, []);
   const filas = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return [];
     const palabras = t.split(/\s+/);
-    const out: { id: string; nombre: string; sku: string; presentacion: string; factor: string }[] = [];
+    const out: { id: string; nombre: string; sku: string; presentacion: string; factor: string; ubicacion?: string | null }[] = [];
     for (const p of productos) {
-      const h = `${p.nombre} ${p.sku}`.toLowerCase();
+      const fa = farmacia[p.id];
+      const h = `${p.nombre} ${p.sku} ${fa?.principioActivo ?? ""}`.toLowerCase();
       if (!palabras.every((w) => h.includes(w))) continue;
-      for (const pr of p.presentaciones) out.push({ id: pr.id, nombre: p.nombre, sku: p.sku, presentacion: pr.nombre, factor: pr.factor });
+      for (const pr of p.presentaciones) out.push({ id: pr.id, nombre: p.nombre, sku: p.sku, presentacion: pr.nombre, factor: pr.factor, ubicacion: fa?.ubicacion });
       if (out.length >= 14) break;
     }
     return out.slice(0, 14);
-  }, [q, productos]);
+  }, [q, productos, farmacia]);
   const elegir = (id: string) => { onElegir(id); setQ(""); setActivo(0); setAbierto(false); };
   return (
     <div className="selector-producto buscador-linea">
@@ -277,6 +285,7 @@ export function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionI
           {filas.map((f, i) => (
             <button key={f.id} className={i === activo ? "activo" : ""} onMouseEnter={() => setActivo(i)} onMouseDown={(e) => { e.preventDefault(); elegir(f.id); }}>
               <b>{f.nombre}</b> <span className="suave">{f.presentacion}{n(f.factor) > 1 ? ` (${num(f.factor)} u.)` : ""} · {f.sku}</span>
+              {f.ubicacion && <span className="etiqueta" style={{ marginLeft: 8 }} title="Ubicación en la tramería (estante-nivel-posición)">📍 {f.ubicacion}</span>}
             </button>
           ))}
           {!filas.length && <span className="suave relleno">Sin resultados</span>}
