@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { uuidv7, edicionPorId } from "@factpos/compartido";
+import { uuidv7, edicionPorId, esNegocioDeMesas } from "@factpos/compartido";
 import { pool, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { evaluarLicencia, type ResultadoLicencia } from "./nucleo.js";
@@ -144,11 +144,13 @@ const versionApp = () => {
   return version;
 };
 
-/** La edición de la licencia fija el tipo de negocio INICIAL de la empresa: solo si todavía está en el de siempre (TIENDA). Después el cliente lo cambia en Datos de la empresa. */
+/** La edición de la licencia MANDA sobre el tipo que se eligió al instalar (la prueba arranca con lo elegido; lo pagado es lo que cuenta). Una licencia sin edición no toca el tipo. El cliente no lo cambia desde el programa. */
 async function aplicarEdicion(edicion: string | undefined) {
   const ed = edicionPorId(edicion);
   if (!ed) return;
-  await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE tipo_negocio = 'TIENDA'", [ed.tipoNegocio]).catch(() => {});
+  // Bar/Restaurante cubre también bar, discoteca y comida rápida: quien ya trabaja con mesas no se cambia (perdería, por ejemplo, el aforo del bar)
+  const mesas = esNegocioDeMesas(ed.tipoNegocio) ? ["RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"] : [ed.tipoNegocio];
+  await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE NOT (tipo_negocio = ANY($2::text[]))", [ed.tipoNegocio, mesas]).catch(() => {});
 }
 
 export async function activarLicencia(clave: string, apiUrl?: string) {

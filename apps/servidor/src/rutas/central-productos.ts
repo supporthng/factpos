@@ -584,7 +584,9 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     await pool.query("UPDATE empresas SET aforo_activo = $2, aforo_maximo = $3, aforo_categoria_id = $4 WHERE id = $1", [e, b.activo, b.maximo, b.categoriaId]);
     return { ok: true };
   });
+  /** El tipo de negocio lo fijan el instalador y la licencia: el cliente no lo cambia. Soporte puede abrirlo con PERMITIR_CAMBIO_TIPO_NEGOCIO=1 en el .env. */
   app.put("/central/empresa/tipo-negocio", async (req) => {
+    if (process.env.PERMITIR_CAMBIO_TIPO_NEGOCIO !== "1") throw new ErrorNegocio("El tipo de negocio lo define la instalación y su licencia: no se cambia desde aquí. Si necesita otro, comuníquese con FactPOS.", 403);
     const { tipoNegocio } = z.object({ tipoNegocio: z.enum(TIPOS_NEGOCIO) }).parse(req.body);
     await pool.query("UPDATE empresas SET tipo_negocio = $2 WHERE id = $1", [empresaDe(req), tipoNegocio]);
     return { tipoNegocio };

@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { uuidv7 } from "@factpos/compartido";
+import { uuidv7, TIPOS_NEGOCIO } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { hashClave, claveSegura } from "../sesion.js";
 import { hashPin } from "../autorizacion.js";
@@ -55,7 +55,9 @@ export async function rutasInicio(app: FastifyInstance) {
       const empresa = uuidv7(), suc = uuidv7(), alm = uuidv7(), caja = uuidv7();
       const rolAdmin = uuidv7(), rolSup = uuidv7(), rolCaj = uuidv7(), admin = uuidv7();
       const q = (sql: string, p: unknown[]) => c.query(sql, p);
-      await q("INSERT INTO empresas (id, rnc, razon_social, nombre_comercial) VALUES ($1,$2,$3,$4)", [empresa, b.rnc, b.razonSocial, b.nombreComercial]);
+      // Tipo de negocio elegido al instalar (TIPO_NEGOCIO en el .env); sin él, tienda como siempre
+      const tipoInstalado = (TIPOS_NEGOCIO as readonly string[]).includes((process.env.TIPO_NEGOCIO ?? "").trim().toUpperCase()) ? (process.env.TIPO_NEGOCIO ?? "").trim().toUpperCase() : "TIENDA";
+      await q("INSERT INTO empresas (id, rnc, razon_social, nombre_comercial, tipo_negocio) VALUES ($1,$2,$3,$4,$5)", [empresa, b.rnc, b.razonSocial, b.nombreComercial, tipoInstalado]);
       await q("INSERT INTO sucursales (id, empresa_id, codigo, nombre) VALUES ($1,$2,'S01',$3)", [suc, empresa, b.sucursal]);
       await q("INSERT INTO almacenes (id, sucursal_id, nombre, es_principal) VALUES ($1,$2,'Piso de venta',true)", [alm, suc]);
       await q("INSERT INTO cajas (id, sucursal_id, numero, nombre, almacen_id) VALUES ($1,$2,1,'Caja 1',$3)", [caja, suc, alm]);

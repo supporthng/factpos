@@ -61,6 +61,7 @@ VIAddVersionKey "LegalCopyright" "FactPOS"
 !define MUI_ABORTWARNING_TEXT "¿Cancelar la instalación de FactPOS?"
 
 Var Tipo          ; master (completa) | servidor | caja | admin
+Var Negocio       ; tipo de negocio del servidor: TIENDA | MUEBLERIA | RESTAURANTE | BAR | DISCOTECA | COMIDA_RAPIDA
 Var Empresa
 Var Licencia
 Var Codigo
@@ -89,6 +90,12 @@ Var hBorrar
 Var PowerShell  ; powershell.exe de 64 bits si Windows es x64 (el stub NSIS es x86)
 
 ; controles
+Var hN1
+Var hN2
+Var hN3
+Var hN4
+Var hN5
+Var hN6
 Var hR1
 Var hR5
 Var hR2
@@ -108,6 +115,7 @@ Var hClavePg
 !insertmacro MUI_PAGE_WELCOME
 Page custom PaginaExistente PaginaExistenteSalir
 Page custom PaginaTipo PaginaTipoSalir
+Page custom PaginaNegocio PaginaNegocioSalir
 Page custom PaginaDatos PaginaDatosSalir
 ; La impresora se elige después: la caja imprime por la predeterminada de Windows
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SaltarCarpeta
@@ -393,6 +401,76 @@ Function PaginaTipoSalir
   ${EndIf}
 FunctionEnd
 
+; ------------------------------------------------------------------ 1b. tipo de negocio
+; Solo donde se instala el servidor principal: define qué funciones quedan activas (las de los demás tipos quedan apagadas).
+; Las cajas y las sucursales toman el tipo del servidor. El cliente no lo cambia después: lo fija la instalación y la licencia.
+Function PaginaNegocio
+  ${If} $Tipo != "master"
+  ${AndIf} $Tipo != "servidor"
+    Abort
+  ${EndIf}
+  ${If} $Accion == "actualizar"
+  ${AndIf} $ServLoc != ""
+    Abort
+  ${EndIf}
+  !insertmacro MUI_HEADER_TEXT "¿Qué tipo de negocio es?" "Solo se activan las funciones de su tipo de negocio. Después no se cambia desde el programa."
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+
+  ${NSD_CreateRadioButton} 0 0 100% 12u "Tienda, colmado, licorería o supermercado"
+  Pop $hN1
+  ${NSD_AddStyle} $hN1 ${WS_GROUP}
+  ${NSD_CreateRadioButton} 0 18u 100% 12u "Mueblería y electrodomésticos (venta a plazos, apartados y entregas)"
+  Pop $hN2
+  ${NSD_CreateRadioButton} 0 36u 100% 12u "Restaurante (mesas, comandas, cuentas abiertas y propina)"
+  Pop $hN3
+  ${NSD_CreateRadioButton} 0 54u 100% 12u "Bar (mesas, cuentas abiertas, propina y control de aforo)"
+  Pop $hN4
+  ${NSD_CreateRadioButton} 0 72u 100% 12u "Discoteca (cuentas abiertas, entradas y control de aforo)"
+  Pop $hN5
+  ${NSD_CreateRadioButton} 0 90u 100% 12u "Comida rápida"
+  Pop $hN6
+
+  ${If} $Negocio == "MUEBLERIA"
+    ${NSD_Check} $hN2
+  ${ElseIf} $Negocio == "RESTAURANTE"
+    ${NSD_Check} $hN3
+  ${ElseIf} $Negocio == "BAR"
+    ${NSD_Check} $hN4
+  ${ElseIf} $Negocio == "DISCOTECA"
+    ${NSD_Check} $hN5
+  ${ElseIf} $Negocio == "COMIDA_RAPIDA"
+    ${NSD_Check} $hN6
+  ${Else}
+    ${NSD_Check} $hN1
+  ${EndIf}
+  nsDialogs::Show
+FunctionEnd
+
+Function PaginaNegocioSalir
+  ${NSD_GetState} $hN2 $0
+  ${NSD_GetState} $hN3 $1
+  ${NSD_GetState} $hN4 $2
+  ${NSD_GetState} $hN5 $3
+  ${NSD_GetState} $hN6 $4
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $Negocio "MUEBLERIA"
+  ${ElseIf} $1 == ${BST_CHECKED}
+    StrCpy $Negocio "RESTAURANTE"
+  ${ElseIf} $2 == ${BST_CHECKED}
+    StrCpy $Negocio "BAR"
+  ${ElseIf} $3 == ${BST_CHECKED}
+    StrCpy $Negocio "DISCOTECA"
+  ${ElseIf} $4 == ${BST_CHECKED}
+    StrCpy $Negocio "COMIDA_RAPIDA"
+  ${Else}
+    StrCpy $Negocio "TIENDA"
+  ${EndIf}
+FunctionEnd
+
 ; ------------------------------------------------------------------ 2. datos
 Function PaginaDatos
   ; La Caja no pregunta nada: el instalador busca solo el servidor de la tienda en la red (como el verificador)
@@ -618,6 +696,9 @@ Section "FactPOS" SecPrincipal
     ${If} $Tipo == "master"
     ${OrIf} $Tipo == "servidor"
       StrCpy $1 "$1 -Master"
+      ${If} $Negocio != ""
+        StrCpy $1 "$1 -TipoNegocio '$Negocio'"
+      ${EndIf}
       ${If} $Licencia != ""
         StrCpy $1 "$1 -Licencia '$Licencia'"
       ${EndIf}

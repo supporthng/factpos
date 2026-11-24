@@ -63,25 +63,16 @@ const TIPOS: [string, string][] = [
   ["MUEBLERIA", "Mueblería y electrodomésticos (venta a plazos, apartados y entregas)"],
 ];
 
-/** Restaurante, bar, discoteca y comida rápida muestran Cuentas en la caja (mesas, división de cuenta). Tienda y mueblería no. */
+/** El tipo de negocio lo fijan la instalación y la licencia: aquí solo se muestra. */
 function TipoNegocio() {
   const [tipo, setTipo] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
   useEffect(() => { api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => setTipo(r.tipoNegocio)).catch(() => setTipo("TIENDA")); }, []);
   if (tipo === null) return null;
-  const guardar = async (nuevo: string) => {
-    setMsg(null);
-    try { await api("/central/empresa/tipo-negocio", { metodo: "PUT", cuerpo: { tipoNegocio: nuevo } }); setTipo(nuevo); setMsg({ t: nuevo === "TIENDA" ? "Listo: las cajas siguen como siempre." : nuevo === "MUEBLERIA" ? "Guardado. Verá los planes de financiamiento en Finanzas; las cajas siguen sin mesas." : "Guardado. En unos segundos las cajas mostrarán el botón Cuentas (al recargar la pantalla de venta).", tipo: "ok" }); }
-    catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
-  };
   return (
     <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
       <h3 style={{ marginTop: 0 }}>Tipo de negocio</h3>
-      <p className="suave">«Tienda» deja todo como está. Restaurante, bar, discoteca y comida rápida activan <b>Cuentas</b> en la caja: mesas o clientes con varias personas, para dividir la cuenta antes o después de ordenar. «Mueblería» es para venta de muebles y electrodomésticos a crédito, sin mesas.</p>
-      <select value={tipo} onChange={(e) => void guardar(e.target.value)}>
-        {TIPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-      </select>
-      {msg && <div style={{ marginTop: 8 }}><Aviso texto={msg.t} tipo={msg.tipo} /></div>}
+      <p style={{ margin: "0 0 6px" }}><b>{TIPOS.find(([v]) => v === tipo)?.[1] ?? tipo}</b></p>
+      <p className="suave" style={{ margin: 0 }}>Se definió al instalar y lo confirma su licencia: solo están activas las funciones de este tipo de negocio. No se cambia desde el programa; si necesita otro, comuníquese con FactPOS.</p>
     </div>
   );
 }
