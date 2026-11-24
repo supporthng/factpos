@@ -96,6 +96,7 @@ Var hN3
 Var hN4
 Var hN5
 Var hN6
+Var hN7
 Var hR1
 Var hR5
 Var hR2
@@ -433,6 +434,8 @@ Function PaginaNegocio
   Pop $hN5
   ${NSD_CreateRadioButton} 0 90u 100% 12u "Comida rápida"
   Pop $hN6
+  ${NSD_CreateRadioButton} 0 108u 100% 12u "Farmacia (vencimientos, ubicación en tramería y venta con receta)"
+  Pop $hN7
 
   ${If} $Negocio == "MUEBLERIA"
     ${NSD_Check} $hN2
@@ -444,6 +447,8 @@ Function PaginaNegocio
     ${NSD_Check} $hN5
   ${ElseIf} $Negocio == "COMIDA_RAPIDA"
     ${NSD_Check} $hN6
+  ${ElseIf} $Negocio == "FARMACIA"
+    ${NSD_Check} $hN7
   ${Else}
     ${NSD_Check} $hN1
   ${EndIf}
@@ -456,6 +461,7 @@ Function PaginaNegocioSalir
   ${NSD_GetState} $hN4 $2
   ${NSD_GetState} $hN5 $3
   ${NSD_GetState} $hN6 $4
+  ${NSD_GetState} $hN7 $5
   ${If} $0 == ${BST_CHECKED}
     StrCpy $Negocio "MUEBLERIA"
   ${ElseIf} $1 == ${BST_CHECKED}
@@ -466,6 +472,8 @@ Function PaginaNegocioSalir
     StrCpy $Negocio "DISCOTECA"
   ${ElseIf} $4 == ${BST_CHECKED}
     StrCpy $Negocio "COMIDA_RAPIDA"
+  ${ElseIf} $5 == ${BST_CHECKED}
+    StrCpy $Negocio "FARMACIA"
   ${Else}
     StrCpy $Negocio "TIENDA"
   ${EndIf}
