@@ -197,12 +197,18 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
         cajaId, clienteId: cliente?.id, notas: notas.trim() || undefined, items: items(),
         ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}), ...(hayPrecioLibre ? { motivoPrecio: motivoPrecio.trim() } : {}),
         ...(soloEnviar && aPlazos ? { financiamiento: financiamiento() } : {}),
+        ...(receta ? { receta: { paciente: receta.paciente.trim(), medico: receta.medico.trim(), ...(receta.exequatur.trim() ? { exequatur: receta.exequatur.trim() } : {}), ...(receta.fechaReceta ? { fechaReceta: receta.fechaReceta } : {}) } } : {}),
       } });
       setEnviada(`Venta #${r.numero} enviada a ${cajaSel?.caja ?? "la caja"}: el cajero la verá en «Por cobrar»${aPlazos ? ` y cobrará la inicial de ${rd(n(inicial))}` : ""}.`);
       setAPlazos(false); setPlanVenta(""); setInicial(""); setGNombre(""); setGDoc(""); setGTel(""); setMotivoCredito(""); setPrev(null);
       setLineas([]); setCliente(null); setNotas(""); setMotivo(""); setMotivoPrecio(""); setCupon(""); setCuponTxt(""); setCot(null);
-      ventaId.current = crypto.randomUUID();
-    } catch (e) { setMsg((e as Error).message); }
+      ventaId.current = crypto.randomUUID(); setReceta(null);
+    } catch (e) {
+      const m = (e as Error).message;
+      // Farmacias: la receta se pide aquí, en el mostrador; la caja solo cobra
+      if (/^RECETA:/.test(m)) { setReceta((r) => r ?? { paciente: "", medico: "", exequatur: "", fechaReceta: "" }); setMsg(m.replace(/^RECETA:\s*/, "")); }
+      else setMsg(m);
+    }
     setGuardando(false);
   };
 

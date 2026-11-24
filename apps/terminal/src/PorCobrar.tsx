@@ -74,8 +74,6 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
     : forma === "MIXTO" && otrosC === 0 ? "Escriba lo que se paga con tarjeta o transferencia; el resto se cobra en efectivo."
     : (forma === "EFECTIVO" || forma === "MIXTO") && recibido && cent(recibido) < efectivoC ? "El efectivo recibido es menor que lo que falta." : "";
 
-  const [pideReceta, setPideReceta] = useState(false);
-  const [receta, setReceta] = useState({ paciente: "", medico: "", exequatur: "", fechaReceta: "" });
   const cobrar = async () => {
     if (!detalle || falla || errorPago || trabajando) return;
     const pagos: Record<string, string>[] = [];
@@ -88,16 +86,9 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
     }
     setTrabajando(true); setMsg("");
     try {
-      const v = await api<VentaRegistrada>(ajustes.servidor, `${ruta}/${detalle.id}/cobrar`, {
-        cuerpo: { tipoDocumento: tipo, pagos, ...(pideReceta ? { receta: { paciente: receta.paciente.trim(), medico: receta.medico.trim(), exequatur: receta.exequatur.trim() || undefined, fechaReceta: receta.fechaReceta || undefined } } : {}) },
-      });
+      const v = await api<VentaRegistrada>(ajustes.servidor, `${ruta}/${detalle.id}/cobrar`, { cuerpo: { tipoDocumento: tipo, pagos } });
       onCobrada(v);
-    } catch (e) {
-      const m = (e as Error).message;
-      // Farmacias: lo controlado o de venta con receta pide los datos de la receta; se anotan y se vuelve a cobrar
-      if (/^RECETA:/.test(m)) { setPideReceta(true); setMsg(m.replace(/^RECETA:\s*/, "")); } else setMsg(m);
-      setTrabajando(false);
-    }
+    } catch (e) { setMsg((e as Error).message); setTrabajando(false); }
   };
   const devolver = async () => {
     if (!detalle || !confirm(`¿Devolver la venta #${detalle.numero} a la oficina sin cobrar? Quedará anulada.`)) return;
@@ -135,14 +126,6 @@ export function PanelPorCobrar({ ajustes, permitirSin, onCobrada, onCerrar }: {
           <label className="campo"><span>{forma === "TARJETA" ? "Voucher (opcional)" : "Referencia (opcional)"}</span><input value={refTarjeta} maxLength={60} onChange={(e) => setRefTarjeta(e.target.value)} /></label>
         )}
         {cambioC > 0 && <p>Devuelta: <b>{rd(dinero(cambioC))}</b></p>}
-        {pideReceta && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, margin: "8px 0" }}>
-            <label className="campo"><span>Paciente</span><input value={receta.paciente} onChange={(e) => setReceta({ ...receta, paciente: e.target.value })} /></label>
-            <label className="campo"><span>Médico</span><input value={receta.medico} onChange={(e) => setReceta({ ...receta, medico: e.target.value })} /></label>
-            <label className="campo"><span>Exequátur (opcional)</span><input value={receta.exequatur} onChange={(e) => setReceta({ ...receta, exequatur: e.target.value })} /></label>
-            <label className="campo"><span>Fecha de la receta</span><input type="date" value={receta.fechaReceta} onChange={(e) => setReceta({ ...receta, fechaReceta: e.target.value })} /></label>
-          </div>
-        )}
         {(falla || errorPago || msg) && <p className="error">{falla || errorPago || msg}</p>}
         <div className="fila-acciones">
           <button className="boton" onClick={() => setCobrando(false)}>← Ver factura</button>
