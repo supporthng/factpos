@@ -69,6 +69,11 @@ export async function rutasPorCobrar(app: FastifyInstance) {
       pagos: z.array(z.object({
         formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]), monto, recibido: monto.optional(), referencia: z.string().max(60).optional(),
       })).min(1, "Falta la forma de pago"),
+      /** Farmacias: receta de lo controlado o de venta con receta; la caja la anota al cobrar */
+      receta: z.object({
+        paciente: z.string().trim().min(3, "Anote el nombre del paciente").max(120), medico: z.string().trim().min(3, "Anote el nombre del médico").max(120),
+        exequatur: z.string().trim().max(30).optional(), fechaReceta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de receta inválida").optional(),
+      }).optional(),
     }).parse(req.body);
     const usuarioId = usuarioDe(req);
     if (!usuarioId) throw new ErrorNegocio("Sesión de caja no válida", 401);
@@ -102,7 +107,7 @@ export async function rutasPorCobrar(app: FastifyInstance) {
       }
       const v = await registrarVenta(c, cajaId, {
         usuarioId, clienteId: f.clienteId ?? undefined, tipoDocumento: b.tipoDocumento, notas: `Venta por cobrar #${f.numero}${f.notas ? ` · ${f.notas}` : ""}`.slice(0, 300),
-        items: f.items, excluirApartado: f.id, pagos, ...(autorizacionCredito ? { autorizacionCredito } : {}), ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
+        items: f.items, excluirApartado: f.id, pagos, ...(b.receta ? { receta: b.receta } : {}), ...(autorizacionCredito ? { autorizacionCredito } : {}), ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
       }, { exigirSeries: true, omitirLimiteCredito: !!f.excepcionPor });
       const ventaId = (v as { id: string }).id;
       await c.query("UPDATE ventas_por_cobrar SET estado = 'COBRADA', cerrada_en = now(), cerrada_por = $2, venta_id = $3 WHERE id = $1", [id, usuarioId, ventaId]);
