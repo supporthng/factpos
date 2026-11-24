@@ -319,6 +319,17 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
           <Aviso texto={cajas.error || msg} />
           {enviada && <Aviso tipo="info" texto={enviada} />}
           {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." />}
+          {receta && (
+            <div className="panel">
+              <h3>Receta</h3>
+              <div className="dos-col">
+                <label className="campo"><span>Paciente</span><input value={receta.paciente} onChange={(e) => setReceta({ ...receta, paciente: e.target.value })} /></label>
+                <label className="campo"><span>Médico</span><input value={receta.medico} onChange={(e) => setReceta({ ...receta, medico: e.target.value })} /></label>
+                <label className="campo"><span>Exequátur (opcional)</span><input value={receta.exequatur} onChange={(e) => setReceta({ ...receta, exequatur: e.target.value })} /></label>
+                <label className="campo"><span>Fecha de la receta</span><input type="date" value={receta.fechaReceta} onChange={(e) => setReceta({ ...receta, fechaReceta: e.target.value })} /></label>
+              </div>
+            </div>
+          )}
           <div className="panel tv-buscar"><BuscadorLinea inputRef={buscarRef} onElegir={agregar} /></div>
           <div className="panel tv-carrito">
             <div className="tv-titulo"><h3>Venta en curso</h3><span className="suave">{validas.length} {validas.length === 1 ? "línea" : "líneas"}</span></div>
