@@ -40,7 +40,7 @@ export interface Salida { productoId: string; cantidad: string }            // c
 export interface SalidaConLote extends Salida { loteId: string | null; indice: number }
 
 export async function repartirPorLotes(
-  c: Pick<PoolClient, "query">, almacenId: string, salidas: Salida[], opciones: { vencidosPrimero?: boolean } = {},
+  c: Pick<PoolClient, "query">, almacenId: string, salidas: Salida[], opciones: { vencidosPrimero?: boolean; excluirVencidos?: boolean } = {},
 ): Promise<SalidaConLote[]> {
   const productos = [...new Set(salidas.filter((s) => new Decimal(s.cantidad).lt(0)).map((s) => s.productoId))];
   const disponibles = new Map<string, { loteId: string; queda: Decimal }[]>();
@@ -48,7 +48,7 @@ export async function repartirPorLotes(
     const r = await c.query<{ producto_id: string; lote_id: string; cantidad: string }>(
       `SELECT el.producto_id, el.lote_id, el.cantidad::text AS cantidad
          FROM existencias_lote el JOIN lotes l ON l.id = el.lote_id
-        WHERE el.almacen_id = $1 AND el.producto_id = ANY($2::uuid[]) AND el.cantidad > 0
+        WHERE el.almacen_id = $1 AND el.producto_id = ANY($2::uuid[]) AND el.cantidad > 0${opciones.excluirVencidos ? " AND (l.vence_en IS NULL OR l.vence_en >= CURRENT_DATE)" : ""}
         ORDER BY el.producto_id,
                  (COALESCE(l.vence_en, 'infinity'::date) < CURRENT_DATE) ${opciones.vencidosPrimero ? "DESC" : "ASC"},
                  l.vence_en NULLS LAST, l.numero_lote
@@ -76,4 +76,42 @@ export async function repartirPorLotes(
     if (falta.gt(0)) resultado.push({ productoId: s.productoId, cantidad: falta.neg().toFixed(3), loteId: null, indice });
   });
   return resultado;
+}
+
+/**
+ * Farmacias: lo vencido NO se factura. Para cada producto que controla lotes, lo que se pide no puede pasar de lo vigente
+ * (lotes sin vencer o sin fecha) más lo que está sin lote (existencia anterior al control de lotes). Si no alcanza porque lo que
+ * queda está vencido, se dice cuántas unidades hay vencidas para retirarlas. Hay que llamarla ANTES de repartirPorLotes con excluirVencidos.
+ */
+export async function exigirVigentes(c: Pick<PoolClient, "query">, almacenId: string, salidas: Salida[]) {
+  const pedido = new Map<string, Decimal>();
+  for (const s of salidas) {
+    const q = new Decimal(s.cantidad);
+    if (q.lt(0)) pedido.set(s.productoId, (pedido.get(s.productoId) ?? new Decimal(0)).plus(q.neg()));
+  }
+  if (!pedido.size) return;
+  const r = await c.query<{ producto_id: string; nombre: string; controla: boolean; total: string; vigente: string; vencido: string }>(
+    `SELECT p.id AS producto_id, p.nombre, COALESCE(p.controla_lotes, false) AS controla,
+            COALESCE(e.cantidad, 0)::text AS total,
+            COALESCE(SUM(el.cantidad) FILTER (WHERE l.vence_en IS NULL OR l.vence_en >= CURRENT_DATE), 0)::text AS vigente,
+            COALESCE(SUM(el.cantidad) FILTER (WHERE l.vence_en < CURRENT_DATE), 0)::text AS vencido
+       FROM productos p
+       LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = $1
+       LEFT JOIN existencias_lote el ON el.producto_id = p.id AND el.almacen_id = $1 AND el.cantidad > 0
+       LEFT JOIN lotes l ON l.id = el.lote_id
+      WHERE p.id = ANY($2::uuid[])
+      GROUP BY p.id, p.nombre, p.controla_lotes, e.cantidad`,
+    [almacenId, [...pedido.keys()]],
+  );
+  for (const f of r.rows) {
+    if (!f.controla) continue;
+    const vencido = new Decimal(f.vencido);
+    if (vencido.lte(0)) continue;
+    const enLotes = new Decimal(f.vigente).plus(vencido);
+    const sinLote = Decimal.max(new Decimal(f.total).minus(enLotes), 0);
+    const utiles = new Decimal(f.vigente).plus(sinLote);
+    if (pedido.get(f.producto_id)!.gt(utiles)) {
+      throw new ErrorNegocio(`${f.nombre}: vencido. Solo hay ${utiles.toDecimalPlaces(3).toString()} unidad(es) vigente(s) y ${vencido.toDecimalPlaces(3).toString()} vencida(s) que no se pueden facturar: retírelas con una baja por vencimiento`, 409);
+    }
+  }
 }

@@ -1,3 +1,4 @@
+import { FarmaciaProducto } from "./Farmacia";
 import { useEffect, useRef, useState } from "react";
 import { api, rd, num, sesionActual, sucursalPropia } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
@@ -535,6 +536,8 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
             onChange={(e) => cambiar({ garantiaMeses: Math.min(120, Number(e.target.value.replace(/\D/g, "")) || 0) })} /></label>
         <label className="en-linea" style={{ marginTop: 8 }}><input type="checkbox" checked={!!f.usaSeries} onChange={(e) => cambiar({ usaSeries: e.target.checked })} /> Lleva número de serie / IMEI (se pide uno por unidad al facturar)</label>
       </div>
+
+      <FarmaciaProducto id={id ?? null} />
 
       <div className="panel">
         <div className="encabezado-sub">

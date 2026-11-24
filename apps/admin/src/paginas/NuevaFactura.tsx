@@ -58,6 +58,8 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
   const puedeDescuento = puede("venta.descuento");
   const puedeLibre = puede("venta.precio_libre");
   const [motivoPrecio, setMotivoPrecio] = useState("");
+  // Farmacias: la receta se pide cuando el servidor avisa que hay un medicamento controlado o con receta
+  const [receta, setReceta] = useState<{ paciente: string; medico: string; exequatur: string; fechaReceta: string } | null>(null);
   /** «cobrar» = se emite aquí mismo; «enviar» = se manda a una caja y allí se cobra (el comprobante sale al cobrar) */
   const [modo, setModo] = useState<"cobrar" | "enviar">(soloEnviar ? "enviar" : "cobrar");
   const [enviada, setEnviada] = useState("");
@@ -212,6 +214,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
       const r = await api<{ id: string }>("/central/facturas", { cuerpo: {
         cajaId, clienteId: cliente?.id, tipoDocumento: tipo, notas: notas.trim() || undefined, ventaId: ventaId.current,
         items: items(), ...(cupon ? { cuponCodigo: cupon } : {}), ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}), ...(hayPrecioLibre ? { motivoPrecio: motivoPrecio.trim() } : {}),
+        ...(receta ? { receta: { paciente: receta.paciente.trim(), medico: receta.medico.trim(), ...(receta.exequatur.trim() ? { exequatur: receta.exequatur.trim() } : {}), ...(receta.fechaReceta ? { fechaReceta: receta.fechaReceta } : {}) } } : {}),
         pagos: pagos.map((p) => ({
           formaPago: p.forma, monto: montoDe(p).toFixed(2),
           ...(p.forma === "EFECTIVO" && n(p.recibido) >= montoDe(p) && p.recibido ? { recibido: n(p.recibido).toFixed(2) } : {}),
@@ -223,7 +226,12 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
         catch (e) { setSinPlan({ id: r.id, error: (e as Error).message }); setGuardando(false); return; } // la factura ya está hecha: se avisa y se deja ir a verla
       }
       onCreada(r.id);
-    } catch (e) { setMsg((e as Error).message); setGuardando(false); }
+    } catch (e) {
+      const m = (e as Error).message;
+      if (/^RECETA:/.test(m)) { setReceta((r) => r ?? { paciente: "", medico: "", exequatur: "", fechaReceta: "" }); setMsg(m.replace(/^RECETA:\s*/, "")); }
+      else setMsg(m);
+      setGuardando(false);
+    }
   };
 
   const bloqueCaja = (
@@ -404,6 +412,17 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
         ? <Encabezado titulo="Nueva venta" descripcion="Busque los productos, arme la venta y envíela a la caja: el cliente paga allí y la caja emite el comprobante." />
         : <Encabezado titulo="Nueva factura" descripcion="Se factura como en la caja: precios del cliente, ofertas e ITBIS del sistema, y sale del inventario de esa caja." />}
       <Aviso texto={cajas.error || msg} />
+      {receta && (
+        <div className="panel">
+          <h3>Receta</h3>
+          <div className="dos-col">
+            <label className="campo"><span>Paciente</span><input value={receta.paciente} onChange={(e) => setReceta({ ...receta, paciente: e.target.value })} /></label>
+            <label className="campo"><span>Médico</span><input value={receta.medico} onChange={(e) => setReceta({ ...receta, medico: e.target.value })} /></label>
+            <label className="campo"><span>Exequátur (opcional)</span><input value={receta.exequatur} onChange={(e) => setReceta({ ...receta, exequatur: e.target.value })} /></label>
+            <label className="campo"><span>Fecha de la receta</span><input type="date" value={receta.fechaReceta} onChange={(e) => setReceta({ ...receta, fechaReceta: e.target.value })} /></label>
+          </div>
+        </div>
+      )}
       {sinPlan && <div className="panel"><Aviso texto={`La factura se emitió, pero el plan de cuotas no se pudo crear: ${sinPlan.error}. Puede hacerlo desde Cuentas por cobrar › Financiar la deuda en cuotas.`} /><div className="fila-acciones"><button className="boton primario" onClick={() => onCreada(sinPlan.id)}>Ver la factura</button></div></div>}
       {enviada && <Aviso tipo="info" texto={enviada} />}
       {sinCajas && <Aviso tipo="info" texto={soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}

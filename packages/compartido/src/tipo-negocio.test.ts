@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { esMuebleria, esNegocioDeMesas, TIPOS_NEGOCIO } from "./tipo-negocio.js";
+import { esFarmacia, esMuebleria, esNegocioDeMesas, TIPOS_NEGOCIO } from "./tipo-negocio.js";
 
 describe("tipo de negocio", () => {
   it("los de mesas usan cuentas abiertas; la tienda y la mueblería no", () => {
@@ -10,5 +10,10 @@ describe("tipo de negocio", () => {
     expect(esMuebleria("MUEBLERIA")).toBe(true);
     expect(esMuebleria("TIENDA")).toBe(false);
     expect(TIPOS_NEGOCIO).toContain("MUEBLERIA");
+  });
+  it("solo FARMACIA es farmacia y no usa mesas", () => {
+    expect(esFarmacia("FARMACIA")).toBe(true);
+    expect(esFarmacia("TIENDA")).toBe(false);
+    expect(esNegocioDeMesas("FARMACIA")).toBe(false);
   });
 });

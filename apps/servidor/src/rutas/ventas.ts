@@ -4,13 +4,13 @@ import type { PoolClient } from "pg";
 import { z } from "zod";
 import { Decimal } from "decimal.js";
 import {
-  validarPagos, uuidv7, cotizarCarrito, ErrorCarrito, esNegocioDeMesas, type LineaCotizada as LineaCotizadaBase,
+  validarPagos, uuidv7, cotizarCarrito, ErrorCarrito, esNegocioDeMesas, esFarmacia, type LineaCotizada as LineaCotizadaBase,
 } from "@factpos/compartido";
 import { enTransaccion, ErrorNegocio, pool } from "../db.js";
 import { contextoCaja, SQL_PRESENTACION, type ContextoCaja, type PresentacionVenta } from "../contexto.js";
 import { ofertasPara, validarCupon, bloquearOfertasConTope } from "../promociones.js";
 import { emitirEcfVenta } from "../fiscal/emitir.js";
-import { repartirPorLotes } from "../lotes.js";
+import { repartirPorLotes, exigirVigentes } from "../lotes.js";
 import { asignarNumeroNoElectronico } from "../fiscal/numeracion-modalidades.js";
 import { verificarAutorizacion } from "../autorizacion.js";
 import { datosTicket } from "./facturas.js";
@@ -48,6 +48,13 @@ const VentaSchema = CarritoSchema.extend({
   notas: z.string().trim().max(300).optional(),
   tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]).default("E32"),
   propinaLegal: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Propina inválida").optional(),
+  /** Farmacias: datos de la receta, obligatorios si se vende un medicamento controlado o de venta con receta */
+  receta: z.object({
+    paciente: z.string().trim().min(3, "Anote el nombre del paciente").max(120),
+    medico: z.string().trim().min(3, "Anote el nombre del médico").max(120),
+    exequatur: z.string().trim().max(30).optional(),
+    fechaReceta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de receta inválida").optional(),
+  }).optional(),
   pagos: z
     .array(
       z.object({
@@ -90,6 +97,7 @@ export interface VentaInput extends Carrito {
   tipoDocumento: "E32" | "E31" | "B01" | "B02" | "B14" | "B15" | "B16" | "SIN";
   /** Propina legal cobrada (solo restaurantes, bares y discotecas): se suma a lo que paga el cliente, fuera del comprobante */
   propinaLegal?: string;
+  receta?: { paciente: string; medico: string; exequatur?: string; fechaReceta?: string };
   pagos: { formaPago: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "CREDITO" | "DELIVERY" | "OTRO"; monto: string; recibido?: string; referencia?: string }[];
 }
 
@@ -416,8 +424,21 @@ export async function registrarVenta(
   );
   const numero = v.rows[0].numero;
 
-  // Combos: el costo es la suma de sus componentes
   const L = q.lineas;
+  // Farmacias: lo controlado o de venta con receta no sale sin los datos de la receta (queda guardada con la venta)
+  const farmacia = esFarmacia((await c.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0]?.t);
+  if (farmacia) {
+    const conReceta = (await c.query<{ nombre: string }>(
+      `SELECT p.nombre FROM producto_farmacia f JOIN productos p ON p.id = f.producto_id
+        WHERE f.producto_id = ANY($1::uuid[]) AND (f.controlado OR f.requiere_receta) ORDER BY p.nombre`, [[...new Set(L.map((l) => l.prod.productoId))]])).rows.map((r) => r.nombre);
+    if (conReceta.length) {
+      if (!body.receta) throw new ErrorNegocio(`RECETA: ${conReceta.join(", ")} se vende con receta: anote el paciente y el médico`, 428);
+      await c.query("INSERT INTO venta_recetas (venta_id, paciente, medico, exequatur, fecha_receta) VALUES ($1,$2,$3,$4,$5)",
+        [ventaId, body.receta.paciente, body.receta.medico, body.receta.exequatur || null, body.receta.fechaReceta ?? null]);
+    }
+  }
+
+  // Combos: el costo es la suma de sus componentes
   const combos = [...new Set(L.filter((l) => l.prod.tipo === "COMBO").map((l) => l.prod.productoId))];
   const componentes = combos.length
     ? (await c.query<{ combo_id: string; componente_id: string; cantidad: string; costo: string }>(
@@ -473,7 +494,9 @@ export async function registrarVenta(
   }
   if (K.length) {
     // Primero sale lo que vence antes (lotes); lo demás sale sin lote
-    const KL = await repartirPorLotes(c, ctx.almacenId, K);
+    // Farmacias: lo vencido no se factura (se avisa cuántas unidades hay vencidas) y nunca sale de un lote vencido
+    if (farmacia) await exigirVigentes(c, ctx.almacenId, K);
+    const KL = await repartirPorLotes(c, ctx.almacenId, K, { excluirVencidos: farmacia });
     await c.query(
       `INSERT INTO kardex_movimientos (id, sucursal_id, almacen_id, producto_id, tipo, cantidad, costo_unitario,
                                        documento_tipo, documento_id, usuario_id, creado_en, lote_id)
