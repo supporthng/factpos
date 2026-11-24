@@ -37,7 +37,7 @@ export async function rutasCentralFarmacia(app: FastifyInstance) {
       `SELECT * FROM (
          SELECT p.id AS "productoId", p.sku, p.nombre, f.principio_activo AS "principioActivo", l.numero_lote AS lote,
                 to_char(l.vence_en, 'YYYY-MM-DD') AS vence, (l.vence_en - CURRENT_DATE)::int AS dias, el.cantidad::text AS cantidad,
-                a.nombre AS almacen, ${CASO_NIVEL} AS nivel,
+                a.nombre AS almacen, a.id AS "almacenId", a.sucursal_id AS "sucursalId", ${CASO_NIVEL} AS nivel,
                 (SELECT string_agg(u.estante || '-' || u.nivel || '-' || u.posicion, ', ' ORDER BY u.estante, u.nivel, u.posicion)
                    FROM producto_ubicaciones pu JOIN farmacia_ubicaciones u ON u.id = pu.ubicacion_id
                   WHERE pu.producto_id = p.id AND u.almacen_id = el.almacen_id) AS ubicacion
@@ -48,6 +48,22 @@ export async function rutasCentralFarmacia(app: FastifyInstance) {
             AND el.cantidad > 0 AND l.vence_en IS NOT NULL AND l.vence_en <= CURRENT_DATE + 90
        ) t WHERE ($3::text IS NULL OR t.nivel = $3) ORDER BY t.dias, t.nombre LIMIT 1000`,
       [empresaDe(req), sucursalesDe(req), nivel ?? null]);
+    return r.rows;
+  });
+
+  /** Recetas de lo controlado o de venta con receta: quién, qué médico y qué se despachó (para la inspección) */
+  app.get("/central/farmacia/recetas", async (req) => {
+    const { desde, hasta } = z.object({ desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
+    const r = await pool.query(
+      `SELECT v.id AS "ventaId", v.numero_interno AS factura, to_char(v.creado_en AT TIME ZONE 'America/Santo_Domingo', 'YYYY-MM-DD HH24:MI') AS fecha,
+              r.paciente, r.medico, r.exequatur, to_char(r.fecha_receta, 'YYYY-MM-DD') AS "fechaReceta", s.nombre AS sucursal, u.nombre AS vendedor,
+              (SELECT string_agg(DISTINCT p.nombre || CASE WHEN f.controlado THEN ' (controlado)' ELSE '' END, ', ')
+                 FROM venta_items vi JOIN presentaciones pr ON pr.id = vi.presentacion_id JOIN productos p ON p.id = pr.producto_id
+                 JOIN producto_farmacia f ON f.producto_id = p.id AND (f.controlado OR f.requiere_receta) WHERE vi.venta_id = v.id) AS productos
+         FROM venta_recetas r JOIN ventas v ON v.id = r.venta_id JOIN sucursales s ON s.id = v.sucursal_id LEFT JOIN usuarios u ON u.id = v.usuario_id
+        WHERE s.empresa_id = $1 AND ($4::uuid[] IS NULL OR s.id = ANY($4::uuid[]))
+          AND (v.creado_en AT TIME ZONE 'America/Santo_Domingo')::date BETWEEN $2::date AND $3::date
+        ORDER BY v.creado_en DESC LIMIT 2000`, [empresaDe(req), desde, hasta, sucursalesDe(req)]);
     return r.rows;
   });
 

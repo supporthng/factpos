@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, num } from "../api";
+import { api, num, sesionActual } from "../api";
 import { Aviso, Encabezado, useDatos } from "../ui";
 
 /**
@@ -8,7 +8,7 @@ import { Aviso, Encabezado, useDatos } from "../ui";
  */
 type Nivel = "VENCIDO" | "30" | "60" | "90";
 interface Resumen { VENCIDO: { lotes: number; unidades: string }; "30": { lotes: number; unidades: string }; "60": { lotes: number; unidades: string }; "90": { lotes: number; unidades: string } }
-interface Venc { productoId: string; sku: string; nombre: string; principioActivo: string | null; lote: string; vence: string; dias: number; cantidad: string; almacen: string; nivel: Nivel; ubicacion: string | null }
+interface Venc { productoId: string; sku: string; nombre: string; principioActivo: string | null; lote: string; vence: string; dias: number; cantidad: string; almacen: string; almacenId: string; sucursalId: string; nivel: Nivel; ubicacion: string | null }
 interface Ubic { id: string; almacenId: string; almacen: string; estante: string; nivel: number; posicion: string; activo: boolean; productos: number }
 interface Hallado { id: string; sku: string; nombre: string; principioActivo: string | null; laboratorio: string | null; controlado: boolean; requiereReceta: boolean; existencia: string; vencido: string; ubicacion: string | null }
 
@@ -17,7 +17,7 @@ const COLOR: Record<Nivel, string> = { VENCIDO: "#b91c1c", "30": "#c2410c", "60"
 const cola = (l: string) => (l === "" ? "" : l);
 
 export function Farmacia() {
-  const [vista, setVista] = useState<"vencimientos" | "ubicaciones" | "buscar">("vencimientos");
+  const [vista, setVista] = useState<"vencimientos" | "ubicaciones" | "buscar" | "recetas">("vencimientos");
   return (
     <>
       <Encabezado titulo="Farmacia" descripcion="Vencimientos con aviso, ubicación de cada producto en la tramería y búsqueda por principio activo. Lo vencido no se factura." />
@@ -25,8 +25,9 @@ export function Farmacia() {
         <button className={vista === "vencimientos" ? "activa" : ""} onClick={() => setVista("vencimientos")}>Vencimientos</button>
         <button className={vista === "ubicaciones" ? "activa" : ""} onClick={() => setVista("ubicaciones")}>Tramería (ubicaciones)</button>
         <button className={vista === "buscar" ? "activa" : ""} onClick={() => setVista("buscar")}>¿Dónde está?</button>
+        <button className={vista === "recetas" ? "activa" : ""} onClick={() => setVista("recetas")}>Recetas</button>
       </div>
-      {vista === "vencimientos" ? <Vencimientos /> : vista === "ubicaciones" ? <Ubicaciones /> : <Buscar />}
+      {vista === "vencimientos" ? <Vencimientos /> : vista === "ubicaciones" ? <Ubicaciones /> : vista === "buscar" ? <Buscar /> : <Recetas />}
     </>
   );
 }
@@ -36,6 +37,23 @@ function Vencimientos() {
   const res = useDatos<Resumen>("/central/farmacia/resumen", []);
   const lista = useDatos<Venc[]>(`/central/farmacia/vencimientos${nivel ? `?nivel=${nivel}` : ""}`, [nivel]);
   const niveles: Nivel[] = ["VENCIDO", "30", "60", "90"];
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [dando, setDando] = useState("");
+  /** Baja por vencimiento: saca del inventario todo lo vencido de ese producto en ese almacén (queda en el kardex y en Ajustes) */
+  const darBaja = async (v: Venc) => {
+    const vencidas = (lista.datos ?? []).filter((x) => x.nivel === "VENCIDO" && x.productoId === v.productoId && x.almacenId === v.almacenId);
+    const total = vencidas.reduce((a, x) => a + Number(x.cantidad), 0);
+    if (!confirm(`Dar de baja ${num(total, 0)} unidad(es) vencida(s) de ${v.nombre} (${vencidas.map((x) => x.lote).join(", ")}).\n\nSalen del inventario por vencimiento. ¿Continuar?`)) return;
+    setDando(v.productoId + v.almacenId); setMsg(null);
+    try {
+      await api("/central/ajustes", { cuerpo: { sucursalId: v.sucursalId, almacenId: v.almacenId, usuarioId: sesionActual().usuarioId, motivo: `Baja por vencimiento: lote ${vencidas.map((x) => x.lote).join(", ")}`,
+        items: [{ productoId: v.productoId, tipo: "VENCIMIENTO", cantidad: total.toFixed(3) }] } });
+      setMsg({ t: `Baja registrada: ${num(total, 0)} unidad(es) de ${v.nombre}.`, tipo: "ok" });
+      lista.recargar(); res.recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    setDando("");
+  };
+  const primeraVencida = new Set<string>();
   return (
     <>
       <div className="cifras" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10, margin: "10px 0" }}>
@@ -53,11 +71,12 @@ function Vencimientos() {
       </div>
       {nivel === "VENCIDO" && <Aviso tipo="info" texto="Estos lotes ya no se pueden facturar. Retírelos de la tramería y regístrelos en Ajustes como baja por vencimiento." />}
       <Aviso texto={lista.error} />
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
       <div className="tarjeta" style={{ overflowX: "auto" }}>
         <table className="tabla">
-          <thead><tr><th>Producto</th><th>Lote</th><th>Vence</th><th className="der">Días</th><th className="der">Cantidad</th><th>Ubicación</th><th>Almacén</th></tr></thead>
+          <thead><tr><th>Producto</th><th>Lote</th><th>Vence</th><th className="der">Días</th><th className="der">Cantidad</th><th>Ubicación</th><th>Almacén</th><th></th></tr></thead>
           <tbody>
-            {(lista.datos ?? []).length === 0 && <tr><td colSpan={7} className="suave">{lista.cargando ? "Cargando…" : "No hay lotes en este grupo."}</td></tr>}
+            {(lista.datos ?? []).length === 0 && <tr><td colSpan={8} className="suave">{lista.cargando ? "Cargando…" : "No hay lotes en este grupo."}</td></tr>}
             {(lista.datos ?? []).map((v, i) => (
               <tr key={`${v.productoId}-${v.lote}-${i}`}>
                 <td><b>{v.nombre}</b><div className="suave pequeno">{v.sku}{v.principioActivo ? ` · ${v.principioActivo}` : ""}</div></td>
@@ -67,6 +86,8 @@ function Vencimientos() {
                 <td className="der">{num(v.cantidad, 0)}</td>
                 <td>{cola(v.ubicacion ?? "") || <span className="suave">sin ubicación</span>}</td>
                 <td className="suave">{v.almacen}</td>
+                <td className="der">{v.nivel === "VENCIDO" && !primeraVencida.has(v.productoId + v.almacenId) && (primeraVencida.add(v.productoId + v.almacenId), true)
+                  && <button className="boton chico" disabled={dando === v.productoId + v.almacenId} onClick={() => darBaja(v)}>Dar de baja</button>}</td>
               </tr>))}
           </tbody>
         </table>
@@ -156,6 +177,39 @@ function Buscar() {
               <td className="der">{num(p.existencia, 0)}{Number(p.vencido) > 0 && <div style={{ color: "#b91c1c" }} className="pequeno">{num(p.vencido, 0)} vencida(s)</div>}</td>
               <td>{p.ubicacion ?? <span className="suave">sin ubicación</span>}</td>
             </tr>))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Recetas() {
+  const hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
+  const [desde, setDesde] = useState(hoy.slice(0, 8) + "01");
+  const [hasta, setHasta] = useState(hoy);
+  const d = useDatos<{ ventaId: string; factura: string; fecha: string; paciente: string; medico: string; exequatur: string | null; fechaReceta: string | null; sucursal: string; vendedor: string | null; productos: string | null }[]>(
+    `/central/farmacia/recetas?desde=${desde}&hasta=${hasta}`, [desde, hasta]);
+  const csv = () => {
+    const celda = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const filas = [["Fecha", "Factura", "Paciente", "Médico", "Exequátur", "Fecha de la receta", "Productos", "Sucursal", "Vendedor"],
+      ...(d.datos ?? []).map((r) => [r.fecha, r.factura, r.paciente, r.medico, r.exequatur, r.fechaReceta, r.productos, r.sucursal, r.vendedor])];
+    const url = URL.createObjectURL(new Blob(["\ufeff" + filas.map((f) => f.map(celda).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = `recetas-${desde}-a-${hasta}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="tarjeta" style={{ marginTop: 10, overflowX: "auto" }}>
+      <div className="panel cab-compra" style={{ flexWrap: "wrap" }}>
+        <label className="campo"><span>Desde</span><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></label>
+        <label className="campo"><span>Hasta</span><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></label>
+        <button className="boton" disabled={!(d.datos ?? []).length} onClick={csv}>Descargar CSV</button>
+      </div>
+      <Aviso texto={d.error} />
+      <table className="tabla">
+        <thead><tr><th>Fecha</th><th>Factura</th><th>Paciente</th><th>Médico</th><th>Exequátur</th><th>Receta del</th><th>Medicamentos</th></tr></thead>
+        <tbody>
+          {(d.datos ?? []).length === 0 && <tr><td colSpan={7} className="suave">{d.cargando ? "Cargando…" : "No hay recetas en esas fechas."}</td></tr>}
+          {(d.datos ?? []).map((r) => (
+            <tr key={r.ventaId}><td>{r.fecha}</td><td>#{r.factura}</td><td>{r.paciente}</td><td>{r.medico}</td><td>{r.exequatur ?? "—"}</td><td>{r.fechaReceta ?? "—"}</td><td>{r.productos ?? ""}</td></tr>))}
         </tbody>
       </table>
     </div>
