@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import { tituloBase } from "./titulo";
 
 /**
  * Campana de avisos del administrador: cuando un equipo pide acceso remoto aparece aquí (con un contador),
@@ -16,7 +17,6 @@ export function AvisoAcceso({ irAAcceso }: { irAAcceso: () => void }) {
   const [lista, setLista] = useState<Solicitud[]>([]);
   const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState("");
-  const titulo = useRef(document.title.replace(/^\(\d+\) /, ""));
 
   const cargar = useCallback(() => {
     api<{ pendientes: number; solicitudes: Solicitud[] }>("/central/dispositivos/pendientes").then((r) => setLista(r.solicitudes)).catch(() => {});
@@ -30,9 +30,9 @@ export function AvisoAcceso({ irAAcceso }: { irAAcceso: () => void }) {
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", visible); window.removeEventListener("factpos:acceso-remoto", cargar); };
   }, [cargar]);
   useEffect(() => {
-    const base = titulo.current;
+    const base = tituloBase();
     document.title = lista.length ? `(${lista.length}) ${base}` : base;
-    return () => { document.title = base; };
+    return () => { document.title = tituloBase(); };
   }, [lista.length]);
 
   const resolver = async (s: Solicitud, estado: "AUTORIZADO" | "DENEGADO") => {

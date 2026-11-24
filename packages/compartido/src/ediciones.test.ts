@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EDICIONES, edicionPorId, nombreEdicion } from "./ediciones.js";
+import { EDICIONES, edicionPorId, nombreEdicion, tituloPorTipo } from "./ediciones.js";
 import { TIPOS_NEGOCIO } from "./tipo-negocio.js";
 
 describe("ediciones", () => {
@@ -23,5 +23,12 @@ describe("ediciones", () => {
     expect(nombreEdicion(null)).toBe("FactPOS");
     expect(nombreEdicion("XYZ")).toBe("FactPOS");
     expect(nombreEdicion("MUEBLERIA")).toBe("FactPOS Mueblería");
+  });
+  it("el título de la ventana lleva el tipo de negocio; la tienda es FactPOS a secas", () => {
+    expect(tituloPorTipo("FARMACIA")).toBe("FactPOS Farmacia");
+    expect(tituloPorTipo("MUEBLERIA")).toBe("FactPOS Mueblería");
+    expect(tituloPorTipo("TIENDA")).toBe("FactPOS");
+    expect(tituloPorTipo(null)).toBe("FactPOS");
+    for (const t of TIPOS_NEGOCIO) expect(tituloPorTipo(t).startsWith("FactPOS")).toBe(true);
   });
 });
