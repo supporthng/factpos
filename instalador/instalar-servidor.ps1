@@ -29,6 +29,7 @@
                                       # SERVIDOR PRINCIPAL del negocio: administra todo, abre un túnel
                                       # de Cloudflare para la web y las sucursales y vende también
     ... -Empresa royalliquorstore     # sucursal: encuentra sola a su servidor principal (por el portal)
+    ... -TipoNegocio MUEBLERIA        # tipo de negocio inicial de la empresa (el cliente no lo cambia después)
     ... -NoInteractivo                # sin preguntas (lo usa el instalador FactPOS-Setup.exe)
 #>
 #Requires -RunAsAdministrator
@@ -49,6 +50,7 @@ param(
   [switch]$Master,
   [string]$Empresa = "",
   [string]$Licencia = "",
+  [string]$TipoNegocio = "",          # TIENDA | MUEBLERIA | RESTAURANTE | BAR | DISCOTECA | COMIDA_RAPIDA (lo elige el instalador)
   [string]$Portal = "https://factpos.app",
   [switch]$NoInteractivo
 )
@@ -71,6 +73,8 @@ if ($CodigoInstalacion -match '^FPS1-(.+)$') {
 }
 # El nombre corto no lleva espacios: «Royal Liquor Store» se entiende como royalliquorstore
 $Empresa = ($Empresa.Trim().ToLower() -replace '\s', '')
+$TipoNegocio = $TipoNegocio.Trim().ToUpper()
+if ($TipoNegocio -and $TipoNegocio -notin @("TIENDA","MUEBLERIA","RESTAURANTE","BAR","DISCOTECA","COMIDA_RAPIDA")) { throw "Tipo de negocio no válido: $TipoNegocio" }
 $Portal = $Portal.TrimEnd("/")
 if ($Master -and -not $Empresa) { throw "El servidor principal necesita el nombre corto de la empresa (-Empresa)" }
 # Sucursal que solo conoce su empresa: el portal dice dónde está su servidor principal
@@ -461,6 +465,7 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
   if ($Master -or $Empresa) {
     $vars = [ordered]@{ FACTPOS_EMPRESA = $Empresa; FACTPOS_PORTAL_URL = $Portal }
     if ($Master) { $vars.MODO = "central"; $vars.TUNEL = "cloudflare"; if ($Licencia) { $vars.LICENCIA_CLAVE = $Licencia } }
+    if ($TipoNegocio) { $vars.TIPO_NEGOCIO = $TipoNegocio }
     $lineas = @(Get-Content $envArchivo | Where-Object { $l = $_; -not ($vars.Keys | Where-Object { $l -like "$_=*" }) })
     foreach ($k in $vars.Keys) { $lineas += "$k=$($vars[$k])" }
     $lineas | Set-Content -Path $envArchivo -Encoding UTF8
@@ -516,6 +521,8 @@ FACTPOS_EMPRESA=$Empresa
 FACTPOS_PORTAL_URL=$Portal
 TUNEL=$(if ($Master) { "cloudflare" } else { "" })
 LICENCIA_CLAVE=$Licencia
+# Tipo de negocio inicial: se aplica al crear la empresa (la licencia puede fijarlo después)
+TIPO_NEGOCIO=$TipoNegocio
 CERT_P12_RUTA=
 CERT_P12_CLAVE=
 "@ | Set-Content -Path $envArchivo -Encoding UTF8

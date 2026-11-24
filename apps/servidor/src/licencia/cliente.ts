@@ -144,11 +144,11 @@ const versionApp = () => {
   return version;
 };
 
-/** La edición de la licencia fija el tipo de negocio INICIAL de la empresa: solo si todavía está en el de siempre (TIENDA). Después el cliente lo cambia en Datos de la empresa. */
+/** La edición de la licencia MANDA sobre el tipo que se eligió al instalar (la prueba arranca con lo elegido; lo pagado es lo que cuenta). Una licencia sin edición no toca el tipo. El cliente no lo cambia desde el programa. */
 async function aplicarEdicion(edicion: string | undefined) {
   const ed = edicionPorId(edicion);
   if (!ed) return;
-  await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE tipo_negocio = 'TIENDA'", [ed.tipoNegocio]).catch(() => {});
+  await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE tipo_negocio IS DISTINCT FROM $1", [ed.tipoNegocio]).catch(() => {});
 }
 
 export async function activarLicencia(clave: string, apiUrl?: string) {
