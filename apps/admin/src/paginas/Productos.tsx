@@ -1,4 +1,5 @@
 import { FarmaciaProducto } from "./Farmacia";
+import { funcionProductoDisponible } from "@factpos/compartido";
 import { useEffect, useRef, useState } from "react";
 import { api, rd, num, sesionActual, sucursalPropia } from "../api";
 import { ImportarProductos } from "./ImportarProductos";
@@ -450,6 +451,12 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
 }) {
   const [nuevaCat, setNuevaCat] = useState<string | null>(null);
   const [skuDup, setSkuDup] = useState<string | null>(null);
+  // Cada tipo de negocio ve solo las funciones de ficha que le tocan (lo que el producto ya tenga guardado sigue visible)
+  const [tipoNeg, setTipoNeg] = useState("");
+  useEffect(() => { api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => setTipoNeg(r.tipoNegocio)).catch(() => {}); }, []);
+  const verVale = funcionProductoDisponible("valeConsumos", tipoNeg) || !!f.valeConsumos;
+  const verSeries = funcionProductoDisponible("seriesGarantia", tipoNeg) || !!f.usaSeries || !!f.garantiaMeses;
+  const verTragos = funcionProductoDisponible("tragos", tipoNeg);
   const esLicor = /licor|ron|whisky|vino|cerveza|vodka|alcohol/i.test(aux.categorias.find((c) => c.id === f.categoriaId)?.nombre ?? "");
 
   const crearCategoria = async () => {
@@ -526,16 +533,20 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
         )}
       </div>
 
-      <div className="panel">
+      {(verVale || verSeries) && <div className="panel">
+        {verVale && <>
         <label className="campo" style={{ maxWidth: 420 }}><span>Consumos incluidos (vale) <span className="suave">· para entradas con tragos; 0 = sin vale</span></span>
           <input className="numero" inputMode="numeric" value={f.valeConsumos ? String(f.valeConsumos) : ""} placeholder="0"
             onChange={(e) => cambiar({ valeConsumos: Math.min(20, Number(e.target.value.replace(/\D/g, "")) || 0) })} /></label>
         {!!f.valeConsumos && <p className="suave" style={{ margin: "4px 0 0" }}>Cada unidad vendida imprime un vale de {f.valeConsumos} consumo(s) que se canjea en la barra (solo en negocios con cuentas; no se vende sin servidor).</p>}
+        </>}
+        {verSeries && <>
               <label className="campo" style={{ maxWidth: 420, marginTop: 12 }}><span>Garantía (meses) <span className="suave">· 0 = sin garantía</span></span>
           <input className="numero" inputMode="numeric" value={f.garantiaMeses ? String(f.garantiaMeses) : ""} placeholder="0"
             onChange={(e) => cambiar({ garantiaMeses: Math.min(120, Number(e.target.value.replace(/\D/g, "")) || 0) })} /></label>
         <label className="en-linea" style={{ marginTop: 8 }}><input type="checkbox" checked={!!f.usaSeries} onChange={(e) => cambiar({ usaSeries: e.target.checked })} /> Lleva número de serie / IMEI (se pide uno por unidad al facturar)</label>
-      </div>
+        </>}
+      </div>}
 
       <FarmaciaProducto id={id ?? null} />
 
@@ -544,7 +555,7 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
           <h3>Presentaciones y códigos de barra</h3>
           <button className="boton" onClick={() => cambiar({ presentaciones: [...f.presentaciones, { nombre: "Caja", factor: "12", codigos: [], precios: {} }] })}>Agregar presentación</button>
         </div>
-        {f.presentaciones.length === 1 && !f.esPesable && <MedidasLicor principal={f.presentaciones[0]} onAplicar={(pres) => cambiar({ presentaciones: pres })} />}
+        {verTragos && f.presentaciones.length === 1 && !f.esPesable && <MedidasLicor principal={f.presentaciones[0]} onAplicar={(pres) => cambiar({ presentaciones: pres })} />}
         {f.presentaciones.length === 1 && !f.esPesable && <FraccionFarmacia principal={f.presentaciones[0]} onAplicar={(pres) => cambiar({ presentaciones: pres })} />}
         {f.presentaciones.map((p, i) => (
           <div key={p.id ?? i} className="presentacion">

@@ -2,6 +2,7 @@ const Seguridad = lazy(() => import("./paginas/Seguridad").then((m) => ({ defaul
 const AccesoRemoto = lazy(() => import("./paginas/AccesoRemoto").then((m) => ({ default: m.AccesoRemoto })));
 import { AvisoAcceso } from "./AvisoAcceso";
 import { AvisoVencimientos } from "./paginas/Farmacia";
+import { seccionDisponible } from "@factpos/compartido";
 import { AvisoActualizacion } from "./AvisoActualizacion";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
@@ -99,7 +100,7 @@ const SECCIONES = [
   { id: "inventario", titulo: "Existencias", grupo: "Inventario", C: Inventario, i: "inventario", p: ["admin.inventario", "admin.reportes"] },
   { id: "compras", titulo: "Compras", grupo: "Inventario", C: Compras, i: "compras", p: ["admin.compras"] },
   { id: "traspasos", titulo: "Traspasos", grupo: "Inventario", C: Traspasos, i: "traspasos", p: ["admin.traspasos", "admin.recibir"] },
-  { id: "farmacia", titulo: "Farmacia", grupo: "Inventario", C: Farmacia, i: "inventario", p: ["admin.inventario"], solo: "FARMACIA" },
+  { id: "farmacia", titulo: "Farmacia", grupo: "Inventario", C: Farmacia, i: "inventario", p: ["admin.inventario"] },
   { id: "conteos", titulo: "Conteos físicos", grupo: "Inventario", C: Conteos, i: "conteos", p: ["admin.inventario"] },
   { id: "ajustes", titulo: "Ajustes", grupo: "Inventario", C: Ajustes, i: "ajustes", p: ["admin.inventario"] },
   { id: "kardex", titulo: "Kardex", grupo: "Inventario", C: Kardex, i: "kardex", p: ["admin.inventario"] },
@@ -178,7 +179,7 @@ const SECCIONES_PORTAL = [
   { id: "correo", titulo: "Correo del portal", grupo: "Portal FactPOS", C: Correo, i: "correo", p: ["admin.config"] },
 ] as const;
 type Seccion = (typeof SECCIONES)[number]["id"] | (typeof SECCIONES_PORTAL)[number]["id"];
-type Item = { id: string; titulo: string; grupo: string; C: ComponentType | LazyExoticComponent<ComponentType>; i: NombreIcono; p: readonly string[]; solo?: string };
+type Item = { id: string; titulo: string; grupo: string; C: ComponentType | LazyExoticComponent<ComponentType>; i: NombreIcono; p: readonly string[] };
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
@@ -332,7 +333,7 @@ function AppInterna() {
     );
   }
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && (!s.solo || s.solo === tipoNegocio) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
   // Buscador del inicio: sin acentos ni mayúsculas, por nombre de la opción, su módulo o su descripción
