@@ -79,6 +79,9 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
   const [sinImprimir, setSinImprimir] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState("");
+  // Farmacias: si hay un medicamento controlado o con receta, el servidor lo pide y aquí se anotan los datos de la receta
+  const [pideReceta, setPideReceta] = useState(false);
+  const [receta, setReceta] = useState({ paciente: "", medico: "", exequatur: "", fechaReceta: "" });
   // Mismo id si se reintenta: el servidor no duplica la venta
   const [ventaId] = useState(() => uuidv7());
   const conexion = useConexion();
@@ -169,6 +172,7 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
           ventaId, usuarioId: usuario.id, clienteId: cliente?.id, cuponCodigo: cupon?.codigo,
           tipoDocumento: tipoFactura, items, pagos, propinaLegal: propina.gt(0) ? propina.toFixed(2) : undefined,
           autorizacionDescuento: aprobacionDescuento, autorizacionCredito: n(credito).gt(0) ? aprobCredito?.token : undefined, motivoDescuento, notas: notas || undefined,
+          receta: pideReceta ? { paciente: receta.paciente.trim(), medico: receta.medico.trim(), exequatur: receta.exequatur.trim() || undefined, fechaReceta: receta.fechaReceta || undefined } : undefined,
         },
       });
       onVendido({ ...r, cliente: cliente ? { nombre: cliente.nombre, documento: cliente.documento } : null }, { sinImprimir });
@@ -182,6 +186,9 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
       if (alFallar && /no coinciden con el total/.test(m)) {
         alFallar();
         setMsg("Otra caja vendió las últimas unidades en oferta y el total cambió. Revise el nuevo total y cobre de nuevo.");
+      } else if (/^RECETA:/.test(m)) {
+        setPideReceta(true);
+        setMsg(m.replace(/^RECETA:\s*/, ""));
       } else setMsg(m);
       setEnviando(false);
     }
@@ -316,6 +323,17 @@ export function Cobro({ ajustes, usuario, cliente, cupon, total: totalVenta, pro
         </div>
       </div>
 
+      {pideReceta && (
+        <div className="cobro-seccion" style={{ marginTop: 8 }}>
+          <span className="cobro-etiqueta">Receta</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+            <label className="campo"><span>Paciente</span><input value={receta.paciente} onChange={(e) => setReceta({ ...receta, paciente: e.target.value })} /></label>
+            <label className="campo"><span>Médico</span><input value={receta.medico} onChange={(e) => setReceta({ ...receta, medico: e.target.value })} /></label>
+            <label className="campo"><span>Exequátur (opcional)</span><input value={receta.exequatur} onChange={(e) => setReceta({ ...receta, exequatur: e.target.value })} /></label>
+            <label className="campo"><span>Fecha de la receta</span><input type="date" value={receta.fechaReceta} onChange={(e) => setReceta({ ...receta, fechaReceta: e.target.value })} /></label>
+          </div>
+        </div>
+      )}
       {(error || msg) && <p className="error">{error || msg}</p>}
       <button className="boton cobrar" disabled={!!error || enviando} onClick={cobrar}>
         {enviando ? "Registrando…" : "Confirmar cobro (Enter)"}

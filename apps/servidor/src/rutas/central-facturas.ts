@@ -414,6 +414,8 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       cajaId: uuid, clienteId: uuid.optional(), tipoDocumento: z.enum(["E32", "E31", "B01", "B02", "B14", "B15", "B16", "SIN"]),
       notas: z.string().trim().max(300).optional(), ventaId: uuid.optional(), items: ItemsSchema, motivoPrecio: z.string().trim().max(200).optional(),
       cuponCodigo: z.string().trim().min(1).max(30).optional(), motivoDescuento: z.string().trim().max(200).optional(),
+      /** Farmacias: receta de lo controlado o de venta con receta */
+      receta: z.object({ paciente: z.string().trim().min(3, "Anote el nombre del paciente").max(120), medico: z.string().trim().min(3, "Anote el nombre del médico").max(120), exequatur: z.string().trim().max(30).optional(), fechaReceta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional(),
       pagos: z.array(z.object({
         formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]),
         monto: z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido"), recibido: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), referencia: z.string().max(60).optional(),
@@ -450,6 +452,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       return registrarVenta(c, b.cajaId, {
       usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
       cuponCodigo: b.cuponCodigo, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: b.motivoDescuento } : {}),
+      ...(b.receta ? { receta: b.receta } : {}),
       }, { exigirSeries: true });
     });
     await pool.query(

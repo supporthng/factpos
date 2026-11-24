@@ -12,6 +12,10 @@ describe("ediciones", () => {
     expect(edicionPorId("MUEBLERIA")?.tipoNegocio).toBe("MUEBLERIA");
     expect(edicionPorId("BAR_RESTAURANTE")?.tipoNegocio).toBe("RESTAURANTE");
   });
+  it("farmacia es una edición derivada", () => {
+    expect(edicionPorId("FARMACIA")?.tipoNegocio).toBe("FARMACIA");
+    expect(nombreEdicion("FARMACIA")).toBe("FactPOS Farmacia");
+  });
   it("abarrotes, supermercado y licorería son FactPOS a secas (no tienen edición)", () => {
     for (const id of ["ABARROTES", "LICORERIA", "SUPERMERCADO"]) expect(edicionPorId(id)).toBeUndefined();
   });

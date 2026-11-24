@@ -61,6 +61,7 @@ const TIPOS: [string, string][] = [
   ["DISCOTECA", "Discoteca"],
   ["COMIDA_RAPIDA", "Comida rápida"],
   ["MUEBLERIA", "Mueblería y electrodomésticos (venta a plazos, apartados y entregas)"],
+  ["FARMACIA", "Farmacia (vencimientos, ubicación en tramería y venta con receta)"],
 ];
 
 /** El tipo de negocio lo fijan la instalación y la licencia: aquí solo se muestra. */

@@ -8,6 +8,7 @@ import type { TipoNegocio } from "./tipo-negocio.js";
  */
 export const EDICIONES = [
   { id: "MUEBLERIA", nombre: "FactPOS Mueblería", slug: "muebleria", tipoNegocio: "MUEBLERIA", lema: "Venta a plazos, cobranza y entregas para mueblerías y tiendas de electrodomésticos" },
+  { id: "FARMACIA", nombre: "FactPOS Farmacia", slug: "farmacia", tipoNegocio: "FARMACIA", lema: "Ubicación en tramería, vencimientos con aviso y venta con receta para farmacias y droguerías" },
   { id: "BAR_RESTAURANTE", nombre: "FactPOS Bar y Restaurante", slug: "bar-restaurante", tipoNegocio: "RESTAURANTE", lema: "Mesas, comandas, cuentas abiertas y propina para bares, restaurantes y discotecas" },
 ] as const satisfies readonly { id: string; nombre: string; slug: string; tipoNegocio: TipoNegocio; lema: string }[];
 
