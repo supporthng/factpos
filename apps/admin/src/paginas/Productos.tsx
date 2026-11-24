@@ -545,6 +545,7 @@ function General({ f, cambiar, id, aux, recargarAux, setMsg }: {
           <button className="boton" onClick={() => cambiar({ presentaciones: [...f.presentaciones, { nombre: "Caja", factor: "12", codigos: [], precios: {} }] })}>Agregar presentación</button>
         </div>
         {f.presentaciones.length === 1 && !f.esPesable && <MedidasLicor principal={f.presentaciones[0]} onAplicar={(pres) => cambiar({ presentaciones: pres })} />}
+        {f.presentaciones.length === 1 && !f.esPesable && <FraccionFarmacia principal={f.presentaciones[0]} onAplicar={(pres) => cambiar({ presentaciones: pres })} />}
         {f.presentaciones.map((p, i) => (
           <div key={p.id ?? i} className="presentacion">
             <label className="campo"><span>{i === 0 ? "Principal" : "Presentación"}</span><input value={p.nombre} onChange={(e) => cambiar({ presentaciones: f.presentaciones.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)) })} /></label>
@@ -1314,6 +1315,38 @@ function MedidasLicor({ principal, onAplicar }: { principal: Presentacion; onApl
         onAplicar([{ ...principal, nombre: "Trago", factor: "1" }, { ...base, nombre: "Doble", factor: "2" }, { ...base, nombre: "Botella", factor: String(nTragos) }]);
         setAbierto(false);
       }}>Crear medidas: Trago, Doble y Botella</button>
+      <button className="enlace" onClick={() => setAbierto(false)}>Cancelar</button>
+    </div>
+  );
+}
+
+/** Farmacias: tableta, blíster y caja de un mismo medicamento. La existencia se cuenta en tabletas y cada presentación descuenta las que contiene. */
+function FraccionFarmacia({ principal, onAplicar }: { principal: Presentacion; onAplicar: (p: Presentacion[]) => void }) {
+  const [esFarmacia, setEsFarmacia] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const [porBlister, setPorBlister] = useState("10");
+  const [porCaja, setPorCaja] = useState("100");
+  useEffect(() => { api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => setEsFarmacia(r.tipoNegocio === "FARMACIA")).catch(() => {}); }, []);
+  if (!esFarmacia) return null;
+  if (!abierto) return <p className="suave" style={{ margin: "0 0 8px" }}>¿Se vende por tableta, blíster y caja? <button className="enlace" onClick={() => setAbierto(true)}>Configurar fraccionamiento</button></p>;
+  const b = Number(porBlister), c = Number(porCaja);
+  const valido = Number.isInteger(c) && c >= 2 && c <= 10000 && (!porBlister || (Number.isInteger(b) && b >= 2 && b < c && c % b === 0));
+  return (
+    <div className="aviso" style={{ margin: "0 0 10px" }}>
+      <b>Tableta, blíster y caja</b>
+      <p className="suave" style={{ margin: "4px 0" }}>La existencia pasa a contarse en tabletas (o unidades) y cada presentación descuenta las que contiene. Úselo en productos nuevos o sin existencia: si ya hay existencia en cajas, la cantidad quedaría mal interpretada. Después ponga el precio de cada presentación.</p>
+      <div className="dos-col">
+        <label className="campo"><span>Tabletas por blíster <span className="suave">(vacío = no se vende por blíster)</span></span>
+          <input className="numero" inputMode="numeric" value={porBlister} onChange={(e) => setPorBlister(e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>
+        <label className="campo"><span>Tabletas por caja</span>
+          <input className="numero" inputMode="numeric" value={porCaja} onChange={(e) => setPorCaja(e.target.value.replace(/\D/g, "").slice(0, 5))} /></label>
+      </div>
+      {!valido && <p className="suave" style={{ margin: "4px 0" }}>La caja debe tener más tabletas que el blíster y ser un múltiplo exacto (por ejemplo, blíster de 10 y caja de 100).</p>}
+      <button className="boton primario" disabled={!valido} onClick={() => {
+        const base = { codigos: [] as string[], precios: {} };
+        onAplicar([{ ...principal, nombre: "Tableta", factor: "1" }, ...(porBlister ? [{ ...base, nombre: "Blíster", factor: String(b) }] : []), { ...base, nombre: "Caja", factor: String(c) }]);
+        setAbierto(false);
+      }}>Crear presentaciones</button>
       <button className="enlace" onClick={() => setAbierto(false)}>Cancelar</button>
     </div>
   );
