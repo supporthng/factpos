@@ -5,7 +5,7 @@ import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { config } from "../config.js";
 import { sucursalesDe, tienePermiso, type SesionAdmin } from "../sesion.js";
 import { anularVenta, devolverParcial, datosTicket } from "./facturas.js";
-import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPresentes } from "./ventas.js";
+import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPresentes, productosConReceta } from "./ventas.js";
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
@@ -304,12 +304,19 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       cajaId: uuid, clienteId: uuid.optional(), items: ItemsSchema, notas: z.string().trim().max(300).optional(),
       motivoDescuento: z.string().trim().max(200).optional(), motivoPrecio: z.string().trim().max(200).optional(),
       financiamiento: FinanciamientoSchema.optional(),
+      /** Farmacias: la receta se pide en el mostrador y viaja con la venta; la caja solo cobra */
+      receta: z.object({ paciente: z.string().trim().min(3, "Anote el nombre del paciente").max(120), medico: z.string().trim().min(3, "Anote el nombre del médico").max(120), exequatur: z.string().trim().max(30).optional(), fechaReceta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de receta inválida").optional() }).optional(),
     }).parse(req.body);
     const ctx = await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
     await exigirPermisosItems(req, b.cajaId, b.items, b.motivoDescuento, b.motivoPrecio);
     await exigirSeriesPresentes(pool, b.items);
     const q = resumen(await cotizar(pool, ctx, { clienteId: b.clienteId, items: b.items }, false)); // valida precios, existencia y cliente
+    if (!b.receta) {
+      const pids = (await pool.query<{ p: string }>("SELECT producto_id AS p FROM presentaciones WHERE id = ANY($1::uuid[])", [b.items.map((i) => i.presentacionId)])).rows.map((r) => r.p);
+      const conReceta = await productosConReceta(pool, ctx.empresaId, pids);
+      if (conReceta.length) throw new ErrorNegocio(`RECETA: ${conReceta.join(", ")} se vende con receta: anote el paciente y el médico`, 428);
+    }
     const id = uuidv7();
     // Venta a plazos: plan, inicial y garante. Si el cliente no cumple, solo un supervisor con «Vender a crédito» la puede enviar.
     let fin: { planId: string; inicial: string; primera: string | null; garante: { nombre: string; documento: string; telefono: string | null } | null; excepciones: string[]; motivo: string | null; por: string | null } | null = null;
@@ -329,10 +336,10 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       await c.query("SELECT pg_advisory_xact_lock(hashtext('por_cobrar:' || $1))", [ctx.sucursalId]);
       const r = await c.query<{ numero: string }>(
         `INSERT INTO ventas_por_cobrar (id, sucursal_id, numero, caja_id, cliente_id, items, total, notas, motivo_descuento, motivo_precio, creada_por,
-                                        plan_id, inicial, primera_cuota, garante_nombre, garante_documento, garante_telefono, excepciones, excepcion_motivo, excepcion_por)
-         VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM ventas_por_cobrar WHERE sucursal_id = $2),$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING numero::text`,
+                                        plan_id, inicial, primera_cuota, garante_nombre, garante_documento, garante_telefono, excepciones, excepcion_motivo, excepcion_por, receta)
+         VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM ventas_por_cobrar WHERE sucursal_id = $2),$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb) RETURNING numero::text`,
         [id, ctx.sucursalId, b.cajaId, b.clienteId ?? null, JSON.stringify(b.items), (q as { total: string }).total, b.notas ?? null, b.motivoDescuento ?? null, b.motivoPrecio ?? null, usuarioDe(req),
-         fin?.planId ?? null, fin?.inicial ?? "0", fin?.primera ?? null, fin?.garante?.nombre ?? null, fin?.garante?.documento ?? null, fin?.garante?.telefono ?? null, fin?.excepciones ?? [], fin?.motivo ?? null, fin?.por ?? null]);
+         fin?.planId ?? null, fin?.inicial ?? "0", fin?.primera ?? null, fin?.garante?.nombre ?? null, fin?.garante?.documento ?? null, fin?.garante?.telefono ?? null, fin?.excepciones ?? [], fin?.motivo ?? null, fin?.por ?? null, b.receta ? JSON.stringify(b.receta) : null]);
       return r.rows[0].numero;
     });
     rep.code(201);

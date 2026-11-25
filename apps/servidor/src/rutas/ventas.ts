@@ -326,6 +326,15 @@ export async function exigirSeriesPresentes(c: Pick<PoolClient, "query">, items:
   }
 }
 
+/** Farmacias: nombres de los productos controlados o de venta con receta entre los dados (vacío si el negocio no es una farmacia) */
+export async function productosConReceta(c: { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> }, empresaId: string, productoIds: string[]): Promise<string[]> {
+  const t = (await c.query("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [empresaId])).rows[0]?.t;
+  if (!esFarmacia(t) || !productoIds.length) return [];
+  return (await c.query(
+    `SELECT p.nombre FROM producto_farmacia f JOIN productos p ON p.id = f.producto_id
+      WHERE f.producto_id = ANY($1::uuid[]) AND (f.controlado OR f.requiere_receta) ORDER BY p.nombre`, [[...new Set(productoIds)]])).rows.map((r: { nombre: string }) => r.nombre);
+}
+
 export async function registrarVenta(
   c: PoolClient,
   cajaId: string,
@@ -425,12 +434,10 @@ export async function registrarVenta(
   const numero = v.rows[0].numero;
 
   const L = q.lineas;
-  // Farmacias: lo controlado o de venta con receta no sale sin los datos de la receta (queda guardada con la venta)
   const farmacia = esFarmacia((await c.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0]?.t);
-  if (farmacia) {
-    const conReceta = (await c.query<{ nombre: string }>(
-      `SELECT p.nombre FROM producto_farmacia f JOIN productos p ON p.id = f.producto_id
-        WHERE f.producto_id = ANY($1::uuid[]) AND (f.controlado OR f.requiere_receta) ORDER BY p.nombre`, [[...new Set(L.map((l) => l.prod.productoId))]])).rows.map((r) => r.nombre);
+  // Farmacias: lo controlado o de venta con receta no sale sin los datos de la receta (queda guardada con la venta)
+  {
+    const conReceta = await productosConReceta(c, ctx.empresaId, L.map((l) => l.prod.productoId));
     if (conReceta.length) {
       if (!body.receta) throw new ErrorNegocio(`RECETA: ${conReceta.join(", ")} se vende con receta: anote el paciente y el médico`, 428);
       await c.query("INSERT INTO venta_recetas (venta_id, paciente, medico, exequatur, fecha_receta) VALUES ($1,$2,$3,$4,$5)",

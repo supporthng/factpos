@@ -19,11 +19,13 @@ const monto = z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido");
 interface Fila { id: string; numero: string; items: { presentacionId: string; cantidad: string; descuentoManual?: string; precioVariable?: string; precioLibre?: string; series?: string[] }[];
   clienteId: string | null; notas: string | null; motivoDescuento: string | null; creadaPor: string | null; total: string;
   planId: string | null; inicial: string; primeraCuota: string | null; garante: { nombre: string | null; documento: string | null; telefono: string | null };
-  excepciones: string[]; excepcionMotivo: string | null; excepcionPor: string | null; }
+  excepciones: string[]; excepcionMotivo: string | null; excepcionPor: string | null;
+  /** Farmacias: la receta que se pidió en el mostrador al enviar la venta */
+  receta: { paciente: string; medico: string; exequatur?: string; fechaReceta?: string } | null; }
 const COLS = `id, numero::text, items, cliente_id AS "clienteId", notas, motivo_descuento AS "motivoDescuento", creada_por AS "creadaPor", total::text,
   plan_id AS "planId", inicial::text, to_char(primera_cuota,'YYYY-MM-DD') AS "primeraCuota",
   jsonb_build_object('nombre', garante_nombre, 'documento', garante_documento, 'telefono', garante_telefono) AS garante,
-  excepciones, excepcion_motivo AS "excepcionMotivo", excepcion_por AS "excepcionPor"`;
+  excepciones, excepcion_motivo AS "excepcionMotivo", excepcion_por AS "excepcionPor", receta`;
 
 export async function rutasPorCobrar(app: FastifyInstance) {
   const usuarioDe = (req: unknown) => ((req as { sesionCaja?: { u?: string } }).sesionCaja?.u) ?? null;
@@ -102,7 +104,7 @@ export async function rutasPorCobrar(app: FastifyInstance) {
       }
       const v = await registrarVenta(c, cajaId, {
         usuarioId, clienteId: f.clienteId ?? undefined, tipoDocumento: b.tipoDocumento, notas: `Venta por cobrar #${f.numero}${f.notas ? ` · ${f.notas}` : ""}`.slice(0, 300),
-        items: f.items, excluirApartado: f.id, pagos, ...(autorizacionCredito ? { autorizacionCredito } : {}), ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
+        items: f.items, excluirApartado: f.id, pagos, ...(f.receta ? { receta: f.receta } : {}), ...(autorizacionCredito ? { autorizacionCredito } : {}), ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: f.motivoDescuento ?? undefined } : {}),
       }, { exigirSeries: true, omitirLimiteCredito: !!f.excepcionPor });
       const ventaId = (v as { id: string }).id;
       await c.query("UPDATE ventas_por_cobrar SET estado = 'COBRADA', cerrada_en = now(), cerrada_por = $2, venta_id = $3 WHERE id = $1", [id, usuarioId, ventaId]);

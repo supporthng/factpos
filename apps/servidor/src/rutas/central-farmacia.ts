@@ -143,6 +143,18 @@ export async function rutasCentralFarmacia(app: FastifyInstance) {
   });
 
   /** «¿Dónde está?»: busca por nombre, código o principio activo (así se ofrecen genéricos y sustitutos) con su ubicación y lo vigente */
+  /** Para el buscador de «Vender»: dónde está cada producto en la tramería y su principio activo (una sola consulta; solo lo que tiene datos de farmacia) */
+  app.get("/central/farmacia/mapa", async (req) => {
+    const r = await pool.query(
+      `SELECT p.id AS "productoId", f.principio_activo AS "principioActivo",
+              (SELECT string_agg(u.estante || '-' || u.nivel || '-' || u.posicion, ', ' ORDER BY u.estante, u.nivel, u.posicion)
+                 FROM producto_ubicaciones pu JOIN farmacia_ubicaciones u ON u.id = pu.ubicacion_id WHERE pu.producto_id = p.id AND u.activo) AS ubicacion
+         FROM productos p LEFT JOIN producto_farmacia f ON f.producto_id = p.id
+        WHERE p.empresa_id = $1 AND p.activo
+          AND (COALESCE(f.principio_activo, '') <> '' OR EXISTS (SELECT 1 FROM producto_ubicaciones pu WHERE pu.producto_id = p.id))`, [empresaDe(req)]);
+    return r.rows;
+  });
+
   app.get("/central/farmacia/buscar", async (req) => {
     const { q } = z.object({ q: z.string().trim().min(2).max(60) }).parse(req.query);
     const r = await pool.query(
