@@ -265,8 +265,8 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
                 <button className="boton chico" disabled={costoOferta === null} onClick={() => usarPrecio(costoOferta)}>Usar</button></div>
             </div>
             {!ref.ultimaCompraOferta && <p className="suave pequeno">Aún no hay compras en oferta de este producto. Se registran en Compras marcando "En oferta del proveedor".</p>}
-            {bajoCostoOferta ? <p className="texto-alerta pequeno">Ese precio está por debajo de lo que costó incluso en la oferta del proveedor: se vende con pérdida.</p>
-              : bajoCosto ? <p className="texto-aviso pequeno">Ese precio está por debajo del costo promedio{costoOferta !== null ? ", pero cubre lo que costó en la oferta del proveedor" : ""}.</p> : null}
+            {bajoCostoOferta ? <p className="texto-aviso pequeno">Ese precio está por debajo de lo que costó incluso en la oferta del proveedor: se vende con pérdida. Solo es un aviso: puede guardar la oferta igual.</p>
+              : bajoCosto ? <p className="texto-aviso pequeno">Ese precio está por debajo del costo promedio{costoOferta !== null ? ", pero cubre lo que costó en la oferta del proveedor" : ""}. Solo es un aviso: puede guardar la oferta igual.</p> : null}
           </div>
         )}
         <div className="campo"><span>Vigencia</span>
