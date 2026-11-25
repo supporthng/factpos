@@ -265,6 +265,7 @@ npm run demos -- --reiniciar       # borra y vuelve a crear los datos de demostr
 | Mueblería (`muebleria`) | 3002 |
 | Farmacia (`farmacia`) | 3003 |
 | Bar y Restaurante, Comida Rápida (`bar-restaurante`) | 3004 |
+| Auto Detailing (`auto-detailing`) | 3005 |
 
 La mueblería también sirve para probar el modo «una sola persona»: se enciende en Administración › Datos de la empresa.
 

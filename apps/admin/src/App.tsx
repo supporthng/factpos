@@ -41,6 +41,7 @@ const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) =>
 const Comisiones = lazy(() => import("./paginas/Comisiones").then((m) => ({ default: m.Comisiones })));
 const Cobranza = lazy(() => import("./paginas/Cobranza").then((m) => ({ default: m.Cobranza })));
 const ServicioTecnico = lazy(() => import("./paginas/ServicioTecnico").then((m) => ({ default: m.ServicioTecnico })));
+const Lavado = lazy(() => import("./paginas/Lavado").then((m) => ({ default: m.Lavado })));
 const ClientesAtrasados = lazy(() => import("./paginas/ClientesAtrasados").then((m) => ({ default: m.ClientesAtrasados })));
 const Entregas = lazy(() => import("./paginas/Entregas").then((m) => ({ default: m.Entregas })));
 const MoraRecuperacion = lazy(() => import("./paginas/MoraRecuperacion").then((m) => ({ default: m.MoraRecuperacion })));
@@ -111,6 +112,7 @@ const SECCIONES = [
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
   { id: "comisiones", titulo: "Comisiones", grupo: "Ventas", C: Comisiones, i: "clientes", p: ["admin.comisiones"] },
+  { id: "lavado", titulo: "Lavado de vehículos", grupo: "Ventas", C: Lavado, i: "ticket", p: ["admin.lavado"] },
   { id: "servicio", titulo: "Servicio técnico", grupo: "Ventas", C: ServicioTecnico, i: "traspasos", p: ["admin.servicio"] },
   { id: "entregas", titulo: "Entregas", grupo: "Ventas", C: Entregas, i: "traspasos", p: ["admin.entregas"] },
   { id: "cobranza", titulo: "Cobranza en ruta", grupo: "Finanzas", C: Cobranza, i: "cxc", p: ["admin.cobranza"] },
@@ -273,6 +275,7 @@ function AppInterna() {
   const [error, setError] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
   const [tipoNegocio, setTipoNegocio] = useState("");
+  const [modulos, setModulos] = useState<string[] | null>(null); // módulos que la empresa enciende además de los de su tipo (null = todavía no se sabe)
   const [cambiarClave, setCambiarClave] = useState(false);
   /** Entró con la contraseña inicial: tiene que crear la suya antes de usar nada. */
   const [debeCambiar, setDebeCambiar] = useState(false);
@@ -305,6 +308,11 @@ function AppInterna() {
       .catch(() => {});
     return () => window.removeEventListener("factpos:catalogo", recargarCatalogo);
   }, [sesion]);
+  useEffect(() => {
+    const f = () => { if (sesion) api<{ activos: string[] }>("/central/empresa/modulos").then((r) => setModulos(r.activos)).catch(() => {}); };
+    f(); window.addEventListener("factpos:modulos", f);
+    return () => window.removeEventListener("factpos:modulos", f);
+  }, [sesion]);
   useEffect(() => { if (sesion) api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => { setTipoNegocio(r.tipoNegocio); fijarTituloDeTipo(r.tipoNegocio); }).catch(() => {}); }, [sesion]);
   useEffect(() => { if (location.hash.slice(1).split("?")[0] !== seccion) location.hash = seccion; window.scrollTo(0, 0); document.querySelector(".contenido")?.scrollTo(0, 0); }, [seccion]);
   // Enlaces internos (#seccion) desde cualquier pantalla, y atrás/adelante del navegador
@@ -334,7 +342,7 @@ function AppInterna() {
     );
   }
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (s.id !== "lavado" || !!modulos?.includes("LAVADO")) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
   // Buscador del inicio: sin acentos ni mayúsculas, por nombre de la opción, su módulo o su descripción

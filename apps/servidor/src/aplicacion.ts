@@ -39,6 +39,7 @@ import { rutasDelivery } from "./rutas/delivery.js";
 import { rutasFacturas } from "./rutas/facturas.js";
 import { rutasCierre } from "./rutas/cierre.js";
 import { rutasMiTurno } from "./rutas/central-turno.js";
+import { rutasLavado } from "./rutas/central-lavado.js";
 import { rutasPadronCaja, rutasPadronCentral } from "./rutas/padron.js";
 import { rutasCentral } from "./rutas/central.js";
 import { rutasCentralInventario } from "./rutas/central-inventario.js";
@@ -307,6 +308,7 @@ export async function crearApp() {
   await app.register(rutasFacturas);
   await app.register(rutasCierre);
   await app.register(rutasMiTurno);
+  await app.register(rutasLavado);
   await app.register(rutasPadronCaja);
 
   // Administración: en la nube (central) y también LOCAL en el servidor de cada tienda,
