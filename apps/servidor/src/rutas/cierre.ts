@@ -119,6 +119,38 @@ async function quienVe(req: { headers: Record<string, unknown> }, cajaId: string
   return { usuarioId: s.u, todos };
 }
 
+export type CierreTurno = { usuarioId: string; conteo: Record<string, number>; tarjeta: string; transferencia: string; notas: string | null };
+
+/** Cierre ciego del turno de una caja (lo usan la Caja y, en el modo de una sola persona, la Administración). */
+export async function cerrarTurno(cajaId: string, b: CierreTurno) {
+  const turnoId = await enTransaccion(async (c) => {
+    const t = (await c.query("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO' FOR UPDATE", [cajaId])).rows[0];
+    if (!t) throw new ErrorNegocio("La caja no tiene un turno abierto");
+    const rep = await reporteTurno(c, t.id);
+    const efectivo = efectivoContado(b.conteo);
+    const declarado: Record<string, string> = {
+      EFECTIVO: efectivo.toFixed(2), TARJETA: new Decimal(b.tarjeta).toFixed(2), TRANSFERENCIA: new Decimal(b.transferencia).toFixed(2),
+    };
+    const diferencia = diferenciaCierre(declarado as Record<(typeof CONTADAS)[number], string>, rep.esperado as Record<(typeof CONTADAS)[number], string>);
+    await c.query(
+      `UPDATE turnos SET estado = 'CERRADO', cerrado_en = now(), cerrado_por = $2, declarado = $3, esperado = $4,
+              diferencia = $5, conteo = $6, notas = $7
+        WHERE id = $1`,
+      [t.id, b.usuarioId, JSON.stringify(declarado), JSON.stringify(rep.esperado), diferencia.toFixed(2), JSON.stringify(b.conteo), b.notas],
+    );
+    await c.query(
+      `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
+       SELECT 'turnos', id, 'UPSERT', to_jsonb(t) FROM turnos t WHERE id = $1`,
+      [t.id],
+    );
+    return t.id as string;
+  });
+  // Si la empresa tiene activo el envío del cierre por correo, sale ya (no espera la próxima vuelta de la vigilancia).
+  // Es una tarea aparte: si falla o no hay correo configurado, el cierre de caja no se afecta.
+  void import("../correo/envios.js").then((m) => m.procesarEnvios()).catch(() => {});
+  return reporteTurno(pool, turnoId);
+}
+
 export async function rutasCierre(app: FastifyInstance) {
   const uuid = z.string().uuid();
 
@@ -148,32 +180,7 @@ export async function rutasCierre(app: FastifyInstance) {
       notas: z.string().trim().max(300).nullable().default(null),
     }).parse(req.body);
 
-    const turnoId = await enTransaccion(async (c) => {
-      const t = (await c.query("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO' FOR UPDATE", [cajaId])).rows[0];
-      if (!t) throw new ErrorNegocio("La caja no tiene un turno abierto");
-      const rep = await reporteTurno(c, t.id);
-      const efectivo = efectivoContado(b.conteo);
-      const declarado: Record<string, string> = {
-        EFECTIVO: efectivo.toFixed(2), TARJETA: new Decimal(b.tarjeta).toFixed(2), TRANSFERENCIA: new Decimal(b.transferencia).toFixed(2),
-      };
-      const diferencia = diferenciaCierre(declarado as Record<(typeof CONTADAS)[number], string>, rep.esperado as Record<(typeof CONTADAS)[number], string>);
-      await c.query(
-        `UPDATE turnos SET estado = 'CERRADO', cerrado_en = now(), cerrado_por = $2, declarado = $3, esperado = $4,
-                diferencia = $5, conteo = $6, notas = $7
-          WHERE id = $1`,
-        [t.id, b.usuarioId, JSON.stringify(declarado), JSON.stringify(rep.esperado), diferencia.toFixed(2), JSON.stringify(b.conteo), b.notas],
-      );
-      await c.query(
-        `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
-         SELECT 'turnos', id, 'UPSERT', to_jsonb(t) FROM turnos t WHERE id = $1`,
-        [t.id],
-      );
-      return t.id as string;
-    });
-    // Si la empresa tiene activo el envío del cierre por correo, sale ya (no espera la próxima vuelta de la vigilancia).
-    // Es una tarea aparte: si falla o no hay correo configurado, el cierre de caja no se afecta.
-    void import("../correo/envios.js").then((m) => m.procesarEnvios()).catch(() => {});
-    return reporteTurno(pool, turnoId);
+    return cerrarTurno(cajaId, b);
   });
 
   /** Reporte Z de un turno ya cerrado (para reimprimirlo). */

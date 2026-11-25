@@ -50,6 +50,7 @@ export function DatosEmpresa() {
       </div>
       <TipoNegocio />
       <ModulosExtra />
+      <UnaSolaPersona />
       <AforoEntradas />
     </>
   );
@@ -100,6 +101,30 @@ function ModulosExtra() {
         <span>Este negocio también vende comida y bebida (cuentas abiertas, comandas a barra y cocina, pre-cuenta y propina)</span>
       </label>
       <p className="suave" style={{ margin: "6px 0 0" }}>Enciende en la caja «Mesas y cuentas» y «Barra». El resto del negocio sigue igual. La propina legal solo se aplica a lo que se consume en la cafetería.</p>
+      {msg && <p className="suave" style={{ margin: "6px 0 0" }}>{msg}</p>}
+    </div>
+  );
+}
+
+/** Negocios chicos: la misma persona factura, financia, cobra y cuadra su turno desde la Administración. Apagado por defecto. */
+function UnaSolaPersona() {
+  const [activo, setActivo] = useState<boolean | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { api<{ activo: boolean }>("/central/empresa/modo-unico").then((r) => setActivo(r.activo)).catch(() => setActivo(null)); }, []);
+  if (activo === null) return null;
+  const cambiar = async (v: boolean) => {
+    setMsg(null);
+    try { await api("/central/empresa/modo-unico", { metodo: "PUT", cuerpo: { activo: v } }); setActivo(v); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+      <h3 style={{ marginTop: 0 }}>Una sola persona factura y cobra</h3>
+      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input type="checkbox" checked={activo} onChange={(e) => void cambiar(e.target.checked)} />
+        <span>En este negocio la misma persona arma la factura, financia a plazos, recibe la inicial y cobra, en la misma computadora</span>
+      </label>
+      <p className="suave" style={{ margin: "6px 0 0" }}>En «Nueva factura» aparece «Mi turno» para abrir y cerrar el turno sin usar el programa de la Caja; el efectivo que cobra entra a ese turno y se cuadra al cerrar. Ya no se ofrece «Enviar a caja». Apagado, todo funciona como antes.</p>
       {msg && <p className="suave" style={{ margin: "6px 0 0" }}>{msg}</p>}
     </div>
   );
