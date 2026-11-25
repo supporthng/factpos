@@ -3,6 +3,7 @@ const AccesoRemoto = lazy(() => import("./paginas/AccesoRemoto").then((m) => ({ 
 import { AvisoAcceso } from "./AvisoAcceso";
 import { AvisoVencimientos } from "./paginas/Farmacia";
 import { seccionDisponible } from "@factpos/compartido";
+import { fijarTituloDeTipo } from "./titulo";
 import { AvisoActualizacion } from "./AvisoActualizacion";
 import { SolicitarDispositivo } from "./SolicitarDispositivo";
 import { PaginaInstalar } from "./PaginaInstalar";
@@ -304,7 +305,7 @@ function AppInterna() {
       .catch(() => {});
     return () => window.removeEventListener("factpos:catalogo", recargarCatalogo);
   }, [sesion]);
-  useEffect(() => { if (sesion) api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => setTipoNegocio(r.tipoNegocio)).catch(() => {}); }, [sesion]);
+  useEffect(() => { if (sesion) api<{ tipoNegocio: string }>("/central/empresa/tipo-negocio").then((r) => { setTipoNegocio(r.tipoNegocio); fijarTituloDeTipo(r.tipoNegocio); }).catch(() => {}); }, [sesion]);
   useEffect(() => { if (location.hash.slice(1).split("?")[0] !== seccion) location.hash = seccion; window.scrollTo(0, 0); document.querySelector(".contenido")?.scrollTo(0, 0); }, [seccion]);
   // Enlaces internos (#seccion) desde cualquier pantalla, y atrás/adelante del navegador
   useEffect(() => {

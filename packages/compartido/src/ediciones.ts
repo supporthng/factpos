@@ -19,3 +19,10 @@ export const IDS_EDICION = EDICIONES.map((e) => e.id) as [EdicionId, ...EdicionI
 export const edicionPorId = (id: string | null | undefined) => EDICIONES.find((e) => e.id === id);
 /** Nombre comercial para mostrar: «FactPOS Mueblería», o «FactPOS» si no hay edición. */
 export const nombreEdicion = (id: string | null | undefined) => edicionPorId(id)?.nombre ?? "FactPOS";
+
+/** Título de la ventana de la administración según el tipo de negocio: «FactPOS Farmacia», «FactPOS Mueblería»…; la tienda es FactPOS a secas. */
+const TITULO_POR_TIPO: Record<string, string> = {
+  MUEBLERIA: "FactPOS Mueblería", FARMACIA: "FactPOS Farmacia", RESTAURANTE: "FactPOS Restaurante", BAR: "FactPOS Bar",
+  DISCOTECA: "FactPOS Discoteca", COMIDA_RAPIDA: "FactPOS Comida rápida",
+};
+export const tituloPorTipo = (tipo: string | null | undefined) => TITULO_POR_TIPO[tipo ?? ""] ?? "FactPOS";
