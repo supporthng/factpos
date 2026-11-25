@@ -114,7 +114,7 @@ function Tablero({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => void 
                         </select></label>
                     </div>
                   ) : <p className="pequeno" style={{ margin: "0 0 6px" }}>{o.lavador ? `Lavó: ${o.lavador}` : "Sin lavador"}{o.bahia ? ` · ${o.bahia}` : ""}{o.comision ? ` · comisión ${rd(Number(o.comision))}` : ""}</p>}
-                  <div className="fila-acciones">
+                  <div className="fila-acciones" style={{ flexWrap: "wrap" }}>
                     {o.estado === "EN_ESPERA" && <button className="boton primario" onClick={() => void actuar(`/central/lavado/ordenes/${o.id}/estado`, { estado: "LAVANDO" })}>Empezar</button>}
                     {o.estado === "LAVANDO" && <button className="boton primario" onClick={() => void actuar(`/central/lavado/ordenes/${o.id}/estado`, { estado: "LISTO" })}>Terminar</button>}
                     {o.estado === "LISTO" && <>
@@ -327,12 +327,12 @@ function Insumos({ s, nombreDe, guardar }: { s: Servicio; nombreDe: (id: string)
           ))}
           {!s.insumos.length && <p className="suave pequeno" style={{ margin: "4px 0" }}>Sin insumos: el lavado no mueve inventario.</p>}
           <div className="en-linea" style={{ flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-            <input placeholder="Buscar producto…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 150 }} />
-            <select value={pid} onChange={(e) => setPid(e.target.value)} style={{ maxWidth: 220 }}>
+            <input placeholder="Buscar producto…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 170, flex: "none" }} />
+            <select value={pid} onChange={(e) => setPid(e.target.value)} style={{ width: 240, flex: "none" }}>
               <option value="">Elija el insumo…</option>
               {opciones.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
-            <input className="numero" style={{ width: 70 }} inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value.replace(/[^\d.]/g, ""))} aria-label="Cantidad por lavado" />
+            <input className="numero" style={{ width: 80, flex: "none" }} inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value.replace(/[^\d.]/g, ""))} aria-label="Cantidad por lavado" />
             <button className="boton" disabled={!pid || !num(cant)} onClick={() => { guardar([...s.insumos, { productoId: pid, cantidad: num(cant) }]); setPid(""); setCant("1"); setQ(""); }}>Agregar</button>
           </div>
           <p className="suave pequeno" style={{ margin: "4px 0 0" }}>Cantidad por cada lavado de este servicio, en la unidad del producto.</p>

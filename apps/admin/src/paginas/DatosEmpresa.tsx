@@ -57,7 +57,7 @@ export function DatosEmpresa() {
 }
 
 const TIPOS: [string, string][] = [
-  ["TIENDA", "Tienda, colmado o licorería (venta directa en caja)"],
+  ["TIENDA", "Abarrotes, supermercados y licorerías (venta directa en caja)"],
   ["RESTAURANTE", "Restaurante"],
   ["BAR", "Bar"],
   ["DISCOTECA", "Discoteca"],
