@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PoolClient } from "pg";
 import { z } from "zod";
-import { uuidv7, TIPOS_NEGOCIO } from "@factpos/compartido";
+import { uuidv7, TIPOS_NEGOCIO, MODULOS_EMPRESA, modulosDeEmpresa } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 
 /**
@@ -583,6 +583,17 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     if (b.categoriaId && !(await pool.query("SELECT 1 FROM categorias WHERE id = $1 AND empresa_id = $2", [b.categoriaId, e])).rowCount) throw new ErrorNegocio("Categoría no encontrada", 404);
     await pool.query("UPDATE empresas SET aforo_activo = $2, aforo_maximo = $3, aforo_categoria_id = $4 WHERE id = $1", [e, b.activo, b.maximo, b.categoriaId]);
     return { ok: true };
+  });
+  /** Módulos que la empresa enciende además de los de su tipo (hoy: MESAS = cuentas abiertas, comandas, barra y cocina, para un negocio con cafetería; LAVADO). */
+  app.get("/central/empresa/modulos", async (req) => {
+    const r = await pool.query<{ t: string; m: string[] }>("SELECT tipo_negocio AS t, modulos_extra AS m FROM empresas WHERE id = $1", [empresaDe(req)]);
+    const t = r.rows[0]?.t ?? "TIENDA";
+    return { tipoNegocio: t, extra: r.rows[0]?.m ?? [], activos: modulosDeEmpresa(t, r.rows[0]?.m) };
+  });
+  app.put("/central/empresa/modulos", async (req) => {
+    const { extra } = z.object({ extra: z.array(z.enum(MODULOS_EMPRESA)).max(MODULOS_EMPRESA.length) }).parse(req.body);
+    await pool.query("UPDATE empresas SET modulos_extra = $2 WHERE id = $1", [empresaDe(req), [...new Set(extra)]]);
+    return { extra: [...new Set(extra)] };
   });
   /** El tipo de negocio lo fijan el instalador y la licencia: el cliente no lo cambia. Soporte puede abrirlo con PERMITIR_CAMBIO_TIPO_NEGOCIO=1 en el .env. */
   app.put("/central/empresa/tipo-negocio", async (req) => {

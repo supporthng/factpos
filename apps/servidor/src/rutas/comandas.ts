@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PoolClient } from "pg";
 import { z } from "zod";
-import { uuidv7, esNegocioDeMesas } from "@factpos/compartido";
+import { uuidv7, tieneMesas } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
 
@@ -69,8 +69,8 @@ export async function rutasComandas(app: FastifyInstance) {
   const preparar = async (req: { params: unknown }) => {
     const { cajaId } = z.object({ cajaId: uuid }).parse(req.params);
     const ctx = await contextoCaja(cajaId);
-    const e = (await pool.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0];
-    if (!e || !esNegocioDeMesas(e.t)) throw new ErrorNegocio("Las comandas no están activadas para esta empresa", 409);
+    const e = (await pool.query<{ t: string; m: string[] }>("SELECT tipo_negocio AS t, modulos_extra AS m FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0];
+    if (!e || !tieneMesas(e.t, e.m)) throw new ErrorNegocio("Las comandas no están activadas para esta empresa", 409);
     return ctx;
   };
 
