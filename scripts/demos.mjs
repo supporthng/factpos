@@ -19,11 +19,11 @@ const servidor = path.join(raiz, "apps", "servidor");
 const { Client } = createRequire(path.join(servidor, "package.json"))("pg");
 
 const EDICIONES = [
-  { slug: "tienda", puerto: 3001, tipo: "TIENDA", nombre: "FactPOS (tienda y colmado)" },
+  { slug: "abarrotes", puerto: 3001, tipo: "TIENDA", nombre: "FactPOS (abarrotes, supermercados y licorerías)" },
   { slug: "muebleria", puerto: 3002, tipo: "MUEBLERIA", nombre: "FactPOS Mueblería" },
   { slug: "farmacia", puerto: 3003, tipo: "FARMACIA", nombre: "FactPOS Farmacia" },
-  { slug: "bar", puerto: 3004, tipo: "RESTAURANTE", nombre: "FactPOS Bar y Restaurante" },
-  { slug: "tienda-cafe", puerto: 3005, tipo: "TIENDA", nombre: "Tienda con cafetería", extras: ["MESAS"] },
+  { slug: "bar-restaurante", puerto: 3004, tipo: "RESTAURANTE", nombre: "FactPOS Bar y Restaurante, Comida Rápida" },
+  { slug: "abarrotes-cafe", puerto: 3005, tipo: "TIENDA", nombre: "Abarrotes o supermercado con cafetería", extras: ["MESAS"] },
 ];
 const args = process.argv.slice(2);
 const reiniciar = args.includes("--reiniciar");

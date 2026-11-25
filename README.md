@@ -255,17 +255,17 @@ Solo para pruebas y demostraciones (un cliente instala **una** edición por nego
 ```bash
 npm run build                      # una vez (y después de cada cambio)
 npm run demos                      # todas las ediciones
-npm run demos -- farmacia bar      # solo algunas
+npm run demos -- farmacia bar-restaurante      # solo algunas
 npm run demos -- --reiniciar       # borra y vuelve a crear los datos de demostración
 ```
 
 | Edición | Puerto |
 |---|---|
-| Tienda y colmado (`tienda`) | 3001 |
+| FactPOS: abarrotes, supermercados y licorerías (`abarrotes`) | 3001 |
 | Mueblería (`muebleria`) | 3002 |
 | Farmacia (`farmacia`) | 3003 |
-| Bar y Restaurante (`bar`) | 3004 |
-| Tienda con cafetería (`tienda-cafe`) | 3005 |
+| Bar y Restaurante, Comida Rápida (`bar-restaurante`) | 3004 |
+| Abarrotes o supermercado con cafetería (`abarrotes-cafe`) | 3005 |
 
 La mueblería también sirve para probar el modo «una sola persona»: se enciende en Administración › Datos de la empresa.
 
