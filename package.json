@@ -19,7 +19,8 @@
     "dev:admin": "npm run dev -w @factpos/admin",
     "semilla": "npm run semilla -w @factpos/servidor",
     "padron": "npm run padron -w @factpos/servidor --",
-    "empaquetar": "node scripts/empaquetar.mjs"
+    "empaquetar": "node scripts/empaquetar.mjs",
+    "demos": "node scripts/demos.mjs"
   },
   "engines": {
     "node": ">=20.12"
