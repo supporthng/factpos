@@ -14,6 +14,8 @@ describe("ediciones", () => {
   });
   it("farmacia es una edición derivada", () => {
     expect(edicionPorId("FARMACIA")?.tipoNegocio).toBe("FARMACIA");
+    expect(edicionPorId("AUTOLAVADO")?.tipoNegocio).toBe("TIENDA");
+    expect(edicionPorId("AUTOLAVADO")?.modulos).toEqual(["LAVADO"]);
     expect(nombreEdicion("FARMACIA")).toBe("FactPOS Farmacia");
   });
   it("abarrotes, supermercado y licorería son FactPOS a secas (no tienen edición)", () => {

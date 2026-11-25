@@ -151,6 +151,9 @@ async function aplicarEdicion(edicion: string | undefined) {
   // Bar/Restaurante cubre también bar, discoteca y comida rápida: quien ya trabaja con mesas no se cambia (perdería, por ejemplo, el aforo del bar)
   const mesas = esNegocioDeMesas(ed.tipoNegocio) ? ["RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"] : [ed.tipoNegocio];
   await pool.query("UPDATE empresas SET tipo_negocio = $1 WHERE NOT (tipo_negocio = ANY($2::text[]))", [ed.tipoNegocio, mesas]).catch(() => {});
+  // Módulos propios de la edición (Auto Detailing trae el lavado de vehículos encendido); lo que la empresa ya había encendido se conserva
+  const modulos = [...(ed.modulos ?? [])];
+  if (modulos.length) await pool.query("UPDATE empresas SET modulos_extra = ARRAY(SELECT DISTINCT unnest(modulos_extra || $1::text[]))", [modulos]).catch(() => {});
 }
 
 export async function activarLicencia(clave: string, apiUrl?: string) {
