@@ -18,7 +18,7 @@ interface Detalle {
   subtotal: string; descuento: string; itbis: string; total: string; notas: string | null; anulada: boolean;
   anulacion: { numero: number; fecha: string; motivo: string; por: string | null } | null;
   cliente: { id: string; nombre: string; documento: string | null } | null;
-  clienteCorreo?: string | null; clienteTelefono?: string | null;
+  clienteCorreo?: string | null; clienteCorreosEnvio?: string[]; clienteTelefono?: string | null;
   sucursalId?: string;
   lineasDevolucion?: { linea: number; cantidad: string; devuelta: string }[] | null; devolucionesParciales?: number;
   fiscal: { encf: string; codigoSeguridad: string | null; fechaFirma?: string | null; urlQr?: string | null; venceSecuencia?: string | null } | null;
@@ -173,7 +173,9 @@ function VerFactura({ id, accionInicial, onCerrar, onCambio, onDuplicar }: { id:
   const [res, setRes] = useState<{ clienteId: string; nombre: string; documento: string | null }[]>([]);
   const [cliente, setCliente] = useState<{ id: string | null; nombre: string } | undefined>(undefined);
   const [msg, setMsg] = useState("");
-  const [envio, setEnvio] = useState<{ para: string; enviando: boolean } | null>(null);
+  const [envio, setEnvio] = useState<{ correos: string[]; nuevo: string; enviando: boolean } | null>(null);
+  /** Los correos del último envío a este cliente (o su correo de la ficha) y un campo para agregar otros */
+  const abrirEnvio = (x: Detalle) => ({ correos: x.clienteCorreosEnvio?.length ? x.clienteCorreosEnvio : x.clienteCorreo ? [x.clienteCorreo] : [], nuevo: "", enviando: false });
   const [previa, setPrevia] = useState<{ titulo: string; html: Promise<string> | string; ancho: number } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const interna = d?.tipoDocumento === "SIN";
@@ -250,11 +252,11 @@ function VerFactura({ id, accionInicial, onCerrar, onCambio, onDuplicar }: { id:
       case "modificar": if (d.tipoDocumento === "SIN") empezarEdicion(); else setModo("modificar"); break;
       case "pagar": void abrirPago(); break;
       case "anular": setModo("anular"); break;
-      case "correo": setEnvio({ para: d.clienteCorreo ?? "", enviando: false }); break;
+      case "correo": setEnvio(abrirEnvio(d)); break;
       case "whatsapp": {
         const doc = d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`;
         if (digitos.length >= 10) window.open(`https://wa.me/${digitos.length === 10 ? "1" + digitos : digitos}?text=${encodeURIComponent(`Hola${d.cliente ? `, ${d.cliente.nombre}` : ""}. Le enviamos su factura ${doc} por ${rd(d.total)}. ¡Gracias por su compra!`)}`, "_blank", "noopener");
-        else { setEnvio({ para: d.clienteCorreo ?? "", enviando: false }); setMsg("El cliente no tiene teléfono registrado: agréguelo en Clientes para enviarle la factura por WhatsApp."); }
+        else { setEnvio(abrirEnvio(d)); setMsg("El cliente no tiene teléfono registrado: agréguelo en Clientes para enviarle la factura por WhatsApp."); }
         break;
       }
     }
@@ -267,7 +269,7 @@ function VerFactura({ id, accionInicial, onCerrar, onCambio, onDuplicar }: { id:
           <h2 style={{ margin: 0 }}>{d ? `${d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`}` : "Factura"}</h2><span className="flex" />
           {d && <button className="boton chico" onClick={() => setPrevia({ titulo: "carta", html: htmlCartaFactura(d), ancho: 816 })} title="Ver cómo saldrá en hoja carta 8½ × 11">Imprimir carta</button>}
           {d && <button className="boton chico" onClick={() => setPrevia({ titulo: "ticket", html: htmlTicket(d), ancho: 380 })} title="Ver cómo saldrá en ticket angosto">Imprimir ticket</button>}
-          {d && !d.anulada && <button className="boton chico" onClick={() => setEnvio(envio ? null : { para: d.clienteCorreo ?? "", enviando: false })}>Enviar al cliente</button>}
+          {d && !d.anulada && <button className="boton chico" onClick={() => setEnvio(envio ? null : abrirEnvio(d))}>Enviar al cliente</button>}
           {d && onDuplicar && puede("admin.facturas") && <button className="boton chico" onClick={() => onDuplicar(id)} title="Hacer otra factura igual a esta">Duplicar</button>}
           {d && !d.anulada && puede("admin.cxc") && <button className="boton chico" onClick={() => void abrirPago()}>Pagar</button>}
         </div>
@@ -278,20 +280,44 @@ function VerFactura({ id, accionInicial, onCerrar, onCambio, onDuplicar }: { id:
           const doc = d.fiscal?.encf ?? d.numeroDocumento ?? `Nº ${d.numero}`;
           const texto = `Hola${d.cliente ? `, ${d.cliente.nombre}` : ""}. Le enviamos su factura ${doc} por ${rd(d.total)}. ¡Gracias por su compra!`;
           const wa = digitos.length >= 10 ? `https://wa.me/${digitos.length === 10 ? "1" + digitos : digitos}?text=${encodeURIComponent(texto)}` : null;
+          const valido = (c: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c);
+          /** Pasa lo escrito (uno o varios separados por coma, punto y coma o espacio) a la lista */
+          const agregar = (): string[] => {
+            const nuevos = envio.nuevo.split(/[,;\s]+/).map((c) => c.trim().toLowerCase()).filter(Boolean);
+            const malo = nuevos.find((c) => !valido(c));
+            if (malo) { setMsg(`«${malo}» no es un correo válido.`); return envio.correos; }
+            const lista = [...new Set([...envio.correos, ...nuevos])];
+            if (lista.length > 5) { setMsg("Máximo 5 correos por envío."); return envio.correos; }
+            setMsg(""); setEnvio({ ...envio, correos: lista, nuevo: "" });
+            return lista;
+          };
           const enviar = async () => {
-            setEnvio({ ...envio, enviando: true }); setMsg("");
-            try { await api(`/central/facturas/${id}/enviar`, { cuerpo: { para: [envio.para.trim()] } }); setMsg(`Factura enviada a ${envio.para.trim()}.`); setEnvio(null); }
-            catch (e) { setMsg((e as Error).message); setEnvio({ ...envio, enviando: false }); }
+            const lista = envio.nuevo.trim() ? agregar() : envio.correos;
+            if (!lista.length || (envio.nuevo.trim() && lista === envio.correos)) return;
+            setEnvio({ ...envio, correos: lista, nuevo: "", enviando: true }); setMsg("");
+            try { await api(`/central/facturas/${id}/enviar`, { cuerpo: { para: lista } }); setMsg(`Factura enviada a ${lista.join(", ")}.`); setEnvio(null); }
+            catch (e) { setMsg((e as Error).message); setEnvio({ ...envio, correos: lista, nuevo: "", enviando: false }); }
           };
           return (
             <div className="panel">
               <b>Enviar la factura al cliente</b>
-              <label className="campo"><span>Correo del cliente</span><input type="email" value={envio.para} onChange={(e) => setEnvio({ ...envio, para: e.target.value })} placeholder="cliente@correo.com" /></label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0" }}>
+                {envio.correos.map((c) => (
+                  <span key={c} className="pastilla" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>{c}
+                    <button className="enlace" aria-label={`Quitar ${c}`} onClick={() => setEnvio({ ...envio, correos: envio.correos.filter((x) => x !== c) })}>✕</button></span>))}
+                {!envio.correos.length && <span className="suave pequeno">Sin correos: agregue al menos uno.</span>}
+              </div>
+              <label className="campo"><span>Agregar correo{envio.correos.length ? " (hasta 5 en total)" : ""}</span>
+                <span className="en-linea">
+                  <input value={envio.nuevo} onChange={(e) => setEnvio({ ...envio, nuevo: e.target.value })} placeholder="otro@correo.com"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); agregar(); } }} />
+                  <button className="boton" disabled={!envio.nuevo.trim()} onClick={() => agregar()}>Agregar</button>
+                </span></label>
               <div className="fila-acciones">
-                <button className="boton primario" disabled={envio.enviando || !envio.para.includes("@")} onClick={enviar}>{envio.enviando ? "Enviando…" : "Enviar por correo"}</button>
+                <button className="boton primario" disabled={envio.enviando || (!envio.correos.length && !envio.nuevo.trim())} onClick={enviar}>{envio.enviando ? "Enviando…" : envio.correos.length > 1 ? `Enviar a ${envio.correos.length} correos` : "Enviar por correo"}</button>
                 {wa ? <a className="boton" href={wa} target="_blank" rel="noreferrer">Abrir WhatsApp</a> : <span className="suave pequeno">Para WhatsApp el cliente necesita un teléfono.</span>}
               </div>
-              <p className="suave pequeno" style={{ margin: "6px 0 0" }}>El correo lleva el detalle de la factura. Para un PDF, use «Imprimir carta» y elija «Guardar como PDF».</p>
+              <p className="suave pequeno" style={{ margin: "6px 0 0" }}>Los correos quedan guardados para este cliente: la próxima vez salen los mismos y puede agregar o quitar. El correo lleva el detalle de la factura. Para un PDF, use «Imprimir carta» y elija «Guardar como PDF».</p>
             </div>
           );
         })()}
