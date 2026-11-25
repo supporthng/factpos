@@ -80,29 +80,44 @@ function TipoNegocio() {
   );
 }
 
-/** Módulos que se encienden además de los del tipo de negocio. Hoy: la cafetería (cuentas abiertas, comandas, barra y cocina) para un negocio que no es de mesas. */
+/** Módulos que se encienden además de los del tipo de negocio: la cafetería (cuentas abiertas, comandas, barra y cocina) y el lavado de vehículos. */
 function ModulosExtra() {
   const [d, setD] = useState<{ tipoNegocio: string; extra: string[]; activos: string[] } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => { api<{ tipoNegocio: string; extra: string[]; activos: string[] }>("/central/empresa/modulos").then(setD).catch(() => setD(null)); }, []);
-  if (!d || ["RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"].includes(d.tipoNegocio)) return null;
-  const conMesas = d.extra.includes("MESAS");
-  const cambiar = async (v: boolean) => {
+  if (!d) return null;
+  const mesasDelTipo = ["RESTAURANTE", "BAR", "DISCOTECA", "COMIDA_RAPIDA"].includes(d.tipoNegocio);
+  const cambiar = async (modulo: string, v: boolean) => {
     setMsg(null);
-    const extra = v ? [...new Set([...d.extra, "MESAS"])] : d.extra.filter((m) => m !== "MESAS");
-    try { await api("/central/empresa/modulos", { metodo: "PUT", cuerpo: { extra } }); setD({ ...d, extra, activos: v ? [...new Set([...d.activos, "MESAS"])] : d.activos.filter((m) => m !== "MESAS") }); setMsg(v ? "Cafetería activada: la caja ya muestra Mesas y cuentas y Barra." : "Cafetería desactivada."); }
-    catch (e) { setMsg((e as Error).message); }
+    const extra = v ? [...new Set([...d.extra, modulo])] : d.extra.filter((m) => m !== modulo);
+    try {
+      const r = await api<{ extra: string[] }>("/central/empresa/modulos", { metodo: "PUT", cuerpo: { extra } });
+      setD({ ...d, extra: r.extra, activos: v ? [...new Set([...d.activos, modulo])] : d.activos.filter((m) => m !== modulo || (modulo === "MESAS" && mesasDelTipo)) });
+      window.dispatchEvent(new Event("factpos:modulos"));
+    } catch (e) { setMsg((e as Error).message); }
   };
   return (
-    <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
-      <h3 style={{ marginTop: 0 }}>Cafetería o lounge</h3>
-      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input type="checkbox" checked={conMesas} onChange={(e) => void cambiar(e.target.checked)} />
-        <span>Este negocio también vende comida y bebida (cuentas abiertas, comandas a barra y cocina, pre-cuenta y propina)</span>
-      </label>
-      <p className="suave" style={{ margin: "6px 0 0" }}>Enciende en la caja «Mesas y cuentas» y «Barra». El resto del negocio sigue igual. La propina legal solo se aplica a lo que se consume en la cafetería.</p>
-      {msg && <p className="suave" style={{ margin: "6px 0 0" }}>{msg}</p>}
-    </div>
+    <>
+      {!mesasDelTipo && (
+        <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Cafetería o lounge</h3>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={d.extra.includes("MESAS")} onChange={(e) => void cambiar("MESAS", e.target.checked)} />
+            <span>Este negocio también vende comida y bebida (cuentas abiertas, comandas a barra y cocina, pre-cuenta y propina)</span>
+          </label>
+          <p className="suave" style={{ margin: "6px 0 0" }}>Enciende en la caja «Mesas y cuentas» y «Barra». El resto del negocio sigue igual. La propina legal solo se aplica a lo que se consume en el local.</p>
+        </div>
+      )}
+      <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+        <h3 style={{ marginTop: 0 }}>Lavado de vehículos</h3>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" checked={d.extra.includes("LAVADO")} onChange={(e) => void cambiar("LAVADO", e.target.checked)} />
+          <span>Este negocio también lava vehículos o hace auto detailing (ficha del vehículo, órdenes de lavado, lavadores con comisión por lavado)</span>
+        </label>
+        <p className="suave" style={{ margin: "6px 0 0" }}>Agrega la pantalla «Lavado de vehículos» en Ventas. Después de encenderlo, dé el permiso «Lavado de vehículos» a quien lo use.</p>
+        {msg && <p className="suave" style={{ margin: "6px 0 0" }}>{msg}</p>}
+      </div>
+    </>
   );
 }
 

@@ -25,3 +25,13 @@ export const tieneModulo = (modulo: ModuloEmpresa, tipo: string | null | undefin
 
 /** ¿Usa cuentas abiertas, salón, comandas y propina? (restaurante, bar, discoteca, comida rápida, o cualquiera con el módulo MESAS) */
 export const tieneMesas = (tipo: string | null | undefined, extras?: readonly string[] | null) => tieneModulo("MESAS", tipo, extras);
+
+/** Tamaños de vehículo del módulo LAVADO: el precio de cada servicio depende del tamaño. */
+export const TAMANOS_VEHICULO = [
+  { id: "MOTO", nombre: "Motor" },
+  { id: "CARRO", nombre: "Carro" },
+  { id: "JEEPETA", nombre: "Jeepeta" },
+  { id: "CAMIONETA", nombre: "Camioneta" },
+  { id: "CAMION", nombre: "Camión o guagua" },
+] as const;
+export type TamanoVehiculo = (typeof TAMANOS_VEHICULO)[number]["id"];
