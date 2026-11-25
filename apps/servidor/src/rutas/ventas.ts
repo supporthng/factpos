@@ -434,6 +434,7 @@ export async function registrarVenta(
   const numero = v.rows[0].numero;
 
   const L = q.lineas;
+  const farmacia = esFarmacia((await c.query<{ t: string }>("SELECT tipo_negocio AS t FROM empresas WHERE id = $1", [ctx.empresaId])).rows[0]?.t);
   // Farmacias: lo controlado o de venta con receta no sale sin los datos de la receta (queda guardada con la venta)
   {
     const conReceta = await productosConReceta(c, ctx.empresaId, L.map((l) => l.prod.productoId));
