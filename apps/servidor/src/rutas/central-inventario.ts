@@ -98,6 +98,8 @@ const REPORTES: Record<string, { vista: string; fecha?: boolean; sucursal?: bool
   "perdidas": { vista: "rpt_perdidas", fecha: true, sucursal: true, orden: "fecha DESC" },
   "ajustes": { vista: "rpt_ajustes", fecha: true, sucursal: true, orden: "fecha DESC, numero DESC" },
   "ofertas": { vista: "rpt_ofertas", fecha: true, sucursal: true, orden: "fecha DESC" },
+  // Una fila por oferta y producto del período (se agrupa en el manejador de abajo)
+  "ofertas-vendidas": { vista: "rpt_ofertas_vendidas", fecha: true, sucursal: true },
   "cupones": { vista: "rpt_cupones", orden: "usos DESC" },
   "traspasos": { vista: "rpt_traspasos", orden: "enviado_en DESC" },
   "delivery": { vista: "rpt_delivery", fecha: true, sucursal: true, orden: "fecha DESC" },
@@ -641,6 +643,17 @@ export async function rutasCentralInventario(app: FastifyInstance) {
                 CASE WHEN SUM(venta_neta) = 0 THEN NULL ELSE ROUND(100 * SUM(utilidad) / SUM(venta_neta), 2) END AS margen_pct
            FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
           GROUP BY 1 HAVING SUM(venta_neta) <> 0 ORDER BY SUM(utilidad) DESC`,
+        params,
+      );
+      return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;
+    }
+    if (nombre === "ofertas-vendidas") {
+      const v = await pool.query(
+        `SELECT oferta, sku, producto, COUNT(DISTINCT venta_id)::int AS facturas, SUM(unidades) AS unidades, SUM(venta_total) AS venta_total,
+                SUM(descuento_dado) AS descuento_dado, SUM(costo) AS costo, SUM(venta_neta) - SUM(costo) AS utilidad,
+                CASE WHEN SUM(venta_neta) = 0 THEN NULL ELSE ROUND(100 * (SUM(venta_neta) - SUM(costo)) / SUM(venta_neta), 2) END AS margen_pct
+           FROM ${def.vista} ${cond.length ? "WHERE " + cond.join(" AND ") : ""}
+          GROUP BY oferta_id, oferta, producto_id, sku, producto ORDER BY SUM(unidades) DESC, oferta, producto LIMIT 5000`,
         params,
       );
       return f.formato === "csv" ? enviarCsv(rep, nombre, v.rows) : v.rows;

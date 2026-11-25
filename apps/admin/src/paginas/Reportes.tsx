@@ -13,6 +13,7 @@ const REPORTES: Rep[] = [
   { id: "formas-pago", titulo: "Formas de pago", grupo: "Ventas", fechas: true, desc: "Cuánto entró en efectivo, tarjeta, transferencia y crédito." },
   { id: "niveles-precio", titulo: "Ventas por nivel de precio", grupo: "Ventas", fechas: true, desc: "Cuánto se vendió con el precio 1, 2 y 3." },
   { id: "ofertas", titulo: "Rendimiento de ofertas", grupo: "Ventas", fechas: true, desc: "Qué ofertas se usaron y cuánto descuento dieron." },
+  { id: "ofertas-vendidas", titulo: "Ofertas vendidas (por producto)", grupo: "Ventas", fechas: true, desc: "Cada oferta con los productos que se vendieron en oferta: unidades, venta, descuento dado, costo y utilidad. Una utilidad negativa es una oferta que se vendió con pérdida." },
   { id: "cupones", titulo: "Uso de cupones", grupo: "Ventas", desc: "Cupones emitidos y cuántas veces se canjearon." },
   { id: "valorizacion", titulo: "Valorización del inventario", grupo: "Inventario", desc: "Cuánto dinero hay en mercancía, a costo, por sucursal." },
   { id: "sin-stock", titulo: "Productos sin stock", grupo: "Inventario", desc: "Productos agotados (existencia 0 o menos) en el almacén principal, con lo que vendían en los últimos 30 días y su última venta: lo primero que hay que reponer va arriba." },
