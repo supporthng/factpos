@@ -5,6 +5,7 @@ import type { PoolClient } from "pg";
 import { uuidv7, tieneModulo, TAMANOS_VEHICULO } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { sucursalesDe } from "../sesion.js";
+import { almacenDe, crearAjuste } from "./central-inventario.js";
 
 /**
  * Lavado de vehículos y auto detailing (módulo LAVADO): ficha del vehículo, servicios con precio por tamaño, lavadores, bahías,
@@ -41,12 +42,14 @@ export async function rutasLavado(app: FastifyInstance) {
   // ------------------------------------------------------------------------------------------------ Servicios
   app.get("/central/lavado/servicios", async (req) => {
     const r = await pool.query(
-      `SELECT id, nombre, descripcion, presentaciones, comision::text, activo FROM lavado_servicios WHERE empresa_id = $1 ORDER BY activo DESC, nombre`, [empresaDe(req)]);
+      `SELECT id, nombre, descripcion, presentaciones, comision::text, insumos, activo FROM lavado_servicios WHERE empresa_id = $1 ORDER BY activo DESC, nombre`, [empresaDe(req)]);
     return r.rows;
   });
   const Servicio = z.object({
     nombre: z.string().trim().min(2, "Escriba el nombre del servicio").max(80), descripcion: z.string().trim().max(300).nullish(),
     presentaciones: z.record(z.enum(TAMANOS), uuid).default({}), comision: dinero.default(0), activo: z.boolean().default(true),
+    /** Lo que gasta cada lavado de este servicio (se descuenta del inventario al quedar listo) */
+    insumos: z.array(z.object({ productoId: uuid, cantidad: z.coerce.number().positive().max(9999) })).max(20).default([]),
   });
   /** Cada presentación elegida debe ser de un producto de esta empresa */
   const validarPresentaciones = async (empresaId: string, p: Record<string, string>) => {
@@ -55,13 +58,20 @@ export async function rutasLavado(app: FastifyInstance) {
     const n = (await pool.query("SELECT 1 FROM presentaciones pr JOIN productos po ON po.id = pr.producto_id WHERE pr.id = ANY($1::uuid[]) AND po.empresa_id = $2", [ids, empresaId])).rowCount;
     if (n !== ids.length) throw new ErrorNegocio("Una de las presentaciones elegidas no existe en el catálogo");
   };
+  const validarInsumos = async (empresaId: string, ins: { productoId: string }[]) => {
+    const ids = [...new Set(ins.map((i) => i.productoId))];
+    if (ids.length !== ins.length) throw new ErrorNegocio("Un insumo está repetido");
+    if (ids.length && (await pool.query("SELECT 1 FROM productos WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND controla_stock", [ids, empresaId])).rowCount !== ids.length)
+      throw new ErrorNegocio("Los insumos deben ser productos del inventario (no servicios)");
+  };
   app.post("/central/lavado/servicios", async (req, rep) => {
     const b = Servicio.parse(req.body);
     await validarPresentaciones(empresaDe(req), b.presentaciones);
+    await validarInsumos(empresaDe(req), b.insumos);
     const id = uuidv7();
     try {
-      await pool.query("INSERT INTO lavado_servicios (id, empresa_id, nombre, descripcion, presentaciones, comision, activo) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-        [id, empresaDe(req), b.nombre, b.descripcion ?? null, JSON.stringify(b.presentaciones), new Decimal(b.comision).toFixed(2), b.activo]);
+      await pool.query("INSERT INTO lavado_servicios (id, empresa_id, nombre, descripcion, presentaciones, comision, activo, insumos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        [id, empresaDe(req), b.nombre, b.descripcion ?? null, JSON.stringify(b.presentaciones), new Decimal(b.comision).toFixed(2), b.activo, JSON.stringify(b.insumos)]);
     } catch (e) { if ((e as { code?: string }).code === "23505") throw new ErrorNegocio("Ya existe un servicio con ese nombre"); throw e; }
     rep.code(201);
     return { id };
@@ -70,10 +80,11 @@ export async function rutasLavado(app: FastifyInstance) {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const b = Servicio.parse(req.body);
     await validarPresentaciones(empresaDe(req), b.presentaciones);
+    await validarInsumos(empresaDe(req), b.insumos);
     let r;
     try {
-      r = await pool.query("UPDATE lavado_servicios SET nombre = $3, descripcion = $4, presentaciones = $5, comision = $6, activo = $7 WHERE id = $1 AND empresa_id = $2",
-        [id, empresaDe(req), b.nombre, b.descripcion ?? null, JSON.stringify(b.presentaciones), new Decimal(b.comision).toFixed(2), b.activo]);
+      r = await pool.query("UPDATE lavado_servicios SET nombre = $3, descripcion = $4, presentaciones = $5, comision = $6, activo = $7, insumos = $8 WHERE id = $1 AND empresa_id = $2",
+        [id, empresaDe(req), b.nombre, b.descripcion ?? null, JSON.stringify(b.presentaciones), new Decimal(b.comision).toFixed(2), b.activo, JSON.stringify(b.insumos)]);
     } catch (e) { if ((e as { code?: string }).code === "23505") throw new ErrorNegocio("Ya existe un servicio con ese nombre"); throw e; }
     if (!r.rowCount) throw new ErrorNegocio("Servicio no encontrado", 404);
     return { ok: true };
@@ -184,14 +195,14 @@ export async function rutasLavado(app: FastifyInstance) {
       if (!v) throw new ErrorNegocio("Vehículo no encontrado", 404);
       if ((await c.query("SELECT 1 FROM lavado_ordenes WHERE vehiculo_id = $1 AND estado IN ('EN_ESPERA','LAVANDO','LISTO')", [b.vehiculoId])).rowCount)
         throw new ErrorNegocio(`El vehículo ${v.placa} ya tiene una orden abierta: termínela o cancélela primero`);
-      const serv = (await c.query<{ id: string; nombre: string; presentaciones: Record<string, string>; comision: string }>(
-        "SELECT id, nombre, presentaciones, comision::text FROM lavado_servicios WHERE empresa_id = $1 AND activo AND id = ANY($2::uuid[])", [empresaId, b.servicios.map((s) => s.servicioId)])).rows;
+      const serv = (await c.query<{ id: string; nombre: string; presentaciones: Record<string, string>; comision: string; insumos: { productoId: string; cantidad: number }[] }>(
+        "SELECT id, nombre, presentaciones, comision::text, insumos FROM lavado_servicios WHERE empresa_id = $1 AND activo AND id = ANY($2::uuid[])", [empresaId, b.servicios.map((s) => s.servicioId)])).rows;
       const lineas = b.servicios.map((s) => {
         const d = serv.find((x) => x.id === s.servicioId);
         if (!d) throw new ErrorNegocio("Uno de los servicios ya no está disponible");
         const presentacionId = d.presentaciones[v.tamano];
         if (!presentacionId) throw new ErrorNegocio(`«${d.nombre}» no tiene precio para ${nombreTamano(v.tamano).toLowerCase()}: configúrelo en Servicios`);
-        return { servicioId: d.id, servicio: d.nombre, presentacionId, cantidad: s.cantidad, comision: d.comision };
+        return { servicioId: d.id, servicio: d.nombre, presentacionId, cantidad: s.cantidad, comision: d.comision, insumos: d.insumos };
       });
       if (b.bahiaId && !(await c.query("SELECT 1 FROM lavado_bahias WHERE id = $1 AND sucursal_id = $2 AND activa", [b.bahiaId, sucursalId])).rowCount) throw new ErrorNegocio("Bahía no válida");
       if (b.lavadorId && !(await c.query("SELECT 1 FROM lavado_lavadores WHERE id = $1 AND empresa_id = $2 AND activo", [b.lavadorId, empresaId])).rowCount) throw new ErrorNegocio("Lavador no válido");
@@ -210,9 +221,9 @@ export async function rutasLavado(app: FastifyInstance) {
 
   const cargar = async (c: PoolClient, id: string, empresaId: string) => {
     const o = (await c.query(
-      `SELECT o.id, o.estado, o.lavador_id, o.lineas, o.sucursal_id FROM lavado_ordenes o JOIN sucursales s ON s.id = o.sucursal_id WHERE o.id = $1 AND s.empresa_id = $2 FOR UPDATE OF o`, [id, empresaId])).rows[0];
+      `SELECT o.id, o.estado, o.lavador_id, o.lineas, o.sucursal_id, o.placa, o.numero::text FROM lavado_ordenes o JOIN sucursales s ON s.id = o.sucursal_id WHERE o.id = $1 AND s.empresa_id = $2 FOR UPDATE OF o`, [id, empresaId])).rows[0];
     if (!o) throw new ErrorNegocio("Orden no encontrada", 404);
-    return o as { id: string; estado: string; lavador_id: string | null; lineas: { cantidad: number; comision: string }[]; sucursal_id: string };
+    return o as { id: string; estado: string; lavador_id: string | null; lineas: { cantidad: number; comision: string; insumos?: { productoId: string; cantidad: number }[] }[]; sucursal_id: string; placa: string; numero: string };
   };
   /** Asigna o cambia el lavador y la bahía mientras la orden siga abierta */
   app.post("/central/lavado/ordenes/:id/asignar", async (req) => {
@@ -242,6 +253,23 @@ export async function rutasLavado(app: FastifyInstance) {
         await c.query("UPDATE lavado_ordenes SET estado = 'LISTO', listo_en = now() WHERE id = $1", [id]);
         const monto = o.lineas.reduce((a, l) => a.plus(new Decimal(l.comision).mul(l.cantidad)), new Decimal(0));
         if (o.lavador_id && monto.gt(0)) await c.query("INSERT INTO lavado_comisiones (id, orden_id, lavador_id, monto) VALUES ($1,$2,$3,$4) ON CONFLICT (orden_id) DO NOTHING", [uuidv7(), id, o.lavador_id, monto.toFixed(2)]);
+        // Insumos del lavado: se descuentan del inventario; si no se puede (sin existencia…) el lavado igual queda listo y se avisa
+        const gasto = new Map<string, Decimal>();
+        for (const l of o.lineas) for (const i of l.insumos ?? []) gasto.set(i.productoId, (gasto.get(i.productoId) ?? new Decimal(0)).plus(new Decimal(i.cantidad).mul(l.cantidad)));
+        if (gasto.size) {
+          await c.query("SAVEPOINT insumos");
+          try {
+            const aj = await crearAjuste(c, {
+              sucursalId: o.sucursal_id, almacenId: await almacenDe(c, o.sucursal_id), usuarioId: usuarioDe(req), motivo: `Lavado #${o.numero} · ${o.placa}`, origen: "MANUAL",
+              lineas: [...gasto].map(([productoId, cant]) => ({ productoId, tipo: "CONSUMO_INTERNO" as const, cantidad: cant.neg(), nota: `Lavado #${o.numero}` })),
+            });
+            await c.query("UPDATE lavado_ordenes SET insumos_ajuste_id = $2 WHERE id = $1", [id, aj.id]);
+          } catch (e) {
+            await c.query("ROLLBACK TO SAVEPOINT insumos");
+            await c.query("UPDATE lavado_ordenes SET insumos_nota = $2 WHERE id = $1", [id, `No se descontaron los insumos: ${(e as Error).message}`.slice(0, 300)]);
+            return { ok: true, aviso: `El lavado quedó listo, pero no se pudieron descontar los insumos del inventario: ${(e as Error).message}` };
+          }
+        }
       } else {
         // Si ya estaba LISTO y la comisión no se ha pagado, se retira
         await c.query("DELETE FROM lavado_comisiones WHERE orden_id = $1 AND pagada_en IS NULL", [id]);

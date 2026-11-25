@@ -19,7 +19,7 @@ const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha AAAA-MM-DD");
 
 const TIPOS_SALIDA = ["AJUSTE_SALIDA", "MERMA", "VENCIMIENTO", "CONSUMO_INTERNO"] as const;
 
-async function almacenDe(c: Pick<PoolClient, "query">, sucursalId: string, almacenId?: string) {
+export async function almacenDe(c: Pick<PoolClient, "query">, sucursalId: string, almacenId?: string) {
   const r = await c.query<{ id: string }>(
     almacenId
       ? "SELECT id FROM almacenes WHERE id = $2 AND sucursal_id = $1"
@@ -39,7 +39,7 @@ interface LineaAjuste {
 }
 
 /** Crea el documento de ajuste y aplica cada línea al kardex (mismo id que viajará a la sucursal). */
-async function crearAjuste(
+export async function crearAjuste(
   c: PoolClient,
   d: { sucursalId: string; almacenId: string; usuarioId: string; motivo: string; origen: "MANUAL" | "CONTEO"; conteoId?: string; lineas: LineaAjuste[] },
 ) {

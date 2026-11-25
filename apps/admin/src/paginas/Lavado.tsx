@@ -16,7 +16,8 @@ interface Orden {
   lineas: Linea[]; ventaId: string | null; cliente: string | null; clienteDatos: ClienteB | null; bahiaId: string | null; bahia: string | null; lavadorId: string | null; lavador: string | null;
   entradaEn: string; inicioEn: string | null; listoEn: string | null; comision: string | null; sucursalId: string;
 }
-interface Servicio { id: string; nombre: string; descripcion: string | null; presentaciones: Record<string, string>; comision: string; activo: boolean }
+interface Insumo { productoId: string; cantidad: number }
+interface Servicio { id: string; nombre: string; descripcion: string | null; presentaciones: Record<string, string>; comision: string; insumos: Insumo[]; activo: boolean }
 interface Lavador { id: string; nombre: string; telefono: string | null; activo: boolean }
 interface Bahia { id: string; nombre: string; activa: boolean; sucursalId: string; sucursal: string }
 interface Vehiculo { id: string; placa: string; marca: string | null; modelo: string | null; color: string | null; tamano: string; clienteId: string | null; cliente: string | null; telefono: string | null; lavados: number }
@@ -59,7 +60,7 @@ function Tablero({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => void 
   const [nueva, setNueva] = useState(false);
   const [cobrando, setCobrando] = useState<Orden | null>(null);
   const actuar = async (ruta: string, cuerpo?: unknown, ok?: string) => {
-    try { await api(ruta, { metodo: "POST", cuerpo: cuerpo ?? {} }); if (ok) aviso(ok); void ordenes.recargar(); }
+    try { const r = await api<{ aviso?: string } | null>(ruta, { metodo: "POST", cuerpo: cuerpo ?? {} }); if (r?.aviso) aviso(r.aviso, "error"); else if (ok) aviso(ok); void ordenes.recargar(); }
     catch (e) { aviso((e as Error).message, "error"); }
   };
   if (cobrando) {
@@ -252,7 +253,7 @@ function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => voi
       const det = await api<{ presentaciones: { id: string; nombre: string }[] }>(`/central/productos/${p.id}`);
       const map: Record<string, string> = {};
       for (const [id, n] of tams) { const pr = det.presentaciones.find((x) => x.nombre === n); if (pr) map[id] = pr.id; }
-      await api("/central/lavado/servicios", { metodo: "POST", cuerpo: { nombre: nombre.trim(), presentaciones: map, comision: num(comision), activo: true } });
+      await api("/central/lavado/servicios", { metodo: "POST", cuerpo: { nombre: nombre.trim(), presentaciones: map, comision: num(comision), activo: true, insumos: [] } });
       window.dispatchEvent(new Event("factpos:catalogo"));
       setNuevo(false); setNombre(""); setComision(""); setPrecios({}); aviso("Servicio creado."); void lista.recargar();
     } catch (e) { aviso((e as Error).message, "error"); }
@@ -260,7 +261,7 @@ function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => voi
   };
   const guardar = async (s: Servicio, cambios: Partial<Servicio>) => {
     const n = { ...s, ...cambios };
-    try { await api(`/central/lavado/servicios/${s.id}`, { metodo: "PUT", cuerpo: { nombre: n.nombre, descripcion: n.descripcion, presentaciones: n.presentaciones, comision: Number(n.comision), activo: n.activo } }); void lista.recargar(); }
+    try { await api(`/central/lavado/servicios/${s.id}`, { metodo: "PUT", cuerpo: { nombre: n.nombre, descripcion: n.descripcion, presentaciones: n.presentaciones, comision: Number(n.comision), activo: n.activo, insumos: n.insumos } }); void lista.recargar(); }
     catch (e) { aviso((e as Error).message, "error"); }
   };
   return (
@@ -296,11 +297,48 @@ function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => voi
             <ul className="pequeno" style={{ margin: "6px 0 0 18px", padding: 0 }}>
               {TAMANOS.filter(([id]) => s.presentaciones[id]).map(([id, n]) => <li key={id}>{n}: {presentacion(s.presentaciones[id])}</li>)}
             </ul>
+            <Insumos s={s} nombreDe={(id) => productos.find((p) => p.id === id)?.nombre ?? "Producto"} guardar={(ins) => guardar(s, { insumos: ins })} />
           </div>
         ))}
         <p className="suave pequeno" style={{ margin: "6px 0 0" }}>Los precios se cambian en Productos (cada servicio es un producto de tipo servicio con una presentación por tamaño).</p>
       </div>
     </>
+  );
+}
+
+/** Lo que gasta cada lavado de un servicio: al quedar listo el lavado se descuenta del inventario (opcional) */
+function Insumos({ s, nombreDe, guardar }: { s: Servicio; nombreDe: (id: string) => string; guardar: (ins: Insumo[]) => void }) {
+  const { productos } = useCatalogo();
+  const [abierto, setAbierto] = useState(false);
+  const [q, setQ] = useState("");
+  const [pid, setPid] = useState("");
+  const [cant, setCant] = useState("1");
+  const opciones = productos.filter((p) => !s.insumos.some((i) => i.productoId === p.id) && (!q.trim() || p.nombre.toLowerCase().includes(q.trim().toLowerCase()) || p.sku.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 50);
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button className="enlace pequeno" onClick={() => setAbierto(!abierto)}>{abierto ? "Ocultar insumos" : `Insumos por lavado (${s.insumos.length})`}</button>
+      {abierto && (
+        <div>
+          {s.insumos.map((i) => (
+            <div key={i.productoId} className="en-linea pequeno" style={{ justifyContent: "space-between" }}>
+              <span>{nombreDe(i.productoId)} · {i.cantidad}</span>
+              <button className="enlace" aria-label="Quitar insumo" onClick={() => guardar(s.insumos.filter((x) => x.productoId !== i.productoId))}>✕</button>
+            </div>
+          ))}
+          {!s.insumos.length && <p className="suave pequeno" style={{ margin: "4px 0" }}>Sin insumos: el lavado no mueve inventario.</p>}
+          <div className="en-linea" style={{ flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+            <input placeholder="Buscar producto…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 150 }} />
+            <select value={pid} onChange={(e) => setPid(e.target.value)} style={{ maxWidth: 220 }}>
+              <option value="">Elija el insumo…</option>
+              {opciones.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+            <input className="numero" style={{ width: 70 }} inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value.replace(/[^\d.]/g, ""))} aria-label="Cantidad por lavado" />
+            <button className="boton" disabled={!pid || !num(cant)} onClick={() => { guardar([...s.insumos, { productoId: pid, cantidad: num(cant) }]); setPid(""); setCant("1"); setQ(""); }}>Agregar</button>
+          </div>
+          <p className="suave pequeno" style={{ margin: "4px 0 0" }}>Cantidad por cada lavado de este servicio, en la unidad del producto.</p>
+        </div>
+      )}
+    </div>
   );
 }
 
