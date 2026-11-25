@@ -246,30 +246,34 @@ export async function rutasTurnos(app: FastifyInstance) {
       /** Billetes y monedas con que se abre: {"1000": 2, "500": 4} (opcional) */
       conteoApertura: z.record(z.enum(["2000", "1000", "500", "200", "100", "50", "25", "10", "5", "1"]), z.number().int().min(0).max(100000)).optional(),
     }).parse(req.body);
-
-    const turno = await enTransaccion(async (c) => {
-      const ctx = await contextoCaja(cajaId, c);
-      const id = uuidv7();
-      try {
-        await c.query(
-          `INSERT INTO turnos (id, sucursal_id, caja_id, usuario_id, abierto_en, fondo_inicial, conteo_apertura)
-           VALUES ($1, $2, $3, $4, now(), $5, $6)`,
-          [id, ctx.sucursalId, cajaId, body.usuarioId, body.fondoInicial,
-            body.conteoApertura && Object.values(body.conteoApertura).some((n) => n > 0) ? JSON.stringify(Object.fromEntries(Object.entries(body.conteoApertura).filter(([, n]) => n > 0))) : null],
-        );
-      } catch (e: any) {
-        if (e.code === "23505") throw new ErrorNegocio("Esta caja ya tiene un turno abierto", 409);
-        throw e;
-      }
-      await c.query(
-        `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
-         SELECT 'turnos', id, 'UPSERT', to_jsonb(t) FROM turnos t WHERE id = $1`,
-        [id],
-      );
-      return { id };
-    });
+    const turno = await abrirTurno(cajaId, body);
     rep.code(201);
     return turno;
+  });
+}
+
+/** Abre el turno de una caja (lo usan la Caja y, en el modo de una sola persona, la Administración). */
+export async function abrirTurno(cajaId: string, body: { usuarioId: string; fondoInicial: string; conteoApertura?: Record<string, number> }) {
+  return await enTransaccion(async (c) => {
+    const ctx = await contextoCaja(cajaId, c);
+    const id = uuidv7();
+    try {
+      await c.query(
+        `INSERT INTO turnos (id, sucursal_id, caja_id, usuario_id, abierto_en, fondo_inicial, conteo_apertura)
+         VALUES ($1, $2, $3, $4, now(), $5, $6)`,
+        [id, ctx.sucursalId, cajaId, body.usuarioId, body.fondoInicial,
+          body.conteoApertura && Object.values(body.conteoApertura).some((n) => n > 0) ? JSON.stringify(Object.fromEntries(Object.entries(body.conteoApertura).filter(([, n]) => n > 0))) : null],
+      );
+    } catch (e: any) {
+      if (e.code === "23505") throw new ErrorNegocio("Esta caja ya tiene un turno abierto", 409);
+      throw e;
+    }
+    await c.query(
+      `INSERT INTO sync_outbox (tabla, registro_id, operacion, payload)
+       SELECT 'turnos', id, 'UPSERT', to_jsonb(t) FROM turnos t WHERE id = $1`,
+      [id],
+    );
+    return { id };
   });
 }
 

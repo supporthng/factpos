@@ -595,6 +595,16 @@ export async function rutasCentralProductos(app: FastifyInstance) {
     await pool.query("UPDATE empresas SET modulos_extra = $2 WHERE id = $1", [empresaDe(req), [...new Set(extra)]]);
     return { extra: [...new Set(extra)] };
   });
+  /** Modo «una sola persona factura y cobra»: quien factura abre y cierra su turno desde la Administración (negocios chicos de cualquier tipo). */
+  app.get("/central/empresa/modo-unico", async (req) => {
+    const r = await pool.query<{ u: boolean }>("SELECT una_sola_persona AS u FROM empresas WHERE id = $1", [empresaDe(req)]);
+    return { activo: r.rows[0]?.u ?? false };
+  });
+  app.put("/central/empresa/modo-unico", async (req) => {
+    const { activo } = z.object({ activo: z.boolean() }).parse(req.body);
+    await pool.query("UPDATE empresas SET una_sola_persona = $2 WHERE id = $1", [empresaDe(req), activo]);
+    return { activo };
+  });
   /** El tipo de negocio lo fijan el instalador y la licencia: el cliente no lo cambia. Soporte puede abrirlo con PERMITIR_CAMBIO_TIPO_NEGOCIO=1 en el .env. */
   app.put("/central/empresa/tipo-negocio", async (req) => {
     if (process.env.PERMITIR_CAMBIO_TIPO_NEGOCIO !== "1") throw new ErrorNegocio("El tipo de negocio lo define la instalación y su licencia: no se cambia desde aquí. Si necesita otro, comuníquese con FactPOS.", 403);

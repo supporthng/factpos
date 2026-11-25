@@ -9,7 +9,8 @@ import { registrarVenta, cotizar, resumen, exigirSinComprobante, exigirSeriesPre
 import { contextoCaja, sucursalPropia } from "../contexto.js";
 import { exigirLicenciaParaVender } from "../licencia/cliente.js";
 import { autorizacionDirecta } from "../autorizacion.js";
-import { FinanciamientoSchema, evaluarFinanciamiento } from "./venta-plazos.js";
+import { FinanciamientoSchema, evaluarFinanciamiento, crearPlanDeVenta, emitirRecibo } from "./venta-plazos.js";
+import { Decimal } from "decimal.js";
 import { enviarCorreo, correoListo } from "../correo/transporte.js";
 import { marcaDe } from "../correo/envios.js";
 import { correoFactura } from "../correo/plantillas.js";
@@ -423,15 +424,35 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
       cuponCodigo: z.string().trim().min(1).max(30).optional(), motivoDescuento: z.string().trim().max(200).optional(),
       /** Farmacias: receta de lo controlado o de venta con receta */
       receta: z.object({ paciente: z.string().trim().min(3, "Anote el nombre del paciente").max(120), medico: z.string().trim().min(3, "Anote el nombre del médico").max(120), exequatur: z.string().trim().max(30).optional(), fechaReceta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional(),
+      /** Venta a plazos en una sola operación (modo «una sola persona»): `pagos` es solo la inicial; el resto queda a crédito con su plan de cuotas */
+      financiamiento: FinanciamientoSchema.optional(),
       pagos: z.array(z.object({
         formaPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]),
         monto: z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido"), recibido: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), referencia: z.string().max(60).optional(),
       })).min(1, "Falta la forma de pago"),
     }).parse(req.body);
-    await cajaPermitida(req, b.cajaId);
+    const ctxCaja = await cajaPermitida(req, b.cajaId);
     await exigirLicenciaParaVender();
     const usuarioId = usuarioDe(req);
     if (b.tipoDocumento === "SIN") await exigirSinComprobante(b.cajaId);
+    // Venta a plazos: solo en el modo «una sola persona»; se valida el plan y quién puede aprobar las excepciones del cliente
+    let plazos: { ev: Awaited<ReturnType<typeof evaluarFinanciamiento>>; motivo: string | null; por: string | null } | null = null;
+    if (b.financiamiento) {
+      const modo = (await pool.query<{ u: boolean }>("SELECT una_sola_persona AS u FROM empresas WHERE id = $1", [empresaDe(req)])).rows[0]?.u;
+      if (!modo) throw new ErrorNegocio("La venta a plazos desde la administración requiere el modo «una sola persona factura y cobra»");
+      if (b.pagos.some((p) => p.formaPago === "CREDITO")) throw new ErrorNegocio("En una venta a plazos se cobra solo la inicial; el resto queda a crédito solo");
+      const tot = resumen(await cotizar(pool, ctxCaja, { clienteId: b.clienteId, cuponCodigo: b.cuponCodigo, items: b.items }, false)).total;
+      const ev = await evaluarFinanciamiento(pool, { empresaId: empresaDe(req), clienteId: b.clienteId, total: tot, f: b.financiamiento });
+      if (!b.pagos.reduce((a, x) => a.plus(x.monto), new Decimal(0)).eq(ev.inicial)) throw new ErrorNegocio(`La inicial acordada es RD$ ${new Decimal(ev.inicial).toFixed(2)}: cobre exactamente ese monto`);
+      let motivo: string | null = null, por: string | null = null;
+      if (ev.excepciones.length) {
+        if (!tienePermiso(permisos(req), "venta.credito")) throw new ErrorNegocio(`El crédito necesita la decisión de un supervisor: ${ev.excepciones.join("; ")}.`, 403);
+        motivo = b.financiamiento.motivoExcepcion ?? null;
+        if (!motivo || motivo.length < 5) throw new ErrorNegocio(`Indique el motivo para aprobar el crédito (mínimo 5 caracteres): ${ev.excepciones.join("; ")}.`);
+        por = usuarioDe(req);
+      }
+      plazos = { ev, motivo, por };
+    }
     // Descuentos manuales: solo con el permiso de aprobar descuentos (la persona que factura es quien los autoriza) y con motivo
     const hayDescuento = b.items.some((i) => Number(i.descuentoManual ?? 0) > 0);
     let autorizacion: string | undefined;
@@ -456,11 +477,31 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
            SELECT $1, ca.sucursal_id, ca.id, $3, now(), 0 FROM cajas ca WHERE ca.id = $2
               AND NOT EXISTS (SELECT 1 FROM turnos t WHERE t.caja_id = ca.id AND t.estado = 'ABIERTO')`, [uuidv7(), b.cajaId, usuarioId]);
       }
-      return registrarVenta(c, b.cajaId, {
-      usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: b.pagos,
+      const pagosVenta = plazos ? [...b.pagos, { formaPago: "CREDITO" as const, monto: plazos.ev.financiado }] : b.pagos;
+      const saldoAntes = plazos ? new Decimal((await c.query("SELECT COALESCE(SUM(monto),0) AS s FROM cxc_movimientos WHERE cliente_id = $1", [b.clienteId])).rows[0].s) : new Decimal(0);
+      const venta = await registrarVenta(c, b.cajaId, {
+      usuarioId, ventaId: b.ventaId, clienteId: b.clienteId, tipoDocumento: b.tipoDocumento, notas: b.notas, items: b.items, pagos: pagosVenta,
+      ...(plazos ? { autorizacionCredito: autorizacionDirecta(plazos.por ?? usuarioId, "Administración", "venta.credito", b.cajaId) } : {}),
       cuponCodigo: b.cuponCodigo, ...(hayDescuento ? { autorizacionDescuento: autorizacion, motivoDescuento: b.motivoDescuento } : {}),
       ...(b.receta ? { receta: b.receta } : {}),
-      }, { exigirSeries: true });
+      }, { exigirSeries: true, omitirLimiteCredito: !!plazos?.por });
+      if (!plazos) return venta;
+      const ventaId = (venta as { id: string }).id;
+      const plan = await crearPlanDeVenta(c, {
+        empresaId: ctxCaja.empresaId, sucursalId: ctxCaja.sucursalId, clienteId: b.clienteId!, ventaId, usuarioId, planId: plazos.ev.plan.id, financiado: plazos.ev.financiado, inicial: plazos.ev.inicial,
+        primeraCuota: b.financiamiento!.primeraCuota ?? null, garante: b.financiamiento!.garante?.nombre ? { nombre: b.financiamiento!.garante.nombre, documento: b.financiamiento!.garante.documento, telefono: b.financiamiento!.garante.telefono ?? null } : null,
+        excepciones: plazos.ev.excepciones, excepcionMotivo: plazos.motivo, excepcionPor: plazos.por, notas: "Venta a plazos desde la administración",
+      });
+      const turno = (await c.query<{ id: string }>("SELECT id FROM turnos WHERE caja_id = $1 AND estado = 'ABIERTO'", [b.cajaId])).rows[0];
+      const saldoDespues = new Decimal((await c.query("SELECT COALESCE(SUM(monto),0) AS s FROM cxc_movimientos WHERE cliente_id = $1", [b.clienteId])).rows[0].s);
+      const formas = [...new Set(b.pagos.map((p) => p.formaPago))];
+      const inicial = new Decimal(plazos.ev.inicial);
+      const recibo = await emitirRecibo(c, {
+        sucursalId: ctxCaja.sucursalId, tipo: "INICIAL", clienteId: b.clienteId!, ventaId, monto: inicial, formaPago: formas.length === 1 ? formas[0] : "MIXTO", referencia: b.pagos.find((x) => x.referencia)?.referencia ?? null,
+        saldoAnterior: saldoAntes, saldoNuevo: saldoDespues, usuarioId, turnoId: turno?.id ?? null,
+        aplicaciones: [{ ventaId, factura: (venta as { numero?: number }).numero ?? null, aplicado: inicial.toFixed(2), concepto: "Inicial" }],
+      });
+      return { ...venta, recibo, plazos: { plan: plan.nombre, cuotas: plan.cuotas.length, financiado: plan.capital, interes: plan.interes, totalAPagar: plan.total, inicial: plazos.ev.inicial } };
     });
     await pool.query(
       `INSERT INTO auditoria (id, sucursal_id, usuario_id, autorizado_por, accion, entidad, entidad_id, detalle)
