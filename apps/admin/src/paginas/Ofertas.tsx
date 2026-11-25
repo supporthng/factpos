@@ -269,6 +269,7 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
             <select value={categoriaId} onChange={(e) => { setCategoriaId(e.target.value); setProductoId(""); }}>
               <option value="">—</option>{categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
+            {categoriaId && <small className="texto-aviso">Esta oferta se aplicará a los {productos.filter((p) => p.categoriaId === categoriaId).length} productos de la categoría, no a uno solo. Para un solo producto, déjela en «—» y búsquelo en «Producto».</small>}
           </label>
         </div>
         {ref && (o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN") && (
