@@ -23,6 +23,7 @@ export interface ConfigCaja {
   modulos: { delivery: { activo: boolean } };
   /** TIENDA (por defecto) o RESTAURANTE, BAR, DISCOTECA, COMIDA_RAPIDA: activa las cuentas abiertas */
   tipoNegocio?: string;
+  modulosExtra?: string[];
   /** Porcentaje de la propina legal (planilla de impuestos en Fiscal); 10 si no llega */
   propinaPct?: number;
   /** Control de entradas y aforo (bar o discoteca) */

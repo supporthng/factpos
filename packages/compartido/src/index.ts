@@ -10,3 +10,4 @@ export * from "./codigos-barra.js";
 export * from "./tipo-negocio.js";
 export * from "./ediciones.js";
 export * from "./modulos-por-tipo.js";
+export * from "./modulos-empresa.js";

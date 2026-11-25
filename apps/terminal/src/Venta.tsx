@@ -4,7 +4,7 @@ import { versionCliente } from "./version";
 import { modoInicial } from "./vista";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  cotizarCarrito, marcaEfectiva, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito, esNegocioDeMesas,
+  cotizarCarrito, marcaEfectiva, indexarCatalogo, precioPara, ofertasPara, leerCodigoBalanza, ErrorCarrito, esNegocioDeMesas, tieneMesas,
   type Catalogo, type ProductoCatalogo, type Cupon, type Cotizacion,
 } from "@factpos/compartido";
 import { Decimal } from "decimal.js";
@@ -811,7 +811,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
                 ["Facturas y devolución", () => setModal("facturasPin"), false],
                 ["Pago de factura", () => setModal("pagoFactura"), false],
                 ["Salida de efectivo", () => setModal("salida"), false],
-                ...(esNegocioDeMesas(config.tipoNegocio) ? [["Mesas y cuentas", () => setModal("cuentas"), false] as const, ["Barra", () => setModal("barra"), false] as const] : []),
+                ...(tieneMesas(config.tipoNegocio, config.modulosExtra) ? [["Mesas y cuentas", () => setModal("cuentas"), false] as const, ["Barra", () => setModal("barra"), false] as const] : []),
                 ...(config.aforoActivo ? [[etiquetaAforo(aforo), () => setModal("aforo"), false] as const] : []),
                 ...(config.modulos.delivery.activo ? [["Delivery", () => setModal("delivery"), false] as const] : []),
                 ["Cerrar turno", () => setModal("turno"), false],
@@ -823,8 +823,8 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             <div className="pv-atajos pv-atajos-min" aria-label="Acciones de la venta">
               <button disabled={!lineas.length} onClick={pausar}>Suspender</button>
               <button onClick={() => setModal("pausadas")}>Retomar{pausadas.length ? ` (${pausadas.length})` : ""}</button>
-              {esNegocioDeMesas(config.tipoNegocio) && <button onClick={() => setModal("cuentas")}>Mesas y cuentas</button>}
-              {esNegocioDeMesas(config.tipoNegocio) && <button onClick={() => setModal("barra")}>Barra</button>}
+              {tieneMesas(config.tipoNegocio, config.modulosExtra) && <button onClick={() => setModal("cuentas")}>Mesas y cuentas</button>}
+              {tieneMesas(config.tipoNegocio, config.modulosExtra) && <button onClick={() => setModal("barra")}>Barra</button>}
               {config.aforoActivo && <button className={aforoLleno(aforo) ? "error" : ""} onClick={() => setModal("aforo")}>{etiquetaAforo(aforo)}</button>}
               {verCatalogo
                 ? <button className={cdAbierto ? "activo" : cupon ? "con-cupon" : ""} onClick={() => { setMasAbierto(false); setCdAbierto((v) => !v); }} aria-expanded={cdAbierto}>Cupón / Desc.</button>
@@ -954,7 +954,7 @@ export function Venta({ ajustes, config, usuario, turno, onSalir }: {
             const cta = cuentaActiva;
             if (cta) { // las líneas de la cuenta quedan ligadas a esta venta; si faltan partes, se vuelve a la cuenta
               const avisarCobrada = (n: number) => api<{ estado: string }>(ajustes.servidor, `/cajas/${ajustes.cajaId}/cuentas/${cta.cuentaId}/cobrada`, { cuerpo: { ventaId: r.id, lineaIds: cta.lineaIds } })
-                .then((c) => { if (c.estado === "ABIERTA" || (esNegocioDeMesas(config.tipoNegocio))) setModal("cuentas"); })
+                .then((c) => { if (c.estado === "ABIERTA" || (tieneMesas(config.tipoNegocio, config.modulosExtra))) setModal("cuentas"); })
                 .catch(() => { if (n > 0) setTimeout(() => avisarCobrada(n - 1), 5000); });
               avisarCobrada(5);
             }
