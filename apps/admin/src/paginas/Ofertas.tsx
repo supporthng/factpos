@@ -62,7 +62,9 @@ export function Ofertas() {
         clave={(f) => f.id}
         vacio="No hay ofertas"
         columnas={[
-          { titulo: "Oferta", valor: (o) => <><b>{o.nombre}</b><br /><span className="suave pequeno">{regla(o)}</span></> },
+          // Editar y Eliminar van junto al nombre: en ventanas angostas la tabla se corta y una columna al final no se vería
+          { titulo: "Oferta", valor: (o) => <><button className="enlace" style={{ fontWeight: 700, textAlign: "left" }} title="Editar esta oferta" onClick={() => setEditando(o)}>{o.nombre}</button><br /><span className="suave pequeno">{regla(o)}</span>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}><button className="boton chico" onClick={() => setEditando(o)}>Editar</button><button className="boton chico peligro" onClick={() => eliminar(o)}>Eliminar</button></div></> },
           { titulo: "Sucursales", valor: (o) => o.sucursales.join(", ") },
           { titulo: "Vigencia", valor: (o) => <>{new Date(o.iniciaEn).toLocaleDateString("es-DO")} – {new Date(o.terminaEn).toLocaleDateString("es-DO")}<br /><span className="suave pequeno">{horario(o)}</span></> },
           { titulo: "Nivel", valor: (o) => o.nivelPrecio ?? "Todos" },
@@ -70,7 +72,6 @@ export function Ofertas() {
           { titulo: "Descuento dado", valor: (o) => rd(o.descuentoOtorgado), der: true },
           { titulo: "Activa", valor: (o) => <input type="checkbox" checked={o.activo} onChange={(e) => alternar(o.id, e.target.checked)} /> },
           { titulo: "En el verificador", valor: (o) => <input type="checkbox" title="Mostrar esta oferta en la pantalla del verificador de precios" checked={o.mostrarEnVerificador} onChange={(e) => mostrarEnVerificador(o.id, e.target.checked)} /> },
-          { titulo: "", valor: (o) => <><button className="boton chico" onClick={() => setEditando(o)}>Editar</button>{" "}<button className="boton chico peligro" onClick={() => eliminar(o)}>Eliminar</button></> },
         ]}
       />
       {nueva && <NuevaOferta onCerrar={() => setNueva(false)} onCreada={() => { setNueva(false); recargar(); }} />}
