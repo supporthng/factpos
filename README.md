@@ -248,6 +248,28 @@ Notas:
 2. Cuentas por pagar, reportes 606/607/608.
 3. Respaldos automáticos de la base de cada sucursal.
 
+### Probar varias ediciones a la vez en la misma computadora
+
+Solo para pruebas y demostraciones (un cliente instala **una** edición por negocio). Cada edición corre en su puerto y con su propia base de datos:
+
+```bash
+npm run build                      # una vez (y después de cada cambio)
+npm run demos                      # todas las ediciones
+npm run demos -- farmacia bar-restaurante      # solo algunas
+npm run demos -- --reiniciar       # borra y vuelve a crear los datos de demostración
+```
+
+| Edición | Puerto |
+|---|---|
+| FactPOS: abarrotes, supermercados y licorerías (`abarrotes`) | 3001 |
+| Mueblería (`muebleria`) | 3002 |
+| Farmacia (`farmacia`) | 3003 |
+| Bar y Restaurante, Comida Rápida (`bar-restaurante`) | 3004 |
+
+La mueblería también sirve para probar el modo «una sola persona»: se enciende en Administración › Datos de la empresa.
+
+Cada una abre en `http://localhost:<puerto>/terminal/` (caja) y `/admin/` (administración). Requiere PostgreSQL con el usuario `factpos` (`docker compose up -d db`).
+
 ## Instalador único y alta de servidores con código
 
 `FactPOS-Instalador.zip` (GitHub › Releases › «FactPOS · Última versión») trae un solo
