@@ -7,6 +7,7 @@ const TIPOS: Record<string, string> = {
   PRECIO_ESPECIAL: "Precio especial",
   LLEVA_PAGA: "Lleva X, paga Y (2x1, 3x2)",
   POR_VOLUMEN: "Precio por volumen",
+  PAQUETE: "Paquete: N unidades por un precio (3 por 2,500)",
 };
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
@@ -44,6 +45,7 @@ export function Ofertas() {
       case "PORCENTAJE": return `${num(o.valor)}% de descuento`;
       case "PRECIO_ESPECIAL": return `a ${rd(o.valor)}`;
       case "LLEVA_PAGA": return `lleva ${o.lleva}, paga ${o.paga}`;
+      case "PAQUETE": return `${o.lleva} por ${rd(o.valor)}`;
       case "POR_VOLUMEN": return `desde ${num(o.cantidadMinima)} a ${rd(o.valor)} c/u`;
     }
   };
@@ -191,18 +193,22 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
   const costoProm = comoPrecio(ref?.costoPromedioUnidad);
   const costoOferta = comoPrecio(ref?.ultimaCompraOferta?.costoUnidad);
   const costoNormal = comoPrecio(ref?.ultimaCompraNormal?.costoUnidad);
-  const precioOferta = o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN" ? Number(numeroEscrito(o.valor || "0")) || 0 : 0;
+  const precioOferta = o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN" ? Number(numeroEscrito(o.valor || "0")) || 0
+    : o.tipo === "PAQUETE" && Number(o.lleva) >= 2 ? (Number(numeroEscrito(o.valor || "0")) || 0) / Number(o.lleva) : 0;
   const precioNormalRef = ref?.precioNormal ? Number(ref.precioNormal) : null;
   const muyBajo = precioOferta > 0 && precioNormalRef !== null && precioOferta < precioNormalRef * 0.2;
   const bajoCosto = precioOferta > 0 && costoProm !== null && precioOferta < costoProm - 0.005;
   const bajoCostoOferta = precioOferta > 0 && costoOferta !== null && precioOferta < costoOferta - 0.005;
-  const usarPrecio = (v: number | null) => v !== null && setO({ ...o, tipo: o.tipo === "POR_VOLUMEN" ? "POR_VOLUMEN" : "PRECIO_ESPECIAL", valor: v.toFixed(2) });
+  const usarPrecio = (v: number | null) => v !== null && setO({ ...o, tipo: o.tipo === "POR_VOLUMEN" || o.tipo === "PAQUETE" ? o.tipo : "PRECIO_ESPECIAL",
+    // En un paquete el campo es el precio total: costo de una unidad × unidades del paquete
+    valor: (o.tipo === "PAQUETE" && Number(o.lleva) >= 2 ? v * Number(o.lleva) : v).toFixed(2) });
 
   const crear = async () => {
     setMsg("");
     // Mensajes claros antes de llamar al servidor (el servidor solo diría «valor: Invalid»)
     const valor = numeroEscrito(o.valor);
     if (!o.nombre.trim()) return setMsg("Escriba el nombre de la oferta.");
+    if (o.tipo === "PAQUETE" && !(Number(o.lleva) >= 2)) return setMsg("Escriba cuántas unidades trae el paquete (2 o más).");
     if (o.tipo === "LLEVA_PAGA") {
       if (!(Number(o.lleva) > 0) || !(Number(o.paga) > 0) || Number(o.paga) >= Number(o.lleva)) return setMsg("En «Lleva / Paga», lo que paga debe ser menos de lo que lleva (por ejemplo lleva 2, paga 1).");
     } else if (!/^\d+(\.\d{1,4})?$/.test(valor) || Number(valor) <= 0) {
@@ -216,7 +222,7 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
         metodo: editar ? "PUT" : "POST",
         cuerpo: {
           nombre: o.nombre, tipo: o.tipo,
-          ...(o.tipo === "LLEVA_PAGA" ? { lleva: Number(o.lleva), paga: Number(o.paga) } : { valor }),
+          ...(o.tipo === "LLEVA_PAGA" ? { lleva: Number(o.lleva), paga: Number(o.paga) } : o.tipo === "PAQUETE" ? { lleva: Number(o.lleva), valor } : { valor }),
           cantidadMinima: o.tipo === "POR_VOLUMEN" ? o.cantidadMinima : "1",
           iniciaEn: editar && o.inicia === fechaRD(new Date(editar.iniciaEn)) ? editar.iniciaEn
             : o.inicia === hoy() ? new Date().toISOString() : `${o.inicia}T00:00:00-04:00`,
@@ -249,8 +255,10 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
             </>
           ) : (
             <>
-              <label className="campo"><span>{o.tipo === "PORCENTAJE" ? "Porcentaje" : "Precio unitario"}</span><input inputMode="decimal" value={o.valor} onChange={set("valor")} />
-                {o.tipo !== "PORCENTAJE" && precioOferta > 0 && <small className="suave">Se guardará como {rd(precioOferta)}</small>}</label>
+              {o.tipo === "PAQUETE" && <label className="campo"><span>Unidades del paquete</span><input inputMode="numeric" value={o.lleva} onChange={set("lleva")} /></label>}
+              <label className="campo"><span>{o.tipo === "PORCENTAJE" ? "Porcentaje" : o.tipo === "PAQUETE" ? "Precio del paquete (total)" : "Precio unitario"}</span><input inputMode="decimal" value={o.valor} onChange={set("valor")} />
+                {o.tipo === "PAQUETE" ? (Number(o.lleva) >= 2 && Number(numeroEscrito(o.valor || "0")) > 0 && <small className="suave">{o.lleva} unidades por {rd(Number(numeroEscrito(o.valor)))} ({rd(Number(numeroEscrito(o.valor)) / Number(o.lleva))} c/u)</small>)
+                  : o.tipo !== "PORCENTAJE" && precioOferta > 0 && <small className="suave">Se guardará como {rd(precioOferta)}</small>}</label>
               {o.tipo === "POR_VOLUMEN" && <label className="campo"><span>Desde cantidad</span><input inputMode="decimal" value={o.cantidadMinima} onChange={set("cantidadMinima")} /></label>}
             </>
           )}
@@ -271,7 +279,7 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
             </select>
           </label>
         </div>
-        {ref && (o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN") && (
+        {ref && (o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN" || o.tipo === "PAQUETE") && (
           <div className="referencia-costos">
             <div className="ref-titulo"><b>¿Hasta dónde puede bajar?</b><span className="suave pequeno">{ref.nombre} · {ref.presentacion}{ref.precioIncluyeItbis ? " · precios con ITBIS" : ""}</span></div>
             <div className="ref-filas">

@@ -24,6 +24,16 @@ describe("tipos de oferta", () => {
     expect(descuentoOferta(dosPorUno, { cantidad: 1, precioUnitario: "150" }).toFixed(2)).toBe("0.00");
   });
 
+  it("paquete «3 por 2,500» se repite por cada grupo completo", () => {
+    const paq = oferta({ tipo: "PAQUETE", lleva: 3, valor: "2500" });
+    expect(descuentoOferta(paq, { cantidad: 2, precioUnitario: "1500" }).toFixed(2)).toBe("0.00"); // no completa el grupo
+    expect(descuentoOferta(paq, { cantidad: 3, precioUnitario: "1500" }).toFixed(2)).toBe("2000.00"); // 4,500 → 2,500
+    expect(descuentoOferta(paq, { cantidad: 4, precioUnitario: "1500" }).toFixed(2)).toBe("2000.00"); // la cuarta, a precio normal
+    expect(descuentoOferta(paq, { cantidad: 6, precioUnitario: "1500" }).toFixed(2)).toBe("4000.00");
+    // si el paquete no es más barato que comprar sueltas, no aplica
+    expect(descuentoOferta(paq, { cantidad: 3, precioUnitario: "800" }).toFixed(2)).toBe("0.00");
+  });
+
   it("por volumen solo desde la cantidad mínima", () => {
     const vol = oferta({ tipo: "POR_VOLUMEN", valor: "135", cantidadMinima: "6" });
     expect(descuentoOferta(vol, { cantidad: 5, precioUnitario: "150" }).toFixed(2)).toBe("0.00");

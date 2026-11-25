@@ -13,6 +13,7 @@ import { BotonTeclado } from "./Teclado";
 function etiquetaOferta(o: Oferta) {
   switch (o.tipo) {
     case "LLEVA_PAGA": return `${o.lleva}x${o.paga}`;
+    case "PAQUETE": return `${o.lleva} por ${rd(o.valor ?? 0).replace(".00", "")}`;
     case "PORCENTAJE": return `−${Number(o.valor)} %`;
     case "POR_VOLUMEN": return `${Number(o.cantidadMinima)}+ a ${rd(o.valor ?? 0).replace(".00", "")}`;
     default: return `Especial ${rd(o.valor ?? 0).replace(".00", "")}`;

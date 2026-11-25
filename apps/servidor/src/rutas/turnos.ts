@@ -102,6 +102,7 @@ export async function rutasTurnos(app: FastifyInstance) {
       o.tipo === "PORCENTAJE" ? `${Number(o.valor)}% de descuento`
       : o.tipo === "PRECIO_ESPECIAL" ? `Precio especial ${formatoRD(o.valor)}`
       : o.tipo === "LLEVA_PAGA" ? `Lleve ${o.lleva}, pague ${o.paga}`
+      : o.tipo === "PAQUETE" ? `${o.lleva} por ${formatoRD(o.valor)}`
       : `Desde ${Number(o.cantidadMinima)} unidades a ${formatoRD(o.valor)} c/u`;
     const pc = c.marca?.pantallaCliente ?? {};
     const marca = { ...c.marca, pantallaCliente: { ...pc, ofertas: [
