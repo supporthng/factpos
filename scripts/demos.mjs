@@ -23,8 +23,7 @@ const EDICIONES = [
   { slug: "muebleria", puerto: 3002, tipo: "MUEBLERIA", nombre: "FactPOS Mueblería" },
   { slug: "farmacia", puerto: 3003, tipo: "FARMACIA", nombre: "FactPOS Farmacia" },
   { slug: "bar", puerto: 3004, tipo: "RESTAURANTE", nombre: "FactPOS Bar y Restaurante" },
-  { slug: "muebleria-unica", puerto: 3005, tipo: "MUEBLERIA", nombre: "Mueblería · una sola persona", unaSola: true },
-  { slug: "tienda-cafe", puerto: 3006, tipo: "TIENDA", nombre: "Tienda con cafetería", extras: ["MESAS"] },
+  { slug: "tienda-cafe", puerto: 3005, tipo: "TIENDA", nombre: "Tienda con cafetería", extras: ["MESAS"] },
 ];
 const args = process.argv.slice(2);
 const reiniciar = args.includes("--reiniciar");
@@ -48,8 +47,6 @@ for (const e of lista) {
   const c = new Client({ connectionString: urlDe(e.slug) });
   await c.connect();
   await c.query("UPDATE empresas SET tipo_negocio = $1, nombre_comercial = $2, modulos_extra = $3", [e.tipo, e.nombre, e.extras ?? []]);
-  // El modo «una sola persona» existe desde la versión que trae la migración 0151
-  if (e.unaSola) await c.query("UPDATE empresas SET una_sola_persona = true").catch(() => console.log(`[${e.slug}] esta versión aún no trae el modo «una sola persona»`));
   await c.end();
 }
 await a.end();

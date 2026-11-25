@@ -265,8 +265,9 @@ npm run demos -- --reiniciar       # borra y vuelve a crear los datos de demostr
 | Mueblería (`muebleria`) | 3002 |
 | Farmacia (`farmacia`) | 3003 |
 | Bar y Restaurante (`bar`) | 3004 |
-| Mueblería, una sola persona (`muebleria-unica`) | 3005 |
-| Tienda con cafetería (`tienda-cafe`) | 3006 |
+| Tienda con cafetería (`tienda-cafe`) | 3005 |
+
+La mueblería también sirve para probar el modo «una sola persona»: se enciende en Administración › Datos de la empresa.
 
 Cada una abre en `http://localhost:<puerto>/terminal/` (caja) y `/admin/` (administración). Requiere PostgreSQL con el usuario `factpos` (`docker compose up -d db`).
 
