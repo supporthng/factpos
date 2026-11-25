@@ -17,6 +17,11 @@ export function Ofertas() {
   const [editando, setEditando] = useState<any | null>(null);
   const ruta = `/central/ofertas?${new URLSearchParams({ ...(filtro ? { sucursalId: filtro } : {}), ...(vigentes ? { vigentes: "1" } : {}) })}`;
   const { datos, recargar, error } = useDatos<any[]>(ruta);
+  const { productos, categorias } = useCatalogo();
+  // A qué se aplica cada oferta (producto, presentación o categoría): así se ve de inmediato si abarca más de lo que se quiso
+  const aplicaA = (o: any) => (o.alcance ?? []).map((a: any) => a.categoriaId
+    ? `categoría ${categorias.find((c: any) => c.id === a.categoriaId)?.nombre ?? "?"} (todos sus productos)`
+    : (productos.find((p) => p.id === a.productoId)?.nombre ?? "producto") + (a.presentacionId ? " (solo una presentación)" : " (todas las presentaciones)")).join("; ");
 
   const alternar = async (id: string, activo: boolean) => {
     await api(`/central/ofertas/${id}`, { metodo: "PATCH", cuerpo: { activo } });
@@ -63,7 +68,7 @@ export function Ofertas() {
         vacio="No hay ofertas"
         columnas={[
           // Editar y Eliminar van junto al nombre: en ventanas angostas la tabla se corta y una columna al final no se vería
-          { titulo: "Oferta", valor: (o) => <><button className="enlace" style={{ fontWeight: 700, textAlign: "left" }} title="Editar esta oferta" onClick={() => setEditando(o)}>{o.nombre}</button><br /><span className="suave pequeno">{regla(o)}</span>
+          { titulo: "Oferta", valor: (o) => <><button className="enlace" style={{ fontWeight: 700, textAlign: "left" }} title="Editar esta oferta" onClick={() => setEditando(o)}>{o.nombre}</button><br /><span className="suave pequeno">{regla(o)}</span><br /><span className="suave pequeno">Aplica a: {aplicaA(o) || "—"}</span>
             <div style={{ display: "flex", gap: 6, marginTop: 6 }}><button className="boton chico" onClick={() => setEditando(o)}>Editar</button><button className="boton chico peligro" onClick={() => eliminar(o)}>Eliminar</button></div></> },
           { titulo: "Sucursales", valor: (o) => o.sucursales.join(", ") },
           { titulo: "Vigencia", valor: (o) => <>{new Date(o.iniciaEn).toLocaleDateString("es-DO")} – {new Date(o.terminaEn).toLocaleDateString("es-DO")}<br /><span className="suave pequeno">{horario(o)}</span></> },
