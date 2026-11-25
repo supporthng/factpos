@@ -49,6 +49,8 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
   const cajas = { ...cajasTodas, datos: soloEnviar ? (cajasTodas.datos?.filter((c) => c.tipo !== "FACTURACION") ?? null)
     : modoUnico ? (cajasTodas.datos?.filter((c) => miTurno.datos?.cajas.some((m) => m.cajaId === c.cajaId && m.turno?.esMio)) ?? null) : cajasTodas.datos };
   const [cajaId, setCajaId] = useState("");
+  const [aPlazos, setAPlazos] = useState(false);
+  const [inicial, setInicial] = useState("");
   const [cliente, setCliente] = useState<ClienteB | null>(duplicarDe?.cliente ?? null);
   const [busca, setBusca] = useState("");
   const [encontrados, setEncontrados] = useState<ClienteB[]>([]);
@@ -122,10 +124,12 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
 
   const t = TIPOS.find((x) => x.id === tipo)!;
   const total = n(cot?.total);
+  const plazosUnico = modoUnico && aPlazos; // una sola persona: lo que se cobra ahora es la inicial; el resto queda a crédito con su plan
+  const aCobrar = plazosUnico ? n(inicial) : total;
   const unico = pagos.length === 1;
-  const montoDe = (p: PagoF) => (unico ? total : n(p.monto));
+  const montoDe = (p: PagoF) => (unico ? aCobrar : n(p.monto));
   const pagado = pagos.reduce((a, p) => a + montoDe(p), 0);
-  const falta = Math.round((total - pagado) * 100) / 100;
+  const falta = Math.round((aCobrar - pagado) * 100) / 100;
   const hayDescuento = lineas.some((l) => n(l.descuento) > 0);
   const hayPrecioLibre = puedeLibre && lineas.some((l) => n(l.precio) > 0);
   const cajaSel = cajas.datos?.find((c) => c.cajaId === cajaId);
@@ -136,10 +140,8 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
   const montoCredito = pagos.filter((p) => p.forma === "CREDITO").reduce((a, p) => a + montoDe(p), 0);
   const planElegido = planes.datos?.find((p) => p.id === planId);
   // Venta a plazos (solo en la pantalla del vendedor): plan del catálogo, inicial y garante; la caja cobra solo la inicial
-  const planesVenta = useDatos<{ id: string; nombre: string; cuotas: number; frecuencia: string; interesPct: string; inicialMinPct: string; montoMinimo: string }[]>(soloEnviar ? "/central/por-cobrar/planes" : null);
-  const [aPlazos, setAPlazos] = useState(false);
+  const planesVenta = useDatos<{ id: string; nombre: string; cuotas: number; frecuencia: string; interesPct: string; inicialMinPct: string; montoMinimo: string }[]>(soloEnviar || modoUnico ? "/central/por-cobrar/planes" : null);
   const [planVenta, setPlanVenta] = useState("");
-  const [inicial, setInicial] = useState("");
   const [gNombre, setGNombre] = useState(""); const [gDoc, setGDoc] = useState(""); const [gTel, setGTel] = useState("");
   const [motivoCredito, setMotivoCredito] = useState("");
   const [prev, setPrev] = useState<PrevPlazos | null>(null);
@@ -166,7 +168,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
   const enviando = modo === "enviar" && puedeEnviar;
   const cambio = pagos.reduce((a, p) => a + (p.forma === "EFECTIVO" && n(p.recibido) > montoDe(p) ? n(p.recibido) - montoDe(p) : 0), 0);
   const cambiarPago = (id: string, c: Partial<PagoF>) => setPagos((ps) => ps.map((p) => (p.id === id ? { ...p, ...c } : p)));
-  const agregarPago = () => setPagos((ps) => [...(ps.length === 1 ? [{ ...ps[0], monto: total ? total.toFixed(2) : "" }] : ps), { id: crypto.randomUUID(), forma: "TARJETA", monto: "", recibido: "", referencia: "" }]);
+  const agregarPago = () => setPagos((ps) => [...(ps.length === 1 ? [{ ...ps[0], monto: aCobrar ? aCobrar.toFixed(2) : "" }] : ps), { id: crypto.randomUUID(), forma: "TARJETA", monto: "", recibido: "", referencia: "" }]);
   const problema = useMemo(() => {
     if (!cajas.datos?.length) return "";
     if (!validas.length) return "Agregue al menos un producto.";
@@ -176,7 +178,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
     if (hayPrecioLibre && motivoPrecio.trim().length < 5) return "Escriba el motivo del cambio de precio.";
     const sinSeries = validas.find((l) => l.usaSeries && seriesDe(l).length !== n(l.cantidad));
     if (sinSeries) return `${sinSeries.nombre}: escriba ${n(sinSeries.cantidad)} número(s) de serie (lleva ${seriesDe(sinSeries).length}).`;
-    if (enviando && soloEnviar && aPlazos) {
+    if (((enviando && soloEnviar) || plazosUnico) && aPlazos) {
       if (!cliente) return "La venta a plazos requiere un cliente.";
       if (!planVenta) return "Elija el plan de financiamiento.";
       if (n(inicial) <= 0) return "Escriba la inicial que paga el cliente.";
@@ -186,6 +188,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
       if (prev.excepciones.length && motivoCredito.trim().length < 5) return "Escriba el motivo para aprobar el crédito.";
     }
     if (enviando) return "";
+    if (plazosUnico && pagos.some((p) => p.forma === "CREDITO")) return "En una venta a plazos solo se cobra la inicial: quite el pago a crédito.";
     if (t.pideCliente && !(cliente?.documento)) return "Este comprobante requiere un cliente con RNC o cédula.";
     if (pagos.some((p) => p.forma === "CREDITO") && !cliente) return "La venta a crédito requiere un cliente.";
     if (Math.abs(falta) >= 0.005) return falta > 0 ? `Faltan ${rd(falta)} por cobrar.` : `Los pagos se pasan por ${rd(-falta)}.`;
@@ -219,13 +222,14 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
 
   const crear = async () => {
     if (problema || !cot) return;
-    if (!confirm(`Se emitirá ${t.nombre} por ${rd(total)}${t.fiscal ? ".\n\nUn comprobante fiscal no se puede modificar: solo se anula." : "."}\n\n¿Continuar?`)) return;
+    if (!confirm(`Se emitirá ${t.nombre} por ${rd(total)}${plazosUnico ? ` a plazos (se cobra ahora la inicial de ${rd(aCobrar)})` : ""}${t.fiscal ? ".\n\nUn comprobante fiscal no se puede modificar: solo se anula." : "."}\n\n¿Continuar?`)) return;
     setGuardando(true); setMsg("");
     try {
       const r = await api<{ id: string }>("/central/facturas", { cuerpo: {
         cajaId, clienteId: cliente?.id, tipoDocumento: tipo, notas: notas.trim() || undefined, ventaId: ventaId.current,
         items: items(), ...(cupon ? { cuponCodigo: cupon } : {}), ...(hayDescuento ? { motivoDescuento: motivo.trim() } : {}), ...(hayPrecioLibre ? { motivoPrecio: motivoPrecio.trim() } : {}),
         ...(receta ? { receta: { paciente: receta.paciente.trim(), medico: receta.medico.trim(), ...(receta.exequatur.trim() ? { exequatur: receta.exequatur.trim() } : {}), ...(receta.fechaReceta ? { fechaReceta: receta.fechaReceta } : {}) } } : {}),
+        ...(plazosUnico ? { financiamiento: financiamiento() } : {}),
         pagos: pagos.map((p) => ({
           formaPago: p.forma, monto: montoDe(p).toFixed(2),
           ...(p.forma === "EFECTIVO" && n(p.recibido) >= montoDe(p) && p.recibido ? { recibido: n(p.recibido).toFixed(2) } : {}),
@@ -316,6 +320,47 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
     </>
   );
   const sinCajas = cajas.datos && !cajas.datos.length;
+  const bloquePlazos = (planesVenta.datos?.length ?? 0) > 0 && (
+            <div className={soloEnviar ? "panel tv-datos" : "panel"}>
+              <label className="en-linea"><input type="checkbox" checked={aPlazos} onChange={(e) => setAPlazos(e.target.checked)} /> <b>Vender a plazos (financiamiento)</b></label>
+              {aPlazos && (
+                <>
+                  {!cliente && <p className="suave pequeno">Elija primero el cliente: el crédito se registra a su nombre.</p>}
+                  <label className="campo"><span>Plan</span>
+                    <select value={planVenta} onChange={(e) => { setPlanVenta(e.target.value); const p = planesVenta.datos?.find((x) => x.id === e.target.value); if (p && cot && !n(inicial)) setInicial((Math.ceil(n(cot.total) * n(p.inicialMinPct)) / 100 || "").toString()); }}>
+                      <option value="">Elija el plan…</option>
+                      {(planesVenta.datos ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre} · {n(p.interesPct) > 0 ? `${n(p.interesPct)} % de interés` : "sin interés"}</option>)}
+                    </select></label>
+                  <label className="campo"><span>Inicial (RD$){planSel && n(planSel.inicialMinPct) > 0 ? ` · mínimo ${n(planSel.inicialMinPct)} % = ${rd(inicialMinima)}` : ""}</span>
+                    <input className="numero" inputMode="decimal" value={inicial} onChange={(e) => setInicial(limpiar(e.target.value))} /></label>
+                  <h4 style={{ margin: "8px 0 2px" }}>Garante</h4>
+                  <label className="campo"><span>Nombre</span><input value={gNombre} maxLength={120} onChange={(e) => setGNombre(e.target.value)} /></label>
+                  <label className="campo"><span>Cédula del garante</span><input value={gDoc} inputMode="numeric" maxLength={13} placeholder="000-0000000-0" onChange={(e) => setGDoc(e.target.value)} /></label>
+                  <label className="campo"><span>Teléfono (opcional)</span><input value={gTel} maxLength={30} onChange={(e) => setGTel(e.target.value)} /></label>
+                  {errPrev && n(inicial) > 0 && planVenta && <p className="texto-alerta pequeno">{errPrev}</p>}
+                  {prev && (
+                    <div className="tv-fila-plazos">
+                      <div className="tv-fila"><span>{soloEnviar ? "Inicial (la cobra la caja)" : "Inicial (se cobra abajo)"}</span><b>{rd(prev.inicial)}</b></div>
+                      <div className="tv-fila"><span>Se financia</span><span>{rd(prev.financiado)}</span></div>
+                      <div className="tv-fila"><span>{n(prev.plan.interesPct) > 0 ? `Interés ${n(prev.plan.interesPct)} %` : "Sin interés"}</span><span>{rd(prev.interes)}</span></div>
+                      <div className="tv-fila"><span>{prev.plan.cuotas} cuotas de</span><b>{rd(prev.cuotaMonto)}</b></div>
+                      <div className="tv-fila"><span>Total a pagar a plazos</span><span>{rd(prev.totalAPagar)}</span></div>
+                      {prev.excepciones.length > 0 && (
+                        <div className="panel" style={{ marginTop: 6 }}>
+                          <b className="texto-alerta">El cliente no cumple todo:</b>
+                          <ul style={{ margin: "4px 0 6px 18px", padding: 0 }}>{prev.excepciones.map((x) => <li key={x}>{x}</li>)}</ul>
+                          {prev.puedeAprobar
+                            ? <label className="campo"><span>Usted puede aprobarlo: escriba el motivo (queda registrado)</span><input value={motivoCredito} maxLength={200} onChange={(e) => setMotivoCredito(e.target.value)} /></label>
+                            : <p className="suave pequeno">Un supervisor con el permiso «Vender a crédito» debe decidir y enviar esta venta.</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+
   // Terminal de ventas (vendedor): carrito a la izquierda; cliente, caja, notas y total siempre a la vista a la derecha
   if (soloEnviar) {
     return (
@@ -368,46 +413,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
               </div>
             )}
           </div>
-          {(planesVenta.datos?.length ?? 0) > 0 && (
-            <div className="panel tv-datos">
-              <label className="en-linea"><input type="checkbox" checked={aPlazos} onChange={(e) => setAPlazos(e.target.checked)} /> <b>Vender a plazos (financiamiento)</b></label>
-              {aPlazos && (
-                <>
-                  {!cliente && <p className="suave pequeno">Elija primero el cliente: el crédito se registra a su nombre.</p>}
-                  <label className="campo"><span>Plan</span>
-                    <select value={planVenta} onChange={(e) => { setPlanVenta(e.target.value); const p = planesVenta.datos?.find((x) => x.id === e.target.value); if (p && cot && !n(inicial)) setInicial((Math.ceil(n(cot.total) * n(p.inicialMinPct)) / 100 || "").toString()); }}>
-                      <option value="">Elija el plan…</option>
-                      {(planesVenta.datos ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre} · {n(p.interesPct) > 0 ? `${n(p.interesPct)} % de interés` : "sin interés"}</option>)}
-                    </select></label>
-                  <label className="campo"><span>Inicial (RD$){planSel && n(planSel.inicialMinPct) > 0 ? ` · mínimo ${n(planSel.inicialMinPct)} % = ${rd(inicialMinima)}` : ""}</span>
-                    <input className="numero" inputMode="decimal" value={inicial} onChange={(e) => setInicial(limpiar(e.target.value))} /></label>
-                  <h4 style={{ margin: "8px 0 2px" }}>Garante</h4>
-                  <label className="campo"><span>Nombre</span><input value={gNombre} maxLength={120} onChange={(e) => setGNombre(e.target.value)} /></label>
-                  <label className="campo"><span>Cédula del garante</span><input value={gDoc} inputMode="numeric" maxLength={13} placeholder="000-0000000-0" onChange={(e) => setGDoc(e.target.value)} /></label>
-                  <label className="campo"><span>Teléfono (opcional)</span><input value={gTel} maxLength={30} onChange={(e) => setGTel(e.target.value)} /></label>
-                  {errPrev && n(inicial) > 0 && planVenta && <p className="texto-alerta pequeno">{errPrev}</p>}
-                  {prev && (
-                    <div className="tv-fila-plazos">
-                      <div className="tv-fila"><span>Inicial (la cobra la caja)</span><b>{rd(prev.inicial)}</b></div>
-                      <div className="tv-fila"><span>Se financia</span><span>{rd(prev.financiado)}</span></div>
-                      <div className="tv-fila"><span>{n(prev.plan.interesPct) > 0 ? `Interés ${n(prev.plan.interesPct)} %` : "Sin interés"}</span><span>{rd(prev.interes)}</span></div>
-                      <div className="tv-fila"><span>{prev.plan.cuotas} cuotas de</span><b>{rd(prev.cuotaMonto)}</b></div>
-                      <div className="tv-fila"><span>Total a pagar a plazos</span><span>{rd(prev.totalAPagar)}</span></div>
-                      {prev.excepciones.length > 0 && (
-                        <div className="panel" style={{ marginTop: 6 }}>
-                          <b className="texto-alerta">El cliente no cumple todo:</b>
-                          <ul style={{ margin: "4px 0 6px 18px", padding: 0 }}>{prev.excepciones.map((x) => <li key={x}>{x}</li>)}</ul>
-                          {prev.puedeAprobar
-                            ? <label className="campo"><span>Usted puede aprobarlo: escriba el motivo (queda registrado)</span><input value={motivoCredito} maxLength={200} onChange={(e) => setMotivoCredito(e.target.value)} /></label>
-                            : <p className="suave pequeno">Un supervisor con el permiso «Vender a crédito» debe decidir y enviar esta venta.</p>}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
+          {bloquePlazos}
           <div className="panel tv-datos">{bloqueCaja}</div>
           <div className="panel tv-datos">{bloqueNotas}{bloqueCupon}</div>
           <div className="panel tv-total">
@@ -468,8 +474,10 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
         {bloqueNotas}
       </div>
 
+      {modoUnico && bloquePlazos}
+
       {!enviando && <div className="panel">
-        <h3>Cobro</h3>
+        <h3>{plazosUnico ? "Cobro de la inicial" : "Cobro"}</h3>
         {pagos.map((p, i) => (
           <div key={p.id} className="cab-compra" style={{ marginBottom: 8 }}>
             <label className="campo"><span>{unico ? "Forma de pago" : `Pago ${i + 1}`}</span>
@@ -482,7 +490,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
             {!unico && <button className="boton fantasma" aria-label="Quitar pago" onClick={() => setPagos((ps) => ps.filter((x) => x.id !== p.id))}>✕</button>}
           </div>
         ))}
-        {montoCredito > 0 && cliente && puede("admin.cxc") && (planes.datos ?? []).some((p) => p.activo) && (
+        {!plazosUnico && montoCredito > 0 && cliente && puede("admin.cxc") && (planes.datos ?? []).some((p) => p.activo) && (
           <div className="en-linea" style={{ flexWrap: "wrap", gap: 12, margin: "6px 0" }}>
             <label className="campo"><span>Financiar el crédito en cuotas</span>
               <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
