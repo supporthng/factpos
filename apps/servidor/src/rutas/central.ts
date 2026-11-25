@@ -356,7 +356,8 @@ export async function rutasCentral(app: FastifyInstance) {
   // Ofertas por sucursal
   // -------------------------------------------------------------------
   const OfertaSchema = z.object({
-    nombre: z.string().min(3).max(80),
+    // El nombre de una oferta siempre se guarda en mayúsculas (sale así en el ticket, el verificador y la caja)
+    nombre: z.string().trim().min(3).max(80).transform((s) => s.toLocaleUpperCase("es")),
     tipo: z.enum(["PORCENTAJE", "PRECIO_ESPECIAL", "LLEVA_PAGA", "POR_VOLUMEN", "PAQUETE"]),
     valor: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
     lleva: z.number().int().min(2).optional(),
