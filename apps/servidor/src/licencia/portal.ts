@@ -395,8 +395,11 @@ export async function rutasPortal(app: FastifyInstance) {
     // tipo=setup: el instalador completo (FactPOS-Setup.exe); por omisión, el paquete de actualización (.zip)
     const tipo = String((req.query as { tipo?: string }).tipo ?? "");
     if (tipo === "setup") {
-      if (!v?.setup) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
-      return { version: v.version, nombre: v.setup.nombre, url: await urlDescarga(v.setup) };
+      // ?edicion=farmacia → instalador de esa edición; si no existe (o no se pide), el estándar
+      const ed = String((req.query as { edicion?: string }).edicion ?? "").toLowerCase();
+      const elegido = (ed && v?.ediciones?.[ed]) || v?.setup;
+      if (!v || !elegido) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
+      return { version: v.version, nombre: elegido.nombre, url: await urlDescarga(elegido) };
     }
     if (tipo === "caja") {
       if (!v?.caja) throw new ErrorNegocio("Todavía no hay un instalador de Caja publicado: se genera con la próxima versión", 404);
@@ -409,9 +412,11 @@ export async function rutasPortal(app: FastifyInstance) {
   /** Descarga directa del instalador para probar 15 días (sin licencia ni datos). La instalación llega al portal sola cuando pide su activación. */
   app.get("/licencias/descargar-instalador", async (req, rep) => {
     const v = await ultimaVersion();
-    if (!v?.setup) throw new ErrorNegocio("Todavía no hay un instalador publicado", 404);
-    await evento(pool, { tipo: "DEMO_DESCARGA", detalle: { version: v.version } });
-    return rep.redirect(await urlDescarga(v.setup));
+    const ed = String((req.query as { edicion?: string }).edicion ?? "").toLowerCase();
+    const elegido = (ed && v?.ediciones?.[ed]) || v?.setup;
+    if (!v || !elegido) throw new ErrorNegocio("Todavía no hay un instalador publicado", 404);
+    await evento(pool, { tipo: "DEMO_DESCARGA", detalle: { version: v.version, ...(ed && v.ediciones?.[ed] ? { edicion: ed } : {}) } });
+    return rep.redirect(await urlDescarga(elegido));
   });
 
   /**
@@ -1017,7 +1022,7 @@ export async function rutasPortal(app: FastifyInstance) {
 // -------------------------------------------------------------------------------------------
 // Versiones publicadas (GitHub Releases). Repositorio privado: GITHUB_TOKEN con permiso de lectura.
 // -------------------------------------------------------------------------------------------
-interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null; caja?: { url: string; descarga: string; nombre: string } | null }
+interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null; caja?: { url: string; descarga: string; nombre: string } | null; ediciones?: Record<string, { url: string; descarga: string; nombre: string }> }
 let cacheVersion: { v: Publicada | null; t: number } | null = null;
 const encabezadosGitHub = (extra: Record<string, string> = {}) => ({
   "user-agent": "factpos-portal", accept: "application/vnd.github+json",
@@ -1046,7 +1051,12 @@ export async function ultimaVersion(): Promise<Publicada | null> {
       asset: { url: encontrada.asset.url, descarga: encontrada.asset.browser_download_url },
       setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
       // Instalador solo de Caja (sin servidor ni base de datos)
-      caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })() } : null;
+      caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
+      // Instaladores por edición (FactPOS-Farmacia-Setup.exe…), por su slug en minúsculas: «farmacia», «auto-detailing»…
+      ediciones: Object.fromEntries(encontrada.rel.assets.flatMap((x) => {
+        const m = x.name.match(/^FactPOS-(?!Caja-|Setup)(.+)-Setup\.exe$/i);
+        return m ? [[m[1].toLowerCase(), { url: x.url, descarga: x.browser_download_url, nombre: x.name }]] : [];
+      })) as Record<string, { url: string; descarga: string; nombre: string }> } : null;
     cacheVersion = { v, t: Date.now() };
     return v;
   } catch {

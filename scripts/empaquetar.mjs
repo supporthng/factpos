@@ -7,7 +7,7 @@
 import { execSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const raiz = fileURLToPath(new URL("..", import.meta.url));
 const { version } = JSON.parse(readFileSync(join(raiz, "package.json"), "utf8"));
@@ -171,6 +171,18 @@ if (makensis) {
     console.log(`Listo: ${relative(raiz, caja)} (${(statSync(caja).size / 1e6).toFixed(1)} MB, solo Caja)`);
   } catch (e) {
     console.warn(`(No se armó el instalador de Caja: ${e instanceof Error ? e.message : e})`);
+  }
+  // Un instalador por edición (FactPOS-Farmacia-Setup.exe…): mismo programa, con el tipo de negocio ya fijado y el nombre de la edición.
+  // La licencia sigue decidiendo la edición; esto solo evita preguntar y deja la marca correcta en el asistente. Si falla uno, no impide publicar lo demás.
+  const { EDICIONES } = await import(pathToFileURL(join(raiz, "packages/compartido/dist/index.js")).href);
+  for (const ed of EDICIONES) {
+    try {
+      const exe = join(salida, `FactPOS-${ed.slug}-Setup.exe`.replace(/^FactPOS-(.)/, (_, c) => `FactPOS-${c.toUpperCase()}`));
+      execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${exe}" -DNOMBRE="${ed.nombre}" -DNEGOCIO_FIJO=${ed.tipoNegocio} FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
+      console.log(`Listo: ${relative(raiz, exe)} (${(statSync(exe).size / 1e6).toFixed(1)} MB, ${ed.nombre})`);
+    } catch (e) {
+      console.warn(`(No se armó el instalador de ${ed.nombre}: ${e instanceof Error ? e.message : e})`);
+    }
   }
   // Desinstalador / limpieza total de la Caja (un solo .exe). Si fallara, no impide publicar lo demás.
   try {
