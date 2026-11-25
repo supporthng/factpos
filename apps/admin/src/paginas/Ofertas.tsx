@@ -131,6 +131,20 @@ interface Referencia {
   ultimaCompraOferta: { costoUnidad: string; costoRegularUnidad: string | null; fecha: string; proveedor: string; unidades: string } | null;
 }
 
+/**
+ * Lee un precio o porcentaje escrito a mano. «2.999» y «2,999» (tres dígitos tras el separador) son dos mil novecientos noventa y nueve,
+ * no casi tres pesos; «2.999,50» y «2,999.50» también; «899,50» es 899.50.
+ */
+export function numeroEscrito(texto: string): string {
+  const t = texto.replace(/RD\$|\s/gi, "");
+  if (/^\d{1,3}([.,]\d{3})+$/.test(t)) return t.replace(/[.,]/g, "");
+  if (t.includes(",") && t.includes(".")) {
+    const dec = Math.max(t.lastIndexOf(","), t.lastIndexOf("."));
+    return t.slice(0, dec).replace(/[.,]/g, "") + "." + t.slice(dec + 1);
+  }
+  return t.replace(",", ".");
+}
+
 function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onCreada: () => void; editar?: any }) {
   const { sucursales, categorias } = useCatalogo();
   const { productos } = useCatalogo();
@@ -172,7 +186,9 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
   const costoProm = comoPrecio(ref?.costoPromedioUnidad);
   const costoOferta = comoPrecio(ref?.ultimaCompraOferta?.costoUnidad);
   const costoNormal = comoPrecio(ref?.ultimaCompraNormal?.costoUnidad);
-  const precioOferta = o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN" ? Number(o.valor || 0) : 0;
+  const precioOferta = o.tipo === "PRECIO_ESPECIAL" || o.tipo === "POR_VOLUMEN" ? Number(numeroEscrito(o.valor || "0")) || 0 : 0;
+  const precioNormalRef = ref?.precioNormal ? Number(ref.precioNormal) : null;
+  const muyBajo = precioOferta > 0 && precioNormalRef !== null && precioOferta < precioNormalRef * 0.2;
   const bajoCosto = precioOferta > 0 && costoProm !== null && precioOferta < costoProm - 0.005;
   const bajoCostoOferta = precioOferta > 0 && costoOferta !== null && precioOferta < costoOferta - 0.005;
   const usarPrecio = (v: number | null) => v !== null && setO({ ...o, tipo: o.tipo === "POR_VOLUMEN" ? "POR_VOLUMEN" : "PRECIO_ESPECIAL", valor: v.toFixed(2) });
@@ -180,7 +196,7 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
   const crear = async () => {
     setMsg("");
     // Mensajes claros antes de llamar al servidor (el servidor solo diría «valor: Invalid»)
-    const valor = o.valor.replace(/RD\$|\s/gi, "").replace(",", ".");
+    const valor = numeroEscrito(o.valor);
     if (!o.nombre.trim()) return setMsg("Escriba el nombre de la oferta.");
     if (o.tipo === "LLEVA_PAGA") {
       if (!(Number(o.lleva) > 0) || !(Number(o.paga) > 0) || Number(o.paga) >= Number(o.lleva)) return setMsg("En «Lleva / Paga», lo que paga debe ser menos de lo que lleva (por ejemplo lleva 2, paga 1).");
@@ -228,7 +244,8 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
             </>
           ) : (
             <>
-              <label className="campo"><span>{o.tipo === "PORCENTAJE" ? "Porcentaje" : "Precio unitario"}</span><input inputMode="decimal" value={o.valor} onChange={set("valor")} /></label>
+              <label className="campo"><span>{o.tipo === "PORCENTAJE" ? "Porcentaje" : "Precio unitario"}</span><input inputMode="decimal" value={o.valor} onChange={set("valor")} />
+                {o.tipo !== "PORCENTAJE" && precioOferta > 0 && <small className="suave">Se guardará como {rd(precioOferta)}</small>}</label>
               {o.tipo === "POR_VOLUMEN" && <label className="campo"><span>Desde cantidad</span><input inputMode="decimal" value={o.cantidadMinima} onChange={set("cantidadMinima")} /></label>}
             </>
           )}
@@ -265,6 +282,7 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
                 <button className="boton chico" disabled={costoOferta === null} onClick={() => usarPrecio(costoOferta)}>Usar</button></div>
             </div>
             {!ref.ultimaCompraOferta && <p className="suave pequeno">Aún no hay compras en oferta de este producto. Se registran en Compras marcando "En oferta del proveedor".</p>}
+            {muyBajo && <p className="texto-aviso pequeno">Ojo: el precio normal es {rd(precioNormalRef!)} y la oferta quedaría en {rd(precioOferta)}. Revise que no falte un cero o que el punto no sea de miles.</p>}
             {bajoCostoOferta ? <p className="texto-aviso pequeno">Ese precio está por debajo de lo que costó incluso en la oferta del proveedor: se vende con pérdida. Solo es un aviso: puede guardar la oferta igual.</p>
               : bajoCosto ? <p className="texto-aviso pequeno">Ese precio está por debajo del costo promedio{costoOferta !== null ? ", pero cubre lo que costó en la oferta del proveedor" : ""}. Solo es un aviso: puede guardar la oferta igual.</p> : null}
           </div>
