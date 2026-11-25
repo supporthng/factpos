@@ -23,7 +23,6 @@ const EDICIONES = [
   { slug: "muebleria", puerto: 3002, tipo: "MUEBLERIA", nombre: "FactPOS Mueblería" },
   { slug: "farmacia", puerto: 3003, tipo: "FARMACIA", nombre: "FactPOS Farmacia" },
   { slug: "bar-restaurante", puerto: 3004, tipo: "RESTAURANTE", nombre: "FactPOS Bar y Restaurante, Comida Rápida" },
-  { slug: "abarrotes-cafe", puerto: 3005, tipo: "TIENDA", nombre: "Abarrotes o supermercado con cafetería", extras: ["MESAS"] },
 ];
 const args = process.argv.slice(2);
 const reiniciar = args.includes("--reiniciar");
