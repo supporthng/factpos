@@ -357,7 +357,7 @@ export async function rutasCentral(app: FastifyInstance) {
   // -------------------------------------------------------------------
   const OfertaSchema = z.object({
     nombre: z.string().min(3).max(80),
-    tipo: z.enum(["PORCENTAJE", "PRECIO_ESPECIAL", "LLEVA_PAGA", "POR_VOLUMEN"]),
+    tipo: z.enum(["PORCENTAJE", "PRECIO_ESPECIAL", "LLEVA_PAGA", "POR_VOLUMEN", "PAQUETE"]),
     valor: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
     lleva: z.number().int().min(2).optional(),
     paga: z.number().int().min(1).optional(),
@@ -378,7 +378,7 @@ export async function rutasCentral(app: FastifyInstance) {
       .array(z.object({ productoId: uuid.optional(), presentacionId: uuid.optional(), categoriaId: uuid.optional() })
         .refine((a) => [a.productoId, a.presentacionId, a.categoriaId].filter(Boolean).length === 1, "Indique un producto, una presentación o una categoría"))
       .min(1),
-  });
+  }).refine((o) => o.tipo !== "PAQUETE" || (o.lleva !== undefined && o.valor !== undefined && Number(o.valor) > 0), "En un paquete indique cuántas unidades lleva y el precio total del paquete");
 
   app.post("/central/ofertas", async (req, rep) => {
     const o = OfertaSchema.parse(req.body);

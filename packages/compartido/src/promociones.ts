@@ -12,7 +12,7 @@ import { Decimal } from "decimal.js";
  *     el servidor lo vuelve a calcular para guardar la venta.
  */
 
-export type TipoOferta = "PORCENTAJE" | "PRECIO_ESPECIAL" | "LLEVA_PAGA" | "POR_VOLUMEN";
+export type TipoOferta = "PORCENTAJE" | "PRECIO_ESPECIAL" | "LLEVA_PAGA" | "POR_VOLUMEN" | "PAQUETE";
 
 export interface Oferta {
   id: string;
@@ -112,6 +112,15 @@ export function descuentoOferta(o: Oferta, l: LineaParaOferta): Decimal {
     case "POR_VOLUMEN": {
       const especial = D(o.valor);
       desc = especial.lt(precio) ? r2(cant.mul(precio.minus(especial))) : new Decimal(0);
+      break;
+    }
+    case "PAQUETE": {
+      // «3 por 2,500»: cada grupo completo de `lleva` unidades cuesta `valor` en total; lo que sobra va a precio normal
+      const n = o.lleva ?? 0;
+      if (n < 2) return new Decimal(0);
+      const grupos = cant.div(n).floor();
+      const ahorro = new Decimal(n).mul(precio).minus(D(o.valor));
+      desc = ahorro.gt(0) ? r2(grupos.mul(ahorro)) : new Decimal(0);
       break;
     }
     case "LLEVA_PAGA": {
