@@ -245,7 +245,7 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
     <div className="fondo-modal" onMouseDown={onCerrar}>
       <div className="modal ancho" onMouseDown={(e) => e.stopPropagation()}>
         <h3>{editar ? "Editar oferta" : "Nueva oferta"}</h3>
-        <label className="campo"><span>Nombre (lo verá el cliente en el ticket y el verificador)</span><input value={o.nombre} onChange={set("nombre")} placeholder="Ej. 2x1 en refrescos" /></label>
+        <label className="campo"><span>Nombre (lo verá el cliente en el ticket y el verificador)</span><input value={o.nombre} onChange={(e) => setO({ ...o, nombre: e.target.value.toLocaleUpperCase("es") })} placeholder="EJ. 2X1 EN REFRESCOS" style={{ textTransform: "uppercase" }} /></label>
         <div className="tres-col">
           <label className="campo"><span>Tipo</span><select value={o.tipo} onChange={set("tipo")}>{Object.entries(TIPOS).map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label>
           {o.tipo === "LLEVA_PAGA" ? (
