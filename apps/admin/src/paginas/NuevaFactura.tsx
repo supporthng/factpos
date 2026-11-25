@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, puede, rd } from "../api";
 import { Aviso, Encabezado, useCatalogo, useDatos } from "../ui";
 import { BuscadorLinea } from "./Compras";
+import { MiTurno, type MiTurnoCaja } from "./MiTurno";
 
 /**
  * Nueva factura desde la administración: se factura contra una caja con el turno abierto (ahí entra el dinero),
@@ -41,8 +42,12 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
   // «Sin comprobante» solo si un administrador lo activó en Sistema › Seguridad
   const { habilitada: sinComprobante } = useFuncionSeguridad("venta_sin_comprobante");
   const { productos } = useCatalogo();
+  // Modo «una sola persona»: factura y cobra quien abrió su turno aquí; no se envía a otra caja
+  const miTurno = useDatos<{ modo: boolean; cajas: MiTurnoCaja[] }>(soloEnviar ? null : "/central/mi-turno");
+  const modoUnico = !soloEnviar && !!miTurno.datos?.modo;
   const cajasTodas = useDatos<CajaAbierta[]>(`${base}/cajas-abiertas`);
-  const cajas = { ...cajasTodas, datos: soloEnviar ? (cajasTodas.datos?.filter((c) => c.tipo !== "FACTURACION") ?? null) : cajasTodas.datos };
+  const cajas = { ...cajasTodas, datos: soloEnviar ? (cajasTodas.datos?.filter((c) => c.tipo !== "FACTURACION") ?? null)
+    : modoUnico ? (cajasTodas.datos?.filter((c) => miTurno.datos?.cajas.some((m) => m.cajaId === c.cajaId && m.turno?.esMio)) ?? null) : cajasTodas.datos };
   const [cajaId, setCajaId] = useState("");
   const [cliente, setCliente] = useState<ClienteB | null>(duplicarDe?.cliente ?? null);
   const [busca, setBusca] = useState("");
@@ -157,7 +162,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
   }, [aPlazos, planVenta, cliente?.id, cot?.total, inicial, gNombre, gDoc]); // eslint-disable-line react-hooks/exhaustive-deps
   const planSel = planesVenta.datos?.find((p) => p.id === planVenta);
   const inicialMinima = planSel && cot ? Math.ceil(n(cot.total) * n(planSel.inicialMinPct)) / 100 : 0;
-  const puedeEnviar = !!cajaSel && cajaSel.tipo !== "FACTURACION";
+  const puedeEnviar = !!cajaSel && cajaSel.tipo !== "FACTURACION" && !modoUnico;
   const enviando = modo === "enviar" && puedeEnviar;
   const cambio = pagos.reduce((a, p) => a + (p.forma === "EFECTIVO" && n(p.recibido) > montoDe(p) ? n(p.recibido) - montoDe(p) : 0), 0);
   const cambiarPago = (id: string, c: Partial<PagoF>) => setPagos((ps) => ps.map((p) => (p.id === id ? { ...p, ...c } : p)));
@@ -317,6 +322,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
       <div className="tv">
         <div className="tv-izq">
           <Aviso texto={cajas.error || msg} />
+      {!soloEnviar && <MiTurno onCambio={() => { void cajasTodas.recargar(); void miTurno.recargar(); }} />}
           {enviada && <Aviso tipo="info" texto={enviada} />}
           {sinCajas && <Aviso tipo="info" texto="No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." />}
           {receta && (
@@ -442,7 +448,7 @@ export function NuevaFactura({ onCerrar, onCreada, soloEnviar = false, duplicarD
       )}
       {sinPlan && <div className="panel"><Aviso texto={`La factura se emitió, pero el plan de cuotas no se pudo crear: ${sinPlan.error}. Puede hacerlo desde Cuentas por cobrar › Financiar la deuda en cuotas.`} /><div className="fila-acciones"><button className="boton primario" onClick={() => onCreada(sinPlan.id)}>Ver la factura</button></div></div>}
       {enviada && <Aviso tipo="info" texto={enviada} />}
-      {sinCajas && <Aviso tipo="info" texto={soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}
+      {sinCajas && <Aviso tipo="info" texto={modoUnico ? "Abra su turno en «Mi turno» (arriba) para poder facturar y cobrar." : soloEnviar ? "No hay ninguna caja con el turno abierto para recibir la venta. Pida al cajero que abra su turno." : "No hay ninguna caja con turno abierto. Si esta tienda factura sin punto de venta, active la caja de facturación en Sistema › Sucursales y terminales («+ Caja de facturación»). Si usa caja, abra el turno en ella e intente de nuevo."} />}
 
       <div className="panel cab-compra">
         {bloqueCaja}
