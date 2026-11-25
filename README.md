@@ -248,6 +248,14 @@ Notas:
 2. Cuentas por pagar, reportes 606/607/608.
 3. Respaldos automáticos de la base de cada sucursal.
 
+### Un instalador por edición
+
+`npm run empaquetar` arma, además de `FactPOS-Setup.exe` (estándar), un instalador por cada edición de `ediciones.ts`
+(`FactPOS-Muebleria-Setup.exe`, `FactPOS-Farmacia-Setup.exe`, `FactPOS-Bar-restaurante-Setup.exe`, `FactPOS-Auto-detailing-Setup.exe`).
+Es el mismo programa: trae el tipo de negocio ya fijado y el nombre de la edición en el asistente. La licencia sigue decidiendo la
+edición al activar. El portal los ofrece con `?edicion=<slug>` en la descarga (`/licencias/descargar-instalador?edicion=farmacia`);
+sin edición, o si no existe, entrega el estándar.
+
 ### Probar varias ediciones a la vez en la misma computadora
 
 Solo para pruebas y demostraciones (un cliente instala **una** edición por negocio). Cada edición corre en su puerto y con su propia base de datos:

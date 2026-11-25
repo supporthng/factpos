@@ -25,20 +25,25 @@ RequestExecutionLevel admin
 !ifndef SALIDA
   !define SALIDA "FactPOS-Setup.exe"
 !endif
+; Instalador de UNA edición (p. ej. -DNEGOCIO_FIJO=FARMACIA -DNOMBRE="FactPOS Farmacia"): no pregunta el tipo de negocio
+; y lleva el nombre de la edición. Es el mismo programa; la licencia sigue decidiendo la edición al activar.
+!ifndef NOMBRE
+  !define NOMBRE "FactPOS"
+!endif
 
 !define REGSERV "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS"
 !define REGCLI "Software\Microsoft\Windows\CurrentVersion\Uninstall\FactPOS Cliente"
 
-Name "FactPOS"
-Caption "FactPOS ${VERSION} · Instalación"
+Name "${NOMBRE}"
+Caption "${NOMBRE} ${VERSION} · Instalación"
 OutFile "${SALIDA}"
 InstallDir "C:\FactPOS"
-BrandingText "FactPOS ${VERSION}"
+BrandingText "${NOMBRE} ${VERSION}"
 ShowInstDetails show
 ShowUninstDetails show
 
 VIProductVersion "${VERSION}.0"
-VIAddVersionKey "ProductName" "FactPOS"
+VIAddVersionKey "ProductName" "${NOMBRE}"
 VIAddVersionKey "FileDescription" "Instalador de FactPOS"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
@@ -406,6 +411,10 @@ FunctionEnd
 ; Solo donde se instala el servidor principal: define qué funciones quedan activas (las de los demás tipos quedan apagadas).
 ; Las cajas y las sucursales toman el tipo del servidor. El cliente no lo cambia después: lo fija la instalación y la licencia.
 Function PaginaNegocio
+!ifdef NEGOCIO_FIJO
+  StrCpy $Negocio "${NEGOCIO_FIJO}"
+  Abort
+!endif
   ${If} $Tipo != "master"
   ${AndIf} $Tipo != "servidor"
     Abort
