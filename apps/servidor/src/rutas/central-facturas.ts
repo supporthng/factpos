@@ -91,6 +91,7 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     const t = await datosTicket(pool, id);
     const x = await pool.query(
       `SELECT s.nombre AS sucursal, s.id AS "sucursalId", c.nombre AS caja, u.nombre AS cajero, cl.correo AS "clienteCorreo", cl.telefono AS "clienteTelefono",
+              COALESCE((SELECT to_jsonb(ce.correos) FROM cliente_correos_envio ce WHERE ce.cliente_id = v.cliente_id), '[]'::jsonb) AS "clienteCorreosEnvio",
               (SELECT jsonb_agg(jsonb_build_object('linea', i.linea, 'cantidad', i.cantidad, 'devuelta',
                   COALESCE((SELECT SUM(ni.cantidad) FROM venta_items ni JOIN ventas n ON n.id = ni.venta_id WHERE n.venta_origen_id = v.id AND n.parcial AND ni.linea = i.linea), 0)) ORDER BY i.linea)
                  FROM venta_items i WHERE i.venta_id = v.id) AS "lineasDevolucion",
@@ -123,7 +124,14 @@ export async function rutasCentralFacturas(app: FastifyInstance) {
     }, b.mensaje);
     try { await enviarCorreo(empresaId, { para: b.para, asunto: mail.asunto, html: mail.html, texto: mail.texto }); }
     catch (e) { throw new ErrorNegocio(`No se pudo enviar: ${(e as Error).message}`, 502); }
-    return { ok: true };
+    // Los correos usados quedan guardados para el cliente: el próximo envío ofrece los mismos
+    const clienteId = (await pool.query<{ c: string | null }>("SELECT cliente_id AS c FROM ventas WHERE id = $1", [id])).rows[0]?.c;
+    if (clienteId) {
+      await pool.query(
+        `INSERT INTO cliente_correos_envio (cliente_id, correos) VALUES ($1, $2::text[])
+         ON CONFLICT (cliente_id) DO UPDATE SET correos = EXCLUDED.correos, actualizado_en = now()`, [clienteId, [...new Set(b.para)]]);
+    }
+    return { ok: true, correos: [...new Set(b.para)] };
   });
 
   /** Modificar: solo la nota y, en facturas internas, el cliente. Siempre con motivo y en auditoría. */
