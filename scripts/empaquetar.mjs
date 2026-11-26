@@ -4,7 +4,7 @@
 // Contiene el servidor ya compilado, la caja, la administración, las
 // migraciones, las dependencias de producción (todas en JavaScript puro, así
 // que sirven en Windows aunque se armen en Linux) y los instaladores.
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -161,37 +161,41 @@ const VERSION_PG = process.env.FACTPOS_PG_VERSION || "16.15.0-beta.19";
 let makensis = null;
 try { execSync("makensis -VERSION", { stdio: "ignore" }); makensis = "makensis"; } catch { /* sin NSIS */ }
 if (makensis) {
-  const setup = join(salida, `FactPOS-Setup.exe`);
-  execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${setup}" FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
-  console.log(`Listo: ${relative(raiz, setup)} (${(statSync(setup).size / 1e6).toFixed(1)} MB)`);
-  // Instalador solo de Caja (sin servidor ni base de datos: pesa mucho menos). Si fallara, no impide publicar el completo.
-  try {
-    const caja = join(salida, `FactPOS-Caja-Setup.exe`);
-    execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${caja}" -DTIPO_FIJO=caja FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
-    console.log(`Listo: ${relative(raiz, caja)} (${(statSync(caja).size / 1e6).toFixed(1)} MB, solo Caja)`);
-  } catch (e) {
-    console.warn(`(No se armó el instalador de Caja: ${e instanceof Error ? e.message : e})`);
-  }
-  // Un instalador por edición (FactPOS-Farmacia-Setup.exe…): mismo programa, con el tipo de negocio ya fijado y el nombre de la edición.
-  // La licencia sigue decidiendo la edición; esto solo evita preguntar y deja la marca correcta en el asistente. Si falla uno, no impide publicar lo demás.
+  const cwdNsis = join(raiz, "instalador/setup");
+  const envNsis = { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" };
+  const mb = (f) => (statSync(f).size / 1e6).toFixed(1);
+  /** Corre makensis sin bloquear: la compresión LZMA de cada instalador tarda varios minutos y son independientes entre sí. */
+  const armar = (args, nsi = "FactPOS.nsi") => new Promise((ok, fallo) => {
+    const p = spawn(makensis, ["-V2", `-DVERSION=${version}`, `-DPAQUETE=${dir}`, ...args, nsi], { cwd: cwdNsis, stdio: "inherit", env: envNsis });
+    p.on("error", fallo);
+    p.on("exit", (c) => (c === 0 ? ok() : fallo(new Error(`makensis terminó con código ${c}`))));
+  });
   const { EDICIONES } = await import(pathToFileURL(join(raiz, "packages/compartido/dist/index.js")).href);
-  for (const ed of EDICIONES) {
-    try {
-      const exe = join(salida, `FactPOS-${ed.slug}-Setup.exe`.replace(/^FactPOS-(.)/, (_, c) => `FactPOS-${c.toUpperCase()}`));
-      execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${exe}" -DNOMBRE="${ed.nombre}" -DNEGOCIO_FIJO=${ed.tipoNegocio} FactPOS.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
-      console.log(`Listo: ${relative(raiz, exe)} (${(statSync(exe).size / 1e6).toFixed(1)} MB, ${ed.nombre})`);
-    } catch (e) {
-      console.warn(`(No se armó el instalador de ${ed.nombre}: ${e instanceof Error ? e.message : e})`);
+  const setup = join(salida, `FactPOS-Setup.exe`);
+  // Trabajos: el instalador general (obligatorio), el de Caja, uno por edición y la limpieza de Caja.
+  // Si falla un opcional solo se avisa y no impide publicar lo demás; si falla el general, se detiene.
+  const trabajos = [
+    { obligatorio: true, nombre: "FactPOS-Setup.exe", correr: async () => { await armar([`-DSALIDA=${setup}`]); console.log(`Listo: ${relative(raiz, setup)} (${mb(setup)} MB)`); } },
+    { nombre: "el instalador de Caja", correr: async () => { const f = join(salida, `FactPOS-Caja-Setup.exe`); await armar([`-DSALIDA=${f}`, "-DTIPO_FIJO=caja"]); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, solo Caja)`); } },
+    // Un instalador por edición (FactPOS-Farmacia-Setup.exe…): mismo programa, con el tipo de negocio ya fijado y el nombre de la edición.
+    ...EDICIONES.map((ed) => ({ nombre: `el instalador de ${ed.nombre}`, correr: async () => {
+      const f = join(salida, `FactPOS-${ed.slug}-Setup.exe`.replace(/^FactPOS-(.)/, (_, c) => `FactPOS-${c.toUpperCase()}`));
+      await armar([`-DSALIDA=${f}`, `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`]);
+      console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, ${ed.nombre})`);
+    } })),
+    { nombre: "el desinstalador de Caja", correr: async () => { const f = join(salida, `FactPOS-Caja-Limpiar.exe`); await armar([`-DSALIDA=${f}`], "LimpiarCaja.nsi"); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, limpieza de Caja)`); } },
+  ];
+  // Hasta 4 a la vez (cada compresión usa un núcleo y bastante memoria)
+  const cola = [...trabajos];
+  let fallaGeneral = null;
+  await Promise.all(Array.from({ length: Math.min(4, cola.length) }, async () => {
+    for (let t = cola.shift(); t; t = cola.shift()) {
+      try { await t.correr(); } catch (e) {
+        if (t.obligatorio) fallaGeneral = e; else console.warn(`(No se armó ${t.nombre}: ${e instanceof Error ? e.message : e})`);
+      }
     }
-  }
-  // Desinstalador / limpieza total de la Caja (un solo .exe). Si fallara, no impide publicar lo demás.
-  try {
-    const limpiar = join(salida, `FactPOS-Caja-Limpiar.exe`);
-    execSync(`${makensis} -V2 -DVERSION=${version} -DPAQUETE="${dir}" -DSALIDA="${limpiar}" LimpiarCaja.nsi`, { cwd: join(raiz, "instalador/setup"), stdio: "inherit", env: { ...process.env, LC_ALL: "C.UTF-8", LANG: "C.UTF-8" } });
-    console.log(`Listo: ${relative(raiz, limpiar)} (${(statSync(limpiar).size / 1e6).toFixed(1)} MB, limpieza de Caja)`);
-  } catch (e) {
-    console.warn(`(No se armó el desinstalador de Caja: ${e instanceof Error ? e.message : e})`);
-  }
+  }));
+  if (fallaGeneral) throw fallaGeneral;
 } else {
   console.log("(No se armó FactPOS-Setup.exe: instale NSIS → apt install nsis / choco install nsis)");
 }
