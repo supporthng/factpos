@@ -1684,3 +1684,16 @@ section.pn-tarjeta { margin-bottom: 14px; }
   .es-kpi > b { font-size: 22px; }
   .es-hallazgos li { flex-direction: column; align-items: flex-start; }
 }
+
+/* Cuadros emergentes en el celular: la barra del navegador tapaba el final (100vh la incluye) y no se veía «Guardar».
+   Se mide con la pantalla visible (dvh) y los botones quedan fijos abajo mientras se desplaza el formulario. */
+@supports (height: 100dvh) {
+  .fondo-modal { height: calc(100dvh / var(--escala, 1)); }
+  .modal { max-height: 94dvh; }
+}
+.modal > .acciones-modal, .modal > div > .acciones-modal {
+  position: sticky; bottom: -24px; z-index: 2;
+  margin: 12px -24px -24px; padding: 12px 24px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel); border-top: 1px solid var(--borde, rgba(127, 127, 127, .25));
+  border-radius: 0 0 18px 18px;
+}
