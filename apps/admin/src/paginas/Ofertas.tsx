@@ -51,7 +51,7 @@ export function Ofertas() {
   };
   const horario = (o: any) => [
     o.diasSemana?.length ? o.diasSemana.map((d: number) => DIAS[d]).join(", ") : "",
-    o.horaDesde ? `${o.horaDesde.slice(0, 5)}–${o.horaHasta.slice(0, 5)}` : "",
+    o.horaDesde && o.horaDesde.slice(0, 5) !== o.horaHasta.slice(0, 5) ? `solo de ${o.horaDesde.slice(0, 5)} a ${o.horaHasta.slice(0, 5)}` : "",
   ].filter(Boolean).join(" · ") || "Todo el día";
 
   return (
@@ -314,6 +314,10 @@ function NuevaOferta({ onCerrar, onCreada, editar }: { onCerrar: () => void; onC
           <label className="campo"><span>Hasta</span><input type="date" value={o.termina} onChange={set("termina")} /></label>
           <label className="campo"><span>Hora inicio (opcional)</span><input type="time" value={o.horaDesde} onChange={set("horaDesde")} /></label>
           <label className="campo"><span>Hora fin</span><input type="time" value={o.horaHasta} onChange={set("horaHasta")} /></label>
+          {(o.horaDesde || o.horaHasta) && <div className="campo-ancho" style={{ gridColumn: "1 / -1" }}>
+            <p className="texto-aviso pequeno" style={{ margin: "0 0 6px" }}>Con horario, la oferta solo se aplica en la caja entre {o.horaDesde || "…"} y {o.horaHasta || "…"}; fuera de ese rato se cobra el precio normal.</p>
+            <button type="button" className="boton chico" onClick={() => setO({ ...o, horaDesde: "", horaHasta: "" })}>Quitar horario (todo el día)</button>
+          </div>}
         </div>
         <div className="campo"><span>Días (ninguno = todos)</span>
           <div className="chips">{DIAS.map((d, i) => (
