@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { hostname } from "node:os";
+import { hostname, uptime } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { renovarSiToca } from "./licencia/cliente.js";
 import { uuidv7 } from "@factpos/compartido";
 import { avisoIncidentePorCorreo, incidentesPorCorreo, procesarEnvios } from "./correo/envios.js";
@@ -74,13 +78,14 @@ export function textoAviso(i: Incidente & { sucursal?: string | null; caja?: str
     `🕒 Desde ${hora(i.desde)}${i.hasta ? ` hasta ${hora(i.hasta)} (${duracion(i.desde, i.hasta)})` : ` · lleva ${duracion(i.desde, null)}`}`,
     typeof d.ventas === "number" && `🧾 Ventas hechas sin servidor: ${d.ventas}${d.monto ? ` (RD$${Number(d.monto).toLocaleString("es-DO", { minimumFractionDigits: 2 })})` : ""}`,
     typeof d.pendientes === "number" && d.pendientes > 0 && `⏳ Ventas pendientes de subir a la nube: ${d.pendientes}`,
+    typeof d.causa === "string" && `🔎 Causa probable: ${d.causa}`,
     typeof d.equipo === "string" && `💻 Equipo: ${d.equipo}`,
     i.tipo === "ERROR_SISTEMA" && typeof d.ruta === "string" && `🧩 ${d.metodo ?? ""} ${d.ruta}`.trim(),
     i.tipo === "ERROR_SISTEMA" && typeof d.mensaje === "string" && `⚠ ${d.mensaje}`,
     i.tipo === "ERROR_SISTEMA" && typeof d.version === "string" && `🏷 Versión ${d.version}${typeof d.veces === "number" && d.veces > 1 ? ` · se repitió ${d.veces} veces` : ""}`,
     !fin && i.tipo === "ERROR_SISTEMA" && "El sistema detectó un error inesperado y lo reportó solo. Si se repite o afecta las ventas, reenvíe este mensaje al servicio técnico.",
     !fin && i.tipo === "SUCURSAL_SIN_COMUNICACION" && "Revise: luz e internet de la tienda, que la PC del servidor esté encendida y el servicio «FactPOS Servidor» corriendo.",
-    !fin && i.tipo === "CAJA_SIN_SERVIDOR" && "La caja siguió vendiendo y ya envió sus ventas. Revise por qué se cayó el servidor (registro: C:\\FactPOS\\logs\\servidor.log).",
+    !fin && i.tipo === "CAJA_SIN_SERVIDOR" && `La caja siguió vendiendo y ya envió sus ventas.${typeof d.causa === "string" ? "" : " Revise por qué se cayó el servidor (registro: C:\\FactPOS\\logs\\servidor.log)."}`,
     !fin && i.tipo === "RESPALDO_ATRASADO" && "Hace más de 24 horas que no se hace un respaldo. Revise el disco (espacio libre) y que el servidor esté encendido; en Administración › Respaldos puede hacer uno ahora.",
     !fin && i.tipo === "SERVIDOR_APAGADO" && "El servidor de la tienda estuvo apagado o reiniciándose. Revise la luz, el UPS y Windows Update.",
   ];
@@ -225,6 +230,8 @@ export function iniciarVigilancia(log: (m: string) => void) {
 export async function iniciarLatido(log: (m: string) => void) {
   try {
     const previo = (await pool.query<{ ultimo: string }>("SELECT ultimo FROM servidor_latido WHERE id = 1")).rows[0];
+    vigilarErrorFatal();
+    if (previo) await registrarArranque(new Date(previo.ultimo), log).catch((e) => log(`Arranque: ${(e as Error).message}`));
     if (previo && Date.now() - new Date(previo.ultimo).getTime() > 3 * 60_000) {
       const s = (await pool.query<{ id: string; empresa_id: string; nombre: string }>(
         "SELECT id, empresa_id, nombre FROM sucursales WHERE id = $1",
@@ -237,10 +244,21 @@ export async function iniciarLatido(log: (m: string) => void) {
       });
       log(`El servidor estuvo apagado desde ${previo.ultimo}: incidente registrado`);
     }
-    const latir = () => pool.query(
-      `INSERT INTO servidor_latido (id, ultimo, iniciado) VALUES (1, now(), now())
-       ON CONFLICT (id) DO UPDATE SET ultimo = now()`,
-    ).catch(() => {});
+    const retraso = monitorEventLoopDelay({ resolution: 20 });
+    retraso.enable();
+    const latir = () => {
+      // Si el servidor se quedó sin atender más de 5 s seguidos, las cajas lo dan por caído: se anota para explicarlo en el aviso
+      const maxMs = Math.round(retraso.max / 1e6);
+      retraso.reset();
+      if (maxMs > 5000) {
+        pool.query(`INSERT INTO servidor_eventos (id, tipo, desde, hasta, detalle, version, equipo) VALUES ($1,'SERVIDOR_LENTO', now() - ($2 || ' milliseconds')::interval, now(), $3, $4, $5)`,
+          [uuidv7(), String(maxMs), JSON.stringify({ segundos: Math.round(maxMs / 1000) }), versionActual(), hostname()]).catch(() => {});
+      }
+      return pool.query(
+        `INSERT INTO servidor_latido (id, ultimo, iniciado) VALUES (1, now(), now())
+         ON CONFLICT (id) DO UPDATE SET ultimo = now()`,
+      ).catch(() => {});
+    };
     await pool.query(`INSERT INTO servidor_latido (id, ultimo, iniciado) VALUES (1, now(), now())
                       ON CONFLICT (id) DO UPDATE SET ultimo = now(), iniciado = now()`);
     setInterval(latir, 60_000).unref();
@@ -249,6 +267,69 @@ export async function iniciarLatido(log: (m: string) => void) {
   }
 }
 
+
+// --------------------------------------------------------------- Causa de las caídas
+const raizApp = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const ARCHIVO_ERROR = path.join(raizApp, "logs", "ultimo-error.json");
+const ARCHIVO_ACTUALIZACION = path.join(raizApp, "logs", "actualizacion-estado.json");
+const leerJson = (f: string): Record<string, string> | null => {
+  try { return JSON.parse(readFileSync(f, "utf8").replace(/^\uFEFF/, "")); } catch { return null; }
+};
+
+/** Si el servidor se cae por un error interno, deja anotado cuál fue (solo observa: no cambia lo que Node hace con el error). */
+let observandoError = false;
+function vigilarErrorFatal() {
+  if (observandoError) return;
+  observandoError = true;
+  process.on("uncaughtExceptionMonitor", (e) => {
+    try {
+      mkdirSync(path.dirname(ARCHIVO_ERROR), { recursive: true });
+      writeFileSync(ARCHIVO_ERROR, JSON.stringify({ en: new Date().toISOString(), mensaje: String((e as Error)?.message ?? e).slice(0, 300), pila: String((e as Error)?.stack ?? "").split("\n").slice(0, 4).join(" | ").slice(0, 500) }));
+    } catch { /* sin disco: no se anota */ }
+  });
+}
+
+/** Al arrancar: ¿por qué estuvo caído? Se deduce de lo que dejó escrito el servidor, el instalador y el propio Windows. */
+async function registrarArranque(ultimoLatido: Date, log: (m: string) => void) {
+  const t0 = ultimoLatido.getTime();
+  const error = leerJson(ARCHIVO_ERROR);
+  const actualizacion = leerJson(ARCHIVO_ACTUALIZACION);
+  let motivo: string;
+  const detalle: Record<string, unknown> = {};
+  if (error?.en && Date.parse(error.en) >= t0 - 60_000) { motivo = "ERROR_FATAL"; detalle.error = error.mensaje; detalle.pila = error.pila; }
+  else if (actualizacion?.en && actualizacion.estado !== "ERROR" && Date.parse(actualizacion.en) >= t0 - 5 * 60_000) motivo = "ACTUALIZACION";
+  else if (Date.now() - uptime() * 1000 > t0 - 60_000) motivo = "REINICIO_WINDOWS"; // la PC arrancó después del último latido
+  else motivo = "SERVICIO_REINICIADO";
+  await pool.query(
+    "INSERT INTO servidor_eventos (id, tipo, motivo, desde, hasta, detalle, version, equipo) VALUES ($1,'ARRANQUE',$2,$3,now(),$4,$5,$6)",
+    [uuidv7(), motivo, ultimoLatido, JSON.stringify(detalle), versionActual(), hostname()],
+  );
+  log(`El servidor arrancó (${motivo}); último latido ${ultimoLatido.toISOString()}`);
+}
+
+const TEXTO_FALLO: Record<string, string> = {
+  TIMEOUT: "la caja llegó a conectarse pero el servidor no le contestó en 3 segundos",
+  RED: "la caja no pudo comunicarse con la PC del servidor",
+};
+/**
+ * Causa probable de que una caja trabajara sin servidor entre `desde` y `hasta`, para el aviso a soporte.
+ * `fallo` es lo que vio la caja (TIMEOUT, RED o HTTP nnn).
+ */
+export async function causaProbable(desde: string, hasta: string, fallo?: string | null): Promise<{ codigo: string; causa: string }> {
+  const e = (await pool.query<{ tipo: string; motivo: string | null; detalle: Record<string, unknown> | null; desde: string; hasta: string }>(
+    `SELECT tipo, motivo, detalle, desde, hasta FROM servidor_eventos
+      WHERE hasta >= $1::timestamptz - interval '3 minutes' AND desde <= $2::timestamptz + interval '3 minutes'
+      ORDER BY CASE WHEN tipo = 'ARRANQUE' THEN 0 ELSE 1 END, hasta DESC LIMIT 1`, [desde, hasta]).catch(() => ({ rows: [] }))).rows[0];
+  const lo = fallo ? ` (${TEXTO_FALLO[fallo] ?? fallo})` : "";
+  if (e?.tipo === "SERVIDOR_LENTO") return { codigo: "SERVIDOR_LENTO", causa: `El servidor se quedó ocupado unos ${e.detalle?.segundos ?? "varios"} segundos sin responder (una tarea pesada: respaldo, reporte grande o la PC saturada). Si se repite, revise que la PC del servidor no esté haciendo otras cosas pesadas.` };
+  switch (e?.motivo) {
+    case "ACTUALIZACION": return { codigo: "ACTUALIZACION", causa: "El servidor se reinició para instalar una actualización de FactPOS. Es normal y dura 1 o 2 minutos." };
+    case "ERROR_FATAL": return { codigo: "ERROR_FATAL", causa: `El servidor se cerró por un error interno: «${String(e.detalle?.error ?? "sin detalle")}». Reenvíe este aviso al servicio técnico.` };
+    case "REINICIO_WINDOWS": return { codigo: "REINICIO_WINDOWS", causa: "La PC del servidor se reinició o se apagó (Windows Update, corte de luz o reinicio manual). Revise el UPS y desactive el reinicio automático por actualizaciones de Windows." };
+    case "SERVICIO_REINICIADO": return { codigo: "SERVICIO_REINICIADO", causa: "El programa del servidor se detuvo y volvió a arrancar sin reiniciar la PC (alguien lo cerró, el antivirus o una falla que no dejó error). Revise C:\\FactPOS\\logs\\servidor.log." };
+  }
+  return { codigo: "RED", causa: `El servidor no se reinició ni se bloqueó en ese rato${lo}: lo más probable es la red entre esa caja y el servidor (WiFi, cable, switch o router) o la propia caja.` };
+}
 
 // --------------------------------------------------------------- Auto-reporte de errores
 /**

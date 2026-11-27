@@ -48,7 +48,7 @@ export function useConexion() {
 }
 
 const k = (cajaId: string, que: string) => `${que}:${cajaId}`;
-interface Corte { id: string; desde: string; ventas: number; monto: number }
+interface Corte { id: string; desde: string; ventas: number; monto: number; fallo?: string | null }
 
 // ------------------------------------------------------------------ Caché para arrancar sin servidor
 export const guardarCache = (ajustes: Ajustes, que: "config" | "catalogo" | "turno" | "usuarios", valor: unknown) =>
@@ -298,13 +298,19 @@ export async function iniciarVigilancia(ajustes: Ajustes) {
   setInterval(() => { void atenderRed(ajustes); }, 3000);
 }
 
+/** Lo último que falló al preguntarle al servidor (va en el aviso a soporte para explicar la causa). */
+let ultimoFallo: string | null = null;
 /** Revisa si el servidor responde y cuánto tarda (en ms); null si no responde. */
 async function responde(servidor: string): Promise<number | null> {
   const t = performance.now();
   try {
     const r = await fetch(`${servidor.replace(/\/$/, "")}/descubrir`, { signal: AbortSignal.timeout(3000), cache: "no-store" });
-    return r.ok ? Math.max(1, Math.round(performance.now() - t)) : null;
-  } catch { return null; }
+    if (!r.ok) { ultimoFallo = `HTTP ${r.status}`; return null; }
+    return Math.max(1, Math.round(performance.now() - t));
+  } catch (e) {
+    ultimoFallo = (e as Error)?.name === "TimeoutError" ? "TIMEOUT" : "RED";
+    return null;
+  }
 }
 
 /** Mediana de las últimas revisiones: un solo pico no cambia el indicador. */
@@ -319,7 +325,7 @@ function registrarLatencia(ms: number) {
 async function sinServidor() {
   if (!vigilando) return;
   if (estado.enLinea) {
-    const corte = (await leer<Corte>(k(vigilando.cajaId, "corte"))) ?? { id: uuidv7(), desde: new Date().toISOString(), ventas: 0, monto: 0 };
+    const corte = (await leer<Corte>(k(vigilando.cajaId, "corte"))) ?? { id: uuidv7(), desde: new Date().toISOString(), ventas: 0, monto: 0, fallo: ultimoFallo };
     await guardar(k(vigilando.cajaId, "corte"), corte).catch(() => {});
     cambiar({ enLinea: false, desde: corte.desde, aviso: null });
   }
@@ -339,7 +345,7 @@ async function volvioServidor(ajustes: Ajustes) {
   if (corte && estado.pendientes === 0) {
     try {
       await api(ajustes.servidor, `/cajas/${ajustes.cajaId}/incidentes`, {
-        cuerpo: { id: corte.id, desde: corte.desde, hasta: new Date().toISOString(), ventas: corte.ventas, monto: corte.monto.toFixed(2) },
+        cuerpo: { id: corte.id, desde: corte.desde, hasta: new Date().toISOString(), ventas: corte.ventas, monto: corte.monto.toFixed(2), fallo: corte.fallo ?? null },
       });
       await borrar(k(ajustes.cajaId, "corte"));
       cambiar({ desde: null });

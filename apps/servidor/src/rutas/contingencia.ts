@@ -5,7 +5,7 @@ import { uuidv7 } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { contextoCaja } from "../contexto.js";
 import { registrarVenta } from "./ventas.js";
-import { avisarPendientes, registrarIncidente } from "../incidentes.js";
+import { avisarPendientes, causaProbable, registrarIncidente } from "../incidentes.js";
 import { config } from "../config.js";
 import { funcionHabilitada } from "./central-seguridad.js";
 import type { SesionCaja } from "../sesion.js";
@@ -165,6 +165,8 @@ export async function rutasContingencia(app: FastifyInstance) {
       ventas: z.number().int().min(0),
       monto: z.string().optional(),
       equipo: z.string().max(120).optional(),
+      /** Lo que vio la caja al perder el servidor: TIMEOUT, RED o HTTP nnn */
+      fallo: z.string().max(20).nullable().optional(),
     }).parse(req.body);
     const ctx = await contextoCaja(cajaId);
     const caja = (await pool.query<{ nombre: string; sucursal: string }>(
@@ -172,7 +174,7 @@ export async function rutasContingencia(app: FastifyInstance) {
     await registrarIncidente(pool, {
       id: b.id, empresa_id: ctx.empresaId, sucursal_id: ctx.sucursalId, caja_id: cajaId, tipo: "CAJA_SIN_SERVIDOR",
       gravedad: "ALTA", titulo: `${caja.nombre} de ${caja.sucursal} trabajó sin servidor`,
-      detalle: { ventas: b.ventas, monto: b.monto ?? null, equipo: b.equipo ?? null }, desde: b.desde, hasta: b.hasta,
+      detalle: { ventas: b.ventas, monto: b.monto ?? null, equipo: b.equipo ?? null, fallo: b.fallo ?? null, ...(await causaProbable(b.desde, b.hasta, b.fallo).then((c) => ({ causa: c.causa, causaCodigo: c.codigo })).catch(() => ({}))) }, desde: b.desde, hasta: b.hasta,
     });
     // En la central (o una sola PC) se avisa ya; en una sucursal, el aviso sale de la central al subir
     if (config.modo === "central") await avisarPendientes((m) => req.log.warn(m)).catch(() => 0);
