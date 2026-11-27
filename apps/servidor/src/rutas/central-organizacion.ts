@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { verificarCupoSucursal } from "../licencia/cliente.js";
+import { verificarCupoCaja, verificarCupoSucursal } from "../licencia/cliente.js";
 import { z } from "zod";
 import { uuidv7, rncValido } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
@@ -119,6 +119,7 @@ export async function rutasCentralOrganizacion(app: FastifyInstance) {
       if (!alm) throw new ErrorNegocio("La sucursal no tiene almacén principal");
       const nuevo = uuidv7();
       if (b.tipo === "FACTURACION" && (await c.query("SELECT 1 FROM cajas WHERE sucursal_id = $1 AND tipo = 'FACTURACION' AND NOT eliminada", [id])).rowCount) throw new ErrorNegocio("Esta sucursal ya tiene su caja de facturación", 409);
+      if (b.tipo === "CAJA") await verificarCupoCaja(c, id); // el plan limita las cajas de venta por sucursal
       await c.query("INSERT INTO cajas (id, sucursal_id, numero, nombre, almacen_id, tipo) VALUES ($1,$2,$3,$4,$5,$6)",
         [nuevo, id, n, b.nombre ?? (b.tipo === "FACTURACION" ? "Facturación" : `Caja ${n}`), alm, b.tipo]);
       return { id: nuevo, numero: n };
