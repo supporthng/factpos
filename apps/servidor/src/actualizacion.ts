@@ -238,6 +238,39 @@ function vigilarArranque(version: string) {
   }, 90_000).unref();
 }
 
+/** Cajas con turno abierto (últimas 18 h; un turno olvidado no bloquea para siempre) y ventas de los últimos 5 minutos. */
+export async function cajasEnUso(): Promise<{ n: number; cajas: string[] }> {
+  try {
+    const t = await pool.query<{ nombre: string }>(
+      `SELECT c.nombre FROM turnos t JOIN cajas c ON c.id = t.caja_id WHERE t.estado = 'ABIERTO' AND t.abierto_en > now() - interval '18 hours' ORDER BY c.nombre`);
+    const v = await pool.query<{ n: string }>("SELECT COUNT(*) AS n FROM ventas WHERE creado_en > now() - interval '5 minutes'");
+    return { n: t.rowCount! + Number(v.rows[0].n), cajas: t.rows.map((x) => x.nombre) };
+  } catch { return { n: 1, cajas: [] }; } // ante la duda, no se actualiza
+}
+
+/** Actualización a la espera de un momento sin ventas (la pidió el administrador). */
+let programada: { version: string; desde: string } | null = null;
+let timerProgramada: NodeJS.Timeout | null = null;
+export const instalacionProgramada = () => programada;
+export function cancelarProgramada() {
+  programada = null;
+  if (timerProgramada) clearTimeout(timerProgramada);
+  timerProgramada = null;
+}
+/** Instala la versión apenas no haya turnos de caja abiertos ni ventas recientes; revisa cada 2 minutos. */
+export function instalarCuandoNoHayVentas(version: string, log: (m: string) => void) {
+  cancelarProgramada();
+  programada = { version, desde: new Date().toISOString() };
+  const intentar = async () => {
+    if (!programada || programada.version !== version) return;
+    if ((await cajasEnUso()).n > 0) { timerProgramada = setTimeout(intentar, 2 * 60_000); timerProgramada.unref(); return; }
+    programada = null;
+    instalarVersion(version, log).catch((e) => log(`Actualización programada: ${(e as Error).message}`));
+  };
+  timerProgramada = setTimeout(intentar, 5_000);
+  timerProgramada.unref();
+}
+
 /** Sucursal: si el principal ya tiene una versión más nueva, se actualiza en un momento sin ventas. */
 let pendienteSeguir: string | null = null;
 export function seguirAlPrincipal(versionPrincipal: string | undefined, log: (m: string) => void) {
@@ -271,12 +304,28 @@ export async function rutasActualizacion(app: FastifyInstance) {
       licenciaActiva: !!(await tokenLicencia()),
       pruebaActualiza: !!(await politicaPortal())?.pruebaActualiza,
       modo: config.modo,
+      cajasEnUso: await cajasEnUso(),
+      programada: instalacionProgramada(),
     };
   });
   app.post("/central/instaladores/principal", async (req) => urlInstaladorPrincipal((req.body as { tipo?: string } | undefined)?.tipo === "caja" ? "caja" : "setup"));
+  /**
+   * Instalar reinicia el servidor y detiene la caja de ese equipo. Por eso, con turnos de caja abiertos o ventas recientes:
+   *  · por defecto NO instala y explica qué cajas están en uso;
+   *  · { cuando: "libre" } la deja programada para el primer momento sin ventas;
+   *  · { forzar: true } instala de todos modos (el administrador lo confirmó).
+   */
   app.post("/central/actualizacion/instalar", async (req) => {
+    const b = (req.body ?? {}) as { cuando?: string; forzar?: boolean };
     const d = await revisarVersion(true);
     if (!d || compararVersion(d.version, versionActual()) <= 0) throw new ErrorNegocio("Ya tiene la versión más reciente", 409);
+    const uso = await cajasEnUso();
+    if (b.cuando === "libre") { instalarCuandoNoHayVentas(d.version, (m) => req.log.info(m)); return { programada: true, version: d.version }; }
+    if (uso.n > 0 && !b.forzar) {
+      throw new ErrorNegocio(`Hay ${uso.cajas.length ? `turno abierto en ${uso.cajas.join(", ")}` : "ventas en curso"}. Actualizar ahora detiene esa caja unos minutos. Elija «Actualizar cuando no haya ventas» o cierre los turnos.`, 409);
+    }
+    cancelarProgramada();
     return instalarVersion(d.version, (m) => req.log.info(m));
   });
+  app.post("/central/actualizacion/cancelar-programada", async () => { cancelarProgramada(); return { ok: true }; });
 }
