@@ -941,9 +941,17 @@ function mostrarEscritorio() {
   try { spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(); } catch {}
   // Red de seguridad contra la pantalla negra al salir: un «taskkill» que ya iba en camino puede matar el Explorador recién
   // abierto. Un ayudante aparte, que sigue vivo cuando la caja ya se cerró, revisa unos segundos después y lo vuelve a abrir si falta.
+  // Se hace con un script de WScript (aplicación sin consola): un cmd.exe separado abría ventanas negras («ping», «find») al cerrar la caja.
   try {
-    spawn('cmd.exe', ['/d', '/s', '/c', '"ping -n 4 127.0.0.1 >nul & tasklist /fi "imagename eq explorer.exe" | find /i "explorer.exe" >nul || start "" explorer.exe"'],
-      { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+    const vbs = path.join(os.tmpdir(), 'factpos-explorador.vbs');
+    fs.writeFileSync(vbs, [
+      'WScript.Sleep 4000',
+      'Set w = GetObject("winmgmts:\\\\.\\root\\cimv2")',
+      'If w.ExecQuery("SELECT * FROM Win32_Process WHERE Name = \'explorer.exe\'").Count = 0 Then',
+      '  CreateObject("WScript.Shell").Run "explorer.exe", 1, False',
+      'End If',
+    ].join('\r\n'));
+    spawn('wscript.exe', ['//B', '//Nologo', vbs], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   } catch {}
 }
 app.on('will-quit', mostrarEscritorio);
