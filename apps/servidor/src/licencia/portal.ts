@@ -63,11 +63,11 @@ function llavePrivada() {
 interface FilaLicencia {
   id: string; cliente_id: string; sucursales: number; modulos: string[]; vence: string; estado: string;
   instalacion_id: string | null; secreto_hash: string | null; slug: string; nombre: string; rnc: string | null; cliente_activo: boolean;
-  edicion: string | null; plan_nombre: string | null; plan_actualiza: boolean | null; version_aprobada: string | null; actualiza_siempre: boolean;
+  edicion: string | null; plan_nombre: string | null; plan_actualiza: boolean | null; plan_cajas: number | null; version_aprobada: string | null; actualiza_siempre: boolean;
 }
 const SELECT_LIC = `SELECT l.id, l.cliente_id, l.sucursales, l.modulos, to_char(l.vence, 'YYYY-MM-DD') AS vence, l.estado,
                            l.instalacion_id, l.secreto_hash, c.slug, c.nombre, c.rnc, c.edicion, c.activo AS cliente_activo,
-                           p.nombre AS plan_nombre, p.permite_actualizaciones AS plan_actualiza, l.version_aprobada, l.actualiza_siempre
+                           p.nombre AS plan_nombre, p.permite_actualizaciones AS plan_actualiza, p.cajas_por_sucursal AS plan_cajas, l.version_aprobada, l.actualiza_siempre
                       FROM portal_licencias l JOIN portal_clientes c ON c.id = l.cliente_id LEFT JOIN portal_planes p ON p.id = l.plan_id`;
 
 /** Compara «1.2.3» con «1.2.4»: negativo si a es menor. */
@@ -84,7 +84,7 @@ async function versionHabilitada(l: { version_aprobada: string | null; actualiza
 function emitir(l: FilaLicencia, instalacion: string) {
   const datos: DatosLicencia = {
     v: 1, id: l.id, cliente: { id: l.cliente_id, nombre: l.nombre, slug: l.slug, rnc: l.rnc },
-    instalacion, sucursales: l.sucursales, modulos: l.modulos, ...(l.plan_nombre ? { plan: l.plan_nombre } : {}), ...(l.edicion ? { edicion: l.edicion } : {}), emitida: new Date().toISOString(), vence: l.vence,
+    instalacion, sucursales: l.sucursales, ...(l.plan_cajas ? { cajas: l.plan_cajas } : {}), modulos: l.modulos, ...(l.plan_nombre ? { plan: l.plan_nombre } : {}), ...(l.edicion ? { edicion: l.edicion } : {}), emitida: new Date().toISOString(), vence: l.vence,
   };
   return firmarLicencia(datos, llavePrivada());
 }
@@ -673,6 +673,8 @@ export async function rutasPortal(app: FastifyInstance) {
     precioSucursal: z.number().min(0).max(1_000_000),
     periodo: z.enum(["MENSUAL", "ANUAL"]),
     sucursalesIncluidas: z.number().int().min(1).max(999),
+    /** Cajas de venta por sucursal (Básico 1, Pro 3…); null = sin límite. Viaja en la licencia. */
+    cajasPorSucursal: z.number().int().min(1).max(999).nullable().optional(),
     modulos: z.array(z.string().max(30)).max(30).default([]),
     /** Lo que se lista en la página web como incluido en el plan */
     funciones: z.array(z.string().trim().min(1).max(120)).max(40).default([]),
@@ -687,7 +689,7 @@ export async function rutasPortal(app: FastifyInstance) {
     orden: z.number().int().min(0).max(999).default(0),
   });
   app.get("/central/portal/planes", async () => (await pool.query(
-    `SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_sucursal::float AS "precioSucursal", p.periodo, p.sucursales_incluidas AS "sucursalesIncluidas",
+    `SELECT p.id, p.codigo, p.nombre, p.descripcion, p.precio_sucursal::float AS "precioSucursal", p.periodo, p.sucursales_incluidas AS "sucursalesIncluidas", p.cajas_por_sucursal AS "cajasPorSucursal",
             p.modulos, p.funciones, p.destacado, p.permanente, p.etiqueta, p.ecf_plan_id AS "ecfPlanId", p.permite_actualizaciones AS "permiteActualizaciones", p.activo, p.orden,
             (SELECT COUNT(*)::int FROM portal_licencias l WHERE l.plan_id = p.id) AS clientes
        FROM portal_planes p ORDER BY p.orden, p.nombre`)).rows);
@@ -695,9 +697,9 @@ export async function rutasPortal(app: FastifyInstance) {
     const b = esquemaPlan.parse(req.body);
     try {
       const id = uuidv7();
-      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden, funciones, destacado, etiqueta, permanente, ecf_plan_id)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null, b.permanente, b.ecfPlanId ?? null]);
+      await pool.query(`INSERT INTO portal_planes (id, codigo, nombre, descripcion, precio_sucursal, periodo, sucursales_incluidas, modulos, permite_actualizaciones, activo, orden, funciones, destacado, etiqueta, permanente, ecf_plan_id, cajas_por_sucursal)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null, b.permanente, b.ecfPlanId ?? null, b.cajasPorSucursal ?? null]);
       rep.code(201);
       return { id };
     } catch (e) {
@@ -711,8 +713,8 @@ export async function rutasPortal(app: FastifyInstance) {
     try {
       const r = await pool.query(
         `UPDATE portal_planes SET codigo = $2, nombre = $3, descripcion = $4, precio_sucursal = $5, periodo = $6, sucursales_incluidas = $7, modulos = $8,
-                permite_actualizaciones = $9, activo = $10, orden = $11, funciones = $12, destacado = $13, etiqueta = $14, permanente = $15, ecf_plan_id = $16 WHERE id = $1 RETURNING id`,
-        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null, b.permanente, b.ecfPlanId ?? null]);
+                permite_actualizaciones = $9, activo = $10, orden = $11, funciones = $12, destacado = $13, etiqueta = $14, permanente = $15, ecf_plan_id = $16, cajas_por_sucursal = $17 WHERE id = $1 RETURNING id`,
+        [id, b.codigo, b.nombre, b.descripcion ?? null, b.precioSucursal, b.periodo, b.sucursalesIncluidas, b.modulos, b.permiteActualizaciones, b.activo, b.orden, b.funciones, b.destacado, b.etiqueta || null, b.permanente, b.ecfPlanId ?? null, b.cajasPorSucursal ?? null]);
       if (!r.rowCount) throw new ErrorNegocio("Plan no encontrado", 404);
     } catch (e) {
       if ((e as { code?: string }).code === "23505") throw new ErrorNegocio(`Ya existe un plan con el código «${b.codigo}»`, 409);

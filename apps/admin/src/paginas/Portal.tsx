@@ -18,7 +18,7 @@ interface Cliente {
 }
 interface Plan {
   id: string; codigo: string; nombre: string; descripcion: string | null; precioSucursal: number; periodo: "MENSUAL" | "ANUAL";
-  sucursalesIncluidas: number; modulos: string[]; funciones: string[]; ecfPlanId?: string | null; destacado: boolean; permanente: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
+  sucursalesIncluidas: number; cajasPorSucursal?: number | null; modulos: string[]; funciones: string[]; ecfPlanId?: string | null; destacado: boolean; permanente: boolean; etiqueta: string | null; permiteActualizaciones: boolean; activo: boolean; orden: number; clientes: number;
 }
 interface Instalacion {
   id: string; estado: "PENDIENTE" | "ASIGNADA" | "RECHAZADA" | "LIBERADA"; empresa: string | null; rnc: string | null; equipo: string | null; versionApp: string | null;
@@ -477,7 +477,7 @@ const CATALOGO_FUNCIONES: { grupo: string; items: string[] }[] = [
 ];
 const FUNCIONES_CATALOGO_PLANO = new Set(CATALOGO_FUNCIONES.flatMap((g) => g.items));
 
-const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, modulos: [] as string[], funciones: [] as string[], destacado: false, permanente: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
+const planVacio = { id: "", codigo: "", nombre: "", descripcion: "", precioSucursal: 0, periodo: "ANUAL" as const, sucursalesIncluidas: 1, cajasPorSucursal: null as number | null, modulos: [] as string[], funciones: [] as string[], destacado: false, permanente: false, etiqueta: "" as string | null, permiteActualizaciones: true, activo: true, orden: 0 };
 
 function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) {
   const comprobantes = useDatos<{ id: string; nombre: string; maxMes: number; activo: boolean }[]>("/central/portal/ecf-planes");
@@ -513,6 +513,7 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
             <label className="campo"><span>Se cobra</span>
               <select value={edit.periodo} onChange={(e) => setEdit({ ...edit, periodo: e.target.value as "MENSUAL" | "ANUAL" })}><option value="ANUAL">Por año</option><option value="MENSUAL">Por mes</option></select></label>
             <label className="campo"><span>Sucursales incluidas por defecto</span><input type="number" min={1} value={edit.sucursalesIncluidas} onChange={(e) => setEdit({ ...edit, sucursalesIncluidas: Math.max(1, Number(e.target.value) || 1) })} /></label>
+            <label className="campo"><span>Cajas de venta por sucursal</span><input type="number" min={1} value={edit.cajasPorSucursal ?? ""} placeholder="Sin límite" onChange={(e) => setEdit({ ...edit, cajasPorSucursal: Number(e.target.value) > 0 ? Math.floor(Number(e.target.value)) : null })} /></label>
           </div>
           <label className="campo"><span>Descripción (la ve usted al elegir el plan)</span><input value={edit.descripcion ?? ""} onChange={(e) => setEdit({ ...edit, descripcion: e.target.value })} /></label>
           <label className="campo"><span>Comprobantes al mes (según el plan de facturación electrónica con MSeller)</span>
@@ -559,7 +560,7 @@ function Planes({ planes, recargar }: { planes: Plan[]; recargar: () => void }) 
               <tr key={p.id} className={p.activo ? "" : "inactiva"}>
                 <td><b>{p.nombre}</b> <span className="suave mono pequeno">{p.codigo}</span><div className="suave pequeno">{p.descripcion}</div></td>
                 <td className="der">{p.precioSucursal > 0 ? <>{rd(p.precioSucursal)}<div className="suave pequeno">por {p.periodo === "MENSUAL" ? "mes" : "año"}</div></> : <span className="texto-aviso">Sin precio</span>}</td>
-                <td>{p.sucursalesIncluidas} sucursal(es){p.permiteActualizaciones ? " · con actualizaciones" : " · sin actualizaciones"}{!p.activo && " · no disponible"}</td>
+                <td>{p.sucursalesIncluidas} sucursal(es){p.cajasPorSucursal ? ` · ${p.cajasPorSucursal} caja(s) por sucursal` : ""}{p.permiteActualizaciones ? " · con actualizaciones" : " · sin actualizaciones"}{!p.activo && " · no disponible"}</td>
                 <td className="der">{p.clientes}</td>
                 <td className="der"><button className="enlace" onClick={() => setEdit({ ...p })}>Editar</button></td>
               </tr>

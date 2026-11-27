@@ -30,6 +30,7 @@ export interface DatosLicencia {
   cliente: { id: string; nombre: string; slug: string; rnc: string | null };
   instalacion: string;       // nube del cliente a la que se activó
   sucursales: number;        // máximo de sucursales (tiendas) activas
+  cajas?: number;            // máximo de cajas de venta por sucursal (según el plan); ausente = sin límite
   modulos: string[];
   plan?: string;             // nombre del plan contratado (informativo)
   edicion?: string;          // edición por tipo de negocio (MUEBLERIA, BAR_RESTAURANTE…); ausente = FactPOS estándar

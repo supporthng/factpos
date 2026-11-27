@@ -80,6 +80,20 @@ export async function verificarCupoSucursal(c: { query: typeof pool.query }, emp
   }
 }
 
+/**
+ * Cajas de venta por sucursal que permite el plan de la licencia (Básico 1, Pro 3…). Sin límite en la prueba y en las
+ * licencias cuyo plan no lo indica. La caja de facturación no cuenta.
+ */
+export async function verificarCupoCaja(c: { query: typeof pool.query }, sucursalId: string) {
+  const maximo = (await estadoLicencia()).datos?.cajas;
+  if (!maximo) return;
+  const n = (await c.query<{ n: number }>(
+    "SELECT COUNT(*)::int AS n FROM cajas WHERE sucursal_id = $1 AND activo AND NOT eliminada AND tipo = 'CAJA'", [sucursalId])).rows[0].n;
+  if (n >= maximo) {
+    throw new ErrorNegocio(`Su plan permite ${maximo} caja(s) de venta por sucursal y esta sucursal ya tiene ${n}. Para agregar otra, cambie a un plan con más cajas.`, 402);
+  }
+}
+
 // -------------------------------------------------------------------------------- portal
 /** Comprobantes e-CF emitidos este mes y el anterior (hora de Santo Domingo), para el plan de facturación electrónica del portal. */
 async function usoEcf() {
