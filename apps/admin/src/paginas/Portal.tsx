@@ -48,7 +48,7 @@ const hace = (iso: string | null) => {
   return m < 60 ? `hace ${Math.max(m, 1)} min` : m < 2880 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
 };
 
-type Vista = "clientes" | "prospectos" | "instalaciones" | "invitaciones" | "planes" | "gastos" | "reglas";
+type Vista = "clientes" | "prospectos" | "instalaciones" | "invitaciones" | "propuestas" | "planes" | "gastos" | "reglas";
 type Filtro = "todos" | "atencion" | "vigentes" | "sin_activar" | "suspendidos";
 
 export function Portal() {
@@ -61,7 +61,7 @@ export function Portal() {
       <Encabezado titulo="Clientes y licencias"
         descripcion="Cada cliente instala su propio FactPOS con su propia nube. Aquí se manejan sus planes, licencias y cobros; sus datos nunca pasan por el portal." />
       <div className="pestanas">
-        {([["clientes", "Clientes"], ["prospectos", "Prospectos"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["planes", "Planes y precios"], ["gastos", "Gastos y costos"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
+        {([["clientes", "Clientes"], ["prospectos", "Prospectos"], ["instalaciones", "Solicitudes"], ["invitaciones", "Invitaciones"], ["propuestas", "Propuestas"], ["planes", "Planes y precios"], ["gastos", "Gastos y costos"], ["reglas", "Reglas y contacto"]] as const).map(([v, t]) => (
           <button key={v} className={vista === v ? "activa" : ""} onClick={() => { setVista(v); pendientes.recargar(); }}>
             {t}{v === "instalaciones" && nPend > 0 && <span className="insignia">{nPend}</span>}
           </button>
@@ -77,6 +77,7 @@ export function Portal() {
       {vista === "prospectos" && <Prospectos />}
       {vista === "instalaciones" && <Instalaciones planes={planes.datos ?? []} onCambio={pendientes.recargar} />}
       {vista === "invitaciones" && <Invitaciones />}
+      {vista === "propuestas" && <Propuestas />}
       {vista === "planes" && <Planes planes={planes.datos ?? []} recargar={planes.recargar} />}
       {vista === "gastos" && <Gastos />}
       {vista === "reglas" && <ReglasPortal />}
@@ -820,6 +821,118 @@ function Invitaciones() {
                 <td className="der"><button className="enlace" onClick={() => reenviar(i)}>Reenviar</button> · <button className="enlace" onClick={() => quitar(i)}>Quitar</button></td>
               </tr>); })}
             {datos && datos.lista.length === 0 && <tr><td colSpan={7} className="suave">Todavía no ha invitado a nadie.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+
+/* ---------- Propuestas comerciales (una por tipo de sistema) ---------- */
+interface TipoPropuesta { id: string; slug: string; nombre: string; para: string; titulo: string; plantilla: string }
+interface PropuestaFila {
+  id: string; edicion: string; nombre: string; telefono: string | null; correo: string | null; nota: string | null; creadaEn: string; enviadaEn: string | null;
+  visitas: number; primeraVisita: string | null; ultimaVisita: string | null; contactos: number; ultimoContacto: string | null; mensaje: string | null;
+}
+function Propuestas() {
+  const { datos, error, recargar } = useDatos<{ base: string; tipos: TipoPropuesta[]; lista: PropuestaFila[] }>("/central/portal/propuestas");
+  const [tipoId, setTipoId] = useState("ESTANDAR");
+  const [nombre, setNombre] = useState("");
+  const [tel, setTel] = useState("");
+  const [correo, setCorreo] = useState("");
+  const [nota, setNota] = useState("");
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" } | null>(null);
+  const [trabajando, setTrabajando] = useState(false);
+  const [enlace, setEnlace] = useState<{ link: string; whatsapp: string | null } | null>(null);
+  const tipo = datos?.tipos.find((t) => t.id === tipoId);
+  const texto = mensaje ?? tipo?.plantilla ?? "";
+  const telValido = tel.replace(/\D/g, "").length >= 10;
+  const nombreTipo = (id: string) => datos?.tipos.find((t) => t.id === id)?.nombre ?? id;
+
+  const crear = async () => {
+    setTrabajando(true); setMsg(null); setEnlace(null);
+    try {
+      const r = await api<{ id: string; link: string; whatsapp: string | null }>("/central/portal/propuestas", {
+        cuerpo: { edicion: tipoId, nombre, telefono: telValido ? tel : null, correo: correo || null, nota: nota || null, mensaje: texto },
+      });
+      setEnlace({ link: r.link, whatsapp: r.whatsapp });
+      if (r.whatsapp) {
+        window.open(r.whatsapp, "_blank", "noopener");
+        await api(`/central/portal/propuestas/${r.id}/enviada`, { cuerpo: {} });
+        setMsg({ t: `Se abrió WhatsApp con la propuesta para ${nombre}. Pulse «Enviar» allí.`, tipo: "ok" });
+      } else setMsg({ t: `Propuesta creada para ${nombre}. Copie el enlace y envíelo por el medio que prefiera.`, tipo: "ok" });
+      setNombre(""); setTel(""); setCorreo(""); setNota(""); await recargar();
+    } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+    finally { setTrabajando(false); }
+  };
+  const copiar = async (texto: string) => {
+    try { await navigator.clipboard.writeText(texto); setMsg({ t: "Enlace copiado.", tipo: "ok" }); } catch { setMsg({ t: texto, tipo: "ok" }); }
+  };
+  const reenviar = (p: PropuestaFila) => p.telefono && p.mensaje && window.open(`https://wa.me/${p.telefono}?text=${encodeURIComponent(p.mensaje)}`, "_blank", "noopener");
+  const quitar = async (p: PropuestaFila) => {
+    if (!confirm(`¿Quitar la propuesta de ${p.nombre}? Su enlace dejará de funcionar.`)) return;
+    try { await api(`/central/portal/propuestas/${p.id}`, { metodo: "DELETE" }); await recargar(); } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
+  };
+  const estado = (p: PropuestaFila) => p.contactos > 0 ? ["Pidió hablar", "ok"] : p.visitas > 0 ? ["La vio", "aviso"] : p.enviadaEn ? ["Enviada", ""] : ["Sin enviar", ""];
+
+  return (
+    <>
+      <Aviso texto={error} />
+      {msg && <Aviso texto={msg.t} tipo={msg.tipo} />}
+      {enlace && (
+        <p className="en-linea">
+          <input readOnly value={enlace.link} style={{ flex: 1, minWidth: 220 }} onFocus={(e) => e.currentTarget.select()} />
+          <button className="boton" onClick={() => copiar(enlace.link)}>Copiar enlace</button>
+          {enlace.whatsapp && <a className="boton primario" href={enlace.whatsapp} target="_blank" rel="noreferrer">Abrir WhatsApp</a>}
+        </p>
+      )}
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Nueva propuesta</h3>
+        <p className="suave pequeno">Elija el tipo de sistema que va a ofrecer. La persona recibe un enlace propio a una página con sus características y funciones; aquí verá si la abrió y si pidió hablar con usted.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 12 }}>
+          {(datos?.tipos ?? []).map((t) => (
+            <button key={t.id} type="button" className={"boton" + (t.id === tipoId ? " primario" : "")} onClick={() => { setTipoId(t.id); setMensaje(null); }}
+              style={{ textAlign: "left", display: "block", height: "auto", padding: "10px 12px", whiteSpace: "normal" }}>
+              <b>{t.nombre}</b><div className="pequeno" style={{ opacity: .85, fontWeight: 400 }}>{t.para}</div>
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
+          <label className="campo"><span>Nombre o negocio</span><input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Mueblería Los Pinos" /></label>
+          <label className="campo"><span>WhatsApp <em className="suave">(opcional)</em></span><input inputMode="numeric" value={tel} onChange={(e) => setTel(e.target.value.replace(/[^\d+\s-]/g, ""))} placeholder="18095551234" /></label>
+          <label className="campo"><span>Correo <em className="suave">(opcional)</em></span><input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="contacto@negocio.com" /></label>
+          <label className="campo"><span>Nota interna <em className="suave">(opcional)</em></span><input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Lo conocí en la feria" /></label>
+        </div>
+        <label className="campo"><span>Mensaje <em className="suave">({"{nombre}"} y {"{link}"} se completan solos)</em></span>
+          <textarea rows={10} value={texto} onChange={(e) => setMensaje(e.target.value)} style={{ width: "100%", fontFamily: "inherit" }} /></label>
+        <div className="en-linea">
+          <button className="boton primario" disabled={trabajando || nombre.trim().length < 2 || texto.trim().length < 10} onClick={crear}>
+            {trabajando ? "Preparando…" : telValido ? "Enviar por WhatsApp" : "Crear enlace"}
+          </button>
+          {mensaje != null && <button className="boton fantasma" onClick={() => setMensaje(null)}>Restaurar mensaje</button>}
+          {datos && tipo && <a className="enlace" href={`${datos.base}/propuesta?e=${tipo.slug}`} target="_blank" rel="noreferrer">Ver la propuesta de {tipo.nombre}</a>}
+        </div>
+      </div>
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Propuestas enviadas</h3>
+        <table className="tabla apilada">
+          <thead><tr><th>Para</th><th>Propuesta</th><th>Estado</th><th className="der">Visitas</th><th className="der">Pidió hablar</th><th>Creada</th><th /></tr></thead>
+          <tbody>
+            {(datos?.lista ?? []).map((p) => { const [t, c] = estado(p); return (
+              <tr key={p.id}>
+                <td><b>{p.nombre}</b>{p.telefono && <div className="suave pequeno mono">{p.telefono}</div>}{p.correo && <div className="suave pequeno">{p.correo}</div>}{p.nota && <div className="suave pequeno">{p.nota}</div>}</td>
+                <td>{nombreTipo(p.edicion)}</td>
+                <td><span className={"pastilla " + c}>{t}</span>{p.ultimaVisita && <div className="suave pequeno">Vista {hace(p.ultimaVisita)}</div>}</td>
+                <td className="der">{p.visitas}</td><td className="der">{p.contactos}</td>
+                <td className="suave pequeno">{hace(p.creadaEn)}</td>
+                <td className="der">
+                  <button className="enlace" onClick={() => copiar(`${datos!.base}/propuesta?i=${p.id}`)}>Copiar enlace</button>
+                  {p.telefono && <> · <button className="enlace" onClick={() => reenviar(p)}>Reenviar</button></>} · <button className="enlace" onClick={() => quitar(p)}>Quitar</button>
+                </td>
+              </tr>); })}
+            {datos && datos.lista.length === 0 && <tr><td colSpan={7} className="suave">Todavía no ha enviado ninguna propuesta.</td></tr>}
           </tbody>
         </table>
       </div>
