@@ -154,7 +154,7 @@ ${areas}
 <section><div class="cont"><div class="cta">
   <h2>¿Lo vemos funcionando en su negocio?</h2>
   <p>Pruébelo 15 días gratis, sin pagar y sin tarjeta. Si le gusta, activamos su licencia y sigue con todo ya cargado.</p>
-  <div class="acc">${contactar}<a class="btn s" href="/#descargar">Descargar y probar 15 días</a><a class="btn s" href="/demo">Ver la demo</a></div>
+  <div class="acc">${contactar}<a class="btn s" href="https://www.onetechrd.com/factpos#descargas">Descargar y probar 15 días</a><a class="btn s" href="https://www.onetechrd.com/factpos#precios">Planes y precios</a><a class="btn s" href="/demo">Ver la demo</a></div>
 </div></div></section>`;
   return documento({
     ruta: "/propuesta", activa: "", titulo: `${p.nombre} · Propuesta`, descripcion: esc(p.resumen), cuerpo,
