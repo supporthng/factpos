@@ -1,6 +1,6 @@
 /**
- * Página web pública de FactPOS (la que se ve en la raíz del portal): qué es, qué hace, planes y precios (en vivo desde
- * /licencias/planes-web) y el botón «Iniciar sesión» que lleva al portal (/entrar).
+ * Página web pública de FactPOS (la que se ve en la raíz del portal): qué es, qué hace, el enlace a los planes y la compra en Onetech
+ * (los contactos salen de /licencias/planes-web) y el botón «Iniciar sesión» que lleva al portal (/entrar).
  * Es una sola página con sus estilos y su script dentro; no usa nada externo.
  * Comparte estilos, menú y pie con las demás páginas del sitio (sitio-web.ts); el resto: /funciones y /facturacion-electronica.
  * OJO: es una plantilla de texto: sin comillas invertidas, sin «${» (salvo los tres de arriba) y sin barras invertidas en el HTML ni en el script.
@@ -146,9 +146,12 @@ ${cabecera("inicio")}
 </div></section>
 
 <section id="planes"><div class="cont">
-  <div class="tit"><small>Planes y precios</small><h2>Elige el plan de tu negocio</h2><p id="planes-sub">Precios por mes, sin letra pequeña.</p></div>
-  <div id="planes-lista" class="planes"><p class="cargando">Cargando planes…</p></div>
-  <p class="nota" id="planes-nota"></p>
+  <div class="tit"><small>Planes y precios</small><h2>Elige el plan de tu negocio</h2><p>Niveles Básico, Pro y Empresarial para cada edición, en pesos y por sucursal. Se compran en línea en Onetech, la empresa detrás de FactPOS.</p></div>
+  <div class="planes"><div class="plan dest">
+    <h3>Planes de FactPOS</h3>
+    <p class="d">Mensual, anual o pago único. Pago en línea con PayPal y activación de tu licencia por correo.</p>
+    <a class="btn p" href="https://onetech-web.vercel.app/factpos#precios" rel="noopener">Ver planes y comprar</a>
+  </div></div>
 </div></section>
 
 <section id="contacto"><div class="cont">
@@ -175,34 +178,13 @@ ${pie()}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   function el(tag, cls, txt){ var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
-  function rd(n){ return "RD$ " + Number(n).toLocaleString("es-DO", { maximumFractionDigits: 0 }); }
   var tb = document.querySelectorAll(".tabs button");
   Array.prototype.forEach.call(tb, function(b){ b.addEventListener("click", function(){
     Array.prototype.forEach.call(tb, function(x){ x.classList.toggle("on", x === b); });
     Array.prototype.forEach.call(document.querySelectorAll(".pan"), function(p){ p.classList.toggle("on", p.id === "p-" + b.getAttribute("data-t")); });
   }); });
   fetch("/licencias/planes-web").then(function(r){ if (!r.ok) throw new Error("x"); return r.json(); }).then(function(d){
-    var lista = $("planes-lista"); lista.textContent = "";
-    var planes = (d.planes || []);
-    if (!planes.length) { lista.appendChild(el("p", "vacio", "Escríbenos y te preparamos una propuesta a tu medida.")); }
-    planes.forEach(function(p){
-      var c = el("div", "plan" + (p.destacado ? " dest" : ""));
-      if (p.etiqueta) c.appendChild(el("span", "bd", p.etiqueta));
-      c.appendChild(el("h3", "", p.nombre));
-      if (p.descripcion) c.appendChild(el("p", "d", p.descripcion));
-      var pr = el("div", "pr");
-      if (p.pagoUnico) { pr.textContent = rd(p.pagoUnico); pr.appendChild(el("small", "", " pago único")); }
-      else if (p.mensual) { pr.textContent = rd(p.mensual); pr.appendChild(el("small", "", " / mes")); }
-      else { pr.textContent = "Consultar"; }
-      c.appendChild(pr);
-      // Un plan de una sola tienda no menciona sucursales: solo los que incluyen varias lo dicen
-      if (p.sucursales > 1) c.appendChild(el("p", "d", p.sucursales + " sucursales incluidas"));
-      if (p.comprobantes) c.appendChild(el("p", "d", "Hasta " + Number(p.comprobantes).toLocaleString("es-DO") + " comprobantes electrónicos al mes"));
-      var ul = el("ul"); (p.funciones || []).forEach(function(f){ ul.appendChild(el("li", "", f)); }); c.appendChild(ul);
-      var a = el("a", "btn " + (p.destacado ? "p" : "o"), "Quiero este plan"); a.href = "#contacto"; c.appendChild(a);
-      lista.appendChild(c);
-    });
-    if (d.descuentoAnual) $("planes-nota").textContent = "Pagando el año completo tienes " + d.descuentoAnual + " % de descuento.";
+    // Los planes y precios se publican y se venden en Onetech; de aquí solo se toma el contacto
     var k = d.contacto || {}, cont = $("contactos");
     if (k.whatsapp) {
       var fl = el("a", "wa", ""); fl.href = "https://wa.me/" + String(k.whatsapp).replace(/[^0-9]/g, "") + "?text=" + encodeURIComponent("Hola, quiero información de FactPOS"); fl.rel = "noopener"; fl.setAttribute("aria-label", "Escribir por WhatsApp");
@@ -211,9 +193,7 @@ ${pie()}
     if (k.whatsapp) { var w = el("a", "btn s", "WhatsApp"); w.href = "https://wa.me/" + String(k.whatsapp).replace(/[^0-9]/g, ""); w.rel = "noopener"; cont.appendChild(w); }
     if (k.correo) { var m = el("a", "btn s", k.correo); m.href = "mailto:" + k.correo; cont.appendChild(m); }
     if (k.telefono && !k.whatsapp) { var t = el("a", "btn s", k.telefono); t.href = "tel:" + String(k.telefono).replace(/[^0-9+]/g, ""); cont.appendChild(t); }
-  }).catch(function(){
-    var lista = $("planes-lista"); lista.textContent = ""; lista.appendChild(el("p", "vacio", "No pudimos cargar los planes ahora. Escríbenos y te los enviamos."));
-  });
+  }).catch(function(){});
   var sol = $("sol");
   if (sol) sol.addEventListener("submit", function(ev){
     ev.preventDefault();
