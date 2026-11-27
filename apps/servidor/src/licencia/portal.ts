@@ -9,6 +9,7 @@ import { uuidv7, IDS_EDICION } from "@factpos/compartido";
 import { pool, enTransaccion, ErrorNegocio } from "../db.js";
 import { asegurarTunel, cloudflareListo } from "./cloudflare.js";
 import { rutasInvitaciones } from "./invitaciones.js";
+import { rutasPropuestas } from "./propuestas.js";
 import { PAGINA_WEB } from "./pagina-web.js";
 import { PAGINA_FUNCIONES } from "./pagina-funciones.js";
 import { PAGINA_ECF } from "./pagina-ecf.js";
@@ -1016,6 +1017,7 @@ export async function rutasPortal(app: FastifyInstance) {
 
   // ================================================================ PÁGINAS
   await rutasInvitaciones(app);
+  await rutasPropuestas(app);
   await rutasPaginas(app);
 }
 
