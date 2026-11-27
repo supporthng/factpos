@@ -10,7 +10,21 @@ import { SQL_RESTANTES } from "../promociones.js";
  * o si se venden unidades de una oferta con tope (así las demás cajas ven
  * cuántas quedan sin esperar). `$s` = parámetro con la sucursal.
  */
-const sqlVersion = (s: string) => `(SELECT last_value FROM sync_version)::text || '-' || COALESCE((
+/**
+ * «Versión» del catálogo: cambia solo cuando cambia algo que el catálogo lleva (productos, precios, códigos, impuestos,
+ * categorías, ofertas…) o cuando se vende una oferta con tope. Antes usaba el contador global de sincronización, que sube con
+ * CUALQUIER cambio (usuarios, cajas, empresas, la propia sincronización cada 15 s…): las cajas bajaban el catálogo completo
+ * (~1 s de servidor cada vez) cada 20 segundos sin que nada hubiera cambiado. Los conteos detectan lo que se borra.
+ */
+const sqlVersion = (s: string) => `COALESCE((SELECT GREATEST(
+      (SELECT max(version) FROM productos), (SELECT max(version) FROM presentaciones), (SELECT max(version) FROM codigos_barra),
+      (SELECT max(version) FROM impuestos), (SELECT max(version) FROM categorias), (SELECT max(version) FROM listas_precio),
+      (SELECT max(version) FROM precios), (SELECT max(version) FROM producto_sucursal), (SELECT max(version) FROM ofertas),
+      (SELECT max(version) FROM oferta_alcance), (SELECT max(version) FROM producto_componentes))), 0)::text
+  || '.' || (SELECT count(*) FROM presentaciones)::text || '.' || (SELECT count(*) FROM codigos_barra)::text
+  || '.' || (SELECT count(*) FROM precios)::text || '.' || (SELECT count(*) FROM ofertas)::text || '.' || (SELECT count(*) FROM oferta_alcance)::text
+  || '.' || (SELECT count(*) FROM producto_sucursal)::text
+  || '-' || COALESCE((
     SELECT SUM(CASE WHEN v.tipo_documento IN ('E34','ANU') THEN -i.unidades_oferta ELSE i.unidades_oferta END)
       FROM venta_items i JOIN ventas v ON v.id = i.venta_id
      WHERE v.sucursal_id = ${s}
