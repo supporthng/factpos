@@ -58,6 +58,18 @@ export async function aplicarFilas(
 ): Promise<number> {
   if (!filas?.length) return 0;
   const t = await estructura(c, tabla);
+  if (tabla === "impuestos" && modo === "reemplazar") {
+    // La migración 0135 creó «Propina legal» en cada base con un id al azar: la sucursal tiene la suya y la central otra.
+    // El índice único (una propina activa por empresa) hacía fallar CADA sincronización y no bajaba nada de la central.
+    // La de la central manda: la propina activa propia, con otro id, se desactiva (no se borra) antes de aplicar la que llega.
+    await c.query(
+      `UPDATE impuestos x SET activo = FALSE
+        WHERE x.tipo = 'PROPINA' AND x.activo
+          AND EXISTS (SELECT 1 FROM jsonb_populate_recordset(NULL::impuestos, $1::jsonb) r
+                       WHERE r.tipo = 'PROPINA' AND r.activo AND r.empresa_id = x.empresa_id AND r.id <> x.id)`,
+      [JSON.stringify(filas)],
+    );
+  }
   const cols = t.columnas.map(id).join(", ");
   const llave = t.llave.map(id).join(", ");
   const origen = `jsonb_populate_recordset(NULL::${id(tabla)}, $1::jsonb) AS r`;
