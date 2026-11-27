@@ -150,7 +150,7 @@ ${cabecera("inicio")}
   <div class="planes"><div class="plan dest">
     <h3>Planes de FactPOS</h3>
     <p class="d">Mensual, anual o pago único. Pago en línea con PayPal y activación de tu licencia por correo.</p>
-    <a class="btn p" href="https://onetech-web.vercel.app/factpos#precios" rel="noopener">Ver planes y comprar</a>
+    <a class="btn p" href="https://www.onetechrd.com/factpos#precios" rel="noopener">Ver planes y comprar</a>
   </div></div>
 </div></section>
 
