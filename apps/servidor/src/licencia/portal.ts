@@ -1206,8 +1206,12 @@ async function rutasPaginas(app: FastifyInstance) {
   };
 
   // Portal
-  // La raíz es la página web pública; el portal (inicio de sesión y panel) vive en /entrar
+  // La página web de FactPOS vive en Onetech (www.onetechrd.com/factpos): la raíz y las páginas informativas redirigen allá.
+  // Aquí quedan el portal (/entrar), la demo (/demo) y las propuestas (/propuesta). Con FACTPOS_WEB_PROPIA=1 vuelve la página de antes.
+  const ONETECH = "https://www.onetechrd.com/factpos";
+  const webPropia = process.env.FACTPOS_WEB_PROPIA === "1";
   app.get("/", (req, rep) => {
+    if (!webPropia) return rep.redirect(ONETECH, 302);
     // Los enlaces absolutos de «compartir» (Open Graph) salen del dominio con el que se entró
     const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").replace(/[^a-zA-Z0-9.:-]/g, "");
     const base = host ? `https://${host}` : "";
@@ -1218,12 +1222,12 @@ async function rutasPaginas(app: FastifyInstance) {
     const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "").replace(/[^a-zA-Z0-9.:-]/g, "");
     return host ? `https://${host}` : "";
   };
-  app.get("/funciones", (req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_FUNCIONES.replaceAll("__BASE__", dominio(req))));
-  app.get("/facturacion-electronica", (req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_ECF.replaceAll("__BASE__", dominio(req))));
+  app.get("/funciones", (req, rep) => !webPropia ? rep.redirect(`${ONETECH}#funciones`, 302) : rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_FUNCIONES.replaceAll("__BASE__", dominio(req))));
+  app.get("/facturacion-electronica", (req, rep) => !webPropia ? rep.redirect(`${ONETECH}#ecf`, 302) : rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_ECF.replaceAll("__BASE__", dominio(req))));
   app.get("/robots.txt", (req, rep) => rep.type("text/plain; charset=utf-8").send(`User-agent: *\nAllow: /\nDisallow: /entrar\nDisallow: /demo\nSitemap: ${dominio(req)}/sitemap.xml\n`));
   app.get("/sitemap.xml", (req, rep) => {
     const b = dominio(req);
-    const urls = ["/", "/funciones", "/facturacion-electronica"].map((u) => `<url><loc>${b}${u}</loc></url>`).join("");
+    const urls = (webPropia ? ["/", "/funciones", "/facturacion-electronica"] : ["/propuesta"]).map((u) => `<url><loc>${b}${u}</loc></url>`).join("");
     return rep.type("application/xml; charset=utf-8").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`);
   });
   app.get("/demo", (_req, rep) => rep.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(PAGINA_DEMO));
