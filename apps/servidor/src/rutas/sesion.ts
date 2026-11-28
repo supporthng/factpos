@@ -18,6 +18,23 @@ const pinValido = z.string().regex(/^\d{4,6}$/, "El PIN debe tener de 4 a 6 núm
 
 /** Freno a quien prueba contraseñas: 5 intentos fallidos y espera 5 minutos. */
 const fallos = new Map<string, { n: number; hasta: number }>();
+/**
+ * Empresas enlazadas (cada RNC es una empresa aparte, del mismo grupo): un rol creado o cambiado en una se replica en las demás del grupo,
+ * por nombre. Si la otra empresa ya tiene un rol con ese nombre (o con el nombre anterior, si se renombró) se le ponen los mismos permisos;
+ * si no, se crea. Dentro de una empresa los roles ya bajan solos a todas sus sucursales.
+ */
+async function replicarRolEnGrupo(empresaId: string, nombreAnterior: string | null, nombre: string, permisos: string[]) {
+  const otras = (await pool.query<{ id: string }>(
+    `SELECT e.id FROM empresas e WHERE e.activo AND e.id <> $1
+        AND COALESCE(e.grupo_id, e.id) = (SELECT COALESCE(grupo_id, id) FROM empresas WHERE id = $1)`, [empresaId])).rows;
+  for (const o of otras) {
+    const buscar = nombreAnterior ?? nombre;
+    const r = await pool.query("UPDATE roles SET nombre = $3, permisos = $4 WHERE empresa_id = $1 AND lower(nombre) = lower($2) AND NOT ('*' = ANY(permisos))", [o.id, buscar, nombre, permisos]);
+    if (!r.rowCount && !(await pool.query("SELECT 1 FROM roles WHERE empresa_id = $1 AND lower(nombre) = lower($2)", [o.id, buscar])).rowCount)
+      await pool.query("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,$3,$4)", [uuidv7(), o.id, nombre, permisos]);
+  }
+}
+
 export function frenar(clave: string, max = 5) {
   const f = fallos.get(clave);
   if (f && f.n >= max && f.hasta > Date.now()) {
@@ -344,7 +361,9 @@ export async function rutasSesionCentral(app: FastifyInstance) {
   app.post("/central/roles", async (req, rep) => {
     const b = z.object({ nombre: z.string().trim().min(2).max(40), permisos: permisosValidos }).parse(req.body);
     const id = uuidv7();
-    await pool.query("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,$3,$4)", [id, sesionAdmin(req).e, b.nombre, b.permisos]);
+    const empresa = sesionAdmin(req).e;
+    await pool.query("INSERT INTO roles (id, empresa_id, nombre, permisos) VALUES ($1,$2,$3,$4)", [id, empresa, b.nombre, b.permisos]);
+    await replicarRolEnGrupo(empresa, null, b.nombre, b.permisos);
     rep.code(201);
     return { id };
   });
@@ -358,8 +377,11 @@ export async function rutasSesionCentral(app: FastifyInstance) {
     if (ro.permisos.includes("*") && b.permisos && !b.permisos.includes("*")) {
       throw new ErrorNegocio("El rol Administrador conserva todos los permisos; cree otro rol con menos permisos");
     }
+    const antes = (await pool.query<{ nombre: string }>("SELECT nombre FROM roles WHERE id = $1", [id])).rows[0]!.nombre;
     await pool.query("UPDATE roles SET nombre = COALESCE($2, nombre), permisos = COALESCE($3, permisos) WHERE id = $1",
       [id, b.nombre ?? null, b.permisos ?? null]);
+    const ahora = (await pool.query<{ nombre: string; permisos: string[] }>("SELECT nombre, permisos FROM roles WHERE id = $1", [id])).rows[0]!;
+    await replicarRolEnGrupo(s.e, antes, ahora.nombre, ahora.permisos);
     olvidarUsuario();
     return { ok: true };
   });
