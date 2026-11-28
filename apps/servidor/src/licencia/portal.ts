@@ -389,7 +389,7 @@ export async function rutasPortal(app: FastifyInstance) {
     const v = await ultimaVersion();
     // El paquete de actualización solo se entrega a quien el proveedor se la habilitó (los instaladores completos no se restringen)
     const tipoPedido = String((req.query as { tipo?: string }).tipo ?? "");
-    if (token && v && tipoPedido !== "setup" && tipoPedido !== "caja") {
+    if (token && v && tipoPedido !== "setup" && tipoPedido !== "caja" && tipoPedido !== "unapc") {
       const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [leerLicencia(token).id])).rows[0];
       if (l && !(await versionHabilitada(l, v.version))) throw new ErrorNegocio("Esta versión todavía no está habilitada para su empresa. Su proveedor se la enviará.", 403);
     }
@@ -401,6 +401,10 @@ export async function rutasPortal(app: FastifyInstance) {
       const elegido = (ed && v?.ediciones?.[ed]) || v?.setup;
       if (!v || !elegido) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
       return { version: v.version, nombre: elegido.nombre, url: await urlDescarga(elegido) };
+    }
+    if (tipo === "unapc") {
+      if (!v?.unaPc) throw new ErrorNegocio("Todavía no hay un instalador «Una PC» publicado: se genera con la próxima versión", 404);
+      return { version: v.version, nombre: v.unaPc.nombre, url: await urlDescarga(v.unaPc) };
     }
     if (tipo === "caja") {
       if (!v?.caja) throw new ErrorNegocio("Todavía no hay un instalador de Caja publicado: se genera con la próxima versión", 404);
@@ -1026,7 +1030,7 @@ export async function rutasPortal(app: FastifyInstance) {
 // -------------------------------------------------------------------------------------------
 // Versiones publicadas (GitHub Releases). Repositorio privado: GITHUB_TOKEN con permiso de lectura.
 // -------------------------------------------------------------------------------------------
-interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null; caja?: { url: string; descarga: string; nombre: string } | null; ediciones?: Record<string, { url: string; descarga: string; nombre: string }> }
+interface Publicada { version: string; notas: string | null; publicada: string | null; asset: { url: string; descarga: string } | null; setup: { url: string; descarga: string; nombre: string } | null; caja?: { url: string; descarga: string; nombre: string } | null; unaPc?: { url: string; descarga: string; nombre: string } | null; ediciones?: Record<string, { url: string; descarga: string; nombre: string }> }
 let cacheVersion: { v: Publicada | null; t: number } | null = null;
 const encabezadosGitHub = (extra: Record<string, string> = {}) => ({
   "user-agent": "factpos-portal", accept: "application/vnd.github+json",
@@ -1056,9 +1060,11 @@ export async function ultimaVersion(): Promise<Publicada | null> {
       setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
       // Instalador solo de Caja (sin servidor ni base de datos)
       caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
+      // Instalador «Una PC» para negocios pequeños (servidor + caja + administración sin preguntar qué es el equipo)
+      unaPc: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-UnaPC-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
       // Instaladores por edición (FactPOS-Farmacia-Setup.exe…), por su slug en minúsculas: «farmacia», «auto-detailing»…
       ediciones: Object.fromEntries(encontrada.rel.assets.flatMap((x) => {
-        const m = x.name.match(/^FactPOS-(?!Caja-|Setup)(.+)-Setup\.exe$/i);
+        const m = x.name.match(/^FactPOS-(?!Caja-|UnaPC-|Setup)(.+)-Setup\.exe$/i);
         return m ? [[m[1].toLowerCase(), { url: x.url, descarga: x.browser_download_url, nombre: x.name }]] : [];
       })) as Record<string, { url: string; descarga: string; nombre: string }> } : null;
     cacheVersion = { v, t: Date.now() };
