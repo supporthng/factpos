@@ -176,13 +176,13 @@ if (makensis) {
   // Si falla un opcional solo se avisa y no impide publicar lo demás; si falla el general, se detiene.
   const trabajos = [
     { obligatorio: true, nombre: "FactPOS-Setup.exe", correr: async () => { await armar([`-DSALIDA=${setup}`]); console.log(`Listo: ${relative(raiz, setup)} (${mb(setup)} MB)`); } },
-    // Una sola PC (negocios pequeños): servidor + caja + administración sin preguntar qué es el equipo. Solo se pregunta el tipo de negocio.
-    { nombre: "el instalador de Una PC", correr: async () => { const f = join(salida, `FactPOS-UnaPC-Setup.exe`); await armar([`-DSALIDA=${f}`, "-DUNA_PC=1"]); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, una sola PC)`); } },
+    // Mono Caja = una sola PC (negocios pequeños): servidor + caja + administración sin preguntar qué es el equipo. Solo se pregunta el tipo de negocio.
+    { nombre: "el instalador de Mono Caja", correr: async () => { const f = join(salida, `FactPOS-MonoCaja-Setup.exe`); await armar([`-DSALIDA=${f}`, "-DUNA_PC=1"]); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, una sola PC)`); } },
     { nombre: "el instalador de Caja", correr: async () => { const f = join(salida, `FactPOS-Caja-Setup.exe`); await armar([`-DSALIDA=${f}`, "-DTIPO_FIJO=caja"]); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, solo Caja)`); } },
     // Un instalador por edición (FactPOS-Farmacia-Setup.exe…): mismo programa, con el tipo de negocio ya fijado y el nombre de la edición.
     ...EDICIONES.map((ed) => ({ nombre: `el instalador de ${ed.nombre}`, correr: async () => {
       const f = join(salida, `FactPOS-${ed.slug}-Setup.exe`.replace(/^FactPOS-(.)/, (_, c) => `FactPOS-${c.toUpperCase()}`));
-      await armar([`-DSALIDA=${f}`, `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`]);
+      await armar([`-DSALIDA=${f}`, `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`, ...(ed.modulos?.length ? [`-DMODULOS_FIJO=${ed.modulos.join(",")}`] : [])]);
       console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, ${ed.nombre})`);
     } })),
     { nombre: "el desinstalador de Caja", correr: async () => { const f = join(salida, `FactPOS-Caja-Limpiar.exe`); await armar([`-DSALIDA=${f}`], "LimpiarCaja.nsi"); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, limpieza de Caja)`); } },
