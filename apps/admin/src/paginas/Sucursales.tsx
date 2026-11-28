@@ -4,7 +4,7 @@ import { Aviso, Encabezado, useDatos } from "../ui";
 import { EmpresasEnlazadas, PuestaEnMarcha } from "./Empresas";
 
 interface Terminal { id: string; numero: number; nombre: string; activo: boolean; almacen: string; turnoAbierto: boolean; ultimaVenta: string | null; conPc?: boolean; tipo?: string }
-interface EstadoSync { sucursalId: string; ultimaSubida: string | null; ultimaBajada: string | null; pendientes: number | null; errores: number | null; ultimoError: string | null; enLinea: boolean | null; segundos: number | null; equipo: string | null }
+interface EstadoSync { sucursalId: string; ultimaSubida: string | null; ultimaBajada: string | null; pendientes: number | null; errores: number | null; ultimoError: string | null; errorBajada?: string | null; enLinea: boolean | null; segundos: number | null; equipo: string | null }
 interface Sucursal {
   id: string; codigo: string; nombre: string; direccion: string | null; telefono: string | null; activo: boolean; tipo: "TIENDA" | "ALMACEN";
   almacenes: { id: string; nombre: string; principal: boolean }[]; terminales: Terminal[];
@@ -213,6 +213,7 @@ function EstadoServidor({ e }: { e?: EstadoSync }) {
       {e.enLinea ? "En línea" : `Sin comunicación ${hace(e.segundos)}`}
       {e.pendientes ? <span className="suave"> · {e.pendientes} por subir</span> : null}
       {e.errores ? <span className="texto-alerta"> · {e.errores} con error</span> : null}
+      {e.errorBajada ? <span className="texto-alerta" style={{ display: "block" }}>No recibe los cambios de la central: {e.errorBajada}</span> : null}
     </span>
   );
 }

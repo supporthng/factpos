@@ -207,8 +207,15 @@ export async function rutasCentralSync(app: FastifyInstance) {
       sucursalId: uuid, equipo: z.string().max(80).optional(), appVersion: z.string().max(20).optional(),
       verificadores: z.array(z.object({ id: z.string().max(64), so: z.string().max(10), equipo: z.string().max(60), build: z.number().int(), ultimoContacto: z.string().max(40) })).max(200).default([]),
       correoPropio: z.boolean().optional(),
+      errorBajada: z.string().max(400).optional(), // "" = ya se recuperó
     }).parse(req.body);
     await verificarConexion(req, b.sucursalId);
+    if (b.errorBajada !== undefined) {
+      await pool.query(
+        `INSERT INTO sync_sucursales (sucursal_id, error_bajada) VALUES ($1, $2)
+         ON CONFLICT (sucursal_id) DO UPDATE SET error_bajada = $2`, [b.sucursalId, b.errorBajada || null]);
+      if (b.verificadores.length === 0 && !b.equipo && !b.appVersion) return { ok: true };
+    }
     await pool.query(
       `INSERT INTO sync_sucursales (sucursal_id, equipo, app_version, verificadores) VALUES ($1, $2, $3, $4::jsonb)
        ON CONFLICT (sucursal_id) DO UPDATE SET equipo = COALESCE($2, sync_sucursales.equipo), app_version = COALESCE($3, sync_sucursales.app_version), verificadores = $4::jsonb`,
@@ -367,7 +374,7 @@ export async function rutasCentralSync(app: FastifyInstance) {
     const r = await pool.query(
       `SELECT s.id AS "sucursalId", s.codigo, s.nombre, s.tipo,
               y.ultima_subida AS "ultimaSubida", y.ultima_bajada AS "ultimaBajada",
-              y.pendientes, y.errores, y.ultimo_error AS "ultimoError", y.equipo, y.app_version AS "appVersion",
+              y.pendientes, y.errores, y.ultimo_error AS "ultimoError", y.error_bajada AS "errorBajada", y.equipo, y.app_version AS "appVersion",
               GREATEST(y.ultima_subida, y.ultima_bajada) > now() - interval '2 minutes' AS "enLinea",
               EXTRACT(EPOCH FROM now() - GREATEST(y.ultima_subida, y.ultima_bajada))::int AS "segundos",
               (SELECT MAX(v.creado_en) FROM ventas v WHERE v.sucursal_id = s.id) AS "ultimaVenta"
