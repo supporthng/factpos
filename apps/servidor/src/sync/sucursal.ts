@@ -147,6 +147,15 @@ export async function subir(): Promise<{ enviados: number; errores: number }> {
 
 /** Dice a la central la versión de este servidor y de las apps del verificador que lo consultan (a lo sumo cada 2 minutos). */
 let ultimoAviso = 0;
+/** Avisa a la central (sin esperar) que esta sucursal no logra bajar sus cambios, o que ya se recuperó. */
+let errorBajadaAvisado: string | null | undefined; // undefined = aún no se ha avisado nada
+async function avisarErrorBajada(msg: string | null) {
+  if (msg === errorBajadaAvisado) return;
+  errorBajadaAvisado = msg;
+  await pedir("/central/sync/equipo", { method: "POST", body: JSON.stringify({ sucursalId: configSync().sucursalId, errorBajada: msg ? msg.slice(0, 400) : "" }) })
+    .catch(() => { errorBajadaAvisado = undefined; }); // si no llegó, se intenta en la próxima vuelta
+}
+
 async function avisarEquipo() {
   if (Date.now() - ultimoAviso < 2 * 60_000) return;
   ultimoAviso = Date.now();
@@ -332,6 +341,7 @@ async function vueltaCompleta() {
     const s = await subir();
     await marca("ultima_subida = now()", []);
     const b = await bajar();
+    await avisarErrorBajada(null);
     await avisarEquipo().catch(() => {});   // versión de este servidor y de sus verificadores (nunca detiene la sincronización)
     await marca("ultima_bajada = now(), ultimo_error = $2", [s.errores ? `${s.errores} elemento(s) no se pudieron subir; se reintentan` : null]);
     // Si la central tiene otro certificado, se pide ya (sin esperar los 10 minutos)
@@ -345,6 +355,8 @@ async function vueltaCompleta() {
     return { ...s, ...b, certificado: cert };
   } catch (e) {
     await marca("ultimo_error = $2", [(e as Error).message.slice(0, 500)]).catch(() => {});
+    // Si falló al bajar (no al hablar con la central), la central debe poder mostrarlo
+    if (!/La central respondió|fetch failed|timeout|aborted/i.test((e as Error).message)) await avisarErrorBajada((e as Error).message);
     throw e;
   }
 }
