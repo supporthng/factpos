@@ -18,6 +18,13 @@ describe("ediciones", () => {
     expect(edicionPorId("AUTOLAVADO")?.modulos).toEqual(["LAVADO"]);
     expect(nombreEdicion("FARMACIA")).toBe("FactPOS Farmacia");
   });
+  it("peluquería y barbería son ediciones que encienden el módulo SALON", () => {
+    for (const id of ["PELUQUERIA", "BARBERIA"]) {
+      expect(edicionPorId(id)?.tipoNegocio).toBe("TIENDA");
+      expect(edicionPorId(id)?.modulos).toEqual(["SALON"]);
+    }
+    expect(nombreEdicion("BARBERIA")).toBe("FactPOS Barbería");
+  });
   it("abarrotes, supermercado y licorería son FactPOS a secas (no tienen edición)", () => {
     for (const id of ["ABARROTES", "LICORERIA", "SUPERMERCADO"]) expect(edicionPorId(id)).toBeUndefined();
   });
