@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { vencimientoDot } from "@factpos/compartido";
 import { api, rd, num, hoy } from "../api";
 import { Aviso, Encabezado, SelectorAlmacen, SelectorProducto, SelectorSucursal, Tabla, useCatalogo, useDatos } from "../ui";
 
@@ -299,6 +300,9 @@ export function BuscadorLinea({ onElegir, inputRef }: { onElegir: (presentacionI
 function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => void; onRegistrada: () => void; borrador: { id: string; datos: any } | null }) {
   const { sucursales, productos } = useCatalogo();
   const aux = useDatos<{ proveedores: { id: string; nombre: string; rnc: string | null }[] }>("/central/productos-auxiliares");
+  // Gomeras: en vez de lote y vencimiento se anota el DOT (semana y año de fabricación, 4 números) y el vencimiento sale solo
+  const [gomera, setGomera] = useState(false);
+  useEffect(() => { api<{ activos: string[] }>("/central/empresa/modulos").then((r) => setGomera(r.activos.includes("GOMERA"))).catch(() => {}); }, []);
   const baseCab = {
     sucursalId: sucursales[0]?.id ?? "", almacenId: "", proveedorId: "", numeroFactura: "", ncfProveedor: "",
     fechaFactura: hoy(), condicion: "CONTADO" as "CONTADO" | "CREDITO", venceEn: "", notas: "",
@@ -703,8 +707,18 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
                                 )}
                               </div>
                               <div className="lote-linea">
-                                <input value={l.lote} placeholder="Lote (opcional)" maxLength={40} aria-label="Número de lote" onChange={(e) => fijar(l.clave, { lote: e.target.value })} />
-                                <input type="date" value={l.vence} min={hoy()} aria-label="Fecha de vencimiento" title="Vence" onChange={(e) => fijar(l.clave, { vence: e.target.value })} />
+                                {gomera ? (
+                                  <>
+                                    <input value={l.lote} placeholder="DOT (ej. 2324)" maxLength={4} inputMode="numeric" aria-label="DOT del neumático" title="Semana y año de fabricación, los 4 números del costado"
+                                      onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 4); fijar(l.clave, { lote: v, vence: vencimientoDot(v) ?? "" }); }} />
+                                    {l.lote.length === 4 && !vencimientoDot(l.lote) && <span className="texto-error pequeno">DOT no válido: semana (01 a 53) y año</span>}
+                                  </>
+                                ) : (
+                                  <>
+                                    <input value={l.lote} placeholder="Lote (opcional)" maxLength={40} aria-label="Número de lote" onChange={(e) => fijar(l.clave, { lote: e.target.value })} />
+                                    <input type="date" value={l.vence} min={hoy()} aria-label="Fecha de vencimiento" title="Vence" onChange={(e) => fijar(l.clave, { vence: e.target.value })} />
+                                  </>
+                                )}
                               </div>
                               <div className="pequeno referencia-linea">
                                 {!l.ref ? <span className="suave">…</span> : (

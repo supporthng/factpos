@@ -1,9 +1,9 @@
 /**
  * Módulos de una empresa. El tipo de negocio trae los suyos por defecto (los de mesas traen MESAS) y la empresa puede
  * encender otros: un autolavado con cafetería enciende MESAS (cuentas abiertas, comandas, barra y cocina); un bar que
- * también lava vehículos enciende LAVADO. Sin extras, todo funciona como siempre.
+ * también lava vehículos enciende LAVADO; una gomera enciende GOMERA (neumáticos con medida, DOT y ubicación) junto con LAVADO, que ahí son los servicios de taller. Sin extras, todo funciona como siempre.
  */
-export const MODULOS_EMPRESA = ["MESAS", "LAVADO"] as const;
+export const MODULOS_EMPRESA = ["MESAS", "LAVADO", "GOMERA"] as const;
 export type ModuloEmpresa = (typeof MODULOS_EMPRESA)[number];
 
 const DEL_TIPO: Readonly<Record<string, readonly ModuloEmpresa[]>> = {
@@ -28,6 +28,7 @@ export const tieneMesas = (tipo: string | null | undefined, extras?: readonly st
 
 /** Tamaños de vehículo del módulo LAVADO: el precio de cada servicio depende del tamaño. */
 export const TAMANOS_VEHICULO = [
+  { id: "BICICLETA", nombre: "Bicicleta" },
   { id: "MOTO", nombre: "Motor" },
   { id: "CARRO", nombre: "Carro" },
   { id: "JEEPETA", nombre: "Jeepeta" },

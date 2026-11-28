@@ -227,6 +227,42 @@ export const PROPUESTAS: PropuestaTipo[] = [
     ],
     viñetas: ["Recepción de vehículos y órdenes de lavado", "Bahías y estado de cada trabajo", "Comisión por trabajador", "Caja rápida y facturación electrónica"],
   },
+  // ------------------------------------------------------------------------------------------ Gomera
+  {
+    id: "GOMERA", slug: "gomera", nombre: "FactPOS Gomera",
+    para: "Para gomeras y casas de neumáticos, con una o varias sucursales",
+    titulo: "Neumáticos por medida, DOT y ubicación, con los servicios de taller",
+    resumen: "Todo lo del punto de venta, más neumáticos nuevos y usados por medida, qué sucursal tiene cada uno y en qué rack, antigüedad por DOT y servicios de taller para cualquier vehículo, hasta una bicicleta.",
+    retos: [
+      { t: "«¿Tienes esta medida?»", d: "Escriba 205/55R16 y vea al momento qué sucursal la tiene, cuántas hay y en qué rack, nivel y posición." },
+      { t: "Neumáticos que se envejecen en el rack", d: "El DOT se anota al recibir y se vende primero el más viejo; los que pasan de los 6 años se marcan." },
+      { t: "Nuevos y usados mezclados", d: "Cada neumático es nuevo o usado, con la vida que le queda a la banda en los usados." },
+      { t: "Pinchazos y trabajos rápidos", d: "Reparación, montaje y balanceo con precio por tipo de vehículo, también sin placa, y comisión para quien lo hizo." },
+    ],
+    areas: [
+      { nombre: "Neumáticos", titulo: "Cada medida, en su lugar", intro: "Busque por ancho, perfil y rin como los pide el cliente.", tarjetas: [
+        { i: "🛞", t: "Búsqueda por medida", d: "205/55R16, 90/90-18, 11R22.5 o 26x1.95: se entienden todas las formas de escribirla." },
+        { i: "📍", t: "Ubicación en el almacén", d: "Rack, nivel y posición de cada neumático, por sucursal." },
+        { i: "🏪", t: "Qué sucursal lo tiene", d: "Existencia de la medida en cada sucursal, sin llamar por teléfono." },
+        { i: "📅", t: "Antigüedad por DOT", d: "Semana y año de fabricación de cada lote, del más viejo al más nuevo." },
+      ] },
+      { nombre: "Servicios", titulo: "El taller, ordenado", intro: "Cada trabajo con su precio, su responsable y su factura.", tarjetas: [
+        { i: "🔧", t: "Servicios de taller", d: "Pinchazos, montaje, balanceo y alineación con precio por tipo de vehículo." },
+        { i: "🚲", t: "De bicicleta a camión", d: "Bicicleta, motor, carro, jeepeta, camioneta y camión, con o sin placa." },
+        { i: "💵", t: "Comisión por trabajo", d: "Lo que le corresponde a cada operario, calculado solo." },
+      ] },
+      { nombre: "Caja", titulo: "Cobrar en el momento", intro: "Neumático y servicio en la misma factura.", tarjetas: [
+        { i: "⚡", t: "Caja rápida", d: "Escriba la medida y el neumático aparece; cobre con comprobante fiscal." },
+        { i: "💳", t: "Pago mixto", d: "Efectivo, tarjeta y transferencia, con cuadre al cierre del turno." },
+        { i: "💰", t: "Cuentas por cobrar", d: "Flotas y clientes a crédito con sus abonos y estados de cuenta." },
+      ] },
+      { nombre: "Sucursales", titulo: "Todas las gomeras, una sola vista", intro: "Cada sucursal vende aunque se caiga el internet.", tarjetas: [
+        { i: "🔁", t: "Productos y precios sincronizados", d: "Un neumático nuevo en la central aparece en todas las cajas." },
+        { i: "📊", t: "Medidas más vendidas", d: "Qué medidas se mueven y cuáles se están agotando, para comprar mejor." },
+      ] },
+    ],
+    viñetas: ["Neumáticos nuevos y usados por medida", "Ubicación en rack y existencia por sucursal", "DOT y antigüedad", "Servicios de taller para cualquier vehículo"],
+  },
 ];
 
 export const propuestaPorId = (id: string) => PROPUESTAS.find((p) => p.id === id);

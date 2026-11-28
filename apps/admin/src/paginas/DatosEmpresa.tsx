@@ -117,6 +117,14 @@ function ModulosExtra() {
         <p className="suave" style={{ margin: "6px 0 0" }}>Agrega la pantalla «Lavado de vehículos» en Ventas. Después de encenderlo, dé el permiso «Lavado de vehículos» a quien lo use.</p>
         {msg && <p className="suave" style={{ margin: "6px 0 0" }}>{msg}</p>}
       </div>
+      <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+        <h3 style={{ marginTop: 0 }}>Gomera y venta de neumáticos</h3>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" checked={d.extra.includes("GOMERA")} onChange={(e) => void cambiar("GOMERA", e.target.checked)} />
+          <span>Este negocio vende neumáticos nuevos y usados (medida, tipo de vehículo, DOT y ubicación en el almacén)</span>
+        </label>
+        <p className="suave" style={{ margin: "6px 0 0" }}>Agrega «Neumáticos» en Inventario. Para los pinchazos, montaje y balanceo encienda también «Lavado de vehículos»: ahí se llaman «Servicios de taller».</p>
+      </div>
     </>
   );
 }

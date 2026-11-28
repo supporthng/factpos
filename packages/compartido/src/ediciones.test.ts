@@ -18,6 +18,10 @@ describe("ediciones", () => {
     expect(edicionPorId("AUTOLAVADO")?.modulos).toEqual(["LAVADO"]);
     expect(nombreEdicion("FARMACIA")).toBe("FactPOS Farmacia");
   });
+  it("gomera enciende neumáticos y servicios de taller", () => {
+    expect(edicionPorId("GOMERA")?.modulos).toEqual(["GOMERA", "LAVADO"]);
+    expect(nombreEdicion("GOMERA")).toBe("FactPOS Gomera");
+  });
   it("abarrotes, supermercado y licorería son FactPOS a secas (no tienen edición)", () => {
     for (const id of ["ABARROTES", "LICORERIA", "SUPERMERCADO"]) expect(edicionPorId(id)).toBeUndefined();
   });
