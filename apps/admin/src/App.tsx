@@ -41,6 +41,7 @@ const RecibosIngreso = lazy(() => import("./paginas/RecibosIngreso").then((m) =>
 const Comisiones = lazy(() => import("./paginas/Comisiones").then((m) => ({ default: m.Comisiones })));
 const Cobranza = lazy(() => import("./paginas/Cobranza").then((m) => ({ default: m.Cobranza })));
 const ServicioTecnico = lazy(() => import("./paginas/ServicioTecnico").then((m) => ({ default: m.ServicioTecnico })));
+const Gomera = lazy(() => import("./paginas/Gomera").then((m) => ({ default: m.Gomera })));
 const Lavado = lazy(() => import("./paginas/Lavado").then((m) => ({ default: m.Lavado })));
 const Salon = lazy(() => import("./paginas/Salon").then((m) => ({ default: m.Salon })));
 const ClientesAtrasados = lazy(() => import("./paginas/ClientesAtrasados").then((m) => ({ default: m.ClientesAtrasados })));
@@ -113,6 +114,7 @@ const SECCIONES = [
   { id: "cxc", titulo: "Cuentas por cobrar", grupo: "Finanzas", C: Cxc, i: "cxc", p: ["admin.cxc", "admin.reportes"] },
   { id: "planes", titulo: "Planes de financiamiento", grupo: "Finanzas", C: PlanesFinanciamiento, i: "cxc", p: ["admin.cxc"] },
   { id: "comisiones", titulo: "Comisiones", grupo: "Ventas", C: Comisiones, i: "clientes", p: ["admin.comisiones"] },
+  { id: "gomera", titulo: "Neumáticos", grupo: "Inventario", C: Gomera, i: "inventario", p: ["admin.inventario"] },
   { id: "lavado", titulo: "Lavado de vehículos", grupo: "Ventas", C: Lavado, i: "ticket", p: ["admin.lavado"] },
   { id: "salon", titulo: "Citas y servicios", grupo: "Ventas", C: Salon, i: "ticket", p: ["admin.salon"] },
   { id: "servicio", titulo: "Servicio técnico", grupo: "Ventas", C: ServicioTecnico, i: "traspasos", p: ["admin.servicio"] },
@@ -188,6 +190,7 @@ type Item = { id: string; titulo: string; grupo: string; C: ComponentType | Lazy
 
 /** Qué hace cada opción (se ve en su recuadro). */
 const DESCRIPCION: Record<string, string> = {
+  gomera: "Neumáticos por medida, vehículo y condición: qué sucursal los tiene, en qué rack, medidas más vendidas y antigüedad por DOT",
   farmacia: "Vencimientos con aviso, ubicación en la tramería y búsqueda por principio activo",
   puesta: "Lo que falta para empezar a vender: empresa, comprobantes, productos, cajas y usuarios",
   ecfplanes: "Rango de e-CF por cliente, uso del mes, costo y margen",
@@ -344,7 +347,8 @@ function AppInterna() {
     );
   }
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (s.id !== "lavado" || !!modulos?.includes("LAVADO")) && (s.id !== "salon" || !!modulos?.includes("SALON")) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)));
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (s.id !== "lavado" || !!modulos?.includes("LAVADO")) && (s.id !== "gomera" || !!modulos?.includes("GOMERA")) && (s.id !== "salon" || !!modulos?.includes("SALON")) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)))
+    .map((s): Item => (s.id === "lavado" && modulos?.includes("GOMERA") ? { ...s, titulo: "Servicios de taller" } : s));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);
   // Buscador del inicio: sin acentos ni mayúsculas, por nombre de la opción, su módulo o su descripción

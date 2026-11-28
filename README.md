@@ -276,6 +276,7 @@ npm run demos -- --reiniciar       # borra y vuelve a crear los datos de demostr
 | Auto Detailing (`auto-detailing`) | 3005 |
 | Peluquería (`peluqueria`) | 3006 |
 | Barbería (`barberia`) | 3007 |
+| Gomera (`gomera`) | 3008 |
 
 La mueblería también sirve para probar el modo «una sola persona»: se enciende en Administración › Datos de la empresa.
 

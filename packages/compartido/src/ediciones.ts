@@ -14,6 +14,7 @@ export const EDICIONES = [
   { id: "AUTOLAVADO", nombre: "FactPOS Auto Detailing", slug: "auto-detailing", tipoNegocio: "TIENDA", modulos: ["LAVADO"], lema: "Recepción de vehículos, órdenes de lavado, bahías y comisión por lavado para autolavados y auto detailing" },
   { id: "PELUQUERIA", nombre: "FactPOS Peluquería", slug: "peluqueria", tipoNegocio: "TIENDA", modulos: ["SALON"], lema: "Citas por estilista, servicios con comisión y venta de productos para peluquerías, salones de belleza, uñas y spa" },
   { id: "BARBERIA", nombre: "FactPOS Barbería", slug: "barberia", tipoNegocio: "TIENDA", modulos: ["SALON"], lema: "Turnos sin cita, citas por barbero y comisión por servicio para barberías" },
+  { id: "GOMERA", nombre: "FactPOS Gomera", slug: "gomera", tipoNegocio: "TIENDA", modulos: ["GOMERA", "LAVADO"], lema: "Neumáticos nuevos y usados por medida, DOT y ubicación, con servicios de reparación por tipo de vehículo, para gomeras y casas de neumáticos con sucursales" },
 ] as const satisfies readonly { id: string; nombre: string; slug: string; tipoNegocio: TipoNegocio; lema: string; /** módulos que la edición enciende además de los de su tipo */ modulos?: readonly ModuloEmpresa[] }[];
 
 export type EdicionId = (typeof EDICIONES)[number]["id"];

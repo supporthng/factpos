@@ -143,7 +143,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
     [/^\/central\/(productos|categorias|proveedores)/, "admin.productos"],
     [/^\/central\/(precios|niveles-precio|ofertas|cupones|empresa\/precios-por-sucursal)/, "admin.precios"],
     [/^\/central\/compras/, "admin.compras"],
-    [/^\/central\/(inventario|ajustes|conteos|productos-existencia|farmacia)/, "admin.inventario"],
+    [/^\/central\/(inventario|ajustes|conteos|productos-existencia|farmacia|gomera)/, "admin.inventario"],
     [/^\/central\/(traspasos|pedidos-sucursal)/, "admin.traspasos"],
     [/^\/central\/cxc/, "admin.cxc"],
     [/^\/central\/entregas/, "admin.entregas"],

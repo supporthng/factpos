@@ -26,6 +26,7 @@ const EDICIONES = [
   { slug: "auto-detailing", puerto: 3005, tipo: "TIENDA", nombre: "FactPOS Auto Detailing", extras: ["LAVADO"] },
   { slug: "peluqueria", puerto: 3006, tipo: "TIENDA", nombre: "FactPOS Peluquería", extras: ["SALON"] },
   { slug: "barberia", puerto: 3007, tipo: "TIENDA", nombre: "FactPOS Barbería", extras: ["SALON"] },
+  { slug: "gomera", puerto: 3008, tipo: "TIENDA", nombre: "FactPOS Gomera", extras: ["GOMERA", "LAVADO"] },
 ];
 const args = process.argv.slice(2);
 const reiniciar = args.includes("--reiniciar");

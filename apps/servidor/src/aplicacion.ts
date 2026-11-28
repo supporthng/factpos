@@ -73,6 +73,7 @@ import { rutasCentralAtrasados } from "./rutas/central-atrasados.js";
 import { rutasCentralServicio } from "./rutas/central-servicio.js";
 import { rutasServicioPublico } from "./rutas/servicio-publico.js";
 import { rutasCentralFarmacia } from "./rutas/central-farmacia.js";
+import { rutasCentralGomera } from "./rutas/central-gomera.js";
 import { rutasComisiones } from "./rutas/comision.js";
 import { rutasCentralCobranza } from "./rutas/central-cobranza.js";
 import { rutasCentralImpuestos } from "./rutas/central-impuestos.js";
@@ -343,6 +344,7 @@ export async function crearApp() {
     await app.register(rutasCentralServicio);
     await app.register(rutasServicioPublico);
     await app.register(rutasCentralFarmacia);
+    await app.register(rutasCentralGomera);
     await app.register(rutasComisiones);
     await app.register(rutasCentralCobranza);
     await app.register(rutasCentralImpuestos);

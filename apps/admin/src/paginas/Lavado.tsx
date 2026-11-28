@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, rd } from "../api";
 import { Aviso, Encabezado, useCatalogo, useDatos } from "../ui";
 import { NuevaFactura, type BaseDuplicada, type ClienteB } from "./NuevaFactura";
@@ -8,8 +8,14 @@ import { NuevaFactura, type BaseDuplicada, type ClienteB } from "./NuevaFactura"
  * se recibe el vehículo (la placa trae su ficha), se elige el servicio (el precio depende del tamaño), se asigna lavador y bahía, y al quedar listo
  * se avisa al cliente por WhatsApp y se cobra con una factura normal. El lavador gana una comisión por cada lavado.
  */
-const TAMANOS = [["MOTO", "Motor"], ["CARRO", "Carro"], ["JEEPETA", "Jeepeta"], ["CAMIONETA", "Camioneta"], ["CAMION", "Camión o guagua"]] as const;
-const nombreTamano = (id: string) => TAMANOS.find(([i]) => i === id)?.[1] ?? id;
+const TODOS = [["BICICLETA", "Bicicleta"], ["MOTO", "Motor"], ["CARRO", "Carro"], ["JEEPETA", "Jeepeta"], ["CAMIONETA", "Camioneta"], ["CAMION", "Camión o guagua"]] as const;
+/** En la gomera (módulo GOMERA) los vehículos incluyen la bicicleta; en un autolavado no */
+function useTamanos() {
+  const [taller, setTaller] = useState(false);
+  useEffect(() => { api<{ activos: string[] }>("/central/empresa/modulos").then((r) => setTaller(r.activos.includes("GOMERA"))).catch(() => {}); }, []);
+  return { taller, tam: taller ? TODOS : TODOS.filter(([id]) => id !== "BICICLETA") };
+}
+const nombreTamano = (id: string) => TODOS.find(([i]) => i === id)?.[1] ?? id;
 interface Linea { servicioId: string; servicio: string; presentacionId: string; cantidad: number; comision: string }
 interface Orden {
   id: string; numero: string; estado: "EN_ESPERA" | "LAVANDO" | "LISTO" | "ENTREGADO" | "CANCELADO"; placa: string; vehiculo: string; tamano: string; telefono: string | null; notas: string | null;
@@ -137,6 +143,8 @@ function Tablero({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => void 
 
 function NuevaOrden({ onCerrar, onCreada, lavadores, bahias }: { onCerrar: () => void; onCreada: (numero: string) => void; lavadores: Lavador[]; bahias: Bahia[] }) {
   const { sucursales } = useCatalogo();
+  const { taller, tam } = useTamanos();
+  const [sinPlaca, setSinPlaca] = useState(false);
   const servicios = useDatos<Servicio[]>("/central/lavado/servicios");
   const [placa, setPlaca] = useState("");
   const [encontrados, setEncontrados] = useState<Vehiculo[]>([]);
@@ -162,15 +170,16 @@ function NuevaOrden({ onCerrar, onCreada, lavadores, bahias }: { onCerrar: () =>
   const sinPrecio = activos.filter((s) => elegidos[s.id] && !s.presentaciones[f.tamano]);
   const crear = async () => {
     setMsg("");
-    if (placa.trim().length < 3) return setMsg("Escriba la placa.");
+    if (!sinPlaca && placa.trim().length < 3) return setMsg("Escriba la placa.");
     if (!Object.values(elegidos).some((n) => n > 0)) return setMsg("Elija al menos un servicio.");
     if (sinPrecio.length) return setMsg(`«${sinPrecio[0].nombre}» no tiene precio para ${nombreTamano(f.tamano).toLowerCase()}.`);
     setGuardando(true);
     try {
-      const v = await api<{ id: string }>("/central/lavado/vehiculos", { metodo: "POST", cuerpo: {
+      // Sin placa (pinchazo de una bicicleta o un motor): no se crea ficha del vehículo, solo el tipo
+      const v = sinPlaca ? null : await api<{ id: string }>("/central/lavado/vehiculos", { metodo: "POST", cuerpo: {
         placa, marca: f.marca || null, modelo: f.modelo || null, color: f.color || null, tamano: f.tamano, clienteId: veh?.clienteId ?? null } });
       const r = await api<{ numero: string }>("/central/lavado/ordenes", { metodo: "POST", cuerpo: {
-        vehiculoId: v.id, sucursalId: sucursalId || undefined, lavadorId: lavadorId || null, bahiaId: bahiaId || null, telefono: f.telefono.trim() || null, notas: notas.trim() || null,
+        ...(v ? { vehiculoId: v.id } : { tamano: f.tamano, descripcion: f.marca || null }), sucursalId: sucursalId || undefined, lavadorId: lavadorId || null, bahiaId: bahiaId || null, telefono: f.telefono.trim() || null, notas: notas.trim() || null,
         servicios: Object.entries(elegidos).filter(([, n]) => n > 0).map(([servicioId, cantidad]) => ({ servicioId, cantidad })) } });
       onCreada(r.numero);
     } catch (e) { setMsg((e as Error).message); setGuardando(false); }
@@ -178,10 +187,11 @@ function NuevaOrden({ onCerrar, onCreada, lavadores, bahias }: { onCerrar: () =>
   return (
     <div className="fondo-modal" onMouseDown={onCerrar}>
       <div className="modal" style={{ maxWidth: 640 }} onMouseDown={(e) => e.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>Recibir vehículo</h3>
+        <h3 style={{ marginTop: 0 }}>{taller ? "Recibir trabajo" : "Recibir vehículo"}</h3>
         <Aviso texto={msg} />
-        <label className="campo"><span>Placa</span>
-          <input autoFocus value={placa} maxLength={14} style={{ textTransform: "uppercase" }} onChange={(e) => void buscar(e.target.value)} placeholder="A123456" /></label>
+        {taller && <label style={{ display: "block", margin: "0 0 6px" }}><input type="checkbox" checked={sinPlaca} onChange={(e) => setSinPlaca(e.target.checked)} /> Sin placa (bicicleta, motor o trabajo rápido)</label>}
+        {!sinPlaca && <label className="campo"><span>Placa</span>
+          <input autoFocus value={placa} maxLength={14} style={{ textTransform: "uppercase" }} onChange={(e) => void buscar(e.target.value)} placeholder="A123456" /></label>}
         {encontrados.length > 0 && <div className="desplegable" style={{ position: "static", marginBottom: 8 }}>{encontrados.map((v) => (
           <button key={v.id} onMouseDown={(e) => { e.preventDefault(); elegir(v); }}><b>{v.placa}</b> <span className="suave">{[v.marca, v.modelo, v.color].filter(Boolean).join(" ")} · {nombreTamano(v.tamano)}{v.cliente ? ` · ${v.cliente}` : ""} · {v.lavados} lavados</span></button>))}</div>}
         {veh && <p className="texto-ok pequeno">Vehículo conocido: {veh.lavados} {veh.lavados === 1 ? "lavado" : "lavados"} anteriores.</p>}
@@ -189,8 +199,8 @@ function NuevaOrden({ onCerrar, onCreada, lavadores, bahias }: { onCerrar: () =>
           <label className="campo"><span>Marca</span><input value={f.marca} maxLength={40} onChange={(e) => setF({ ...f, marca: e.target.value })} /></label>
           <label className="campo"><span>Modelo</span><input value={f.modelo} maxLength={40} onChange={(e) => setF({ ...f, modelo: e.target.value })} /></label>
           <label className="campo"><span>Color</span><input value={f.color} maxLength={30} onChange={(e) => setF({ ...f, color: e.target.value })} /></label>
-          <label className="campo"><span>Tamaño (define el precio)</span>
-            <select value={f.tamano} onChange={(e) => setF({ ...f, tamano: e.target.value })}>{TAMANOS.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select></label>
+          <label className="campo"><span>{taller ? "Tipo de vehículo (define el precio)" : "Tamaño (define el precio)"}</span>
+            <select value={f.tamano} onChange={(e) => setF({ ...f, tamano: e.target.value })}>{tam.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select></label>
           <label className="campo"><span>Teléfono para avisarle (WhatsApp)</span><input inputMode="tel" value={f.telefono} maxLength={30} onChange={(e) => setF({ ...f, telefono: e.target.value })} /></label>
           {sucursales.length > 1 && <label className="campo"><span>Sucursal</span>
             <select value={sucursalId} onChange={(e) => { setSucursalId(e.target.value); setBahiaId(""); }}>{sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}</select></label>}
@@ -224,6 +234,7 @@ function NuevaOrden({ onCerrar, onCreada, lavadores, bahias }: { onCerrar: () =>
 
 // ------------------------------------------------------------------------------------------------ Servicios
 function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => void }) {
+  const { tam } = useTamanos();
   const lista = useDatos<Servicio[]>("/central/lavado/servicios");
   const { productos } = useCatalogo();
   const aux = useDatos<{ impuestos: { id: string; nombre: string; tasa: number }[]; categorias: { id: string; nombre: string }[] }>("/central/productos-auxiliares");
@@ -238,7 +249,7 @@ function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => voi
   };
   const crear = async () => {
     if (nombre.trim().length < 2) return aviso("Escriba el nombre del servicio.", "error");
-    const tams = TAMANOS.filter(([id]) => num(precios[id] ?? "") > 0);
+    const tams = tam.filter(([id]) => num(precios[id] ?? "") > 0);
     if (!tams.length) return aviso("Escriba el precio de al menos un tamaño.", "error");
     const itbis = aux.datos?.impuestos.find((i) => i.tasa === 0.18) ?? aux.datos?.impuestos[0];
     if (!itbis) return aviso("No hay ITBIS configurado.", "error");
@@ -277,7 +288,7 @@ function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => voi
           </div>
           <p className="suave pequeno">Precio por tamaño, con ITBIS incluido. Deje en blanco el tamaño que no atiende.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8 }}>
-            {TAMANOS.map(([id, n]) => <label key={id} className="campo"><span>{n}</span>
+            {tam.map(([id, n]) => <label key={id} className="campo"><span>{n}</span>
               <input className="numero" inputMode="decimal" value={precios[id] ?? ""} onChange={(e) => setPrecios({ ...precios, [id]: e.target.value.replace(/[^\d.]/g, "") })} /></label>)}
           </div>
           <button className="boton primario" disabled={guardando} onClick={() => void crear()}>{guardando ? "Creando…" : "Crear servicio"}</button>
@@ -295,7 +306,7 @@ function Servicios({ aviso }: { aviso: (t: string, tipo?: "ok" | "error") => voi
               </span>
             </div>
             <ul className="pequeno" style={{ margin: "6px 0 0 18px", padding: 0 }}>
-              {TAMANOS.filter(([id]) => s.presentaciones[id]).map(([id, n]) => <li key={id}>{n}: {presentacion(s.presentaciones[id])}</li>)}
+              {TODOS.filter(([id]) => s.presentaciones[id]).map(([id, n]) => <li key={id}>{n}: {presentacion(s.presentaciones[id])}</li>)}
             </ul>
             <Insumos s={s} nombreDe={(id) => productos.find((p) => p.id === id)?.nombre ?? "Producto"} guardar={(ins) => guardar(s, { insumos: ins })} />
           </div>

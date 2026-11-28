@@ -96,7 +96,7 @@ function Vencimientos() {
   );
 }
 
-function Ubicaciones() {
+export function Ubicaciones() {
   const lista = useDatos<Ubic[]>("/central/farmacia/ubicaciones", []);
   const almacenes = useDatos<{ id: string; nombre: string }[]>("/central/farmacia/almacenes", []);
   const [almacenId, setAlmacenId] = useState("");

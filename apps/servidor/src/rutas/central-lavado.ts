@@ -183,17 +183,22 @@ export async function rutasLavado(app: FastifyInstance) {
   });
   app.post("/central/lavado/ordenes", async (req, rep) => {
     const b = z.object({
-      vehiculoId: uuid, servicios: z.array(z.object({ servicioId: uuid, cantidad: z.coerce.number().int().min(1).max(20).default(1) })).min(1, "Elija al menos un servicio"),
+      /** Sin vehiculoId se abre una orden rápida sin placa (pinchazo de una bicicleta o un motor): hace falta el tipo de vehículo */
+      vehiculoId: uuid.optional(), tamano: z.enum(TAMANOS).optional(), descripcion: z.string().trim().max(80).nullish(), servicios: z.array(z.object({ servicioId: uuid, cantidad: z.coerce.number().int().min(1).max(20).default(1) })).min(1, "Elija al menos un servicio"),
       sucursalId: uuid.optional(), bahiaId: uuid.nullish(), lavadorId: uuid.nullish(), telefono: z.string().trim().max(30).nullish(), notas: z.string().trim().max(500).nullish(),
     }).parse(req.body);
     const empresaId = empresaDe(req);
     const sucursalId = await sucursalValida(req, b.sucursalId);
+    if (!b.vehiculoId && !b.tamano) throw new ErrorNegocio("Elija el vehículo o el tipo de vehículo");
     const out = await enTransaccion(async (c) => {
-      const v = (await c.query<{ placa: string; marca: string | null; modelo: string | null; color: string | null; tamano: string; cliente_id: string | null; telefono: string | null }>(
-        `SELECT v.placa, v.marca, v.modelo, v.color, v.tamano, v.cliente_id, cl.telefono FROM lavado_vehiculos v LEFT JOIN clientes cl ON cl.id = v.cliente_id
-          WHERE v.id = $1 AND v.empresa_id = $2`, [b.vehiculoId, empresaId])).rows[0];
+      type Veh = { placa: string; marca: string | null; modelo: string | null; color: string | null; tamano: string; cliente_id: string | null; telefono: string | null };
+      const v: Veh | undefined = b.vehiculoId
+        ? (await c.query<Veh>(
+          `SELECT v.placa, v.marca, v.modelo, v.color, v.tamano, v.cliente_id, cl.telefono FROM lavado_vehiculos v LEFT JOIN clientes cl ON cl.id = v.cliente_id
+            WHERE v.id = $1 AND v.empresa_id = $2`, [b.vehiculoId, empresaId])).rows[0]
+        : { placa: "S/P", marca: b.descripcion ?? nombreTamano(b.tamano!), modelo: null, color: null, tamano: b.tamano!, cliente_id: null, telefono: null };
       if (!v) throw new ErrorNegocio("Vehículo no encontrado", 404);
-      if ((await c.query("SELECT 1 FROM lavado_ordenes WHERE vehiculo_id = $1 AND estado IN ('EN_ESPERA','LAVANDO','LISTO')", [b.vehiculoId])).rowCount)
+      if (b.vehiculoId && (await c.query("SELECT 1 FROM lavado_ordenes WHERE vehiculo_id = $1 AND estado IN ('EN_ESPERA','LAVANDO','LISTO')", [b.vehiculoId])).rowCount)
         throw new ErrorNegocio(`El vehículo ${v.placa} ya tiene una orden abierta: termínela o cancélela primero`);
       const serv = (await c.query<{ id: string; nombre: string; presentaciones: Record<string, string>; comision: string; insumos: { productoId: string; cantidad: number }[] }>(
         "SELECT id, nombre, presentaciones, comision::text, insumos FROM lavado_servicios WHERE empresa_id = $1 AND activo AND id = ANY($2::uuid[])", [empresaId, b.servicios.map((s) => s.servicioId)])).rows;
@@ -211,7 +216,7 @@ export async function rutasLavado(app: FastifyInstance) {
       const n = (await c.query<{ numero: string }>(
         `INSERT INTO lavado_ordenes (id, sucursal_id, numero, vehiculo_id, cliente_id, placa, vehiculo, tamano, telefono, bahia_id, lavador_id, lineas, notas, creada_por)
          VALUES ($1,$2,(SELECT COALESCE(MAX(numero),0)+1 FROM lavado_ordenes WHERE sucursal_id = $2),$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13) RETURNING numero::text`,
-        [id, sucursalId, b.vehiculoId, v.cliente_id, v.placa, [v.marca, v.modelo].filter(Boolean).join(" ") + (v.color ? ` · ${v.color}` : ""), v.tamano, b.telefono ?? v.telefono ?? null,
+        [id, sucursalId, b.vehiculoId ?? null, v.cliente_id, v.placa, [v.marca, v.modelo].filter(Boolean).join(" ") + (v.color ? ` · ${v.color}` : ""), v.tamano, b.telefono ?? v.telefono ?? null,
          b.bahiaId ?? null, b.lavadorId ?? null, JSON.stringify(lineas), b.notas ?? null, usuarioDe(req)])).rows[0].numero;
       return { id, numero: n };
     });
