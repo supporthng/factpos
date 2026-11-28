@@ -453,7 +453,7 @@ export async function rutasPortal(app: FastifyInstance) {
     const v = await ultimaVersion();
     // El paquete de actualización solo se entrega a quien el proveedor se la habilitó (los instaladores completos no se restringen)
     const tipoPedido = String((req.query as { tipo?: string }).tipo ?? "");
-    if (token && v && tipoPedido !== "setup" && tipoPedido !== "caja" && tipoPedido !== "unapc") {
+    if (token && v && tipoPedido !== "setup" && tipoPedido !== "caja" && tipoPedido !== "unapc" && tipoPedido !== "monocaja") {
       const l = (await pool.query<FilaLicencia>(`${SELECT_LIC} WHERE l.id = $1`, [leerLicencia(token).id])).rows[0];
       if (l && !(await versionHabilitada(l, v.version))) throw new ErrorNegocio("Esta versión todavía no está habilitada para su empresa. Su proveedor se la enviará.", 403);
     }
@@ -466,8 +466,8 @@ export async function rutasPortal(app: FastifyInstance) {
       if (!v || !elegido) throw new ErrorNegocio("No hay un instalador publicado para descargar", 404);
       return { version: v.version, nombre: elegido.nombre, url: await urlDescarga(elegido) };
     }
-    if (tipo === "unapc") {
-      if (!v?.unaPc) throw new ErrorNegocio("Todavía no hay un instalador «Una PC» publicado: se genera con la próxima versión", 404);
+    if (tipo === "unapc" || tipo === "monocaja") {
+      if (!v?.unaPc) throw new ErrorNegocio("Todavía no hay un instalador «Mono Caja» publicado: se genera con la próxima versión", 404);
       return { version: v.version, nombre: v.unaPc.nombre, url: await urlDescarga(v.unaPc) };
     }
     if (tipo === "caja") {
@@ -1124,11 +1124,11 @@ export async function ultimaVersion(): Promise<Publicada | null> {
       setup: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
       // Instalador solo de Caja (sin servidor ni base de datos)
       caja: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-Caja-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
-      // Instalador «Una PC» para negocios pequeños (servidor + caja + administración sin preguntar qué es el equipo)
-      unaPc: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-UnaPC-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
+      // Instalador «Mono Caja» (antes Una PC) para negocios pequeños (servidor + caja + administración sin preguntar qué es el equipo)
+      unaPc: (() => { const a = encontrada.rel.assets.find((x) => /^FactPOS-(?:MonoCaja|UnaPC)-Setup(-.*)?\.exe$/i.test(x.name)); return a ? { url: a.url, descarga: a.browser_download_url, nombre: a.name } : null; })(),
       // Instaladores por edición (FactPOS-Farmacia-Setup.exe…), por su slug en minúsculas: «farmacia», «auto-detailing»…
       ediciones: Object.fromEntries(encontrada.rel.assets.flatMap((x) => {
-        const m = x.name.match(/^FactPOS-(?!Caja-|UnaPC-|Setup)(.+)-Setup\.exe$/i);
+        const m = x.name.match(/^FactPOS-(?!Caja-|UnaPC-|MonoCaja-|Setup)(.+)-Setup\.exe$/i);
         return m ? [[m[1].toLowerCase(), { url: x.url, descarga: x.browser_download_url, nombre: x.name }]] : [];
       })) as Record<string, { url: string; descarga: string; nombre: string }> } : null;
     cacheVersion = { v, t: Date.now() };

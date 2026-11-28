@@ -7,7 +7,7 @@
 ;
 ; Se arma con NSIS (también en Linux):
 ;   (Solo Caja: agregar -DTIPO_FIJO=caja; el instalador no trae servidor ni base de datos)
-;   (Una sola PC, negocio pequeño: agregar -DUNA_PC=1; trae todo y no pregunta qué es la computadora)
+;   (Mono Caja, una sola PC, negocio pequeño: agregar -DUNA_PC=1; trae todo y no pregunta qué es la computadora)
 ;   makensis -DVERSION=0.1.0 -DPAQUETE=../../paquete/FactPOS -DSALIDA=../../paquete/FactPOS-Setup-0.1.0.exe FactPOS.nsi
 ; (scripts/empaquetar.mjs lo hace solo si encuentra makensis)
 ; =====================================================================
@@ -348,7 +348,7 @@ Function PaginaTipo
     Abort
   ${EndIf}
 !ifdef UNA_PC
-  ; Instalador «Una PC» (negocio pequeño): esta computadora es todo: servidor, caja y administración. No se pregunta nada del equipo.
+  ; Instalador «Mono Caja» (negocio pequeño): esta computadora es todo: servidor, caja y administración. No se pregunta nada del equipo.
   StrCpy $Tipo "master"
   Abort
 !endif
