@@ -16,6 +16,8 @@ describe("módulos de la empresa", () => {
     expect(tieneModulo("LAVADO", "BAR")).toBe(false);
     expect(tieneModulo("LAVADO", "BAR", ["LAVADO"])).toBe(true);
     expect(tieneMesas("BAR", ["LAVADO"])).toBe(true);
+    expect(tieneModulo("SALON", "TIENDA")).toBe(false);
+    expect(tieneModulo("SALON", "TIENDA", ["SALON"])).toBe(true);
   });
   it("sin duplicados y se ignora lo desconocido", () => {
     expect(modulosDeEmpresa("BAR", ["MESAS", "MESAS", "OTRO"])).toEqual(["MESAS"]);

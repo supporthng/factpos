@@ -18,6 +18,13 @@ describe("ediciones", () => {
     expect(edicionPorId("AUTOLAVADO")?.modulos).toEqual(["LAVADO"]);
     expect(nombreEdicion("FARMACIA")).toBe("FactPOS Farmacia");
   });
+  it("peluquería y barbería son ediciones que encienden el módulo SALON", () => {
+    for (const id of ["PELUQUERIA", "BARBERIA"]) {
+      expect(edicionPorId(id)?.tipoNegocio).toBe("TIENDA");
+      expect(edicionPorId(id)?.modulos).toEqual(["SALON"]);
+    }
+    expect(nombreEdicion("BARBERIA")).toBe("FactPOS Barbería");
+  });
   it("gomera enciende neumáticos y servicios de taller", () => {
     expect(edicionPorId("GOMERA")?.modulos).toEqual(["GOMERA", "LAVADO"]);
     expect(nombreEdicion("GOMERA")).toBe("FactPOS Gomera");

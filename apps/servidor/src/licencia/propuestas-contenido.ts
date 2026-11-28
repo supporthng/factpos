@@ -227,6 +227,77 @@ export const PROPUESTAS: PropuestaTipo[] = [
     ],
     viñetas: ["Recepción de vehículos y órdenes de lavado", "Bahías y estado de cada trabajo", "Comisión por trabajador", "Caja rápida y facturación electrónica"],
   },
+  // ------------------------------------------------------------------------------------------ Peluquería
+  {
+    id: "PELUQUERIA", slug: "peluqueria", nombre: "FactPOS Peluquería",
+    para: "Para peluquerías, salones de belleza, uñas y spa",
+    titulo: "Citas por estilista, servicios con comisión y venta de productos",
+    resumen: "Todo lo del punto de venta, más agenda de citas por estilista, servicios con duración y precio por largo de cabello, y comisión automática para cada estilista.",
+    retos: [
+      { t: "Citas en cuaderno o por WhatsApp", d: "Una agenda por día y por estilista, con recordatorio al cliente por WhatsApp con un toque." },
+      { t: "Calcular la comisión de cada estilista", d: "Monto fijo o porcentaje de lo realmente cobrado, acumulado por persona y listo para pagar." },
+      { t: "Precios que cambian según el largo del cabello", d: "Un mismo servicio con precio para cabello corto, medio y largo." },
+      { t: "Productos que se gastan en cada servicio", d: "El tinte o la crema se descuenta del inventario al terminar el servicio." },
+    ],
+    areas: [
+      { nombre: "Agenda", titulo: "Del turno de la mañana al cierre", intro: "Cada cita, su estilista y su silla.", tarjetas: [
+        { i: "📅", t: "Agenda por estilista", d: "Vea el día de cada estilista y evite dos clientes a la misma hora." },
+        { i: "💬", t: "Recordatorio por WhatsApp", d: "Avise al cliente de su cita y escríbale cuando le toque volver." },
+        { i: "🪑", t: "Sillas y estaciones", d: "Asigne cada cliente a su silla y siga quién está en espera, en servicio y por cobrar." },
+        { i: "🚶", t: "Turnos sin cita", d: "Anote al cliente que llega sin cita y atiéndalo en orden." },
+      ] },
+      { nombre: "Servicios", titulo: "Lo que ofrece, con su precio y su tiempo", intro: "Cada servicio con duración, precio y comisión.", tarjetas: [
+        { i: "✂️", t: "Servicios con duración", d: "Corte, tinte, peinado, manicure: cada uno con el tiempo que toma." },
+        { i: "💈", t: "Precio por largo de cabello", d: "El precio cambia solo según el cabello sea corto, medio o largo." },
+        { i: "💵", t: "Comisión por estilista", d: "Monto fijo o porcentaje por servicio, con la liquidación por fechas." },
+        { i: "🧴", t: "Insumos por servicio", d: "Lo que se gasta en cada servicio se descuenta del inventario." },
+      ] },
+      { nombre: "Caja", titulo: "Cobrar el servicio y los productos", intro: "La cita termina en factura en la misma pantalla.", tarjetas: [
+        { i: "⚡", t: "Caja rápida", d: "Cobre servicios y productos de venta (champú, cremas) en la misma factura." },
+        { i: "💳", t: "Pago mixto", d: "Efectivo, tarjeta y transferencia, con cuadre al cierre del turno." },
+        { i: "🧾", t: "Facturación electrónica", d: "Comprobante fiscal con su NCF, también desde el celular." },
+      ] },
+      { nombre: "Clientes", titulo: "Clientes que vuelven", intro: "Su historial a la mano.", tarjetas: [
+        { i: "👥", t: "Historial de visitas", d: "Qué servicios se hizo cada cliente, con quién y cuándo." },
+        { i: "🎁", t: "Paquetes y membresías", d: "Paquetes prepagados de servicios para fidelizar clientes (próximamente)." },
+      ] },
+    ],
+    viñetas: ["Agenda de citas por estilista y turnos sin cita", "Servicios con duración y precio por largo de cabello", "Comisión por estilista, fija o por porcentaje", "Insumos descontados del inventario"],
+  },
+  // ------------------------------------------------------------------------------------------ Barbería
+  {
+    id: "BARBERIA", slug: "barberia", nombre: "FactPOS Barbería",
+    para: "Para barberías",
+    titulo: "Turnos sin cita, citas por barbero y comisión por servicio",
+    resumen: "Todo lo del punto de venta, más la cola de turnos del día, citas por barbero y comisión automática por cada corte.",
+    retos: [
+      { t: "Clientes que llegan sin cita", d: "Anote a cada cliente al llegar y atiéndalo en orden, sin pelear por el turno." },
+      { t: "Saber quién atiende a quién", d: "Cada cliente con su barbero y su silla, de la espera al cobro." },
+      { t: "Pagar la comisión a cada barbero", d: "Cada corte suma la comisión del barbero que lo hizo, lista para liquidar." },
+      { t: "Clientes que no vuelven", d: "Vea cuándo fue la última visita de cada cliente y escríbale por WhatsApp." },
+    ],
+    areas: [
+      { nombre: "Turnos", titulo: "La cola del día, ordenada", intro: "Quién espera, quién se está atendiendo y quién va a pagar.", tarjetas: [
+        { i: "🚶", t: "Turnos sin cita", d: "Anote al cliente al llegar y vea la cola de espera en pantalla." },
+        { i: "📅", t: "Citas por barbero", d: "Agende a los clientes que reservan y evite empalmes entre dos clientes." },
+        { i: "💬", t: "Recordatorio por WhatsApp", d: "Recuerde la cita o invite a volver con un mensaje listo." },
+      ] },
+      { nombre: "Servicios", titulo: "Corte, barba y combos", intro: "Cada servicio con su precio, su tiempo y su comisión.", tarjetas: [
+        { i: "✂️", t: "Servicios y precios", d: "Corte, barba, cejas y combos, cada uno con su precio y su duración." },
+        { i: "💵", t: "Comisión por barbero", d: "Un porcentaje o un monto fijo por cada servicio, acumulado por barbero." },
+        { i: "🧴", t: "Productos de venta", d: "Venda pomadas, ceras y aceites con su inventario." },
+      ] },
+      { nombre: "Caja", titulo: "Cobrar rápido", intro: "Cada servicio termina en una factura en segundos.", tarjetas: [
+        { i: "⚡", t: "Caja rápida", d: "Cobre el servicio y los productos en la misma factura." },
+        { i: "💳", t: "Pago mixto", d: "Efectivo, tarjeta y transferencia, con cuadre al cierre." },
+        { i: "🧾", t: "Facturación electrónica", d: "Comprobante fiscal con su NCF cuando el cliente lo pide." },
+      ] },
+      { nombre: "Clientes", titulo: "Clientes de todas las semanas", intro: "Su historial a la mano.", tarjetas: [
+        { i: "👥", t: "Historial de visitas", d: "Cada cliente con sus visitas anteriores y el barbero que lo atendió." },
+      ] },
+    ],
+    viñetas: ["Turnos sin cita y cola del día", "Citas por barbero", "Comisión por servicio, fija o por porcentaje", "Caja rápida y facturación electrónica"],
+  },
   // ------------------------------------------------------------------------------------------ Gomera
   {
     id: "GOMERA", slug: "gomera", nombre: "FactPOS Gomera",

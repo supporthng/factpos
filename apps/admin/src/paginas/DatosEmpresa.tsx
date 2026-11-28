@@ -115,6 +115,14 @@ function ModulosExtra() {
           <span>Este negocio también lava vehículos o hace auto detailing (ficha del vehículo, órdenes de lavado, lavadores con comisión por lavado)</span>
         </label>
         <p className="suave" style={{ margin: "6px 0 0" }}>Agrega la pantalla «Lavado de vehículos» en Ventas. Después de encenderlo, dé el permiso «Lavado de vehículos» a quien lo use.</p>
+      </div>
+      <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>
+        <h3 style={{ marginTop: 0 }}>Peluquería, barbería, uñas o spa</h3>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" checked={d.extra.includes("SALON")} onChange={(e) => void cambiar("SALON", e.target.checked)} />
+          <span>Este negocio presta servicios con cita o turno (agenda por estilista, servicios con duración, comisión por servicio)</span>
+        </label>
+        <p className="suave" style={{ margin: "6px 0 0" }}>Agrega la pantalla «Citas y servicios» en Ventas. Después de encenderlo, dé el permiso «Salón y barbería» a quien lo use.</p>
         {msg && <p className="suave" style={{ margin: "6px 0 0" }}>{msg}</p>}
       </div>
       <div className="tarjeta" style={{ maxWidth: 860, marginTop: 14 }}>

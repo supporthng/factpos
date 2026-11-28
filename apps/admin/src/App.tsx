@@ -43,6 +43,7 @@ const Cobranza = lazy(() => import("./paginas/Cobranza").then((m) => ({ default:
 const ServicioTecnico = lazy(() => import("./paginas/ServicioTecnico").then((m) => ({ default: m.ServicioTecnico })));
 const Gomera = lazy(() => import("./paginas/Gomera").then((m) => ({ default: m.Gomera })));
 const Lavado = lazy(() => import("./paginas/Lavado").then((m) => ({ default: m.Lavado })));
+const Salon = lazy(() => import("./paginas/Salon").then((m) => ({ default: m.Salon })));
 const ClientesAtrasados = lazy(() => import("./paginas/ClientesAtrasados").then((m) => ({ default: m.ClientesAtrasados })));
 const Entregas = lazy(() => import("./paginas/Entregas").then((m) => ({ default: m.Entregas })));
 const MoraRecuperacion = lazy(() => import("./paginas/MoraRecuperacion").then((m) => ({ default: m.MoraRecuperacion })));
@@ -115,6 +116,7 @@ const SECCIONES = [
   { id: "comisiones", titulo: "Comisiones", grupo: "Ventas", C: Comisiones, i: "clientes", p: ["admin.comisiones"] },
   { id: "gomera", titulo: "Neumáticos", grupo: "Inventario", C: Gomera, i: "inventario", p: ["admin.inventario"] },
   { id: "lavado", titulo: "Lavado de vehículos", grupo: "Ventas", C: Lavado, i: "ticket", p: ["admin.lavado"] },
+  { id: "salon", titulo: "Citas y servicios", grupo: "Ventas", C: Salon, i: "ticket", p: ["admin.salon"] },
   { id: "servicio", titulo: "Servicio técnico", grupo: "Ventas", C: ServicioTecnico, i: "traspasos", p: ["admin.servicio"] },
   { id: "entregas", titulo: "Entregas", grupo: "Ventas", C: Entregas, i: "traspasos", p: ["admin.entregas"] },
   { id: "cobranza", titulo: "Cobranza en ruta", grupo: "Finanzas", C: Cobranza, i: "cxc", p: ["admin.cobranza"] },
@@ -345,7 +347,7 @@ function AppInterna() {
     );
   }
 
-  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (s.id !== "lavado" || !!modulos?.includes("LAVADO")) && (s.id !== "gomera" || !!modulos?.includes("GOMERA")) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)))
+  const visibles = ((enPortal ? SECCIONES_PORTAL : SECCIONES) as readonly Item[]).filter((s) => s.p.some(puede) && seccionDisponible(s.id, tipoNegocio) && (s.id !== "lavado" || !!modulos?.includes("LAVADO")) && (s.id !== "gomera" || !!modulos?.includes("GOMERA")) && (s.id !== "salon" || !!modulos?.includes("SALON")) && (enPortal || !vm.movil || vm.admin || vm.secciones.has(s.id)))
     .map((s): Item => (s.id === "lavado" && modulos?.includes("GOMERA") ? { ...s, titulo: "Servicios de taller" } : s));
   const grupos = [...new Set(visibles.map((s) => s.grupo))];
   const enGrupo = (g: string) => visibles.filter((s) => s.grupo === g);

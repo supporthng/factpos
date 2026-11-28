@@ -106,6 +106,7 @@ export const PERMISOS: { id: string; grupo: "Caja" | "Administración"; nombre: 
   { id: "admin.comisiones", grupo: "Administración", nombre: "Comisiones de vendedores: configurar porcentajes, ver y liquidar" },
   { id: "admin.cobranza", grupo: "Administración", nombre: "Cobranza: ruta de cobro, asignar cobradores y registrar gestiones" },
   { id: "admin.lavado", grupo: "Administración", nombre: "Lavado de vehículos: recibir vehículos, órdenes de lavado, lavadores y sus comisiones" },
+  { id: "admin.salon", grupo: "Administración", nombre: "Salón y barbería: citas, turnos, servicios, estilistas y sus comisiones" },
   { id: "admin.servicio", grupo: "Administración", nombre: "Servicio técnico: órdenes de servicio y garantías" },
   { id: "admin.entregas", grupo: "Administración", nombre: "Entregas: programar, asignar chofer y registrar la entrega de mercancía a clientes" },
   { id: "admin.facturas", grupo: "Administración", nombre: "Facturas: buscar, reimprimir, modificar (la anulación pide permiso de supervisor)" },
@@ -129,6 +130,7 @@ export function permisoDeRuta(metodo: string, ruta: string): string | null {
   if (ruta.startsWith("/central/usuarios") || ruta.startsWith("/central/roles")) return "admin.usuarios";
   if (/^\/central\/por-cobrar-todas(\/|$)/.test(ruta)) return "admin.facturas"; // supervisión: ve y anula lo pendiente de todos los vendedores
   if (/^\/central\/(ventas|por-cobrar)(\/|$)/.test(ruta)) return "admin.vender"; // el vendedor: arma la venta y la envía a caja
+  if (/^\/central\/salon(\/|$)/.test(ruta)) return "admin.salon"; // salón y barbería: también leer (muestra la agenda y las comisiones)
   if (/^\/central\/lavado(\/|$)/.test(ruta)) return "admin.lavado"; // lavado de vehículos: también leer (muestra el trabajo y las comisiones)
   if (/^\/central\/mi-turno(\/|$)/.test(ruta)) return "venta.crear"; // modo «una sola persona»: abrir y cerrar su turno desde la administración
   if (/^\/central\/(facturas|series)(\/|$)/.test(ruta)) return "admin.facturas";
