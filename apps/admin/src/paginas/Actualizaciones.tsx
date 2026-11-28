@@ -6,6 +6,8 @@ import { Aviso, Encabezado, Kpi, useDatos, versionCliente, versionNueva } from "
 interface Estado {
   actual: string; disponible: string | null; notas: string | null; publicada: string | null; hayNueva: boolean; retenida?: boolean; puedeInstalar: boolean; modo: string; licenciaActiva?: boolean; pruebaActualiza?: boolean;
   proceso: { estado: "DESCARGANDO" | "INSTALANDO" | "ERROR"; version: string; mensaje: string | null; desde: string } | null;
+  cajasEnUso?: { n: number; cajas: string[] };
+  programada?: { version: string; desde: string } | null;
 }
 
 /**
@@ -33,17 +35,31 @@ export function Actualizaciones() {
   const [msg, setMsg] = useState<{ t: string; tipo: "ok" | "error" | "info" } | null>(null);
   const [trabajando, setTrabajando] = useState(false);
 
-  const instalar = async () => {
-    if (!confirm(`¿Instalar FactPOS ${d?.disponible}? El servidor se reinicia (1 a 3 minutos). Las cajas siguen vendiendo mientras tanto.`)) return;
+  const enUso = (d?.cajasEnUso?.n ?? 0) > 0;
+  const quienes = d?.cajasEnUso?.cajas?.length ? `Turno abierto en ${d.cajasEnUso.cajas.join(", ")}` : "Hay ventas en curso";
+  /** modo: "ahora" (pregunta si hay cajas en uso), "libre" (espera un momento sin ventas) o "forzar". */
+  const instalar = async (modo: "ahora" | "libre" | "forzar") => {
+    if (modo === "forzar" && !confirm(`${quienes}. Actualizar ahora detiene esa caja unos minutos y puede cortar una venta en curso. ¿Actualizar de todos modos?`)) return;
+    if (modo !== "libre" && !enUso && !confirm(`¿Instalar FactPOS ${d?.disponible}? El servidor se reinicia (1 a 3 minutos). Las cajas de otros equipos siguen vendiendo mientras tanto.`)) return;
     setTrabajando(true); setMsg(null);
     try {
       const antes = d?.actual ?? "";
-      await api("/central/actualizacion/instalar", { cuerpo: {} });
+      if (modo === "libre") {
+        await api("/central/actualizacion/instalar", { cuerpo: { cuando: "libre" } });
+        setMsg({ t: "Listo: se instalará sola en cuanto no haya turnos de caja abiertos ni ventas.", tipo: "ok" });
+        recargar();
+        setTrabajando(false);
+        return;
+      }
+      await api("/central/actualizacion/instalar", { cuerpo: { forzar: modo === "forzar" } });
       setMsg({ t: "Instalando… el servidor se reinicia.", tipo: "info" });
       void recargarAlTerminar(antes, (t, tipo) => setMsg({ t, tipo })).finally(() => setTrabajando(false));
       return;
     } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
     setTrabajando(false);
+  };
+  const cancelarProgramada = async () => {
+    try { await api("/central/actualizacion/cancelar-programada", { cuerpo: {} }); recargar(); } catch (e) { setMsg({ t: (e as Error).message, tipo: "error" }); }
   };
 
   const sinPermiso = d ? d.licenciaActiva === false && !d.pruebaActualiza : false;
@@ -68,8 +84,21 @@ export function Actualizaciones() {
             <div className="panel">
               <h3 style={{ marginTop: 0 }}>Hay una versión nueva: {versionNueva(d.disponible, d.actual)}</h3>
               {d.notas && <pre className="notas-version">{d.notas}</pre>}
+              {d.puedeInstalar && d.programada && (
+                <Aviso tipo="info" texto="Actualización programada: se instalará sola cuando no haya turnos de caja abiertos ni ventas." />
+              )}
+              {d.puedeInstalar && enUso && !d.programada && (
+                <p className="suave pequeno" style={{ margin: "0 0 10px" }}><b>{quienes}.</b> Actualizar reinicia el servidor y detiene esa caja unos minutos: mejor hacerlo cuando no haya ventas.</p>
+              )}
               {d.puedeInstalar
-                ? <button className="boton primario" disabled={trabajando || !puede("*") || sinPermiso} onClick={instalar}>{trabajando ? "Preparando…" : `Instalar ${versionCliente(d.disponible)}`}</button>
+                ? <div className="en-linea">
+                    {d.programada
+                      ? <button className="boton" onClick={cancelarProgramada}>Cancelar la programada</button>
+                      : enUso
+                        ? <button className="boton primario" disabled={trabajando || !puede("*") || sinPermiso} onClick={() => instalar("libre")}>Actualizar cuando no haya ventas</button>
+                        : <button className="boton primario" disabled={trabajando || !puede("*") || sinPermiso} onClick={() => instalar("ahora")}>{trabajando ? "Preparando…" : `Instalar ${versionCliente(d.disponible)}`}</button>}
+                    {enUso && !d.programada && <button className="boton fantasma" disabled={trabajando || !puede("*") || sinPermiso} onClick={() => instalar("forzar")}>Actualizar ahora de todos modos</button>}
+                  </div>
                 : <p className="suave">Esta instalación se actualiza desde su proveedor.</p>}
               {!puede("*") && <p className="suave pequeno">Solo un administrador puede instalarla.</p>}
               {d.puedeInstalar && sinPermiso && (
