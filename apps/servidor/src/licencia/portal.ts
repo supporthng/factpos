@@ -327,6 +327,70 @@ export async function rutasPortal(app: FastifyInstance) {
     return { estado: ex.estado };
   });
 
+  /**
+   * Venta hecha en la web de Onetech (PayPal). Onetech la avisa con la clave compartida ONETECH_VENTAS_SECRETO.
+   *  · alta: crea el cliente y su licencia con el plan del nivel comprado y devuelve la clave de activación.
+   *  · renovacion: cada cobro de la suscripción mueve el vencimiento.
+   * Sin ONETECH_VENTAS_SECRETO la ruta no existe para nadie (503).
+   */
+  app.post("/licencias/onetech/venta", async (req, rep) => {
+    const secreto = process.env.ONETECH_VENTAS_SECRETO?.trim();
+    if (!secreto) throw new ErrorNegocio("Ventas de Onetech no configuradas", 503);
+    const dado = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+    if (!igual(dado, secreto)) { frenar(req.ip ?? "?"); throw new ErrorNegocio("No autorizado", 401); }
+    const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const b = z.discriminatedUnion("tipo", [
+      z.object({ tipo: z.literal("renovacion"), referencia: z.string().min(6).max(60), hasta: fecha }),
+      z.object({
+        tipo: z.literal("alta"), referencia: z.string().min(6).max(60),
+        edicion: z.string().max(30).nullable(), nivel: z.string().max(30).nullable(),
+        periodo: z.enum(["mensual", "anual", "unico"]), sucursales: z.number().int().min(1).max(999),
+        hasta: fecha.nullable(), montoUsd: z.string().max(20),
+        cliente: z.object({ negocio: z.string().trim().min(2).max(120), nombre: z.string().trim().min(2).max(120), correo: z.string().trim().email().max(120),
+          telefono: z.string().trim().max(30), rnc: z.string().regex(/^\d{9}(\d{2})?$/).nullable() }),
+      }),
+    ]).parse(req.body);
+
+    if (b.tipo === "renovacion") {
+      const r = await pool.query<{ id: string; cliente_id: string; vence: string }>(
+        `UPDATE portal_licencias SET vence = GREATEST(vence, $2::date), estado = 'ACTIVA', actualizado_en = now() WHERE onetech_ref = $1 RETURNING id, cliente_id, vence::text`,
+        [b.referencia, b.hasta]);
+      const l = r.rows[0];
+      if (!l) throw new ErrorNegocio("No hay licencia con esa referencia", 404);
+      await evento(pool, { licenciaId: l.id, clienteId: l.cliente_id, tipo: "RENOVADA", detalle: { origen: "onetech", referencia: b.referencia, vence: l.vence } });
+      return { entrega: { tipo: "pendiente", mensaje: `Licencia renovada hasta el ${l.vence}.` } };
+    }
+
+    const ya = (await pool.query("SELECT 1 FROM portal_licencias WHERE onetech_ref = $1", [b.referencia])).rowCount;
+    if (ya) return { entrega: { tipo: "pendiente", mensaje: "Esta compra ya estaba activada. Si perdiste tu clave, escríbenos y te damos una nueva." } };
+
+    // Edición de Onetech → edición de FactPOS; el nivel (basico, pro, empresarial) → plan «nivel-…» del portal
+    const EDICION: Record<string, string | null> = { base: null, farmacia: "FARMACIA", muebleria: "MUEBLERIA", "bar-restaurante": "BAR_RESTAURANTE", "auto-detailing": "AUTOLAVADO" };
+    const edicion = b.edicion && b.edicion in EDICION ? EDICION[b.edicion] : null;
+    const plan = (await pool.query<{ id: string; nombre: string }>("SELECT id, nombre FROM portal_planes WHERE codigo = $1", [`nivel-${b.nivel ?? "basico"}`])).rows[0];
+    const vence = b.hasta ?? "2099-12-31";   // pago único: sin vencimiento
+    const base = b.cliente.negocio.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "cliente";
+    const r = await enTransaccion(async (c) => {
+      const id = uuidv7(), lic = uuidv7(), clave = nuevaClave();
+      let slug = "";
+      for (let i = 0; i < 20 && !slug; i++) {
+        const s = i === 0 && base.length >= 3 && slugValido(base) ? base : `${base.slice(0, 30)}-${randomInt(100, 9999)}`;
+        if (slugValido(s) && !(await c.query("SELECT 1 FROM portal_clientes WHERE slug = $1", [s])).rowCount) slug = s;
+      }
+      if (!slug) throw new ErrorNegocio("No se pudo crear el nombre corto del cliente", 500);
+      const nota = `Venta en Onetech (${b.periodo}, US$ ${b.montoUsd}). Ref. PayPal ${b.referencia}`;
+      await c.query(`INSERT INTO portal_clientes (id, slug, nombre, rnc, contacto, correo, telefono, notas, edicion) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [id, slug, b.cliente.negocio, b.cliente.rnc, b.cliente.nombre, b.cliente.correo, b.cliente.telefono, nota, edicion]);
+      await c.query(`INSERT INTO portal_licencias (id, cliente_id, sucursales, modulos, vence, estado, clave_hash, clave_pista, notas, plan_id, onetech_ref)
+                     VALUES ($1,$2,$3,'{}',$4,'ACTIVA',$5,$6,$7,$8,$9)`,
+        [lic, id, b.sucursales, vence, huella(clave), clave.slice(-4), nota, plan?.id ?? null, b.referencia]);
+      await evento(c, { licenciaId: lic, clienteId: id, tipo: "CREADA", detalle: { origen: "onetech", referencia: b.referencia, plan: plan?.nombre ?? null, edicion, periodo: b.periodo, sucursales: b.sucursales, vence } });
+      return { clave };
+    });
+    rep.code(201);
+    return { entrega: { tipo: "clave", valor: r.clave, mensaje: "Instala FactPOS desde las descargas (o abre el que ya tienes en prueba), entra a Administración › Licencia y escribe esta clave en «¿Ya tiene una clave de activación?». Todo lo que configuraste en la prueba se queda." } };
+  });
+
   /** El servidor MASTER de un cliente informa la dirección actual de su túnel. */
   app.post("/licencias/tunel", async (req) => {
     const b = z.object({ licenciaId: uuid, instalacionId: uuid, secreto: z.string().min(20).max(80),
