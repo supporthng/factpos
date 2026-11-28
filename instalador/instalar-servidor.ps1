@@ -51,6 +51,7 @@ param(
   [string]$Empresa = "",
   [string]$Licencia = "",
   [string]$TipoNegocio = "",          # TIENDA | MUEBLERIA | RESTAURANTE | BAR | DISCOTECA | COMIDA_RAPIDA | FARMACIA (lo elige el instalador)
+  [string]$Modulos = "",              # funciones adicionales separadas por coma: LAVADO,GOMERA,SALON (se encienden al crear la empresa)
   [string]$Portal = "https://factpos.app",
   [switch]$NoInteractivo
 )
@@ -74,6 +75,8 @@ if ($CodigoInstalacion -match '^FPS1-(.+)$') {
 # El nombre corto no lleva espacios: «Royal Liquor Store» se entiende como royalliquorstore
 $Empresa = ($Empresa.Trim().ToLower() -replace '\s', '')
 $TipoNegocio = $TipoNegocio.Trim().ToUpper()
+$Modulos = (($Modulos -split "[,; ]+" | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ }) -join ",")
+foreach ($m in ($Modulos -split ",")) { if ($m -and $m -notin @("MESAS","LAVADO","SALON","GOMERA")) { throw "Función adicional no válida: $m" } }
 if ($TipoNegocio -and $TipoNegocio -notin @("TIENDA","MUEBLERIA","RESTAURANTE","BAR","DISCOTECA","COMIDA_RAPIDA","FARMACIA")) { throw "Tipo de negocio no válido: $TipoNegocio" }
 $Portal = $Portal.TrimEnd("/")
 if ($Master -and -not $Empresa) { throw "El servidor principal necesita el nombre corto de la empresa (-Empresa)" }
@@ -466,6 +469,7 @@ if ($existe -eq "1" -and (Test-Path $envArchivo)) {
     $vars = [ordered]@{ FACTPOS_EMPRESA = $Empresa; FACTPOS_PORTAL_URL = $Portal }
     if ($Master) { $vars.MODO = "central"; $vars.TUNEL = "cloudflare"; if ($Licencia) { $vars.LICENCIA_CLAVE = $Licencia } }
     if ($TipoNegocio) { $vars.TIPO_NEGOCIO = $TipoNegocio }
+    if ($Modulos) { $vars.MODULOS_EXTRA = $Modulos }
     $lineas = @(Get-Content $envArchivo | Where-Object { $l = $_; -not ($vars.Keys | Where-Object { $l -like "$_=*" }) })
     foreach ($k in $vars.Keys) { $lineas += "$k=$($vars[$k])" }
     $lineas | Set-Content -Path $envArchivo -Encoding UTF8
@@ -523,6 +527,8 @@ TUNEL=$(if ($Master) { "cloudflare" } else { "" })
 LICENCIA_CLAVE=$Licencia
 # Tipo de negocio inicial: se aplica al crear la empresa (la licencia puede fijarlo después)
 TIPO_NEGOCIO=$TipoNegocio
+# Funciones adicionales elegidas al instalar (LAVADO, GOMERA, SALON, MESAS): se encienden al crear la empresa
+MODULOS_EXTRA=$Modulos
 CERT_P12_RUTA=
 CERT_P12_CLAVE=
 "@ | Set-Content -Path $envArchivo -Encoding UTF8

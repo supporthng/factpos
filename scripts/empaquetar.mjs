@@ -182,14 +182,8 @@ if (makensis) {
     // Un instalador por edición (FactPOS-Farmacia-Setup.exe…): mismo programa, con el tipo de negocio ya fijado y el nombre de la edición.
     ...EDICIONES.map((ed) => ({ nombre: `el instalador de ${ed.nombre}`, correr: async () => {
       const f = join(salida, `FactPOS-${ed.slug}-Setup.exe`.replace(/^FactPOS-(.)/, (_, c) => `FactPOS-${c.toUpperCase()}`));
-      await armar([`-DSALIDA=${f}`, `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`]);
+      await armar([`-DSALIDA=${f}`, `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`, ...(ed.modulos?.length ? [`-DMODULOS_FIJO=${ed.modulos.join(",")}`] : [])]);
       console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, ${ed.nombre})`);
-    } })),
-    // Una sola PC con la edición ya fijada (FactPOS-MonoCaja-Gomera-Setup.exe…): el modo de un solo equipo vale para todas las ediciones.
-    ...EDICIONES.map((ed) => ({ nombre: `el instalador de Mono Caja de ${ed.nombre}`, correr: async () => {
-      const f = join(salida, `FactPOS-MonoCaja-${ed.slug}-Setup.exe`.replace(/^FactPOS-MonoCaja-(.)/, (_, c) => `FactPOS-MonoCaja-${c.toUpperCase()}`));
-      await armar([`-DSALIDA=${f}`, "-DUNA_PC=1", `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`]);
-      console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, una sola PC, ${ed.nombre})`);
     } })),
     { nombre: "el desinstalador de Caja", correr: async () => { const f = join(salida, `FactPOS-Caja-Limpiar.exe`); await armar([`-DSALIDA=${f}`], "LimpiarCaja.nsi"); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, limpieza de Caja)`); } },
   ];

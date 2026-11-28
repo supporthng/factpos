@@ -67,6 +67,7 @@ VIAddVersionKey "LegalCopyright" "FactPOS"
 !define MUI_ABORTWARNING_TEXT "¿Cancelar la instalación de FactPOS?"
 
 Var Tipo          ; master (completa) | servidor | caja | admin
+Var Modulos       ; funciones adicionales (separadas por coma): LAVADO | GOMERA | SALON
 Var Negocio       ; tipo de negocio del servidor: TIENDA | MUEBLERIA | RESTAURANTE | BAR | DISCOTECA | COMIDA_RAPIDA
 Var Empresa
 Var Licencia
@@ -103,6 +104,9 @@ Var hN4
 Var hN5
 Var hN6
 Var hN7
+Var hM1
+Var hM2
+Var hM3
 Var hR1
 Var hR5
 Var hR2
@@ -123,6 +127,7 @@ Var hClavePg
 Page custom PaginaExistente PaginaExistenteSalir
 Page custom PaginaTipo PaginaTipoSalir
 Page custom PaginaNegocio PaginaNegocioSalir
+Page custom PaginaModulos PaginaModulosSalir
 Page custom PaginaDatos PaginaDatosSalir
 ; La impresora se elige después: la caja imprime por la predeterminada de Windows
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SaltarCarpeta
@@ -494,6 +499,65 @@ Function PaginaNegocioSalir
   ${EndIf}
 FunctionEnd
 
+; ------------------------------------------------------------------ 1c. funciones adicionales
+; Sobre cualquier tipo de negocio: taller o lavado de vehículos, gomera (neumáticos) y salón (citas y servicios). El instalador de una edición
+; las trae ya definidas (MODULOS_FIJO) y no pregunta.
+Function PaginaModulos
+!ifdef NEGOCIO_FIJO
+  !ifdef MODULOS_FIJO
+    StrCpy $Modulos "${MODULOS_FIJO}"
+  !endif
+  Abort
+!endif
+  ${If} $Tipo != "master"
+  ${AndIf} $Tipo != "servidor"
+    Abort
+  ${EndIf}
+  ${If} $Accion == "actualizar"
+  ${AndIf} $ServLoc != ""
+    Abort
+  ${EndIf}
+  !insertmacro MUI_HEADER_TEXT "¿Necesita alguna función adicional?" "Marque las que usa su negocio. Puede dejar todas sin marcar."
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  ${NSD_CreateCheckBox} 0 0 100% 12u "Taller o lavado de vehículos (órdenes, operarios y comisión)"
+  Pop $hM1
+  ${NSD_CreateCheckBox} 0 22u 100% 12u "Gomera: neumáticos por medida, DOT y ubicación (marque también la de arriba para los pinchazos)"
+  Pop $hM2
+  ${NSD_CreateCheckBox} 0 44u 100% 12u "Peluquería, barbería, uñas o spa (citas, turnos y comisión por servicio)"
+  Pop $hM3
+  ${NSD_CreateLabel} 0 70u 100% 24u "Estas funciones se pueden activar o apagar después en Administración > Datos de la empresa."
+  Pop $0
+  nsDialogs::Show
+FunctionEnd
+
+Function PaginaModulosSalir
+  StrCpy $Modulos ""
+  ${NSD_GetState} $hM1 $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $Modulos "LAVADO"
+  ${EndIf}
+  ${NSD_GetState} $hM2 $0
+  ${If} $0 == ${BST_CHECKED}
+    ${If} $Modulos == ""
+      StrCpy $Modulos "GOMERA"
+    ${Else}
+      StrCpy $Modulos "$Modulos,GOMERA"
+    ${EndIf}
+  ${EndIf}
+  ${NSD_GetState} $hM3 $0
+  ${If} $0 == ${BST_CHECKED}
+    ${If} $Modulos == ""
+      StrCpy $Modulos "SALON"
+    ${Else}
+      StrCpy $Modulos "$Modulos,SALON"
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
 ; ------------------------------------------------------------------ 2. datos
 Function PaginaDatos
   ; La Caja no pregunta nada: el instalador busca solo el servidor de la tienda en la red (como el verificador)
@@ -721,6 +785,9 @@ Section "FactPOS" SecPrincipal
       StrCpy $1 "$1 -Master"
       ${If} $Negocio != ""
         StrCpy $1 "$1 -TipoNegocio '$Negocio'"
+      ${EndIf}
+      ${If} $Modulos != ""
+        StrCpy $1 "$1 -Modulos '$Modulos'"
       ${EndIf}
       ${If} $Licencia != ""
         StrCpy $1 "$1 -Licencia '$Licencia'"
