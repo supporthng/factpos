@@ -185,6 +185,12 @@ if (makensis) {
       await armar([`-DSALIDA=${f}`, `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`]);
       console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, ${ed.nombre})`);
     } })),
+    // Una sola PC con la edición ya fijada (FactPOS-UnaPC-Gomera-Setup.exe…): el modo de un solo equipo vale para todas las ediciones.
+    ...EDICIONES.map((ed) => ({ nombre: `el instalador de Una PC de ${ed.nombre}`, correr: async () => {
+      const f = join(salida, `FactPOS-UnaPC-${ed.slug}-Setup.exe`.replace(/^FactPOS-UnaPC-(.)/, (_, c) => `FactPOS-UnaPC-${c.toUpperCase()}`));
+      await armar([`-DSALIDA=${f}`, "-DUNA_PC=1", `-DNOMBRE=${ed.nombre}`, `-DNEGOCIO_FIJO=${ed.tipoNegocio}`]);
+      console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, una sola PC, ${ed.nombre})`);
+    } })),
     { nombre: "el desinstalador de Caja", correr: async () => { const f = join(salida, `FactPOS-Caja-Limpiar.exe`); await armar([`-DSALIDA=${f}`], "LimpiarCaja.nsi"); console.log(`Listo: ${relative(raiz, f)} (${mb(f)} MB, limpieza de Caja)`); } },
   ];
   // Hasta 4 a la vez (cada compresión usa un núcleo y bastante memoria)
