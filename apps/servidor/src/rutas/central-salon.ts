@@ -28,7 +28,7 @@ interface Linea {
 /** Estados en los que la cita ocupa al estilista (para no encimar dos clientes a la misma hora) */
 const OCUPA = ["PROGRAMADA", "EN_ESPERA", "EN_SERVICIO"];
 
-export async function rutasSalon(app: FastifyInstance) {
+export async function rutasCentralSalon(app: FastifyInstance) {
   const empresaDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-empresa-id"]);
   const usuarioDe = (req: { headers: Record<string, unknown> }) => uuid.parse(req.headers["x-usuario-id"]);
 
