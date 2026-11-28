@@ -17,7 +17,7 @@ interface Linea {
   clave: string; presentacionId: string; nombre: string; presentacion: string; factor: string;
   cantidad: string; costo: string; enOferta: boolean; costoRegular: string; ref: Referencia | null;
   /** Lote y vencimiento de lo recibido (obligatorio si el producto controla lotes) */
-  lote: string; vence: string;
+  lote: string; vence: string; ubic?: string;
   /** Descripción de la factura del proveedor (la lectora la aprende al registrar) */
   alias?: string;
 }
@@ -303,6 +303,8 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   // Gomeras: en vez de lote y vencimiento se anota el DOT (semana y año de fabricación, 4 números) y el vencimiento sale solo
   const [gomera, setGomera] = useState(false);
   useEffect(() => { api<{ activos: string[] }>("/central/empresa/modulos").then((r) => setGomera(r.activos.includes("GOMERA"))).catch(() => {}); }, []);
+  const [todasUbic, setTodasUbic] = useState<{ id: string; almacenId: string; estante: string; nivel: number; posicion: string; activo: boolean }[]>([]);
+  useEffect(() => { if (gomera) api<typeof todasUbic>("/central/farmacia/ubicaciones").then(setTodasUbic).catch(() => {}); }, [gomera]);
   const baseCab = {
     sucursalId: sucursales[0]?.id ?? "", almacenId: "", proveedorId: "", numeroFactura: "", ncfProveedor: "",
     fechaFactura: hoy(), condicion: "CONTADO" as "CONTADO" | "CREDITO", venceEn: "", notas: "",
@@ -483,7 +485,7 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
           items: lineas.map((l) => ({
             presentacionId: l.presentacionId, cantidad: String(n(l.cantidad)), costoUnitario: String(n(l.costo)),
             enOferta: l.enOferta, costoRegular: l.enOferta && l.costoRegular ? String(n(l.costoRegular)) : null,
-            numeroLote: l.lote.trim() || null, loteVence: l.vence || null, descripcionFactura: l.alias ?? null,
+            numeroLote: l.lote.trim() || null, loteVence: l.vence || null, ubicacionId: gomera && l.ubic ? l.ubic : null, descripcionFactura: l.alias ?? null,
           })),
         },
       });
@@ -538,6 +540,8 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
   useEffect(() => { if (!cab.sucursalId && sucursales[0]) setCab((c) => ({ ...c, sucursalId: sucursales[0].id })); }, [sucursales, cab.sucursalId]);
   const variasSuc = sucursales.length > 1;
   const almacenes = sucursales.find((x) => x.id === cab.sucursalId)?.almacenes ?? [];
+  const almacenRecibe = cab.almacenId || sucursales.find((x) => x.id === cab.sucursalId)?.almacenId || "";
+  const ubicaciones = todasUbic.filter((u) => u.activo && u.almacenId === almacenRecibe);
   const lectorOk = !!lector.datos?.disponible && !leyendo;
   const [pidioPago, setPidioPago] = useState("");
   const pedirPago = async () => {
@@ -718,6 +722,12 @@ function NuevaCompra({ onCerrar, onRegistrada, borrador }: { onCerrar: () => voi
                                     <input value={l.lote} placeholder="Lote (opcional)" maxLength={40} aria-label="Número de lote" onChange={(e) => fijar(l.clave, { lote: e.target.value })} />
                                     <input type="date" value={l.vence} min={hoy()} aria-label="Fecha de vencimiento" title="Vence" onChange={(e) => fijar(l.clave, { vence: e.target.value })} />
                                   </>
+                                )}
+                                {gomera && ubicaciones.length > 0 && (
+                                  <select value={l.ubic ?? ""} aria-label="Ubicación en el almacén" title="Rack, nivel y posición donde se guarda" onChange={(e) => fijar(l.clave, { ubic: e.target.value })}>
+                                    <option value="">Ubicación (opcional)</option>
+                                    {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.estante}-{u.nivel}-{u.posicion}</option>)}
+                                  </select>
                                 )}
                               </div>
                               <div className="pequeno referencia-linea">

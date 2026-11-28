@@ -49,6 +49,8 @@ const CompraSchema = z.object({
     /** Lote y vencimiento de lo recibido (obligatorio si el producto controla lotes) */
     numeroLote: z.string().trim().max(40).nullable().default(null),
     loteVence: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de vencimiento AAAA-MM-DD").nullable().default(null),
+    /** Ubicación (rack › nivel › posición) del almacén que recibe: queda asignada al producto al recibir (gomeras) */
+    ubicacionId: uuid.nullable().optional(),
   })).min(1, "Agregue al menos un producto").max(500),
 }).refine((c) => c.condicion === "CONTADO" || !!c.venceEn, "Indique el vencimiento de la factura a crédito")
   .refine((c) => c.items.every((i) => !i.enOferta || !i.costoRegular || Number(i.costoRegular) >= Number(i.costoUnitario)),
@@ -185,6 +187,13 @@ export async function rutasCentralCompras(app: FastifyInstance) {
          lineas.map((l) => l.p.productoId), lineas.map((l) => new Decimal(l.it.cantidad).mul(l.p.factor).toString()),
          lineas.map((l) => new Decimal(l.it.costoUnitario).div(l.p.factor).toDecimalPlaces(4).toString()), lotes],
       );
+      // Ubicación donde se guardó lo recibido: tiene que ser del almacén que recibe
+      for (const l of lineas) {
+        if (!l.it.ubicacionId) continue;
+        const ok = await c.query("SELECT 1 FROM farmacia_ubicaciones WHERE id = $1 AND empresa_id = $2 AND almacen_id = $3 AND activo", [l.it.ubicacionId, empresaId, suc.almacen]);
+        if (!ok.rowCount) throw new ErrorNegocio("La ubicación elegida no es del almacén que recibe");
+        await c.query("INSERT INTO producto_ubicaciones (producto_id, ubicacion_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [l.p.productoId, l.it.ubicacionId]);
+      }
       // Último costo NORMAL del proveedor (la oferta no cambia su precio de lista)
       for (const l of lineas) {
         const normal = new Decimal(l.it.enOferta && l.it.costoRegular ? l.it.costoRegular : l.it.costoUnitario).div(l.p.factor).toDecimalPlaces(4);
